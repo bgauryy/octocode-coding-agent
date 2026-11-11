@@ -183,7 +183,8 @@ describe("Octocode home and Pi configuration fallback", () => {
 			".pi/agent/custom.ts",
 			".pi/agent/extensions/legacy-folder/index.ts",
 			".pi/agent/extensions/only.ts",
-			".pi/agent/plugin/entry.ts",
+			// A package's `pi` manifest key is not read: the package is listed by its folder, its declared entry unopened.
+			".pi/agent/plugin",
 			".pi/extensions/root.ts",
 		];
 		expect(notLoaded()).toEqual(expected);

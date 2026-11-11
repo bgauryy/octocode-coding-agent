@@ -10,27 +10,12 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
-		},
-		"./render": {
-			"source": "./src/render.ts",
-			"types": "./dist/render.d.ts",
-			"import": "./dist/render.js"
-		},
-		"./testing": {
-			"types": "./dist/testing/index.d.ts",
-			"import": "./dist/testing/index.js"
 		}
 	},
-	"files": [
-		"dist",
-		"docs",
-		"README.md"
-	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
 		"build": "shx rm -rf dist && tsc -p tsconfig.build.json",
-		"test": "vitest --run",
-		"prepublishOnly": "yarn run clean && yarn run build"
+		"test": "vitest --run"
 	},
 	"keywords": [
 		"telemetry",
@@ -45,7 +30,7 @@
 		"directory": "packages/telemetry"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=24.15.0"
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",

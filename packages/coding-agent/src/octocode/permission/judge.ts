@@ -2,8 +2,9 @@ import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../..
 
 /**
  * The order in which a tool call is judged: two ordered, named step tables. The first step that decides wins; a step
- * that does not decide lets the next one run. Nothing else sets the order: `tool-gates.ts` and `gate.ts` only supply each
- * step's body, by name, and the compiler refuses a table entry without one.
+ * that does not decide lets the next one run. Nothing else sets the order within the pipeline: `tool-gates.ts` and
+ * `gate.ts` only supply each step's body, by name, and the compiler refuses a table entry without one. No domain blocks a
+ * call from its own `tool_call` handler: the only other one, `turn.ts`'s, observes and never decides.
  */
 
 /** A gate's result: a block, or an `ask` a later gate turns into a question (PreToolUse `permissionDecision: "ask"`). */
@@ -21,20 +22,23 @@ export type JudgeEntry = "tool" | "hook";
 /**
  * Table 1, the `tool_call` pipeline, cheapest and most certain first. The order:
  *
- *  1. plan-mode      planning blocks what changes anything (audited here)
- *  2. git-state      a subagent in the shared tree leaves git state alone (audited); the main session is asked before it
+ *  1. loop           the loop guard (`loop-guard.ts`): past its limit, the next identical call is refused and the run
+ *                    ends (`terminate`); model calls only (audited)
+ *  2. plan-mode      planning blocks what changes anything (audited here)
+ *  3. git-state      a subagent in the shared tree leaves git state alone (audited); the main session is asked before it
  *                    discards uncommitted work while a peer session shares the checkout
- *  3. reservation    another agent's reserved paths (audited)
- *  4. metadata       a browser call that opens a cloud metadata address, in every mode and on every entry (audited)
- *  5. pre-tool-use   the user's PreToolUse hooks, which spawn processes, so only calls 1-4 let through; a hook's `ask`
+ *  4. reservation    another agent's reserved paths (audited)
+ *  5. metadata       a browser call that opens a cloud metadata address, in every mode and on every entry (audited)
+ *  6. pre-tool-use   the user's PreToolUse hooks, which spawn processes, so only calls 1-5 let through; a hook's `ask`
  *                    is handed on as `prior`, and a command it rewrote runs the `invariants` again (audited)
- *  6. plan-recheck   planning again, on the call a hook may have changed (not audited: the next step audits its own)
- *  7. permission     the permission gate (table 2); it audits its own refusals and asks last, so the user is never
+ *  7. plan-recheck   planning again, on the call a hook may have changed (not audited: the next step audits its own)
+ *  8. permission     the permission gate (table 2); it audits its own refusals and asks last, so the user is never
  *                    asked about a call a hook would deny
  *
  * `audited` steps record their refusal in `Permission.refused`. The hook entry runs only the steps flagged `hook`.
  */
 export const GATE_STEPS = [
+	{ name: "loop", entries: ["tool"], audited: true },
 	{ name: "plan-mode", entries: ["tool"], audited: true },
 	{ name: "git-state", entries: ["tool"], audited: true },
 	{ name: "reservation", entries: ["tool"], audited: true },
@@ -52,7 +56,7 @@ export type GateStepBodies = { [N in GateStepName]: N extends "git-state" ? Gate
 interface JudgeOptions {
 	/** Records a refusal by a step flagged `audited`. */
 	audited: (gate: Gate) => Gate;
-	/** The invariants (steps 1-4), run again for a command a hook rewrote. */
+	/** The invariants (steps 2-5), run again for a command a hook rewrote. */
 	invariants: Gate;
 }
 
@@ -121,7 +125,10 @@ export type PermissionStepBodies<S> = Record<
 >;
 
 /** Runs table 2: the first step that decides wins. */
-export async function decide<S>(bodies: PermissionStepBodies<S>, state: S): Promise<ToolCallEventResult | undefined> {
+export async function runPermissionSteps<S>(
+	bodies: PermissionStepBodies<S>,
+	state: S,
+): Promise<ToolCallEventResult | undefined> {
 	for (const name of PERMISSION_STEPS) {
 		const decision = await bodies[name](state);
 		if (decision) return decision.result;

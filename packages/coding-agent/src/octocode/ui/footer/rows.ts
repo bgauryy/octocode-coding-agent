@@ -10,6 +10,7 @@ import { formatCost, formatTokens, formatTokenUsage, newPromptTokens } from "../
 import { STATUS } from "../../shared/status.ts";
 import type { UsageTotals } from "../../shared/util.ts";
 import { shortThinking } from "./spend.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing
@@ -72,16 +73,6 @@ interface Part {
 	priority: number;
 	keep?: boolean;
 	short?: string;
-}
-
-function tilde(cwd: string, home: string | undefined): string {
-	if (!home) return cwd;
-	const relative = path.relative(home, cwd);
-	return relative === ""
-		? "~"
-		: relative.startsWith("..") || path.isAbsolute(relative)
-			? cwd
-			: `~${path.sep}${relative}`;
 }
 
 /** Text drawn without colour (a model id, a path, a branch): every terminal control removed, on one row. */
@@ -213,7 +204,7 @@ export function footerLines(
 		width,
 	);
 
-	const place = plainRow(tilde(state.cwd, state.home));
+	const place = plainRow(state.home ? homeTilde(state.cwd, state.home) : state.cwd);
 	// A third of the row, like the shortened model: long branch names fit wide terminals whole.
 	const shownBranch = branch
 		? plainRow(truncateToWidth(plainRow(branch), Math.max(1, Math.floor(width / 3)), "…"))

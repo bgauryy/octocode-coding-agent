@@ -87,7 +87,7 @@ export function formatSkillsForPrompt(
 	});
 	const lines = [
 		`\n\n${intro}`,
-		...(fileReadTool === "skill" ? [] : [SKILL_LAYOUT]),
+		SKILL_LAYOUT,
 		"",
 		"<available_skills>",
 		...groups.flatMap((category) => {

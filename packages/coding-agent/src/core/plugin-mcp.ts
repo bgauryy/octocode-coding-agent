@@ -2,7 +2,7 @@ import { lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { stripBom } from "../../../common/src/text.ts";
 import { repoKey } from "../utils/git-repository.ts";
-import { validateMcpServerConfig } from "../../../mcp/src/servers.ts";
+import { validateMcpServerConfig } from "../../../mcp/src/api.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { mcpNamespace } from "../../../common/src/mcp-names.ts";
 import { pluginContext } from "./plugin-context.ts";

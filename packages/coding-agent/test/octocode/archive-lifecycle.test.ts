@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentEvents, agents, compactions, type AgentDb, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/storage/database.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 import { archiveFolder } from "../../src/octocode/history/archive.ts";
 import { projectAgents } from "../../src/octocode/archive/projection.ts";
 import { registerArchiveLifecycle } from "../../src/octocode/archive/lifecycle.ts";
@@ -210,6 +210,63 @@ describe("durable agent lifecycle", () => {
 		await fake.fire("session_start", { ...event, reason: "new" }, ctx);
 		expect(agentEvents.list(db.db, registeredWorkspace(root, db).id)).toHaveLength(2);
 		close();
+	});
+
+	it("projects after the commits of one turn, once, not inside the committing call", async () => {
+		const fake = fakeHost();
+		let projections = 0;
+		const close = registerArchiveLifecycle(fake.api, {
+			canProject: () => {
+				projections += 1;
+				return true;
+			},
+			agentId: () => undefined,
+			parentId: () => undefined,
+		});
+		const ctx = fakeCtx({ cwd: root });
+		Object.assign(ctx.sessionManager, {
+			getSessionFile: () => path.join(root, "not-created.jsonl"),
+			getSessionId: () => "session",
+		});
+		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await new Promise((resolve) => setImmediate(resolve));
+		const settled = projections;
+		const shared = sharedAgentDb();
+		const workspace = registeredWorkspace(root, shared).id;
+		for (let n = 0; n < 5; n++)
+			shared.transaction(() =>
+				agentEvents.append(shared.db, workspace, {
+					id: `burst-${n}`,
+					time: new Date().toISOString(),
+					name: null,
+					parentId: null,
+					sessionId: "session",
+					type: "init",
+					version: 1,
+					data: { agentId: null, activationId: `burst-${n}`, reason: "startup", parentSession: null },
+				}),
+			);
+		expect(projections).toBe(settled);
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(projections).toBe(settled + 1);
+		// A projection still queued when the session ends runs then, not never.
+		shared.transaction(() =>
+			agentEvents.append(shared.db, workspace, {
+				id: "at-close",
+				time: new Date().toISOString(),
+				name: null,
+				parentId: null,
+				sessionId: "session",
+				type: "init",
+				version: 1,
+				data: { agentId: null, activationId: "at-close", reason: "startup", parentSession: null },
+			}),
+		);
+		close();
+		expect(projections).toBe(settled + 2);
+		shared.transaction(() => undefined);
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(projections).toBe(settled + 2);
 	});
 });
 

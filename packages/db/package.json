@@ -11,12 +11,16 @@
 	"exports": {
 		".": "./src/api.ts"
 	},
+	"scripts": {
+		"test": "vitest --run"
+	},
 	"dependencies": {
 		"@octocodeai/octocode-contracts": "1.3.0"
 	},
 	"devDependencies": {
 		"@octocodeai/octocode-common": "workspace:*",
-		"@types/node": "24.19.2"
+		"@types/node": "24.19.2",
+		"vitest": "4.1.12"
 	},
 	"license": "MIT",
 	"engines": {

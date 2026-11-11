@@ -89,9 +89,9 @@ function movedResult(
 	].join("\n");
 	const threshold =
 		how === "threshold"
-			? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)`
+			? `(${AUTO_NOTE}; pass a timeout to wait in the foreground and stop the command then)`
 			: how === "cap"
-				? "(a foreground wait lasts at most 10 minutes)"
+				? `(a foreground wait lasts at most 10 minutes${job.timeout ? `; the job is stopped after ${formatDuration(job.timeout * 1000)} more` : ""})`
 				: "";
 	const text = [
 		output.trimEnd(),
@@ -177,13 +177,13 @@ export function orphanNotice(orphans: readonly OrphanJob[]): string {
 	return [
 		...(stopped.length
 			? [
-					`Stopped ${plural(stopped.length, "background bash job")} left running by a Octocode that exited without ending ${stopped.length === 1 ? "it" : "them"}:`,
+					`Stopped ${plural(stopped.length, "background bash job")} left running by an Octocode that exited without ending ${stopped.length === 1 ? "it" : "them"}:`,
 					...stopped.map(line),
 				]
 			: []),
 		...(unsure.length
 			? [
-					`Left alone, since they could not be confirmed as these jobs (the pid may belong to another process now): ${plural(unsure.length, "background bash job")} of a Octocode that exited; stop one yourself with kill -- -<pid> if it is still the job:`,
+					`Left alone, since they could not be confirmed as these jobs (the pid may belong to another process now): ${plural(unsure.length, "background bash job")} of an Octocode that exited; stop one yourself with kill -- -<pid> if it is still the job:`,
 					...unsure.map(line),
 				]
 			: []),

@@ -14,7 +14,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
-import { keyHint } from "../components/keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import type { Expandable } from "./types.ts";
 
 export interface LoadedRowSpec {

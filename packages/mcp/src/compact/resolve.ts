@@ -1,19 +1,14 @@
 /**
  * Which file a catalog gets, shared by sessions (`presentation/`) and `octocode mcp compact`: the stored file while it
- * matches, else a new render with the overrides that describe the catalog. Overrides come from two places, a server's
- * stored ones and its preset's, in one form with one staleness rule (`presetOverridesFor`).
+ * matches, else a new render with the overrides that describe the catalog. Overrides come from one place: the ones the
+ * user stored for the server (`octocode mcp compact apply`), each applied while the upstream text it replaces is
+ * unchanged (`presetOverridesFor`). Octocode ships none, so a server without stored overrides is rendered from its own
+ * text.
  */
 
 import { checkOverrides } from "./fidelity.ts";
 import { presetOverridesFor, toPresetOverrides } from "./preset-overrides.ts";
-import {
-	catalogHash,
-	COMPACT_GENERATOR_VERSION,
-	instructionsHash,
-	presetHash,
-	renderServer,
-	toolHash,
-} from "./render.ts";
+import { catalogHash, COMPACT_GENERATOR_VERSION, instructionsHash, renderServer, toolHash } from "./render.ts";
 import { readGenerated, readGeneratedMeta, writeGenerated } from "./store.ts";
 import type { CompactServerInput, DescriptionOverrides, GeneratedMeta, PresetOverrides } from "./types.ts";
 
@@ -36,8 +31,8 @@ function compactOverrides(overrides: DescriptionOverrides): DescriptionOverrides
 /**
  * The overrides a stored file keeps for its server. A file written before overrides were keyed has them unkeyed, so
  * they are keyed here for `input`, the first catalog it meets: all of them for the catalog they were written for, else
- * those of tools whose hash is unchanged and the server text while the instructions are. Its overrides from the preset
- * alone are not its own.
+ * those of tools whose hash is unchanged and the server text while the instructions are. A file an earlier release
+ * rendered with overrides it shipped (`optimizedBy.model` "preset") holds none of the user's.
  */
 function authoredOverrides(meta: GeneratedMeta, input: CompactServerInput): PresetOverrides | undefined {
 	if (meta.authored) return meta.authored;
@@ -71,14 +66,13 @@ export function mergeOverrides(
 	});
 }
 
-/** The overrides that describe `input`: the stored ones over the preset's (`preset`, already read for this catalog). */
+/** The overrides that describe `input`: the stored ones whose upstream text is unchanged. */
 export function describedOverrides(
 	meta: GeneratedMeta | undefined,
 	input: CompactServerInput,
-	preset: DescriptionOverrides | undefined,
 ): DescriptionOverrides | undefined {
 	const authored = meta && authoredOverrides(meta, input);
-	return mergeOverrides(preset, authored && presetOverridesFor(authored, input));
+	return authored ? presetOverridesFor(authored, input) : undefined;
 }
 
 /** `overrides` split by what it rewrites: the server text, then each tool's description, trigger and fields together. */
@@ -126,8 +120,6 @@ export interface ServerFile {
 }
 
 export interface ResolveOptions {
-	/** The preset's overrides that describe this catalog (see `McpServerPreset.compactOverrides`). */
-	preset?: DescriptionOverrides;
 	/** Render even when the stored file matches. */
 	refresh?: boolean;
 	/** Called when storing a new render fails; the caller still gets the text. */
@@ -135,11 +127,12 @@ export interface ResolveOptions {
 }
 
 /**
- * The file for a catalog: the stored one when this generator rendered it from this exact catalog and preset overrides.
- * Otherwise a new render with the `describedOverrides` that pass the fidelity check (`faithfulOverrides`); the render
- * is stored. The stored overrides stay as written, stale ones too, so a release that changes the preset reaches
- * every entry they do not replace, and a stale one applies again if the server's text comes back. `name` is the
- * configured server name, which names the stored files.
+ * The file for a catalog: the stored one when this generator rendered it from this exact catalog. Otherwise a new
+ * render with the `describedOverrides` that pass the fidelity check (`faithfulOverrides`); the render is stored. The
+ * stored overrides stay as written, stale ones too, so a stale one applies again if the server's text comes back. A
+ * file an earlier release rendered with overrides it shipped (`presetHash`, or written by "preset") is rendered again,
+ * from the server's text and the user's stored overrides.
+ * `name` is the configured server name, which names the stored files.
  */
 export function resolveServerFile(
 	dir: string,
@@ -148,31 +141,26 @@ export function resolveServerFile(
 	options: ResolveOptions = {},
 ): ServerFile {
 	const hash = catalogHash(input);
-	const preset = presetHash(options.preset);
 	const stored = readGenerated(dir, name);
 	const previous = stored?.meta ?? readGeneratedMeta(dir, name);
 	if (
 		!options.refresh &&
-		previous?.presetHash === preset &&
+		previous?.presetHash === undefined &&
+		previous?.optimizedBy?.model !== "preset" &&
 		stored?.meta.hash === hash &&
 		stored.meta.generatorVersion === COMPACT_GENERATOR_VERSION
 	)
 		return { text: stored.text, meta: stored.meta, rendered: false };
 	const authored = previous && authoredOverrides(previous, input);
-	const overrides = faithfulOverrides(input, describedOverrides(previous, input, options.preset));
+	const overrides = faithfulOverrides(input, describedOverrides(previous, input));
 	const text = overrides ? renderServer(input, overrides) : renderServer(input);
-	// "preset" marks overrides from the preset alone; stored overrides keep their writer, also when it is unnamed.
-	const optimizedBy = authored
-		? previous?.optimizedBy
-		: overrides && options.preset
-			? { model: "preset", at: new Date().toISOString() }
-			: undefined;
+	// Stored overrides keep their writer, also when it is unnamed.
+	const optimizedBy = authored ? previous?.optimizedBy : undefined;
 	const meta: GeneratedMeta = {
 		hash,
 		generatorVersion: COMPACT_GENERATOR_VERSION,
 		...(overrides ? { overrides } : {}),
 		...(authored ? { authored } : {}),
-		...(preset ? { presetHash: preset } : {}),
 		...(optimizedBy ? { optimizedBy } : {}),
 		generatedAt: new Date().toISOString(),
 	};

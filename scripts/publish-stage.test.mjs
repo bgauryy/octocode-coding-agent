@@ -38,6 +38,7 @@ const fitPackage = {
 	LICENSE: "MIT",
 	"README.md": "# x",
 	"dist/bundle/octocode.js": "export {};",
+	"dist/bundle/db-writer-worker.js": `export {};${" ".repeat(2000)}`,
 	"dist/bundle/cli.js": 'await import("./octocode.js");',
 	"dist/licenses/THIRD_PARTY_NOTICES.md": "# notices",
 	"docs/project/FEATURES.md": "# features",
@@ -158,6 +159,7 @@ test("names each reason a package must not reach npm", (t) => {
 		"docs/guide.md": "[ok](../README.md#x) [web](https://x.dev) [gone](missing.md#y)",
 	});
 	rmSync(join(root, "LICENSE"));
+	rmSync(join(root, "dist/bundle/db-writer-worker.js"));
 	const problems = findPackageProblems(root).join("\n");
 	assert.doesNotMatch(problems, /README\.md#x|x\.dev/, "links that resolve or leave the package are not problems");
 	for (const expected of [
@@ -165,6 +167,7 @@ test("names each reason a package must not reach npm", (t) => {
 		"local dependency b",
 		"development field in the manifest: scripts",
 		"missing LICENSE",
+		"missing dist/bundle/db-writer-worker.js",
 		"the bundle has chunks",
 		"more than one code file in the bundle: extra.js",
 		"stray file: dist/bundle/octocode.js.map",

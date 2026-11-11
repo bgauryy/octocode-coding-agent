@@ -5,8 +5,7 @@ import {
 	type Message,
 	type ToolResultMessage,
 } from "@octocodeai/octocode-ai";
-import type { CallToolResult } from "../../../../mcp/src/client/protocol/content.ts";
-import type { ServedTool } from "../../../../mcp/src/server/tool-server.ts";
+import type { CallToolResult, ServedTool } from "../../../../mcp/src/api.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { CLAUDE_CODE_PROVIDER } from "./models.ts";
 

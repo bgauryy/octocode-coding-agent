@@ -8,8 +8,7 @@ import {
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { HintBar, renderHintLine } from "../hint-bar.ts";
-import { keyText } from "../keybinding-hints.ts";
+import { HintBar, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { rowTitle } from "./row.ts";
 import type { SessionAction } from "./types.ts";

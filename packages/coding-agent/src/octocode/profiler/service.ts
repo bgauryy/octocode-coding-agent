@@ -15,6 +15,8 @@ import { toChromeTrace, type ChromeTrace } from "./trace.ts";
 import { agentRow, deriveRequests, type ProfilerMember } from "./derive.ts";
 import { withContext, type AgentContext } from "./context.ts";
 import { parseTranscript, prepare, type Prepared } from "./entries.ts";
+import { SessionCodec } from "../../core/session-manager/codec.ts";
+import { reportToStderr } from "../../../../common/src/stderr.ts";
 
 /** What a server needs from the profiler; both /web servers (and the daemon, through the attach protocol) use it. */
 export interface ProfilerPort {
@@ -46,6 +48,8 @@ export interface ProfilerSource {
 	 * Absent for stored sources: their agents list without a window.
 	 */
 	contextWindowOf?(provider: string, model: string): number | undefined;
+	/** Whether the session behind the source has closed; a failing check then ends live updates without a report. */
+	closed?(): boolean;
 }
 
 /** How often a subscribed profiler checks the transcripts of its agents (a stat each, reading only what was appended). */
@@ -61,6 +65,8 @@ interface Parsed {
 	/** Bytes of `size` that ended in a newline: appended text is parsed from here. */
 	offset: number;
 	prepared: Prepared;
+	/** Has read the lines up to `offset`, so appended lines stored against them read whole. */
+	codec: SessionCodec;
 }
 
 /**
@@ -98,13 +104,15 @@ class TranscriptCache {
 			return undefined;
 		}
 		const complete = text.lastIndexOf("\n") + 1;
-		const entries = [...(grown ? known.prepared.entries : []), ...parseTranscript(text.slice(0, complete))];
+		const codec = grown ? known.codec : new SessionCodec();
+		const entries = [...(grown ? known.prepared.entries : []), ...parseTranscript(text.slice(0, complete), codec)];
 		const prepared = prepare(entries);
 		this.files.set(file, {
 			size: stat.size,
 			mtimeMs: stat.mtimeMs,
 			offset: start + Buffer.byteLength(text.slice(0, complete)),
 			prepared,
+			codec,
 		});
 		return prepared;
 	}
@@ -211,14 +219,19 @@ export function createProfiler(
 		return updates;
 	};
 
+	let failing = false;
 	const tick = () => {
 		try {
 			const updates = frames();
 			if (primed) for (const update of updates) for (const listener of listeners) listener(update);
 			primed = true;
-		} catch {
-			// The session was closed under the poll; the server that subscribed is closing too.
-			stop();
+			failing = false;
+		} catch (error) {
+			// A closed session ends the poll; the server that subscribed is closing too. Any other failure is reported once
+			// per run of failures and the next check tries again, so one bad read does not end live updates for good.
+			if (source.closed?.()) return stop();
+			if (!failing) reportToStderr("Profiler: checking the agents failed; retrying every second.", error);
+			failing = true;
 		}
 	};
 	const stop = () => {

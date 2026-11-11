@@ -102,7 +102,6 @@ async function openWorkspace(): Promise<Workspace> {
 	seedTrust(box);
 	Object.assign(box.env, {
 		OCTOCODE_HOME: path.join(box.home, ".octocode", "octocodecode"),
-		OCTOCODE_WEB_DAEMON: "1",
 		OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5",
 		// Over SSH the page's address is printed, so no browser window opens on this machine.
 		SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 22",

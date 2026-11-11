@@ -36,12 +36,16 @@ interface Component {
 
 | Method                | Contract                                                                    |
 | --------------------- | --------------------------------------------------------------------------- |
-| `render(width)`       | One string per line, none wider than `width`                                |
+| `render(width)`       | One string per line, none wider than `width`; see below for reuse           |
 | `handleInput?(data)`  | Focused components get raw input, possibly ANSI escapes                     |
 | `handleMouse?(event)` | Alternate-screen pointer input aimed at the component                       |
 | `invalidate()`        | Required: clear cached render state (an empty body is fine without a cache) |
 
+Return the same array from `render(width)` while nothing changed, and never change an array after returning it. Containers and the renderers reuse work by array identity, so a row changed inside an array they already hold is not redrawn.
+
 The renderer ends every line with an SGR and OSC 8 reset, so styles never span lines.
+
+Text reaches the terminal as given: escape sequences in a `Text`, `Markdown` or custom component's rows are written as they are, including ones that set the window title, the clipboard (OSC 52) or a hyperlink. Pass untrusted text (tool output, file contents, model replies) through `stripTerminalSequences()` and remove its other control characters before rendering it. Only `Input` strips control characters itself.
 
 ## Colors
 
@@ -76,16 +80,21 @@ tui.setLayoutRoot(
 );
 ```
 
-| Option                                                                       | Where                 | Effect                                                                        |
-| ---------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------- |
-| `basis`, `grow`, `shrink`, `minSize`, `maxSize`, `visible`                   | Stack entry           | Size and responsive visibility                                                |
-| `follow: "none" \| "end"`                                                    | `ScrollView`          | Follow streaming output while at the bottom                                   |
-| `primary`                                                                    | `ScrollView`          | Receives keyboard navigation and wheel over non-scrollable regions            |
-| `overscroll: "chain" \| "contain"`                                           | `ScrollView`          | Whether unused wheel delta passes to an outer view                            |
-| `scrollbarTrackStyle`, `scrollbarThumbStyle`                                 | `ScrollView`          | Scrollbar colors (defaults: faint track, plain thumb)                         |
-| `searchMatchStyle`, `searchCurrentMatchStyle`, `searchNavigationButtonStyle` | `TuiAltScreenOptions` | Search highlighting and arrow buttons                                         |
-| `scrollToEndIndicator`                                                       | `TuiAltScreenOptions` | Clickable label on the last row while a `follow: "end"` view is scrolled away |
-| `copyOnSelect`                                                               | `TuiAltScreenOptions` | Copy drag selections with OSC 52 (default on)                                 |
+| Option                                                                       | Where                 | Effect                                                                           |
+| ---------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------- |
+| `basis`, `grow`, `shrink`, `minSize`, `maxSize`, `visible`                   | Stack entry           | Size and responsive visibility                                                   |
+| `follow: "none" \| "end"`                                                    | `ScrollView`          | Follow streaming output while at the bottom                                      |
+| `primary`                                                                    | `ScrollView`          | Receives keyboard navigation and wheel over non-scrollable regions               |
+| `overscroll: "chain" \| "contain"`                                           | `ScrollView`          | Whether unused wheel delta passes to an outer view                               |
+| `scrollbar: "hidden" \| "auto" \| "always"`                                  | `ScrollView`          | No scrollbar (default); one shown while scrolling; one always, in its own column |
+| `scrollbarHideDelayMs`                                                       | `ScrollView`          | How long an `"auto"` scrollbar stays after the last scroll (default 1000)        |
+| `scrollbarTrackStyle`, `scrollbarThumbStyle`                                 | `ScrollView`          | Scrollbar colors (defaults: faint track, plain thumb)                            |
+| `virtualize`                                                                 | `ScrollView`          | Faster first frame for long transcripts (default off); see below                 |
+| `searchMatchStyle`, `searchCurrentMatchStyle`, `searchNavigationButtonStyle` | `TuiAltScreenOptions` | Search highlighting and arrow buttons                                            |
+| `scrollToEndIndicator`                                                       | `TuiAltScreenOptions` | Clickable label on the last row while a `follow: "end"` view is scrolled away    |
+| `copyOnSelect`                                                               | `TuiAltScreenOptions` | Copy drag selections with OSC 52 (default on)                                    |
+
+With `virtualize`, a view that follows the end lays out only the rows in view on its first frame and after a width change, and measures the rest over the next frames; search, selection and scrolling still see the whole content. It applies only when the view's child is a plain `Container` (nested plain containers count, a subclass or wrapper does not), the view gets its height from a stack, and no scrollbar is showing. Otherwise the view lays out every row, without notice.
 
 The primary view also jumps between OSC 133 prompt markers. `Ctrl+Shift+F` opens or closes its search panel; `Enter`/`Ctrl+G` and `Shift+Enter`/`Ctrl+Shift+G` move between matches, `Escape` closes.
 

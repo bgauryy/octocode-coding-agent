@@ -3,7 +3,7 @@ import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../cor
 import { CACHE_WARMING_MODES } from "../../../core/settings-manager.ts";
 import { getSettingsListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { applySettingChange } from "./settings-selector/change-handler.ts";
 import { addConditionalItems } from "./settings-selector/conditional-items.ts";
 import {

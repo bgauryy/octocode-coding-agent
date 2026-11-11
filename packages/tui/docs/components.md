@@ -19,7 +19,7 @@ Part of the [`@octocodeai/octocode-tui` guide](../README.md). To write your own,
 | `Image`                                         | `new Image(base64, mimeType, theme, options?)`                             | PNG, JPEG, GIF, WebP; see [images](#image)                                                                      |
 | `ScrollView`, `VStack`, `HStack`, `MouseRegion` | —                                                                          | [Core API](core-api.md#alternate-screen-layouts)                                                                |
 
-`Input` never holds a control character: typed and pasted text drop them, and `setValue` strips C0, DEL and C1 controls (line breaks become spaces, a tab four spaces), so a stored label cannot write a terminal sequence.
+`Text`, `Markdown` and the other components write escape sequences in their text to the terminal as they are; sanitize untrusted text first ([Core API](core-api.md#component-interface)). `Input` never holds a control character: typed and pasted text drop them, and `setValue` strips C0, DEL and C1 controls (line breaks become spaces, a tab four spaces), so a stored label cannot write a terminal sequence.
 
 ## Key bindings
 

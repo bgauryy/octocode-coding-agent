@@ -207,9 +207,9 @@ describe("subagents", () => {
 		);
 		expect(subagentProcessEnv(undefined, { PATH: "/bin" }).PATH).toBe("/bin");
 		expect(
-			subagentProcessEnv({ name: "h", description: "", prompt: "", hooks: true }, {}).OCTOCODE_SUBAGENT_HOOKS,
-		).toBe("1");
-		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe(true);
+			subagentProcessEnv({ name: "h", description: "", prompt: "", hooks: "all" }, {}).OCTOCODE_SUBAGENT_HOOKS,
+		).toBe("all");
+		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe("all");
 		// Switches take YAML booleans only; a quoted string is refused rather than read as a guess.
 		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(
 			/every specialist needs Octocode local research/,
@@ -237,7 +237,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,bash,file,agent,timer,archive,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -252,7 +252,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,bash,file,agent,timer,archive,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
 			"mcp__browser__*",
@@ -307,7 +307,7 @@ describe("subagents", () => {
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "timer", "archive", "skill", "mcp", ...localResearchTools()]
+			["bash", "file", "agent", "timer", "archive", "memory", "skill", "mcp", ...localResearchTools()]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",
@@ -527,12 +527,16 @@ describe("subagents", () => {
 			on: () => undefined,
 			sendMessage: () => undefined,
 		} as never;
-		const control = registerAgentTool(
-			api,
-			() => new Map(),
-			{ id: undefined, view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
-			fakePermission(),
-		);
+		const control = registerAgentTool(api, {
+			profiles: () => new Map(),
+			team: {
+				id: undefined,
+				view: { members: [], traffic: [] },
+				members: () => [],
+				setResumer: () => undefined,
+			} as never,
+			permission: fakePermission(),
+		});
 		// index.ts adds it as the `/agents` command.
 		const subcommands = new Subcommands();
 		subcommands.add("agents", control.command);

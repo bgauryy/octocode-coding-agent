@@ -12,17 +12,25 @@ export interface ProfileQuery {
 	/** One agent's requests instead of the session overview. */
 	agentId?: string;
 	/** With `agentId`: this request alone, with its prompt layers (0 is the first). */
-	line?: number;
+	request?: number;
+	/** The page to show (the archive cursor's). */
 	page?: number;
 	limit?: number;
 }
 
 const DEFAULT_LIMIT = 10;
 
-function pageOf<T>(rows: T[], page: number, limit: number): { rows: T[]; note: string } {
+function pageOf<T>(rows: T[], page: number, limit: number): { rows: T[]; pages: number } {
 	const pages = Math.max(1, Math.ceil(rows.length / limit));
-	const shown = rows.slice((page - 1) * limit, page * limit);
-	return { rows: shown, note: pages > 1 ? `Page ${page} of ${pages}; continue with page.` : "" };
+	return { rows: rows.slice((page - 1) * limit, page * limit), pages };
+}
+
+/** A profile read: its text, the session it read, and its page of how many (`pages` > 1 continues by the archive cursor). */
+interface ProfileText {
+	text: string;
+	session: string;
+	page: number;
+	pages: number;
 }
 
 function allRequests(profiler: ReturnType<typeof createProfiler>, agentId: string, detail: boolean) {
@@ -42,7 +50,7 @@ function allRequests(profiler: ReturnType<typeof createProfiler>, agentId: strin
  * The cache and agent profile of a stored session as compact text: findings most costly first and every agent, or one
  * agent's requests, or one request's layers with their cache state. Reads stored data only.
  */
-export function readProfile(cwd: string, query: ProfileQuery): { text: string; session: string } {
+export function readProfile(cwd: string, query: ProfileQuery): ProfileText {
 	const db = sharedAgentDb().db;
 	const wanted = query.sessionId?.trim() || currentSessionId();
 	let session;
@@ -64,27 +72,29 @@ export function readProfile(cwd: string, query: ProfileQuery): { text: string; s
 			const text = [
 				agentsTable({ ...agents, agents: shownAgents.rows }),
 				insightsTable({ ...insights, findings: shownFindings.rows }),
-				"Read an agent's requests with agentId, one request's layers with agentId and line.",
-				shownAgents.note || shownFindings.note,
+				"Read an agent's requests with agentId, one request's layers with agentId and request.",
 			];
-			return { text: text.filter(Boolean).join("\n\n"), session: session.id };
+			const pages = Math.max(shownAgents.pages, shownFindings.pages);
+			return { text: text.filter(Boolean).join("\n\n"), session: session.id, page, pages };
 		}
-		const requests = allRequests(profiler, query.agentId, query.line !== undefined);
+		const requests = allRequests(profiler, query.agentId, query.request !== undefined);
 		if (!requests) throw new Error(`No agent ${query.agentId} in session ${session.id}; list agents without agentId.`);
-		if (query.line !== undefined) {
-			const one = requests.find((request) => request.index === query.line);
-			if (!one) throw new Error(`${query.agentId} has no request ${query.line} (it has ${requests.length}).`);
+		if (query.request !== undefined) {
+			const one = requests.find((request) => request.index === query.request);
+			if (!one) throw new Error(`${query.agentId} has no request ${query.request} (it has ${requests.length}).`);
 			return {
 				text: requestsTable({ agentId: query.agentId, requests: [one], hasMore: false }, true),
 				session: session.id,
+				page: 1,
+				pages: 1,
 			};
 		}
 		const shown = pageOf(requests, page, limit);
 		return {
-			text: [requestsTable({ agentId: query.agentId, requests: shown.rows, hasMore: false }, false), shown.note]
-				.filter(Boolean)
-				.join("\n\n"),
+			text: requestsTable({ agentId: query.agentId, requests: shown.rows, hasMore: false }, false),
 			session: session.id,
+			page,
+			pages: shown.pages,
 		};
 	} finally {
 		profiler.close();

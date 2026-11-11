@@ -3,13 +3,13 @@
  * unique labels of the compact startup listing.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
 import { getCwdRelativePath } from "../../../../../common/src/paths.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { SourcedPath } from "./types.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 
 /** Interactive-mode members used by the resource path labels. */
 type ResourcePathsHost = Pick<
@@ -26,15 +26,7 @@ type ResourcePathsHost = Pick<
 >;
 
 export function formatDisplayPath(p: string): string {
-	const home = os.homedir();
-	let result = p;
-
-	// Replace home directory with ~
-	if (result.startsWith(home)) {
-		result = `~${result.slice(home.length)}`;
-	}
-
-	return result;
+	return homeTilde(p);
 }
 
 export function formatExtensionDisplayPath(host: ResourcePathsHost, path: string): string {

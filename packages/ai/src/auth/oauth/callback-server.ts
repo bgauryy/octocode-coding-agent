@@ -8,6 +8,7 @@
 import { createServer, type ServerResponse } from "node:http";
 import { raceWithAbortSignal } from "../../utils/abort.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "../../utils/oauth-page.ts";
+import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { ProviderAuthInteraction } from "../types.ts";
 
 interface OAuthCallbackServerOptions<T> {
@@ -41,6 +42,11 @@ interface OAuthCallbackServer<T> {
 	/** Stop waiting for the browser unless a callback is already being completed. */
 	cancel(): void;
 	close(): void;
+}
+
+/** Address the loopback callback server listens on: `OCTOCODE_OAUTH_CALLBACK_HOST`, else `127.0.0.1`. */
+export function getOAuthCallbackHost(): string {
+	return getProviderEnvValue("OCTOCODE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 }
 
 function sendPage(response: ServerResponse, status: number, html: string): void {

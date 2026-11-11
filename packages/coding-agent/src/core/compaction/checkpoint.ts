@@ -114,6 +114,33 @@ function archivedView(summary: string, file: string, fits: (text: string) => boo
 	return render(view);
 }
 
+/**
+ * The estimated context after a compaction that keeps entries from `firstKeptEntryId`, as a function of its summary.
+ * The boundary carries the prompt and tool state the saved entry will (`appendCompaction`), so the estimate counts the
+ * same context the next request sends.
+ */
+export function projectAfterCompaction(
+	branchEntries: SessionEntry[],
+	firstKeptEntryId: string,
+	tokensBefore = 0,
+): (summary: string) => number {
+	const timestamp = new Date();
+	const boundary: CompactionEntry = {
+		type: "compaction",
+		id: randomUUID(),
+		parentId: branchEntries.at(-1)?.id ?? null,
+		timestamp: timestamp.toISOString(),
+		summary: "",
+		firstKeptEntryId,
+		tokensBefore,
+		...getCompactionBoundarySystem(branchEntries, undefined, undefined, firstKeptEntryId, timestamp.getTime()),
+	};
+	return (summary: string) => {
+		const entries = [...branchEntries, { ...boundary, summary }];
+		return estimateProjectedContextTokens(buildSessionProjection(entries), entries).tokens;
+	};
+}
+
 export function finalizeCompactionResult(
 	candidate: CompactionResult,
 	options: { branchEntries: SessionEntry[]; contextWindow: number; reserveTokens: number; sessionFile?: string },
@@ -141,22 +168,7 @@ export function finalizeCompactionResult(
 		if (summary !== result.summary) result = { ...result, summary };
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
-	// The prompt and tool state the entry will carry (`appendCompaction`), so the estimate counts the same context.
-	const timestamp = new Date();
-	const boundary: CompactionEntry = {
-		type: "compaction",
-		id: randomUUID(),
-		parentId: branchEntries.at(-1)?.id ?? null,
-		timestamp: timestamp.toISOString(),
-		summary: "",
-		firstKeptEntryId: result.firstKeptEntryId,
-		tokensBefore: result.tokensBefore,
-		...getCompactionBoundarySystem(branchEntries, undefined, undefined, result.firstKeptEntryId, timestamp.getTime()),
-	};
-	const projectedTokens = (summary: string) => {
-		const entries = [...branchEntries, { ...boundary, summary }];
-		return estimateProjectedContextTokens(buildSessionProjection(entries), entries).tokens;
-	};
+	const projectedTokens = projectAfterCompaction(branchEntries, result.firstKeptEntryId, result.tokensBefore);
 	const available = contextWindow - reserveTokens;
 	const summaryBudget = Math.min(
 		reserveTokens > 0 ? inlineSummaryTokens(reserveTokens) : available,

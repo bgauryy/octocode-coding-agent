@@ -5,12 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type {
-	AgentContext,
-	AgentMessage,
-	PrepareNextTurnContext,
-	ThinkingLevel,
-} from "@octocodeai/octocode-agent-core";
+import type { AgentContext, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
@@ -41,6 +36,30 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 	): Promise<boolean>;
 }
 
+/** Estimated tokens of a request built from `projection`, counting the tools it will declare that it does not yet. */
+function requestTokens(host: AgentHooksHost, projection: SessionProjection): number {
+	const { session } = host;
+	return (
+		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
+		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations)
+	);
+}
+
+/**
+ * Throws when the compaction that ran for this request found nothing it keeps can fit, and the context is still larger
+ * than `model`'s whole window: such a request can only be refused, so the run ends with what the user can do instead.
+ */
+function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
+	if (!host.run.windowUnfit || !(model.contextWindow > 0)) return;
+	const tokens = requestTokens(host, host.session.sessionManager.buildSessionProjection());
+	if (tokens <= model.contextWindow) return;
+	throw new Error(
+		`The context is about ${tokens.toLocaleString("en-US")} tokens, more than ${model.id}'s ` +
+			`${model.contextWindow.toLocaleString("en-US")}-token window, and compaction could not make it fit: ` +
+			host.run.windowUnfit,
+	);
+}
+
 /**
  * Whether `projection`, the current session projection, exceeds the compaction threshold of `model` at `thinking`
  * (default: the session's routed or selected level).
@@ -53,10 +72,7 @@ function exceedsCompactionThreshold(
 ): boolean {
 	if (model.contextWindow <= 0) return false;
 	const { session } = host;
-	// The estimate also counts tools the transcript does not declare yet: this request will.
-	const tokens =
-		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
-		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations);
+	const tokens = requestTokens(host, projection);
 	const settings = session.settingsManager.getCompactionSettings(
 		model,
 		thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
@@ -180,6 +196,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 				// Compaction handlers can queue input that belongs in this same request.
 				host.inputs.flushDuringRun(host.run.outcome);
 				({ previous, context } = await prepare());
+				assertFitsWindow(host, model);
 			}
 			if (thresholdAttempted) attempted.add(context);
 			assertImageRequestContext(model, convertToLlm(context.messages));
@@ -220,6 +237,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
 			// wraps runs twice for this request and must give the same answer for the same input.
 			({ previous, context } = await prepare());
+			assertFitsWindow(host, route.model);
 		}
 		assertImageRequestContext(route.model, convertToLlm(context.messages));
 		return {
@@ -234,11 +252,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<AgentContext>): void {
 	const { session, tools } = host;
 	const agent = session.agent;
-	const previousPrepareNextTurnWithContext =
-		agent.prepareNextTurnWithContext ??
-		(agent.prepareNextTurn
-			? async (_turn: PrepareNextTurnContext, signal?: AbortSignal) => agent.prepareNextTurn?.(signal)
-			: undefined);
+	const previousPrepareNextTurnWithContext = agent.prepareNextTurnWithContext;
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
 		let projection = session.sessionManager.buildSessionProjection();
 		const model = session.model;

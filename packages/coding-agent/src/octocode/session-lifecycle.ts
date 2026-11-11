@@ -8,7 +8,7 @@ import type { Team } from "./team/session.ts";
 import { stopRowTimers } from "./render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
 import { contentText, MINUTE_MS, settleWithin } from "./shared/util.ts";
-import { reportStatus } from "./subagents/report.ts";
+import { reportStatus } from "./subagents/report-outcome.ts";
 import { holdFailedRun } from "./held-failure.ts";
 import { registerWakeRetry } from "./wake-retry.ts";
 import { callSmallModel, smallModelLabel } from "./subagents/small-call.ts";

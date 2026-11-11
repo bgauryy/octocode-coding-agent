@@ -1,5 +1,6 @@
-import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import type { ApplicationActivity } from "@octocodeai/octocode-contracts";
 import { useRef, useState } from "react";
+import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
@@ -7,20 +8,23 @@ import { ResultCard } from "./ResultCard.tsx";
 import { useLive } from "./session.tsx";
 
 /** Activity cursors are independent of message history, so notices cannot hide older conversation pages. */
-export function ActivityHistory({ snapshot }: { snapshot: ApplicationSnapshot }) {
+export function ActivityHistory({ sessionId }: { sessionId: string }) {
 	const { api, session } = useLive();
+	const hasMoreLive = useStore(session, (state) => state.application?.hasMoreActivities ?? false);
+	const activityBefore = useStore(session, (state) => state.application?.activityBefore);
 	const [history, setHistory] = useState<{ activities: ApplicationActivity[]; before?: string; hasMore: boolean }>();
 	const [events, setEvents] = useState<FeedEvent[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const projection = useRef(new ApplicationProjection());
-	const hasMore = history?.hasMore ?? snapshot.hasMoreActivities ?? false;
+	const hasMore = history?.hasMore ?? hasMoreLive;
 	async function load() {
 		setLoading(true);
 		setError("");
 		try {
-			const page = await api.history(snapshot.sessionId, undefined, history?.before ?? snapshot.activityBefore);
-			if (session.getState().application?.sessionId !== snapshot.sessionId) return;
+			const page = await api.history(sessionId, undefined, history?.before ?? activityBefore);
+			const snapshot = session.getState().application;
+			if (snapshot?.sessionId !== sessionId) return;
 			const activities = [
 				...new Map(
 					[...(page.activities ?? []), ...(history?.activities ?? [])].map((activity) => [activity.id, activity]),

@@ -20,13 +20,15 @@ octocode
 3. Optional: `/octocode auth login` connects GitHub for code search.
 4. `/help` lists every command.
 
-Run it without the terminal UI, for scripts and CI:
+Run it without the terminal UI, for other agents, scripts and CI:
 
 ```sh
-octocode -p "Summarize what changed on this branch"
+octocode -p --no-stdin --permission-mode workspace "Summarize what changed on this branch"
 git diff main | octocode -p "Review this diff for bugs"   # piped stdin is read first
 octocode --trust -p "..."                                 # headless runs need a trusted folder
 ```
+
+For machine-readable progress use `--mode json`; for a persistent worker use `--mode rpc`. The [external-agent guide](docs/external-agents.md) explains safe spawning, model and permission selection, configuration and completion checks.
 
 The package installs `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force`. `octocode --version` shows which one runs.
 
@@ -54,28 +56,28 @@ flowchart LR
 
 ## Features
 
-| Feature               | What you get                                                                            | Start with                                   | Page                                                                                           |
-| --------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Octocode research     | Local, AST, LSP, GitHub and package search, on by default                               | just ask; `/octocode auth login`             | [research CLI](docs/native-features.md#the-octocode-research-cli)                              |
-| Tools                 | `bash`, guarded `file` writer, `web`, `agent`, `backlog`, `archive`, `timer`, `askUser` | `--tools`, `--exclude-tools`                 | [tool selection](docs/native-features.md#tool-selection-and-migration)                         |
-| Subagents             | Children with roles, model routes, request budgets, check-ins                           | ask for parallel work; `/agents`             | [subagents](docs/native-features.md#subagents)                                                 |
-| Worktrees             | Parallel sessions on separate branches, one team                                        | `--worktree <name>`; `/worktree`             | [worktrees](docs/native-features.md#worktrees)                                                 |
-| Team and locks        | File reservations, team mail, backlog-driven coordination                               | `/agents`                                    | [communication](docs/native-features.md#communication-and-results)                             |
-| Backlog and web board | Durable work items and a live board                                                     | `/web`                                       | [web workspace](docs/web-workspace.md)                                                         |
-| Memory and archive    | Notes, searchable history, compaction summaries                                         | `/memory`                                    | [memory](docs/memory.md)                                                                       |
-| MCP                   | Any stdio or Streamable HTTP server                                                     | `/mcp`; `octocode mcp add`                   | [MCP](docs/mcp.md)                                                                             |
-| Skills                | On-demand instructions for a kind of work                                               | `/harness list skills`                       | [skills](docs/skills.md)                                                                       |
-| Hooks                 | Your commands on lifecycle events                                                       | `/harness hooks`                             | [hooks](docs/hooks.md)                                                                         |
-| Plugins               | Claude and Codex plugins and marketplaces                                               | `octocode marketplace add`                   | [plugins](docs/plugins.md)                                                                     |
-| Harnesses             | Reuse Pi, Claude Code, Codex, Cursor and `.agents` setup                                | `/harness`                                   | [configuration](docs/configuration.md#pi-configuration-fallback)                               |
-| Providers and models  | Hosted providers, OAuth, local llama.cpp and Ollama, routing                            | `/providers`, `/model`, `/modelsettings`     | [providers](docs/providers.md), [models](docs/models.md)                                       |
-| Prompt caching        | Stable prefixes shared across agents, cache warming                                     | `/status`                                    | [prompt caching](docs/prompt-caching.md)                                                       |
-| Permissions           | Modes `full`, `workspace`, `manual`; folder trust; plan mode; checkpoints               | `/permissions`, `/trust`, `/plan`, `/rewind` | [permissions](docs/permissions.md)                                                             |
-| Sessions              | Resume, fork, tree, compaction, side questions                                          | `/resume`, `/fork`, `/compact`, `/btw`       | [commands](docs/commands.md#session)                                                           |
-| Configuration         | One place to enable, disable and set anything                                           | `/configuration`                             | [configuration](docs/configuration.md#changing-configuration)                                  |
-| Terminal and tmux     | Full-screen UI, panes for forks and worktrees                                           | `/fork pane`, `/worktree open <name> pane`   | [TUI](docs/tui.md), [tmux](docs/tmux.md)                                                       |
-| Web and remote        | Browser workspace, control or view-only links                                           | `/web`, `/remote`                            | [web](docs/web-workspace.md), [remote](docs/remote.md)                                         |
-| Editors and scripts   | ACP, RPC, JSON Lines, session API                                                       | `--mode acp`, `--mode rpc`, `octocode-api`   | [CLI](docs/cli.md), [ACP](docs/acp.md), [RPC](docs/rpc.md), [session API](docs/session-api.md) |
+| Feature               | What you get                                                                                      | Start with                                   | Page                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Octocode research     | Local, AST, LSP, GitHub and package search, on by default                                         | just ask; `/octocode auth login`             | [research CLI](docs/native-features.md#the-octocode-research-cli)                              |
+| Tools                 | `bash`, guarded `file` writer, `web`, `agent`, `backlog`, `archive`, `memory`, `timer`, `askUser` | `--tools`, `--exclude-tools`                 | [tool selection](docs/native-features.md#tool-selection-and-migration)                         |
+| Subagents             | Children with roles, model routes, request budgets, check-ins                                     | ask for parallel work; `/agents`             | [subagents](docs/native-features.md#subagents)                                                 |
+| Worktrees             | Parallel sessions on separate branches, one team                                                  | `--worktree <name>`; `/worktree`             | [worktrees](docs/native-features.md#worktrees)                                                 |
+| Team and locks        | File reservations, team mail, backlog-driven coordination                                         | `/agents`                                    | [communication](docs/native-features.md#communication-and-results)                             |
+| Backlog and web board | Durable work items and a live board                                                               | `/web`                                       | [web workspace](docs/web-workspace.md)                                                         |
+| Memory and archive    | Notes, searchable history, compaction summaries                                                   | `/memory`                                    | [memory](docs/memory.md)                                                                       |
+| MCP                   | Any stdio or Streamable HTTP server                                                               | `/mcp`; `octocode mcp add`                   | [MCP](docs/mcp.md)                                                                             |
+| Skills                | On-demand instructions for a kind of work                                                         | `/harness list skills`                       | [skills](docs/skills.md)                                                                       |
+| Hooks                 | Your commands on lifecycle events                                                                 | `/harness hooks`                             | [hooks](docs/hooks.md)                                                                         |
+| Plugins               | Claude and Codex plugins and marketplaces                                                         | `octocode marketplace add`                   | [plugins](docs/plugins.md)                                                                     |
+| Harnesses             | Reuse Pi, Claude Code, Codex, Cursor and `.agents` setup                                          | `/harness`                                   | [configuration](docs/configuration.md#pi-configuration-fallback)                               |
+| Providers and models  | Hosted providers, OAuth, local llama.cpp and Ollama, routing                                      | `/providers`, `/model`, `/modelsettings`     | [providers](docs/providers.md), [models](docs/models.md)                                       |
+| Prompt caching        | Stable prefixes shared across agents, cache warming                                               | `/status`                                    | [prompt caching](docs/prompt-caching.md)                                                       |
+| Permissions           | Modes `full`, `workspace`, `manual`; folder trust; plan mode; checkpoints                         | `/permissions`, `/trust`, `/plan`, `/rewind` | [permissions](docs/permissions.md)                                                             |
+| Sessions              | Resume, fork, tree, compaction, side questions                                                    | `/resume`, `/fork`, `/compact`, `/btw`       | [commands](docs/commands.md#session)                                                           |
+| Configuration         | One place to enable, disable and set anything                                                     | `/configuration`                             | [configuration](docs/configuration.md#changing-configuration)                                  |
+| Terminal and tmux     | Full-screen UI, panes for forks and worktrees                                                     | `/fork pane`, `/worktree open <name> pane`   | [TUI](docs/tui.md), [tmux](docs/tmux.md)                                                       |
+| Web and remote        | Browser workspace, control or view-only links                                                     | `/web`, `/remote`                            | [web](docs/web-workspace.md), [remote](docs/remote.md)                                         |
+| Editors and scripts   | ACP, RPC, JSON Lines, session API                                                                 | `--mode acp`, `--mode rpc`, `octocode-api`   | [CLI](docs/cli.md), [ACP](docs/acp.md), [RPC](docs/rpc.md), [session API](docs/session-api.md) |
 
 ## Everyday commands
 

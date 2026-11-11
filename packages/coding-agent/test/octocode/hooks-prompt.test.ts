@@ -19,7 +19,7 @@ async function fixture(protocol: "claude" | "codex", command: string, extra = {}
 		}),
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
-	registerHooks(fake.api, {}, home);
+	registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, ctx };
@@ -102,7 +102,7 @@ describe("source-profile user prompt hooks", () => {
 	});
 	it("keeps prompt interception absent in a subagent without hooks", () => {
 		const f = fakeHost(HOOK_SETTINGS);
-		registerHooks(f.api, { OCTOCODE_SUBAGENT: "1" }, tmp());
+		registerHooks(f.api, { env: { OCTOCODE_SUBAGENT: "1" }, home: tmp() });
 		expect(f.handlers.has("input")).toBe(false);
 	});
 

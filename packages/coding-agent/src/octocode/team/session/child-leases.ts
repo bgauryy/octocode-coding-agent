@@ -113,7 +113,9 @@ export class ChildLeases {
 	/**
 	 * The run of `id` ended: its leases go, and its row while this process still holds it (the child never joined). A
 	 * child that joined left by itself, or its row waits for the sweep. A database that cannot be written now leaves
-	 * leases nobody renews, which lapse by themselves.
+	 * leases nobody renews, which lapse by themselves. Session end (also `/new`) releases nothing here: a child still
+	 * closing may write its paths until its process exits, so its reservations stay until its run's end calls this. The
+	 * process's own end bounds them: its held rows lapse with it, and the exit hook kills the child's group.
 	 */
 	release(id: string): void {
 		const row = this.rows.get(id);
@@ -132,15 +134,6 @@ export class ChildLeases {
 	/** The heartbeat: a child not running yet renews nothing itself. */
 	renew(db: TeamStore, now: number): void {
 		for (const id of this.rows.keys()) db.renew(id, now);
-	}
-
-	/**
-	 * The session ends (also `/new`): a child still closing may write its paths until its process exits, so its
-	 * reservations stay and `release` (its run's end) drops them. The process's own end bounds them: its held rows lapse
-	 * with it, and the exit hook kills the child's group.
-	 */
-	stop(): void {
-		// Nothing to release here by design.
 	}
 }
 

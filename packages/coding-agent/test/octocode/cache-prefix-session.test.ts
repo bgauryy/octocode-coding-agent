@@ -35,6 +35,7 @@ function head({ context, options }: Captured) {
 		system: initial ? getSystemMessageText(initial) : "",
 		tools: JSON.stringify(initial?.toolsAdded ?? []),
 		boundary: options?.instructionCacheBoundary,
+		volatileBoundary: options?.instructionVolatileBoundary,
 		cacheRetention: options?.cacheRetention,
 		instructionCacheRetention: options?.instructionCacheRetention,
 	};
@@ -146,6 +147,7 @@ it("sends the same tools and leading prompt on every turn and after a compaction
 		expect(turn.system).toBe(first.system);
 		expect(turn.sections).toEqual(first.sections);
 		expect(turn.boundary).toBe(first.boundary);
+		expect(turn.volatileBoundary).toBe("cwd");
 		expect([turn.cacheRetention, turn.instructionCacheRetention]).toEqual([
 			first.cacheRetention,
 			first.instructionCacheRetention,

@@ -667,13 +667,52 @@ describe("writeSummary with the shared path", () => {
 
 	it("skips the shared request after a context overflow, which would only overflow again", async () => {
 		const { calls, api, ctx, event, notices } = setup();
-		const out = await writeSummary(api, { ...(event as object), reason: "overflow" } as never, ctx);
+		// A summarized stretch larger than its summary: an automatic compaction that frees nothing is not committed.
+		const preparation = (event as { preparation: { messagesToSummarize: unknown[] } }).preparation;
+		const work = { role: "assistant", content: [{ type: "text", text: "worked ".repeat(5_000) }], timestamp: 1 };
+		const overflow = {
+			...(event as object),
+			reason: "overflow",
+			preparation: { ...preparation, messagesToSummarize: [...preparation.messagesToSummarize, work] },
+		};
+		const out = await writeSummary(api, overflow as never, ctx);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.details).toMatchObject({
 			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: expect.stringContaining("overflowed") },
 		});
 		expect(notices).toEqual([]);
+	});
+
+	it("does not commit an automatic compaction that frees nothing, and pays for no summary it can tell in advance", async () => {
+		// Two short messages: what code appends alone outweighs them, so the model is never asked.
+		const { calls, api, ctx, event } = setup();
+		const automatic = (preparation?: object) =>
+			({
+				...(event as object),
+				reason: "threshold",
+				...(preparation ? { preparation: { ...(event as { preparation: object }).preparation, ...preparation } } : {}),
+			}) as never;
+		const before = await writeSummary(api, automatic(), ctx);
+		expect(before).toEqual({
+			cancel: true,
+			failure: expect.stringMatching(/^The compaction was not committed because it would free nothing/),
+		});
+		expect(calls).toHaveLength(0);
+		// A larger stretch is worth asking for; a reply as large as what it replaces is still not committed.
+		const work = { role: "assistant", content: [text("worked ".repeat(2_000))], timestamp: at };
+		const replaced = [ask, call, work];
+		const long = setup({ reply: () => reply([text(`## Goal\n${"summary ".repeat(4_000)}`)]) });
+		const after = await writeSummary(
+			long.api,
+			{ ...(automatic({ messagesToSummarize: replaced }) as object) } as never,
+			long.ctx,
+		);
+		expect(long.calls).toHaveLength(1);
+		expect(after).toMatchObject({ cancel: true });
+		// A manual compaction is the user's (or the agent's) request: it commits.
+		const manual = await writeSummary(api, { ...(event as object), reason: "manual" } as never, ctx);
+		expect(manual?.compaction?.summary).toContain("fix the parser");
 	});
 
 	it("warns about the fallback and then about the failure when both paths fail", async () => {

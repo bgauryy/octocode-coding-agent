@@ -118,7 +118,7 @@ export function maybeSuggestBugReport(host: CrashReportingHost, message: Assista
 
 /**
  * After an error, check whether an update replaced or removed this install while the session ran.
- * Code loaded on demand then fails with missing modules until restart (#10439). Returns true when
+ * Code loaded on demand then fails with missing modules until restart. Returns true when
  * the install changed.
  */
 export function maybeShowInstallChangeWarning(host: CrashReportingHost): boolean {

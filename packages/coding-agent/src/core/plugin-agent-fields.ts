@@ -13,7 +13,7 @@ type ToolEffect = "bash" | "web" | "write" | "inherent";
 
 /**
  * Claude tool names (compared lowercase; Octocode's own names are accepted too) by what they mean in Octocode. `inherent`
- * tools exist in every child: local research (read, search, list), the `agent`, `archive` and `skill` tools.
+ * tools exist in every child: local research (read, search, list), the `agent`, `archive`, `memory` and `skill` tools.
  */
 const TOOL_EFFECT: Record<string, ToolEffect> = {
 	bash: "bash",
@@ -35,6 +35,7 @@ const TOOL_EFFECT: Record<string, ToolEffect> = {
 	agent: "inherent",
 	task: "inherent",
 	archive: "inherent",
+	memory: "inherent",
 };
 
 /** Octocode fields a plugin agent may set: the ones that only narrow the child or ask the user. */

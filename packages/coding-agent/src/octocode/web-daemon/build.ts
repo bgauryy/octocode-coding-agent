@@ -1,6 +1,7 @@
 import { renderDaemonHtml } from "@octocodeai/octocode-webview";
 import { VERSION } from "../../config.ts";
 import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { inlineScriptHash } from "../workspace/inline-script-hash.ts";
 
 export interface DaemonPage {
 	html: string;
@@ -15,12 +16,9 @@ let cached: DaemonPage | undefined;
 export function daemonPage(): DaemonPage {
 	if (cached) return cached;
 	const html = renderDaemonHtml();
-	// The page has exactly one script without attributes (the data block has a type); its text ends at the first `</script>`.
-	const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
-	if (script === undefined) throw new Error("The daemon page has no inline script.");
 	cached = {
 		html,
-		scriptHash: `sha256-${Buffer.from(sha256(script, "base64url"), "base64url").toString("base64")}`,
+		scriptHash: inlineScriptHash(html),
 		build: `${VERSION}:${sha256(html).slice(0, 12)}`,
 	};
 	return cached;

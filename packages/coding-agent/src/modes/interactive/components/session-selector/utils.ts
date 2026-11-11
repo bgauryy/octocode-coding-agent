@@ -1,14 +1,9 @@
-import * as os from "node:os";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { plainText } from "../styled-line.ts";
+import { homeTilde } from "../../../../../../common/src/home-tilde.ts";
 
 export function shortenPath(path: string): string {
-	const home = os.homedir();
-	if (!path) return path;
-	if (path.startsWith(home)) {
-		return `~${path.slice(home.length)}`;
-	}
-	return path;
+	return path && homeTilde(path);
 }
 
 /**

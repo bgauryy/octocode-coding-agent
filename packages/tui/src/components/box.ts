@@ -1,4 +1,9 @@
-import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "../tui.ts";
+import {
+	type Component,
+	dispatchMouseEvent,
+	type TuiMouseDispatchResult,
+	type TuiMouseEvent,
+} from "../tui/component.ts";
 import { renderIsolated } from "../tui/render-isolation.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { flattenLines } from "../utils/wrap.ts";

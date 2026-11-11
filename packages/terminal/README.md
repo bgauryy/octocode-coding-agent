@@ -1,16 +1,16 @@
 # @octocodeai/octocode-terminal
 
-Private workspace that completes `!` shell lines in the terminal. It starts the user's shell as a long-lived completion driver, reads command lines the way a POSIX shell splits them, and ranks suggestions. It needs only Node (`terminal: []` in the package policy, enforced by `yarn run check:boundaries`); the coding-agent feature in `src/octocode/terminal/` supplies settings, trust, history storage and the model call.
+Private workspace that completes `!` shell lines in the terminal. It starts the user's shell as a long-lived completion driver, reads command lines the way a POSIX shell splits them, and ranks suggestions. Besides Node it uses only common's PATH lookup (`terminal: ["common"]` in the package policy, enforced by `yarn run check:boundaries`); the coding-agent feature in `src/octocode/terminal/` supplies settings, trust, history storage and the model call.
 
-| Module | Does |
-| --- | --- |
-| `service.ts` | `ShellCompletionService`: the shell first (trusted folders only), then PATH programs, git branches and carapace |
-| `driver-process.ts`, `driver-lines.ts` | One driver process, a bounded line protocol (`id<TAB>text` in; `id<TAB>value<TAB>description<TAB>flags` and `id<TAB><RS>` out), cancellation and stall recovery |
-| `shells/` | How zsh (`zpty` capture), bash (`COMP_WORDS` and the completion function), fish (`complete --do-complete`) and PowerShell (`TabExpansion2`) are started; `index.ts` picks one from the setting or `$SHELL` |
-| `line.ts` | `parseShellLine` (quotes, escapes, separators, substitutions) and `quoteForShell` |
-| `suggest.ts` | History ranking, shell commands from a markdown reply, the deterministic ghost text |
-| `next-command.ts` | `NextCommandSuggester`: shared model calls per folder and prefix, with up to 256 recently used cached answers |
-| `git-refs.ts`, `carapace.ts`, `executables.ts` | Branch names read from `.git`, carapace's JSON export, PATH lookup |
+| Module                                         | Does                                                                                                                                                                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `service.ts`                                   | `ShellCompletionService`: the shell first (trusted folders only), then PATH programs, git branches and carapace                                                                                            |
+| `driver-process.ts`, `driver-lines.ts`         | One driver process, a bounded line protocol (`id<TAB>text` in; `id<TAB>value<TAB>description<TAB>flags` and `id<TAB><RS>` out), cancellation and stall recovery                                            |
+| `shells/`                                      | How zsh (`zpty` capture), bash (`COMP_WORDS` and the completion function), fish (`complete --do-complete`) and PowerShell (`TabExpansion2`) are started; `index.ts` picks one from the setting or `$SHELL` |
+| `line.ts`                                      | `parseShellLine` (quotes, escapes, separators, substitutions) and `quoteForShell`                                                                                                                          |
+| `suggest.ts`                                   | History ranking, shell commands from a markdown reply, the deterministic ghost text                                                                                                                        |
+| `next-command.ts`                              | `NextCommandSuggester`: shared model calls per folder and prefix, with up to 256 recently used cached answers                                                                                              |
+| `git-refs.ts`, `carapace.ts`, `executables.ts` | Branch names read from `.git`, carapace's JSON export, the PATH program list                                                                                                                               |
 
 Shell processes never run a command line from a request: zsh gets the line and a Tab (never Enter) with the `_expand` completer removed, so `$(...)` is not substituted; bash gets the words and calls the completion function; fish and PowerShell get a string to complete. Completion functions themselves still run programs (git completion runs `git`), which is why the host starts a shell only in a trusted folder. Not published: `octocodeSource` declares the `terminal` mount and the coding-agent build bundles it.
 

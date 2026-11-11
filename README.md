@@ -14,6 +14,17 @@ octocode
 
 Trust the folder when asked, then `/providers` to connect a provider and `/model` to pick one.
 
+## Use from another agent or script
+
+Octocode also runs headlessly. After configuring a provider and trusting the target project:
+
+```sh
+octocode -p --no-stdin --no-session --permission-mode workspace "Review this project without editing files"
+```
+
+Use `--mode json` for JSON Lines events or `--mode rpc` for a persistent, controllable session.
+The [external-agent guide](packages/coding-agent/docs/external-agents.md) covers setup, safe subprocess invocation, configuration, permissions and completion handling.
+
 ## How it works
 
 ```mermaid

@@ -50,20 +50,22 @@ describe("octocode mcp compact", () => {
 		expect(existsSync(store)).toBe(false);
 	});
 
-	it("generates a missing file with the preset's overrides for the catalog they were written for, then reads the stored one", async () => {
+	it("generates a missing file from the server's own text, then reads the stored one", async () => {
 		const { run, store } = setup();
 		const first = await run(["compact", "show", "octocode", "--catalog", OCTOCODE_CATALOG]);
 		expect(first.exitCode).toBe(0);
 		const stored = readGenerated(store, "octocode");
 		const catalog = JSON.parse(readFileSync(OCTOCODE_CATALOG, "utf8"));
 		expect(stored?.meta.hash).toBe(catalogHash(catalog));
-		// Contract: the stored overrides are exactly what the preset offers for that catalog.
-		expect(stored?.meta.overrides).toEqual(defaultPreset().compactOverrides?.(catalog));
+		// Contract: Octocode ships no overrides, so the file is the plain render of the catalog.
+		expect(stored?.meta.overrides).toBeUndefined();
+		const plain = await run(["compact", "show", "octocode", "--plain", "--catalog", OCTOCODE_CATALOG]);
+		expect(first.output).toBe(plain.output);
 		const again = await run(["compact", "show", "octocode"]);
 		expect(again.output).toBe(first.output);
 	});
 
-	it("renders deterministically when the catalog differs from the one the preset overrides were written for", async () => {
+	it("renders deterministically for a changed catalog", async () => {
 		const { run, write } = setup();
 		const catalog = JSON.parse(readFileSync(OCTOCODE_CATALOG, "utf8"));
 		catalog.tools[0].description = `${catalog.tools[0].description} Changed.`;
@@ -192,21 +194,13 @@ describe("octocode mcp compact", () => {
 		expect(json.servers.find((row: { server: string }) => row.server === "fixture").staleTools).toEqual(["echo"]);
 	});
 
-	it("prints checked overrides in the per-tool preset form", async () => {
-		const { run, write, agentDir } = setup();
-		const catalog = join(agentDir, "catalog.json");
-		await run(["compact", "catalog", "fixture", "--out", catalog]);
-		const overrides = write("overrides.json", {
-			tools: { echo: "Echo the text." },
-			triggers: { echo: "Use to echo." },
-		});
-		const printed = await run(["compact", "preset", "fixture", "--overrides", overrides, "--catalog", catalog]);
-		expect(printed.exitCode).toBe(0);
-		const preset = JSON.parse(printed.output);
-		expect(preset.tools.echo).toMatchObject({ description: "Echo the text.", trigger: "Use to echo." });
-		expect(preset.tools.echo.descriptionHash).toMatch(/^[0-9a-f]{16}$/);
-		const bad = write("bad.json", { triggers: { echo: "Two\nlines." } });
-		expect((await run(["compact", "preset", "fixture", "--overrides", bad, "--catalog", catalog])).exitCode).toBe(1);
+	// Contract change: `compact preset` printed overrides in the form a shipped preset kept them; none is shipped now.
+	it("has no preset action", async () => {
+		const { run } = setup();
+		const printed = await run(["compact", "preset", "fixture", "--overrides", "x.json"]);
+		expect(printed.exitCode).toBe(1);
+		expect(printed.output).toContain("Usage:");
+		expect(printed.output).not.toContain("compact preset");
 	});
 
 	it("reports usage for an unknown action and names the server it cannot find", async () => {

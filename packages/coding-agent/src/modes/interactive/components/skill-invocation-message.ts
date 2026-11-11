@@ -6,7 +6,7 @@ import { shortPath } from "../../../utils/display-path.ts";
 import { plural } from "../../../octocode/shared/text.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
 /**
  * Renders a skill invocation block (`/skill:name`): `[skill] name · N lines`, the instruction file under it, and the

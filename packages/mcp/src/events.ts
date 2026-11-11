@@ -24,6 +24,7 @@ import {
 	renderMcpsSection,
 } from "./section.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { declaredParameters, redeclaresInPlace } from "./redeclare.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { registerTools } from "./tool-registry.ts";
@@ -62,7 +63,7 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 			declared,
 			server.connection?.instructions,
 			connectionState === "connected",
-			deferralOf(server.entry, declared, state.exposureSetting(), activeTools, state.deferRoles()),
+			deferralOf(server.entry, declared, state.exposureSetting(), activeTools, state.deferRoles(), state.recentTools()),
 		);
 		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
 		const deferred = described.deferred.size;
@@ -118,6 +119,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 
 	api.on("session_start", (_event, ctx) => {
 		state.presentation.reset();
+		state.declaredBefore = declaredParameters(ctx);
 		const load = () => (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		const loaded = load();
 		state.configErrors = loaded.errors;
@@ -126,7 +128,10 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.projectTrusted = ctx.isProjectTrusted();
 		sayUntrustedProject(ctx);
 		state.waitedForStartup = false;
+		state.startupGate.close();
 		state.sessionCwd = ctx.cwd;
+		// The recent-tool set is read per folder, so it is dropped once the new folder is set.
+		state.forgetRecentTools();
 		state.modelRegistry = ctx.modelRegistry;
 		state.session = new AbortController();
 		const { signal } = state.session;
@@ -138,6 +143,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.unregisterHookCaller = registerMcpHookCaller(api.events, async (request) => {
 			const callSignal = AbortSignal.any([signal, request.signal]);
 			callSignal.throwIfAborted();
+			// A hook may call during `session_start`, before discovery: its server cannot wait for it.
+			state.startupGate.open();
 			const server = state.findServer(request.server);
 			if (!server || !isEnabled(server)) throw new Error(`MCP server "${request.server}" is unavailable`);
 			// A server outside the tool selection starts for the hook alone; its tools stay undeclared.
@@ -188,9 +195,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			reportProblems(state, ctx);
 			return;
 		}
-		// The MCP client loads only now, so sessions without servers never pay for it. Waiting one
-		// event loop turn lets the first render happen before loading and connecting.
-		const runtime = new Promise((resolve) => setImmediate(resolve)).then(() => loadMcpRuntime());
+		// The MCP client loads only now, so sessions without servers never pay for it. Waiting for the session's
+		// resources (`startup-gate.ts`) also lets the first render happen before loading and connecting.
+		const runtime = state.startupGate.ready.then(() => loadMcpRuntime());
 		state.pending = Promise.all(enabled.map((server) => startConnection(state, server, runtime)))
 			.then(() => {
 				if (!signal.aborted) reportProblems(state, ctx);
@@ -206,8 +213,19 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	});
 
 	// Navigating the tree rebuilds the loadout of the target branch, and with it the prompt.
-	api.on("session_tree", () => {
+	api.on("session_tree", (_event, ctx) => {
 		state.presentation.rebuild();
+		state.presentation.forgetLoaded();
+		state.declaredBefore = declaredParameters(ctx);
+	});
+
+	// A deferred tool is declared in full after its first call, successful or not, where the model's transport adds the
+	// definition in place (`redeclare.ts`); elsewhere it stays thin. The next request registers it (`describeServers`).
+	api.on("tool_execution_end", (event: { toolName?: unknown }, ctx) => {
+		const [server, tool] =
+			(typeof event.toolName === "string" ? state.toolOwners.get(event.toolName) : undefined)?.split("\0") ?? [];
+		if (server !== undefined && tool !== undefined && redeclaresInPlace(ctx.model))
+			state.presentation.load(server, tool);
 	});
 
 	api.on("model_select", () => {
@@ -216,11 +234,17 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			if (connection.state === "connected") registerTools(state, connection);
 	});
 
+	// The host applies the folders extensions add right after this event: the startup connections launch with them.
+	api.on("resources_discover", () => {
+		state.startupGate.discovered();
+	});
+
 	// Every prompt describes the servers: the `mcps` base section (cached with the tools, ahead of project context) holds
 	// each server's block, fixed once its catalog is described, and the volatile `mcp_status` section names servers that
 	// are not ready. A connection change therefore patches only `mcp_status`. The first prompt waits for servers whose
 	// tools are declared to the model (`waitForDirectServers`).
 	api.on("before_agent_start", async (event, ctx) => {
+		state.startupGate.open();
 		if (!ctx.signal?.aborted && !state.session.signal.aborted) {
 			const changed = state.servers.filter((server) => {
 				const launched = server.connection && state.preparedLaunches.get(server.connection);
@@ -300,6 +324,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	});
 
 	api.on("session_shutdown", async () => {
+		// Nothing launches after the abort below; what waited for the gate settles.
+		state.startupGate.open();
 		state.unregisterHookCaller?.();
 		state.unregisterHookCaller = undefined;
 		state.unregisterSwitch?.();

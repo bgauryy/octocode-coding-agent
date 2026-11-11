@@ -15,6 +15,8 @@ export class ApplicationFrameStream {
 	private readonly sinks = new Set<(frame: ApplicationFrame) => void>();
 	private readonly closes = new Set<() => void>();
 	private readonly wire = new ApplicationWire();
+	/** Whether a view connected in this epoch: until one does (or one of an earlier epoch is still open), no view needs frames. */
+	private connected = false;
 
 	private readonly sessionId: () => string;
 	private readonly replay: ReplayBuffer;
@@ -37,6 +39,7 @@ export class ApplicationFrameStream {
 		this.epoch = randomUUID();
 		this.sequence = 0;
 		this.replay.clear();
+		this.connected = false;
 		if (clearWire) this.wire.clear();
 	}
 
@@ -45,8 +48,14 @@ export class ApplicationFrameStream {
 		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason }));
 	}
 
-	// A streamed delta that releases nothing yet becomes no frame and uses no sequence.
+	// A streamed delta that releases nothing yet becomes no frame and uses no sequence. While no view is open and none
+	// connected in this epoch, no cursor exists to resume from: events are counted but nothing is redacted, encoded or
+	// kept for replay, and a view that connects starts from a snapshot.
 	emit(event: ApplicationEvent, hint?: StreamHint): void {
+		if (!this.connected && this.sinks.size === 0) {
+			if (this.wire.follow(event, hint)) this.sequence++;
+			return;
+		}
 		const wired = this.wire.event(event, hint);
 		if (!wired) return;
 		this.sequence++;
@@ -66,6 +75,7 @@ export class ApplicationFrameStream {
 			},
 		);
 		const { push, close } = connection;
+		this.connected = true;
 		if (
 			cursor &&
 			cursor.sessionId === this.sessionId() &&
@@ -88,6 +98,7 @@ export class ApplicationFrameStream {
 	clear(): void {
 		this.sinks.clear();
 		this.replay.clear();
+		this.connected = false;
 		this.wire.clear();
 	}
 }

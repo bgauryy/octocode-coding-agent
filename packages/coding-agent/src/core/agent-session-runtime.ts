@@ -18,6 +18,10 @@ import { emitSessionShutdownEvent } from "./features/runner.ts";
 import { FolderAdmission } from "./folder-trust.ts";
 import { assertSessionCwdExists, resolveSessionCwd } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
+import { sessionMirrorSettled } from "./session-manager/mirror.ts";
+
+/** Longest a disposing runtime waits for queued database mirror writes before the process may exit. */
+const MIRROR_EXIT_WAIT_MS = 1_500;
 
 export {
 	SessionImportFileNotFoundError,
@@ -344,8 +348,16 @@ export class AgentSessionRuntime {
 	}
 
 	/** Settle and save the active turn, then shut the session down. */
+	/**
+	 * Every exit path (quit, a signal, RPC shutdown, print mode) disposes before `process.exit`, which would drop the
+	 * database mirror writes still queued: wait for them, bounded. A write still out after that is repaired at the next open.
+	 */
 	async dispose(): Promise<void> {
-		await this.teardownCurrent("quit");
+		try {
+			await this.teardownCurrent("quit");
+		} finally {
+			await sessionMirrorSettled(MIRROR_EXIT_WAIT_MS);
+		}
 	}
 }
 

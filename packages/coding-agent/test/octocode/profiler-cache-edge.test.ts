@@ -67,21 +67,32 @@ class Transcript {
 	}
 }
 
-/** A recorded trace: tools, two system blocks, then `messages` wire messages (each a hash). */
-function trace(head: { tools?: string; system?: string } = {}, messages: string[] = [], cacheMode = "ephemeral-1h") {
+/**
+ * A recorded trace: tools, two system blocks, then `messages` wire messages (each a hash). `ttls` records each
+ * breakpoint's own TTL as the adapter does now (the instruction blocks', and the last message's history marker); without
+ * it the trace is an older one that names only `cacheMode`.
+ */
+function trace(
+	head: { tools?: string; system?: string } = {},
+	messages: string[] = [],
+	cacheMode = "ephemeral-1h",
+	ttls?: { instructions: string; history: string },
+) {
+	const instruction = ttls ? { breakpoint: true, ttl: ttls.instructions } : { breakpoint: true };
 	return {
 		requestTrace: {
 			cacheMode,
 			layers: [
-				{ kind: "tools", chars: 8000, hash: head.tools ?? "tools-v1", breakpoint: true },
-				{ kind: "system", index: 0, chars: 8000, hash: head.system ?? "system-v1", breakpoint: true },
-				{ kind: "system", index: 1, chars: 8000, hash: "system-b", breakpoint: true },
+				{ kind: "tools", chars: 8000, hash: head.tools ?? "tools-v1", ...instruction },
+				{ kind: "system", index: 0, chars: 8000, hash: head.system ?? "system-v1", ...instruction },
+				{ kind: "system", index: 1, chars: 8000, hash: "system-b", ...instruction },
 				...messages.map((hash, index) => ({
 					kind: "message",
 					role: index % 2 ? "system" : "user",
 					index,
 					chars: 400,
 					hash,
+					...(ttls && index === messages.length - 1 ? { breakpoint: true, ttl: ttls.history } : {}),
 				})),
 			],
 		},
@@ -279,13 +290,44 @@ describe("profiler cache edge cases", () => {
 			expect(kinds(t)).toContain("cache-rewrite");
 		});
 
-		it("reads the 1h tier from the recorded trace when no 1h write was reported", () => {
+		it("reads the 1h tier from the recorded trace of a pure hit", () => {
 			const t = new Transcript().start();
 			t.user("go");
-			t.assistant({ input: 10, cacheWrite: 30_000 }, trace({}, ["m0"]));
+			t.assistant({ input: 10, cacheRead: 30_000 }, trace({}, ["m0"]));
 			t.user("later");
 			t.assistant({ input: 10, cacheWrite: 30_100 }, trace({}, ["m0", "m1", "m2"]), 10 * 60_000);
 			expect(kinds(t)).not.toContain("cache-idle-expiry");
+		});
+
+		it("reads each breakpoint's recorded TTL: 1h history outlives 10m, 5m history behind 1h instructions does not", () => {
+			const lane = (history: string) => {
+				const t = new Transcript().start();
+				t.user("go");
+				t.assistant(
+					{ input: 10, cacheRead: 30_000 },
+					trace({}, ["m0"], "ephemeral-1h", { instructions: "1h", history }),
+				);
+				t.user("later");
+				t.assistant({ input: 10, cacheWrite: 30_100 }, trace({}, ["m0", "m1", "m2"]), 10 * 60_000);
+				return t;
+			};
+			expect(kinds(lane("1h"))).not.toContain("cache-idle-expiry");
+			// `cacheMode` names the first marker (1h); the history marker's own 5m decides the history's lifetime.
+			expect(kinds(lane("5m"))).toContain("cache-idle-expiry");
+			const prepared = prepare(lane("5m").entries);
+			expect(cacheLifetimeMs(prepared, 0)).toBe(5 * 60_000);
+			expect(cacheLifetimeMs(prepared, 0, "instructions")).toBe(60 * 60_000);
+		});
+
+		it("reads an older layered trace (1h named, writes not 1h) as 5m history and 1h instructions", () => {
+			// The roast's child busts: `ephemeral-1h` recorded, `cacheWrite1h` 0, the history gone after 311-1,272 s.
+			const t = new Transcript().start();
+			t.user("go");
+			t.assistant({ input: 10, cacheRead: 40_000, cacheWrite: 90_000, cacheWrite1h: 0 }, trace({}, ["m0"]));
+			t.user("later");
+			t.assistant({ input: 10, cacheRead: 40_000, cacheWrite: 90_100 }, trace({}, ["m0", "m1", "m2"]), 6 * 60_000);
+			expect(kinds(t)).toContain("cache-idle-expiry");
+			expect(cacheLifetimeMs(prepare(t.entries), 0, "instructions")).toBe(60 * 60_000);
 		});
 
 		it("still explains a miss after the 1h tier ran out", () => {
@@ -528,6 +570,14 @@ describe("profiler cache edge cases", () => {
 
 		it("carries a sibling's 1h tier past its pure hit: a start 10m after that hit is not an expiry", () => {
 			const lanes = [sibling("a", 0, {}, [[{ input: 10, cacheRead: 40_000 }, 50 * 60_000]]), sibling("b", 60 * 60_000)];
+			const finding = cold(lanes, "b");
+			expect(finding?.title).not.toMatch(/expired/);
+			expect(finding?.severity).toBe("medium");
+		});
+
+		it("judges a sibling's shared cache by its instruction tier, not its shorter history tier", () => {
+			const layered = { ...trace({}, ["m0"], "ephemeral-1h", { instructions: "1h", history: "5m" }) };
+			const lanes = [sibling("a", 0, { extra: layered }), sibling("b", 20 * 60_000)];
 			const finding = cold(lanes, "b");
 			expect(finding?.title).not.toMatch(/expired/);
 			expect(finding?.severity).toBe("medium");

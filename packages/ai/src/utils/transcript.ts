@@ -1,5 +1,8 @@
 import type { Context, Message, SystemMessage, Tool, ToolReference, TranscriptContext, UserMessage } from "../types.ts";
 import { contentText, getSystemMessageText, renderSystemUpdateAsUserText } from "./text.ts";
+import { declarationsEqual, toToolDeclaration } from "./tool-declaration.ts";
+
+export { declarationsEqual, toToolDeclaration };
 
 export type { TranscriptContext } from "../types.ts";
 
@@ -263,28 +266,6 @@ export function resolveTranscript(
 	options?: CollapseSystemOptions,
 ): TranscriptContext {
 	return supportsMidConvoSystemMessages ? context : collapseSystemMessages(context, options);
-}
-
-/** Strip executable and display-only fields from a tool before transcript comparison or persistence. */
-export function toToolDeclaration(tool: Tool): Tool {
-	return {
-		name: tool.name,
-		description: tool.description,
-		parameters: JSON.parse(JSON.stringify(tool.parameters)) as Tool["parameters"],
-		...(tool.constrainedSampling === undefined ? {} : { constrainedSampling: tool.constrainedSampling }),
-	};
-}
-
-/**
- * Whether two tools declare the same interface to the model.
- *
- * Both sides go through {@link toToolDeclaration} first: its JSON round-trip drops the
- * typebox symbol keys and `undefined` fields that a structural comparison would see, and
- * builds both objects with the same key order, so comparing the serialized declarations
- * is exact. This avoids a deep-equal dependency in a browser-safe package.
- */
-export function declarationsEqual(left: Tool, right: Tool): boolean {
-	return JSON.stringify(toToolDeclaration(left)) === JSON.stringify(toToolDeclaration(right));
 }
 
 export interface ToolStateChanges {

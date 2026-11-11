@@ -14,7 +14,10 @@ export interface SettingsManagerCreateOptions {
 }
 
 export interface SettingsStorage {
-	/** Read-only loads can leave a missing configuration directory untouched; a returned write is rejected. */
+	/**
+	 * Read-only loads can leave a missing configuration directory untouched and take no lock; a returned write is
+	 * rejected.
+	 */
 	withLock(
 		scope: SettingsScope,
 		fn: (current: string | undefined) => string | undefined,
@@ -48,8 +51,8 @@ export function toSettingsError(scope: SettingsScope, error: unknown, path?: str
 }
 
 export class FileSettingsStorage implements SettingsStorage {
-	private globalSettingsPath: string;
-	private projectSettingsPath: string;
+	private readonly globalSettingsPath: string;
+	private readonly projectSettingsPath: string;
 	private readonly cwd: string;
 	private readonly agentDir: string;
 
@@ -60,6 +63,11 @@ export class FileSettingsStorage implements SettingsStorage {
 		this.agentDir = resolvedAgentDir;
 		this.globalSettingsPath = join(resolvedAgentDir, "settings.json");
 		this.projectSettingsPath = join(resolvedCwd, CONFIG_DIR_NAME, "settings.json");
+	}
+
+	/** The global and project settings files this storage reads and writes. */
+	get paths(): Required<SettingsPaths> {
+		return { global: this.globalSettingsPath, project: this.projectSettingsPath };
 	}
 
 	loadInherited(projectTrusted: boolean): InheritedSettings {
@@ -81,7 +89,9 @@ export class FileSettingsStorage implements SettingsStorage {
 			if (!options.readOnly && !existsSync(dir)) {
 				mkdirSync(dir, { recursive: true });
 			}
-			if (!options.readOnly || existsSync(path)) {
+			// Every write replaces the file by an atomic rename, so a reader sees the old or the new file whole: only a
+			// writer locks, to read and merge without losing a concurrent update. Siblings starting together read at once.
+			if (!options.readOnly) {
 				release = lockSyncWithRetry(path);
 			}
 			const current = existsSync(path) ? readFileSync(path, "utf-8") : undefined;

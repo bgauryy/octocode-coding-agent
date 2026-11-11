@@ -38,11 +38,11 @@ function seedSession(id: string, ws: string, mtimeNs = stamp.mtime) {
 		agent.db,
 		id,
 		`/t/${id}.jsonl`,
-		{ id },
+		JSON.stringify({ id }),
 		{ ...stamp, mtime: mtimeNs },
 		[
-			{ id: "e1", parentId: null, type: "message" },
-			{ id: "e2", parentId: "e1", type: "message" },
+			{ id: "e1", parentId: null, type: "message", json: '{"id":"e1","parentId":null,"type":"message"}' },
+			{ id: "e2", parentId: "e1", type: "message", json: '{"id":"e2","parentId":"e1","type":"message"}' },
 		],
 		0,
 	);
@@ -103,6 +103,27 @@ describe("forget and erase", () => {
 		transcripts.bind(agent.db, "bare", ws);
 		sessions.forget(agent.db, "bare");
 		expect(sessions.byId(agent.db, "bare")).toBeUndefined();
+	});
+
+	it("records a fork edge again without error, and refuses a different edge for the same child", () => {
+		const ws = workspace("w");
+		seedSession("parent", ws);
+		seedSession("other", ws);
+		transcripts.bind(agent.db, "child", ws);
+		transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "parent");
+		// A retry whose first commit lost its acknowledgement.
+		transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "parent");
+		expect(count("session_forks")).toBe(1);
+		expect(() => transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "other")).toThrow(
+			"Another transcript already uses this session ID",
+		);
+		expect(() => transcripts.linkFork(agent.db, "child", "/t/elsewhere.jsonl", "parent")).toThrow(
+			"Another transcript already uses this session ID",
+		);
+		expect(agent.db.prepare("SELECT parent_id, child_file FROM session_forks WHERE child_id = 'child'").get()).toEqual({
+			parent_id: "parent",
+			child_file: "/t/child.jsonl",
+		});
 	});
 
 	it("erase removes every per-session row of the sessions and nothing else", () => {

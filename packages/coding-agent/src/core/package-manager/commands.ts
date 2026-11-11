@@ -24,11 +24,17 @@ function getEnv(): NodeJS.ProcessEnv {
 	}
 }
 
+/**
+ * The child gets the terminal only when nothing else owns it. A protocol (stdout taken over) or a terminal UI reading
+ * raw input (a `/reload` or session switch installing a package) keeps it: the child writes to stderr and reads no
+ * input. An inherited stdout would also turn the UI's output blocking, since that flag lives on the shared open file.
+ */
 function spawnCommand(command: string, args: string[], options?: { cwd?: string }): ChildProcess {
 	const env = getEnv();
+	const terminalOwned = isStdoutTakenOver() || (process.stdout.isTTY && process.stdin.isRaw);
 	return spawnProcess(command, args, {
 		cwd: options?.cwd,
-		stdio: isStdoutTakenOver() ? ["ignore", 2, 2] : "inherit",
+		stdio: terminalOwned ? ["ignore", 2, 2] : "inherit",
 		env,
 	});
 }

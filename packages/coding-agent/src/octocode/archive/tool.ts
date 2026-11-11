@@ -7,137 +7,164 @@ import { timedTool } from "../render/rows.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import type { createMemoryActions } from "../memory/tool.ts";
-import { archiveMutation, archiveRead } from "../shared/archive-operation.ts";
+import { archiveRead, formerMemoryOp } from "../shared/archive-operation.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { agentEvents } from "../../../../db/src/api.ts";
-import { historyScope, PAGE_CHARS } from "../history/transcripts.ts";
-import { isScanCursor } from "../history/search.ts";
+import { historySessions, PAGE_CHARS } from "../history/transcripts.ts";
 import { HistoryRepair } from "./repair.ts";
+import { repairBeforeRead } from "./repair-stamps.ts";
+import { continueLine, nextArchiveCursor, nextPage, readArchiveCursor } from "./cursor.ts";
 import { createHistoryTool, pattern } from "./history-tool.ts";
-import { getRecord, readRecords } from "./reads.ts";
+import { getRecord, MAX_RECORDS, OVERVIEW_RECORDS, readRecords } from "./reads.ts";
 import { readProfile } from "./profile-read.ts";
+import { sessionMirrorSettled } from "../../core/session-manager/mirror.ts";
 
-type MemoryTool = ReturnType<typeof createMemoryActions>;
+/** Longest a history read waits for this session's mirror writes before it reads what the database has. */
+const MIRROR_WAIT_MS = 2_000;
+
+/** What a call recorded before `memory` became its own tool carries after `opShape`: the memory op it meant. */
+const FORMER = "formerMemoryOp";
 
 /**
  * A call in the one op-based shape. `op` was optional, and a call with neither op nor source searched only session
  * history; such calls recorded by a resumed session still validate: the op they meant is filled in (get for an id or a
  * file read alone, search for query, keywords or errors, else list) and, without a source, source sessions.
+ *
+ * Memories were read and written here until `memory` became its own tool. A call that names them (`op` set or delete,
+ * `source` memories, an `M<n>` id) keeps its fields for the row that shows it, validates as a list, and carries the op
+ * it meant in `formerMemoryOp`: `execute` refuses it and names the `memory` call to make.
  */
 function opShape<T>(args: T): T {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args;
 	const input = args as Record<string, unknown>;
-	// set and delete only exist for memories: the source follows the op.
-	if (input.op === "set" || input.op === "delete")
-		return input.source === undefined ? ({ ...input, source: "memories" } as T) : args;
+	if (typeof input[FORMER] === "string") return args;
+	const former = formerMemoryOp(input);
+	if (former) return { ...input, op: "list", source: "sessions", [FORMER]: former } as T;
 	if (input.op !== undefined) return args;
 	const search = Boolean(input.query || input.keywords || input.errors);
 	const op = input.id || (input.file && !search) ? "get" : search ? "search" : "list";
 	return { ...input, op, ...(input.source === undefined ? { source: "sessions" } : {}) } as T;
 }
 
-/** One public tool. Memory keeps its permission checks; session history is the `sessions` source. */
-export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): void {
+/** `op source detail` of a call, for its row; a recorded memory call reads `set memories <title>`. */
+function callSummary(raw: unknown): string {
+	const args = (opShape(raw) ?? {}) as Record<string, unknown>;
+	const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+	const former = text(args[FORMER]);
+	const detail =
+		text(args.id) ??
+		text(args.title) ??
+		text(args.keywords) ??
+		text(args.query) ??
+		(text(args.file)
+			? `${text(args.file)}${typeof args.line === "number" || typeof args.line === "string" ? `:${args.line}` : ""}`
+			: args.errors
+				? "errors"
+				: "");
+	const head = former ? [former, "memories"] : [text(args.op) ?? "list", text(args.source) ?? "all"];
+	return [...head, clip(detail, 100)].filter(Boolean).join(" ");
+}
+
+/** A call of the session-history part, with the page and scan position the archive cursor names. */
+const historyCall = (args: object): Parameters<ReturnType<typeof createHistoryTool>["execute"]>[1] =>
+	args as Parameters<ReturnType<typeof createHistoryTool>["execute"]>[1];
+
+/** The diagnostic sources: agent lifecycle events and a session's request profile, read by the main session only. */
+const DIAGNOSTIC_SOURCES = ["events", "profile"] as const;
+
+/**
+ * Session history, compaction summaries and diagnostics. Memories have their own tool (`memory/tool.ts`). A subagent
+ * reads history and summaries; the diagnostics (`events`, `profile`, `errors`) are declared for the main session only.
+ */
+export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: boolean } = {}): void {
+	const subagent = options.isSubagent === true;
 	const history = createHistoryTool();
-	// The memory capability's `op` owns which operations this session has: a subagent's lists no set or delete.
-	const writable =
-		(memory?.parameters.properties.op as { enum?: string[] } | undefined)?.enum?.includes("set") === true;
+	const { errors: _errors, line: _line, since: _since, ...shared } = history.parameters.properties;
+	const fields = {
+		op: StringEnum(["list", "search", "get"] as const, {
+			description: "get: full record by id; list: newest",
+		}),
+		id: Type.Optional(Type.String({ description: "Record reference from list/search" })),
+		keywords: Type.Optional(Type.String({ description: "Topic words, ranked" })),
+		limit: Type.Optional(Type.Integer({ description: "1–50 records per source (default 10)" })),
+		cursor: Type.Optional(Type.String({ description: "Continue a result: the cursor its last line names" })),
+	};
+	const main = Type.Object({
+		...history.parameters.properties,
+		...fields,
+		source: Type.Optional(
+			StringEnum(["all", "sessions", "compactions", "agents", ...DIAGNOSTIC_SOURCES] as const, {
+				description: "Record collection (default all)",
+			}),
+		),
+		query: Type.Optional(
+			Type.String({
+				description: "Case-insensitive regex. With errors: filters by tool name or error text",
+			}),
+		),
+		agentId: Type.Optional(Type.String({ description: "Events, profile: existing agent name" })),
+		request: Type.Optional(Type.Integer({ description: "Profile with agentId: one request's layers" })),
+		sessionId: Type.Optional(
+			Type.String({
+				description:
+					"List or search one session's history (current: this session); events, profile: session id (profile default: current)",
+			}),
+		),
+		eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: lifecycle transition" })),
+		until: Type.Optional(Type.String({ description: "Events: inclusive ISO timestamp" })),
+	});
+	const child = Type.Object({
+		...shared,
+		...fields,
+		line: Type.Optional(Type.Integer({ description: "Read from this line" })),
+		since: Type.Optional(Type.String({ description: "Files changed since this ISO time" })),
+		source: Type.Optional(
+			StringEnum(["all", "sessions", "compactions", "agents"] as const, {
+				description: "Record collection (default all)",
+			}),
+		),
+		query: Type.Optional(Type.String({ description: "Case-insensitive regex" })),
+	});
 	api.registerTool(
 		timedTool({
 			...history,
 			promptSnippet: renderInstruction("tools/archive/snippet.md"),
+			// One description for every role (it leads the cached tool list); `source` and the field texts say what this
+			// one reads.
 			description:
-				"Search workspace memories, complete compaction summaries, session history and agent lifecycle events by op and source. " +
-				// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
-				"set and delete (where op lists them) act on memories; plan mode only reads; global or pinned changes ask for approval. " +
-				"source profile reads a session's agents, cache findings and request layers. " +
+				"Complete compaction summaries, session history and, where source lists them, agent lifecycle events " +
+				"and profile (a session's agents, cache findings and request layers). " +
 				"A session search reads this session first, then newer sessions, and stops at a match or time budget with a cursor; " +
 				"narrow it with sessionId, file or since. keywords ranks, query filters; together they rank only matching passages.",
-			promptGuidelines: memory?.promptGuidelines,
-			parameters: Type.Object({
-				...history.parameters.properties,
-				...memory?.parameters.properties,
-				op:
-					memory?.parameters.properties.op ??
-					StringEnum(["list", "search", "get"] as const, {
-						description: "search: topic keywords or regex query; get: full record by id; list: newest",
-					}),
-				source: Type.Optional(
-					StringEnum(["all", "sessions", "compactions", "memories", "agents", "events", "profile"] as const, {
-						description: "Record collection (default all; memories for set/delete)",
-					}),
-				),
-				id: Type.Optional(Type.String({ description: "Record reference from list/search; memories keep M<n> ids" })),
-				query: Type.Optional(
-					Type.String({
-						description:
-							"Case-insensitive regex (keywords: ranked topic search). With errors: filters by tool name or error text",
-					}),
-				),
-				keywords: Type.Optional(
-					Type.String({
-						description: writable
-							? "Search topic words; with set, the memory's retrieval keywords"
-							: "Search topic words",
-					}),
-				),
-				agentId: Type.Optional(Type.String({ description: "Events, profile: existing agent name" })),
-				sessionId: Type.Optional(
-					Type.String({
-						description:
-							"Search sessions: one session's history (current: this session); events, profile: session id (profile default: current)",
-					}),
-				),
-				eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: lifecycle transition" })),
-				until: Type.Optional(Type.String({ description: "Events: inclusive ISO timestamp" })),
-				limit: Type.Optional(Type.Integer({ description: "1–50 records per source (default 10)" })),
-				cursor: Type.Optional(
-					Type.String({ description: "Continue a stopped search with its cursor (record or session-history)" }),
-				),
-			}),
+			// `execute` reads the main session's fields; a subagent's schema declares fewer of them and refuses the rest.
+			parameters: subagent ? (child as unknown as typeof main) : main,
 			// Validation runs on the result, so the declared type is checked there, not here.
 			prepareArguments: (args) => opShape(args) as never,
 			display(input) {
-				const args = opShape(input.args);
-				const detail =
-					args.id ??
-					("title" in args && typeof args.title === "string" ? args.title : undefined) ??
-					args.keywords ??
-					args.query ??
-					(args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : args.errors ? "errors" : "");
-				const summary = [args.op ?? "list", args.source ?? "all", detail].filter(Boolean).join(" ");
-				return textResultDisplay({ title: "Archive", summary, kind: "search", blocks: [] }, input);
+				const head = { title: "Archive", summary: callSummary(input.args), kind: "search" as const, blocks: [] };
+				return textResultDisplay(head, input);
 			},
 			renderCall(raw, theme, context) {
-				const args = opShape(raw);
-				const detail =
-					args.id ??
-					("title" in args && typeof args.title === "string" ? args.title : undefined) ??
-					args.keywords ??
-					args.query ??
-					(args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : args.errors ? "errors" : "");
-				return toolHeader(
-					theme,
-					context,
-					"Archive",
-					[args.op ?? "list", args.source ?? "all", clip(detail, 100)].filter(Boolean).join(" "),
-				);
+				return toolHeader(theme, context, "Archive", callSummary(raw));
 			},
 			async execute(callId, given, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 				// SDK callers reach execute without prepareArguments.
-				const input = opShape(given);
+				const input = opShape(given) as typeof given & { page?: number; request?: number };
+				const former = (input as Record<string, unknown>)[FORMER];
+				if (typeof former === "string")
+					throw new Error(`archive no longer reads or writes memories: call the memory tool with op "${former}".`);
 
+				// Every argument is checked before any read or repair, so a malformed call fails at once with its fix.
 				// Recorded calls that carry the former `goal` field still replay: it is ignored.
 				if (!input.reason?.trim()) throw new Error("archive needs reason (why history is needed, not the code).");
-				if (!archiveRead(input) && !archiveMutation(input)) throw new Error("Unknown archive operation.");
-				if (archiveMutation(input)) {
-					if (input.source !== "memories")
-						throw new Error(`${input.op} works on source memories only; drop source or set source "memories".`);
-					if (!memory) throw new Error("Memory operations are unavailable in this tool loadout.");
-					return memory.execute(callId, input as Parameters<MemoryTool["execute"]>[1], signal, onUpdate, ctx);
+				if (!archiveRead(input)) throw new Error("Unknown archive operation.");
+				if (subagent) {
+					const source = DIAGNOSTIC_SOURCES.find((name) => name === input.source);
+					const diagnostic = input.errors ? "errors" : source ? `source ${source}` : undefined;
+					if (diagnostic)
+						throw new Error(`${diagnostic} is read by the main session only: ask your coordinator for it.`);
 				}
 				const op = input.op ?? "list";
 				for (const [key, time] of [
@@ -145,96 +172,139 @@ export function registerArchiveTool(api: ExtensionAPI, memory?: MemoryTool): voi
 					["until", input.until],
 				] as const)
 					if (time && !Number.isFinite(Date.parse(time))) throw new Error(`${key} must be an ISO date or time.`);
-				if (input.source === "profile") {
-					const profile = readProfile(ctx.cwd, input);
-					return textResult(profile.text, { mode: "profile", session: profile.session, reason: input.reason });
-				}
-				if (op === "search" && input.source === "memories" && !input.query?.trim() && !input.keywords?.trim())
-					throw new Error("Memory search needs query or keywords.");
+				if (op === "get" && !input.id && !input.file) throw new Error("get requires a record id or file.");
 				// Every source reads query as a regular expression: an invalid one names the fix before any search runs.
 				if (input.query?.trim()) pattern(input.query.trim());
+				const from = readArchiveCursor(input.cursor);
+				// A recorded call from before the cursor carried pages still names its page.
+				const page = from.page ?? Math.max(1, Math.floor(input.page ?? 1));
+				const capped =
+					input.limit !== undefined && input.limit > MAX_RECORDS ? `limit is capped at ${MAX_RECORDS}.` : "";
+				/** The result's text with the one line that continues it, when a part goes on. */
+				const finish = (pieces: string[], next: Parameters<typeof nextArchiveCursor>[0], details: object) => {
+					const nextCursor = nextArchiveCursor(next);
+					return textResult([...pieces, capped, continueLine(nextCursor)].filter(Boolean).join("\n\n"), {
+						...details,
+						nextCursor,
+						reason: input.reason,
+					});
+				};
+
+				if (input.source === "profile") {
+					const profile = readProfile(ctx.cwd, { ...input, page, request: input.request ?? input.line });
+					const where = profile.pages > 1 ? `Page ${profile.page} of ${profile.pages}.` : "";
+					return finish([profile.text, where], nextPage(profile.page, profile.pages), {
+						mode: "profile",
+						session: profile.session,
+					});
+				}
 				const coverage: string[] = [];
 				const needsHistory = input.id
 					? /^(compaction|session):/.test(input.id)
 					: !input.source || ["all", "sessions", "compactions"].includes(input.source);
-				if (needsHistory && ctx.sessionManager.getSessionFile()) {
-					const repair = new HistoryRepair(sharedAgentDb(), process.env, signal);
-					const repairs = [
-						() => repair.transcript(ctx.sessionManager.getSessionFile()!),
-						...historyScope(ctx.cwd).map((session) => () => repair.archive(session.folder)),
-					];
-					for (const run of repairs) {
-						signal?.throwIfAborted();
-						try {
-							await run();
-						} catch (error) {
-							signal?.throwIfAborted();
-							coverage.push(`Historical recovery incomplete: ${errorMessage(error)}`);
-						}
-					}
+				// This session's newest records reach the database after its file (`session-manager/mirror.ts`): wait for
+				// their acknowledgement, bounded, so a search or an error scan reads them.
+				if ((needsHistory || input.errors) && !(await sessionMirrorSettled(MIRROR_WAIT_MS)))
+					coverage.push("The newest records of this session may be missing: the database is still saving them.");
+				const sessionFile = ctx.sessionManager.getSessionFile();
+				if (needsHistory && sessionFile) {
+					// Repairs only what changed: this session's new lines and the transcripts whose stamp moved.
+					const agent = sharedAgentDb();
+					const scope = historySessions(ctx.cwd).map((session) => ({
+						id: session.id,
+						folder: session.folder,
+						...(session.record?.transcript ? { transcript: session.record.transcript } : {}),
+					}));
+					coverage.push(
+						...(await repairBeforeRead(
+							agent,
+							new HistoryRepair(agent, process.env, signal),
+							sessionFile,
+							scope,
+							signal,
+						)),
+					);
 				}
 				if (op === "get" && input.id) {
-					const text = getRecord(ctx.cwd, input.id, memory?.storeFor(ctx));
-					const page = Math.max(1, input.page ?? 1);
-					const size = PAGE_CHARS;
-					return textResult(text.slice((page - 1) * size, page * size), {
-						mode: "read",
-						page,
-						pages: Math.ceil(text.length / size),
-						id: input.id,
-						coverage,
-					});
+					const text = getRecord(ctx.cwd, input.id);
+					const pages = Math.max(1, Math.ceil(text.length / PAGE_CHARS));
+					const shown = Math.min(page, pages);
+					return finish(
+						[
+							...coverage,
+							text.slice((shown - 1) * PAGE_CHARS, shown * PAGE_CHARS),
+							pages > 1 ? `Page ${shown} of ${pages}.` : "",
+						],
+						nextPage(shown, pages),
+						{ mode: "read", page: shown, pages, id: input.id, coverage },
+					);
 				}
-				if (op === "get" && !input.id && !input.file) throw new Error("get requires a record id or file.");
 				// A file read or an error scan is session history only: its result, with any recovery gap ahead of it.
 				if (input.file || input.errors) {
-					const result = await history.execute(callId, input, signal, onUpdate, ctx);
-					if (!coverage.length) return result;
-					return {
-						...result,
-						content: [{ type: "text", text: [...coverage, contentText(result.content)].join("\n\n") }],
-					};
+					const result = await history.execute(
+						callId,
+						historyCall({ ...input, page, scan: from.scan }),
+						signal,
+						onUpdate,
+						ctx,
+					);
+					const details = result.details as { page: number; pages: number; scan?: { from?: string; next?: string } };
+					return finish(
+						[...coverage, contentText(result.content)],
+						nextPage(details.page, details.pages, details.scan),
+						details,
+					);
 				}
 
 				const source = input.source ?? "all";
-				const pieces: string[] = [...coverage];
-				let historyDetails: unknown;
-				// A session-history cursor continues that search alone: the records it came with were already shown.
-				const records = isScanCursor(input.cursor)
-					? { text: "", hits: 0, cursor: undefined }
-					: await readRecords(ctx.cwd, { ...input, source, op }, signal, memory?.storeFor(ctx));
-				pieces.push(records.text);
-				const nextCursor = records.cursor;
-				const hits = records.hits;
-				if (
-					source === "all" ||
-					source === "sessions" ||
-					(source === "compactions" && (input.query || input.keywords))
-				) {
+				// A cursor continues only the parts it names: the others ended on an earlier page.
+				const records =
+					from.continued && !from.records
+						? undefined
+						: await readRecords(
+								ctx.cwd,
+								{ ...input, source, op, cursor: from.records, diagnostics: !subagent },
+								signal,
+							);
+				const readsHistory =
+					(source === "all" ||
+						source === "sessions" ||
+						(source === "compactions" && (input.query || input.keywords))) &&
+					(!from.continued || from.page !== undefined);
+				let historyText = "";
+				let historyNext: { page?: number; scan?: string } = {};
+				let historyDetails: Record<string, unknown> | undefined;
+				if (readsHistory) {
 					try {
-						const result = await history.execute(callId, input, signal, onUpdate, ctx);
-						pieces.push(contentText(result.content));
-						historyDetails = result.details;
+						// The overview lists as many sessions as it lists records of each source.
+						const limit = input.limit ?? (source === "all" ? OVERVIEW_RECORDS : undefined);
+						const result = await history.execute(
+							callId,
+							historyCall({ ...input, limit, page, scan: from.scan }),
+							signal,
+							onUpdate,
+							ctx,
+						);
+						historyText = contentText(result.content);
+						const details = result.details as { page: number; pages: number; scan?: { from?: string; next?: string } };
+						historyDetails = details;
+						historyNext = nextPage(details.page, details.pages, details.scan);
 					} catch (error) {
 						signal?.throwIfAborted();
 						if (source === "sessions") throw error;
-						pieces.push(
-							`Detailed-history search incomplete: ${errorMessage(error)}. Retained-record results above remain available.`,
-						);
+						historyText = `Detailed-history search incomplete: ${errorMessage(error)}. Retained-record results above remain available.`;
 					}
 				}
-				if (nextCursor)
-					pieces.push(
-						`More records remain. Continue with cursor ${nextCursor} and the same source/query/keywords. Keyword results are ranked within each scanned page.`,
-					);
-				return textResult(pieces.filter(Boolean).join("\n\n"), {
-					mode: op,
-					// The session-history part: its mode (list, search, rank), pages and hits.
-					...(historyDetails ? { history: historyDetails } : {}),
-					hits,
-					nextCursor,
-					reason: input.reason,
-				});
+				return finish(
+					[...coverage, records?.text ?? "", historyText],
+					{ ...(records?.cursor ? { records: records.cursor } : {}), ...historyNext },
+					{
+						mode: op,
+						// The session-history part: its mode (list, search, rank), pages and hits.
+						...(historyDetails ? { history: historyDetails } : {}),
+						hits: records?.hits ?? 0,
+					},
+				);
 			},
 		}),
 	);

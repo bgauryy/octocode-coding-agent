@@ -23,6 +23,15 @@ describe("unknownToolMessage", () => {
 		);
 	});
 
+	it("says the removed steps tool is gone and what replaces it, unless a tool of that name is registered", () => {
+		expect(unknownToolMessage(session([]), "steps")).toBe(
+			"Tool steps not found: it was removed. Keep the steps of an item in its plan (backlogPlan edit) and record progress with backlog note.",
+		);
+		expect(unknownToolMessage(session([{ name: "steps", exposure: "hidden" }]), "steps")).toMatch(
+			/not active in this session/,
+		);
+	});
+
 	it("keeps the default for names the session does not know", () => {
 		expect(unknownToolMessage(session([]), "made_up")).toBeUndefined();
 	});

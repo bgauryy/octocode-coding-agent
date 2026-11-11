@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { RECOVERY_HEADING } from "../../core/compaction/summary-view.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { contentText } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SKILL_BLOCK } from "./loaded-skills.ts";
@@ -30,7 +30,7 @@ export function transcriptNote(
 	archive: readonly string[] = [],
 	extra: readonly string[] = [],
 ): string {
-	const transcript = sessionFile ? tildePath(sessionFile) : undefined;
+	const transcript = sessionFile ? homeTilde(sessionFile) : undefined;
 	const lines = [
 		...archive,
 		...(transcript

@@ -64,7 +64,7 @@ type Entry = {
 	details?: unknown;
 };
 
-/** A Octocode host with the sessions feature and a session the test can shape. */
+/** An Octocode host with the sessions feature and a session the test can shape. */
 function setup(options: { id?: string; entries?: Entry[]; hasUI?: boolean; name?: string; subagent?: boolean } = {}) {
 	const fake = fakeHost();
 	const names: string[] = [];
@@ -395,12 +395,12 @@ describe("running work after compaction", () => {
 		expect(host.sent).toHaveLength(1);
 		const { content } = host.sent[0].message;
 		expect(content).toMatch(
-			/^\[After compaction\] Open steps of this session: 1 of the session \([^\n]*`steps list`[^\n]*\n- [^\n]*check the footer counts/,
+			/^\[After compaction\] Open steps of this session: 1 of the session \([^\n]*`backlog get`[^\n]*\n- [^\n]*check the footer counts/,
 		);
 		expect(content).not.toContain("already finished");
 	});
 
-	it("ends the brief with the latest user request, capped, and sends it with nothing else to say", async () => {
+	it("ends the brief with the latest user request, whole, and sends it with nothing else to say", async () => {
 		const long = `Ship the reorient brief ${"r".repeat(500)}`;
 		const entries: Entry[] = [
 			{ type: "message", id: "u1", message: { role: "user", content: "An older request" } },
@@ -415,7 +415,7 @@ describe("running work after compaction", () => {
 		expect(host.sent).toHaveLength(1);
 		const { message, options } = host.sent[0];
 		expect(options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
-		expect(message.content).toBe(`[After compaction] Latest user request: "${long.slice(0, 399)}…"`);
+		expect(message.content).toBe(`[After compaction] Latest user request: "${long}"`);
 	});
 });
 
@@ -514,7 +514,7 @@ describe("resume brief", () => {
 		expect(text).toContain("1 to do, 3 proposed");
 	});
 
-	it("adds the last request of the saved session as context, capped", async () => {
+	it("adds the last request of the saved session as context, whole", async () => {
 		const entries: Entry[] = [
 			{
 				type: "message",
@@ -529,7 +529,7 @@ describe("resume brief", () => {
 			message: { content: string };
 		};
 		expect(result.message.content).toBe(
-			`[Resumed] Resumed after 3h away — Last user request before the break (older than the message above this note, which is the current request): "${`Refactor the parser ${"q".repeat(500)}`.slice(0, 399)}…"`,
+			`[Resumed] Resumed after 3h away — Last user request before the break (older than the message above this note, which is the current request): "Refactor the\nparser ${"q".repeat(500)}"`,
 		);
 	});
 

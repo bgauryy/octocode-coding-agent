@@ -1,7 +1,6 @@
 import chalk from "chalk";
-import { join } from "node:path";
-import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { tildePath } from "../octocode/shared/home.ts";
+import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME, getSettingsPath } from "../config.ts";
+import { homeTilde } from "../../../common/src/home-tilde.ts";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
 
@@ -39,7 +38,7 @@ Verbs:
 
 Without a verb, a terminal opens the selector (Space/Enter changes a value, Tab switches global and project,
 type to search); otherwise the list is printed. A refused change prints its reason and exits non-zero.
-Global changes are saved in ${tildePath(join(getAgentDir(), "settings.json"))} (MCP servers in mcp.json).
+Global changes are saved in ${homeTilde(getSettingsPath())} (MCP servers in mcp.json).
 
 Options:
   -l, --local       Change this project (${CONFIG_DIR_NAME}/settings.json); needs a trusted folder

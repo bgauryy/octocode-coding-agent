@@ -67,7 +67,7 @@ function setup() {
 	const f = fakeHost();
 	const team = new Team(f.api);
 	teams.push(team);
-	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission());
+	const control = registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
 	controls.push(control);
 	const ctx = fakeCtx({ cwd, hasUI: true });
 	Object.assign(ctx.ui, { confirm: async () => true });

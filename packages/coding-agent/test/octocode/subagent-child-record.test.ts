@@ -371,9 +371,13 @@ describe("a child that stops itself over the run API", () => {
 		const dir = tmp();
 		const args = ["--session-dir", dir, "--session-id", "a-thrash"];
 		const seen: Array<{ compacting?: boolean }> = [];
-		const outcome = await runSubagent("thrash", args, tmp(), undefined, { id: "a-thrash" }, undefined, (update) =>
-			seen.push(update),
-		);
+		const outcome = await runSubagent({
+			task: "thrash",
+			args,
+			cwd: tmp(),
+			identity: { id: "a-thrash" },
+			onProgress: (update) => seen.push(update),
+		});
 		expect(outcome.error).toMatch(/^Subagent stopped: Automatic compaction stopped: /);
 		expect(seen.filter((update) => update.compacting !== undefined).map((update) => update.compacting)).toEqual([
 			true,
@@ -383,15 +387,13 @@ describe("a child that stops itself over the run API", () => {
 
 	it("does not blame an error from before the child's last turn for its stop", async () => {
 		const args = ["--session-dir", tmp(), "--session-id", "a-stale"];
-		const outcome = await runSubagent(
-			"stale error",
+		const outcome = await runSubagent({
+			task: "stale error",
 			args,
-			tmp(),
-			undefined,
-			{ id: "a-stale" },
-			undefined,
-			() => undefined,
-		);
+			cwd: tmp(),
+			identity: { id: "a-stale" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.error).toBe("Subagent cancelled before its run settled");
 	});
 });

@@ -36,3 +36,26 @@ export async function recordShellMutation(
 ): Promise<void> {
 	if (await changesWorkspace(command, cwd, powershell)) recordMutation(sessionId);
 }
+
+/**
+ * How a `bash` call is ordered among the calls of one assistant message: a command the shell guard's parse shows as
+ * changing something (a file anywhere, a ref, a database, or an effect it cannot read) runs alone, after every earlier
+ * call and before every later one, so `git add` ends before the `git commit` beside it starts. A command the parse
+ * shows no change for runs alongside the others. Synchronous: before the parser has loaded, a command reads as
+ * unparsed and runs alone, the order that cannot race.
+ */
+export function bashConcurrency(args: Record<string, unknown>): "shared" | "exclusive" {
+	const command = typeof args.command === "string" ? args.command : "";
+	if (args.type === "powershell") return readOnlyCommand(command, "powershell") ? "shared" : "exclusive";
+	const effect = shellMutation(command);
+	const changes =
+		effect.uncertain ||
+		effect.unparsed ||
+		effect.opaque.length > 0 ||
+		effect.writes.length > 0 ||
+		effect.directories.length > 0 ||
+		effect.areas.length > 0 ||
+		effect.refMoves.length > 0 ||
+		effect.databases.length > 0;
+	return changes ? "exclusive" : "shared";
+}

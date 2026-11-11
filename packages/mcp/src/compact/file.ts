@@ -1,4 +1,5 @@
 import { dedupeFieldDocs } from "./field-docs.ts";
+import { escapeRegExp } from "../../../common/src/regexp.ts";
 
 /**
  * The generated file as text: the head (instructions, shared docs, shared types) and the tool blocks, with the parts
@@ -72,8 +73,6 @@ function parse(text: string): ParsedFile {
 	}
 	return { lines, bodyStart, shared, types, blocks };
 }
-
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * One tool's block (aliases, JSDoc, function) from a rendered file, with the shared docs of the fields it uses, for

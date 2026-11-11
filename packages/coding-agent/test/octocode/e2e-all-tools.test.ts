@@ -105,7 +105,8 @@ const answers = (step: Step, ...expected: (string | RegExp)[]): Case => ({
 	},
 });
 
-const CHILD_REPORT = "child-report-text";
+// The report starts with its outcome word, as a child's report must; without one the harness asks the child for it.
+const CHILD_REPORT = "done: child-report-text";
 const CHILD: Step[] = [call("bash", { command: "echo from-child" }), { text: CHILD_REPORT }];
 
 /** The native tools, each with what proves a real effect or answer and what a failing call must say. */
@@ -183,27 +184,36 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			),
 		],
 	},
-	backlog: {
+	backlogPlan: {
 		ok: [
 			answers(
-				call("backlog", {
+				call("backlogPlan", {
 					op: "add",
-					title: "Prove it",
-					goal: "It is proven",
-					why: "because",
-					paths: ["src/"],
-					evidence: ["none"],
+					items: [{ title: "Prove it", goal: "It is proven", why: "because", paths: ["src/"], evidence: ["none"] }],
 				}),
 				"Added B1",
 			),
-			answers(call("backlog", { op: "update", id: "B1", state: "ongoing" }), "Updated B1 [ongoing"),
-			answers(call("backlog", { op: "get", id: "B1" }), "Goal: It is proven", "Why: because"),
 			answers(
-				call("backlog", { op: "add", title: "Close me", goal: "gone", why: "because", paths: ["a"], evidence: ["x"] }),
+				call("backlogPlan", {
+					op: "add",
+					items: [{ title: "Close me", goal: "gone", why: "because", paths: ["a"], evidence: ["x"] }],
+				}),
 				"Added B2",
 			),
+			answers(call("backlogPlan", { op: "edit", items: [{ id: "B2", priority: "p1" }] }), "Updated B2 [backlog p1]"),
+			answers(call("backlogPlan", { op: "list", states: ["backlog"] }), "B2 [backlog p1] Close me", "B1 [backlog p2]"),
+		],
+		fail: [
+			answers(call("backlogPlan", { op: "add", items: [{ title: "No why" }] }), "add needs why"),
+			answers(call("backlogPlan", { op: "list", tags: ["x"] }), "list does not take tags: use anyTag."),
+		],
+	},
+	backlog: {
+		ok: [
+			answers(call("backlog", { op: "claim", id: "B1" }), "Updated B1 [ongoing"),
+			answers(call("backlog", { op: "get", id: "B1" }), "Goal: It is proven", "Why: because"),
 			answers(
-				call("backlog", { op: "update", id: "B2", close: { kind: "obsolete", text: "no longer needed" } }),
+				call("backlog", { op: "close", id: "B2", close: { kind: "obsolete", text: "no longer needed" } }),
 				"Updated B2",
 				"closed",
 			),
@@ -221,20 +231,10 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 		],
 		fail: [
 			answers(call("backlog", { op: "get", id: "B999" }), "No backlog item B999"),
-			answers(call("backlog", { op: "add", title: "No why" }), "add needs why"),
+			// A call in the shape the tool had before `backlogPlan` passes validation and is told where it went.
+			answers(call("backlog", { op: "list", states: ["todo"] }), 'call backlogPlan with op "list"'),
+			answers(call("backlog", { op: "update", id: "B1", state: "done" }), 'backlog has no op "update": use op "done".'),
 		],
-	},
-	steps: {
-		ok: [
-			answers(call("steps", { op: "add", goal: "First step" }), "Added T1", "(B1)"),
-			answers(
-				call("steps", { op: "update", id: "T1", state: "done", result: "did it" }),
-				"Updated T1 [done]",
-				"did it",
-			),
-			answers(call("steps", { op: "list", state: "done" }), "T1"),
-		],
-		fail: [answers(call("steps", { op: "update" }), "update needs an id")],
 	},
 	timer: {
 		// Far enough ahead that it never wakes this run; the cancel ends it before the session does.
@@ -256,19 +256,36 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	},
 	archive: {
 		ok: [
+			answers(call("archive", { op: "list", source: "events" }), /events: \d+ records/),
+			answers(call("archive", { op: "search", source: "sessions", keywords: "bash-effect" }), "sessions:"),
+		],
+		fail: [
+			// Memories were this tool's until `memory` became its own: an old call is refused with the call to make.
 			answers(
-				call("archive", { op: "set", source: "memories", title: "A rule", body: "Keep it", keywords: "rule marker" }),
+				call("archive", { op: "set", source: "sessions", title: "x" }),
+				'archive no longer reads or writes memories: call the memory tool with op "set".',
+			),
+			answers(
+				call("archive", { op: "get", id: "M999", source: "memories" }),
+				'archive no longer reads or writes memories: call the memory tool with op "get".',
+			),
+		],
+	},
+	memory: {
+		ok: [
+			answers(
+				call("memory", { op: "set", title: "A rule", body: "Keep it", keywords: "rule marker" }),
 				"Saved M1",
 				"Keep it",
 			),
-			answers(call("archive", { op: "search", source: "memories", keywords: "rule" }), "M1", "A rule"),
-			answers(call("archive", { op: "list", source: "events" }), /events: \d+ matches/),
-			answers(call("archive", { op: "search", source: "sessions", keywords: "bash-effect" }), "sessions:"),
-			answers(call("archive", { op: "delete", source: "memories", id: "M1" }), "M1"),
+			answers(call("memory", { op: "search", keywords: "rule" }), "M1", "A rule"),
+			answers(call("memory", { op: "list" }), "M1", "A rule"),
+			answers(call("memory", { op: "get", id: "M1" }), "Keep it"),
+			answers(call("memory", { op: "delete", id: "M1" }), "M1"),
 		],
 		fail: [
-			answers(call("archive", { op: "set", source: "sessions", title: "x" }), "set works on source memories only"),
-			answers(call("archive", { op: "get", id: "M999", source: "memories" }), "No memory M999"),
+			answers(call("memory", { op: "get", id: "M999" }), "No memory M999"),
+			answers(call("memory", { op: "search" }), "Memory search needs query or keywords."),
 		],
 	},
 	askUser: {
@@ -294,7 +311,12 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	},
 	models: {
 		ok: [
-			answers(call("models"), "This session: scripted/model", "scripted · models.json · 1 runnable", "Profiles:"),
+			answers(
+				call("models"),
+				"This session: scripted/model",
+				"scripted · local · models.json · 1 runnable",
+				"Profiles:",
+			),
 			answers(call("models", { provider: "scripted" }), "● scripted/model", "Profiles:"),
 		],
 		fail: [answers(call("models", { ability: "nonsense" }), 'Validation failed for tool "models"', "ability")],
@@ -309,7 +331,7 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(
 				call("agent", { type: "task", goal: "run one command", task: script(CHILD) }),
 				CHILD_REPORT,
-				/Subagent \S+ finished/,
+				/Subagent \S+ reported done/,
 			),
 			answers(call("agent", { type: "coordinate", action: "join", joinGoal: "prove it" }), "goal: prove it"),
 			answers(call("agent", { type: "coordinate", action: "list" }), "(you)", "main"),
@@ -365,8 +387,7 @@ describe("every native tool, in one real process", () => {
 	beforeAll(async () => {
 		box = repository();
 		steps = [...flat.map(({ step }) => withPage(step)), { text: "parent-final-text" }];
-		// `steps` is registered but not in the default tool list: this run opts in to prove its calls.
-		const run = box.start(["--tools", "+steps", "-p", script(steps)]);
+		const run = box.start(["-p", script(steps)]);
 		({ code } = await run.exited);
 		stdout = run.stdout();
 	});
@@ -1184,15 +1205,18 @@ describe("a configured MCP server", () => {
 			.map((name) => name.slice("mcp__docs__".length));
 		expect([...declared].sort()).toEqual(Object.keys(cases).sort());
 		expect(first.system).toContain('<mcp name="docs" tools="mcp__docs__*">');
-		// Declared (the default): the tool's own declaration carries the server's description and full schema.
+		// Declared presentation and `recent` exposure (the defaults), on a server this folder never called: the tool's own
+		// declaration carries the server's description and the field names; the full schema comes back with a refused call.
 		const lookup = first.declarations["mcp__docs__lookup"];
 		expect(lookup.description).toContain("Find a document by its title words.");
-		expect(JSON.stringify(lookup.parameters)).toContain("Title words to search for.");
+		expect(JSON.stringify(lookup.parameters)).toContain('"query"');
+		expect(JSON.stringify(lookup.parameters)).not.toContain("Title words to search for.");
 		expect(first.system).not.toContain("function lookup(input:");
 		const results = lastResults(steps);
 		Object.keys(cases).forEach((tool, index) => expect(results[index], tool).toContain(`${tool} ok`));
 		expect(results[4]).toContain("Validation failed");
 		expect(results[4]).toContain("query");
+		expect(results[4]).toContain("Title words to search for.");
 		expect(results[5]).toMatch(/docs: connected · 4 tools/);
 		expect(results[5]).toContain("broken: failed");
 		expect(results[6]).toContain('Restarting MCP server "broken" failed');

@@ -24,15 +24,14 @@ it("cleans snapshot when later role preparation throws", async () => {
 		throw error;
 	});
 	await expect(
-		runSubagent(
-			"task",
-			[],
-			scratch,
-			{ prompt: "role" } as never,
-			{ id: "cleanup", scratch, skillResources: empty },
-			undefined,
-			() => {},
-		),
+		runSubagent({
+			task: "task",
+			args: [],
+			cwd: scratch,
+			profile: { prompt: "role" } as never,
+			identity: { id: "cleanup", scratch, skillResources: empty },
+			onProgress: () => {},
+		}),
 	).rejects.toBe(error);
 	expect(fs.readdirSync(scratch)).toEqual([]);
 });
@@ -48,7 +47,13 @@ it("cleans partially written snapshot and preserves its write error", async () =
 		return write(file, ...args);
 	});
 	await expect(
-		runSubagent("task", [], scratch, undefined, { id: "cleanup", scratch, skillResources: empty }, undefined, () => {}),
+		runSubagent({
+			task: "task",
+			args: [],
+			cwd: scratch,
+			identity: { id: "cleanup", scratch, skillResources: empty },
+			onProgress: () => {},
+		}),
 	).rejects.toBe(error);
 	expect(fs.readdirSync(scratch)).toEqual([]);
 });
@@ -97,15 +102,14 @@ it("does not remove an MCP handoff it failed to create", () => {
 it("does not allocate a snapshot for a pre-cancelled child and clears inherited transport", async () => {
 	const scratch = tmp();
 	await expect(
-		runSubagent(
-			"task",
-			[],
-			scratch,
-			undefined,
-			{ id: "cleanup", scratch, skillResources: empty },
-			AbortSignal.abort(),
-			() => {},
-		),
+		runSubagent({
+			task: "task",
+			args: [],
+			cwd: scratch,
+			identity: { id: "cleanup", scratch, skillResources: empty },
+			signal: AbortSignal.abort(),
+			onProgress: () => {},
+		}),
 	).rejects.toThrow("cancelled");
 	expect(fs.readdirSync(scratch)).toEqual([]);
 	expect(

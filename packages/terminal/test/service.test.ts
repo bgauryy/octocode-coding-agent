@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { DriverProcess } from "../src/driver-process.ts";
-import { findExecutable } from "../src/executables.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { gitBranches } from "../src/git-refs.ts";
 import { parseShellLine } from "../src/line.ts";
 import { ShellCompletionService, toCompletions } from "../src/service.ts";
@@ -127,8 +127,8 @@ describe("DriverProcess", () => {
 	});
 });
 
-const zsh = findExecutable("zsh");
-const bash = findExecutable("bash");
+const zsh = findOnPath("zsh");
+const bash = findOnPath("bash");
 
 describe.skipIf(!zsh)("zsh driver", () => {
 	it("captures options, descriptions and paths without the user's startup files", async () => {

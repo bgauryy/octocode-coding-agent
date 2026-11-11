@@ -25,6 +25,8 @@ export function createChatViewport(options: ChatViewportOptions): ChatViewport {
 		primary: true,
 		overscroll: "chain",
 		scrollbar: options.scrollbar ?? "auto",
+		// After a width change or at start, lay out the rows in view first and measure the rest over the next frames.
+		virtualize: true,
 		...(options.scrollbarTrackStyle === undefined ? {} : { scrollbarTrackStyle: options.scrollbarTrackStyle }),
 		...(options.scrollbarThumbStyle === undefined ? {} : { scrollbarThumbStyle: options.scrollbarThumbStyle }),
 	});

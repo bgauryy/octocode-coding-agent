@@ -62,7 +62,7 @@ async function fixture() {
 		}
 
 		res.end(
-			`data: ${JSON.stringify({ id: `child-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "CHILD_COMPLETE" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
+			`data: ${JSON.stringify({ id: `child-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "done: CHILD_COMPLETE" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 		);
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

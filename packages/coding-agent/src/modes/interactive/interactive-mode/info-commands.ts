@@ -15,7 +15,7 @@ import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { formatSessionReport } from "../../../octocode/shared/session-report.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { formatKeyText, keyText } from "../components/keybinding-hints.ts";
+import { formatKeyText, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";

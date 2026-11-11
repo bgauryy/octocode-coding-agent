@@ -17,12 +17,21 @@ class ReasonLine implements Component {
 		const flat = sanitizeTerminalText(reason).replace(/\s+/g, " ").trim();
 		this.text = `↳ ${ours ? withItemTitles(flat, itemTitle) : flat}`;
 	}
+	/** The row at the last width, returned as the same array while nothing changed: a transcript draws every row on every frame. */
+	private drawn: { width: number; lines: string[] } | undefined;
 	render(width: number): string[] {
-		return width > INDENT.length
-			? [`${INDENT}${theme.italic(theme.fg("toolReason", truncateToWidth(this.text, width - INDENT.length)))}`]
-			: [];
+		if (this.drawn?.width === width) return this.drawn.lines;
+		const lines =
+			width > INDENT.length
+				? [`${INDENT}${theme.italic(theme.fg("toolReason", truncateToWidth(this.text, width - INDENT.length)))}`]
+				: [];
+		this.drawn = { width, lines };
+		return lines;
 	}
-	invalidate(): void {}
+	/** A theme change redraws the row in the new colors. */
+	invalidate(): void {
+		this.drawn = undefined;
+	}
 }
 
 /** The reason row of a tool call, shared by the terminal tool view and the HTML export (which receives it from the session, since `core/` cannot import the tool views). */

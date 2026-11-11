@@ -5,7 +5,6 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { agentEvents, backlog, dbStamp, timers, type TimerRow } from "../../../../db/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { workspacePaths } from "../shared/home.ts";
 import { say } from "../shared/commands.ts";
 import { TIMER_TYPE } from "../shared/messages.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
@@ -108,10 +107,6 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			};
 		},
 		watchDatabase: (poke) => follower.subscribe(poke),
-		roots: (cwd) => {
-			const paths = workspacePaths(cwd);
-			return [paths.root, paths.dir, paths.tmp];
-		},
 		judge: (request) => judge.judge(request),
 	};
 	const check = conditionChecker(deps);

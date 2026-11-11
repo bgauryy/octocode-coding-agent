@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import { type AgentDb, agentRuns } from "../../../../db/src/api.ts";
 import { agentCall } from "../child-sessions/agent-call.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { stringOrEmpty } from "../shared/util.ts";
 import { type ChildFiles, childFiles } from "../child-sessions/session-children.ts";
 import { describeFiles } from "../subagents/children.ts";
@@ -106,33 +107,57 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 	return [...started].filter(([key]) => !reported.has(key)).map(([, work]) => work);
 }
 
-/** Characters kept of an unanswered call's arguments in the resume brief. */
-const CALL_CHARS = 200;
-
 /**
- * The tool calls of the latest assistant message on `entries` that have no recorded result, each as `name(arguments)`.
- * Read when a session is resumed: the process ended (a crash, a kill, a failed save) while they ran or before their
- * results were saved, so they may have done their work. Stops at a later user message, which means they were already
- * dealt with, and an errored or aborted reply never reaches the model, so its calls do not count.
+ * The tool calls of the latest assistant message on `entries` that have no recorded result, and when that message was
+ * saved (ms). Read when a session is resumed: the process ended (a crash, a kill, a failed save) while they ran or before
+ * their results were saved, so they may have done their work. Stops at a later user message, which means they were
+ * already dealt with, and an errored or aborted reply never reaches the model, so its calls do not count.
  */
-export function unansweredCalls(entries: readonly unknown[]): string[] {
+function danglingCalls(entries: readonly unknown[]): { calls: Array<{ name: string; args: unknown }>; at?: number } {
 	const answered = new Set<unknown>();
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];
 		const message = isRecord(entry) && entry.type === "message" && isRecord(entry.message) ? entry.message : undefined;
 		if (!message) continue;
-		if (message.role === "user") return [];
+		if (message.role === "user") return { calls: [] };
 		if (message.role === "toolResult") answered.add(message.toolCallId);
 		if (message.role !== "assistant") continue;
 		if (message.stopReason === "error" || message.stopReason === "aborted" || !Array.isArray(message.content))
-			return [];
-		return message.content.flatMap((part) =>
+			return { calls: [] };
+		const calls = message.content.flatMap((part) =>
 			isRecord(part) && part.type === "toolCall" && !answered.has(part.id)
-				? [`${String(part.name)}(${shownLine(JSON.stringify(part.arguments ?? {}), CALL_CHARS)})`]
+				? [{ name: String(part.name), args: part.arguments ?? {} }]
 				: [],
 		);
+		const saved =
+			typeof message.timestamp === "number"
+				? message.timestamp
+				: Date.parse(stringOrEmpty(isRecord(entry) ? entry.timestamp : undefined));
+		return { calls, ...(Number.isFinite(saved) ? { at: saved } : {}) };
 	}
-	return [];
+	return { calls: [] };
+}
+
+/** Each unanswered call (`danglingCalls`) as `name(arguments)`, the arguments whole. */
+export function unansweredCalls(entries: readonly unknown[]): string[] {
+	return danglingCalls(entries).calls.map(({ name, args }) => `${name}(${JSON.stringify(args)})`);
+}
+
+/**
+ * The subagents an unanswered `agent` call started in session `sessionId`, as the run audit recorded them: each one's
+ * id, goal and how its run ended (the earlier process stopped them with it). Empty when no `agent` call is unanswered.
+ */
+export function danglingChildren(agent: AgentDb, sessionId: string, entries: readonly unknown[]): string[] {
+	const { calls, at } = danglingCalls(entries);
+	if (at === undefined || !calls.some((call) => call.name === "agent")) return [];
+	return agentRuns
+		.inSessionTree(agent.db, sessionId)
+		.filter((run) => run.kind === "child" && run.parentSessionId === sessionId && run.startedAt >= at)
+		.map((run) => {
+			const goal = run.goal ? ` (goal "${flatLine(run.goal)}")` : "";
+			const end = run.endedAt === undefined ? "no end recorded" : `ended: ${run.endReason ?? "unknown"}`;
+			return `${run.agentId}${goal}, ${end}${run.endDetail ? ` (${flatLine(run.endDetail)})` : ""}`;
+		});
 }
 
 /**
@@ -144,6 +169,6 @@ export function describeWork(work: BackgroundWork, checkLog = true): string {
 	const why = work.why ? `, why "${work.why}"` : "";
 	if (work.kind === "agent")
 		return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}"${why}${describeFiles(work.files ?? {})})`;
-	const log = work.log ? (!checkLog || fs.existsSync(work.log) ? `, log ${tildePath(work.log)}` : ", log deleted") : "";
+	const log = work.log ? (!checkLog || fs.existsSync(work.log) ? `, log ${homeTilde(work.log)}` : ", log deleted") : "";
 	return `${work.id} (\`${work.label}\`${why}${log})`;
 }

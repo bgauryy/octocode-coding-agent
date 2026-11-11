@@ -1,10 +1,12 @@
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { archivePointer } from "../../src/octocode/compaction/archive.ts";
 import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive/session-record.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
@@ -135,13 +137,65 @@ describe("the archive tool", () => {
 		expect(prepare({ ...why, errors: true })).toMatchObject({ op: "search", source: "sessions" });
 		expect(prepare({ ...why, file: "1-e-me.md", line: 4 })).toMatchObject({ op: "get", source: "sessions" });
 		// A call that named a source keeps it; one with an op is left as it is.
-		expect(prepare({ ...why, source: "memories", query: "x" })).toEqual({
+		expect(prepare({ ...why, source: "compactions", query: "x" })).toEqual({
 			...why,
-			source: "memories",
+			source: "compactions",
 			query: "x",
 			op: "search",
 		});
 		expect(prepare({ ...why, op: "list" })).toEqual({ ...why, op: "list" });
+		// A recorded memory call (memories were read and written here before `memory` was a tool) still validates, keeps
+		// its fields for the row that shows it, and carries the memory op it meant: execute refuses it by that name.
+		expect(prepare({ ...why, source: "memories", query: "x" })).toMatchObject({ query: "x", formerMemoryOp: "search" });
+		expect(prepare({ ...why, op: "set", title: "t", pinned: true })).toMatchObject({
+			title: "t",
+			formerMemoryOp: "set",
+		});
+		expect(prepare({ ...why, op: "get", id: "M3" })).toMatchObject({ id: "M3", formerMemoryOp: "get" });
+		expect(prepare(prepare({ ...why, op: "delete", id: "M3" }))).toMatchObject({ formerMemoryOp: "delete" });
+		// The declared schema names neither memories nor the fields only a save took.
+		expect(archive.parameters.properties.source.enum).toEqual([
+			"all",
+			"sessions",
+			"compactions",
+			"agents",
+			"events",
+			"profile",
+		]);
+		expect(archive.parameters.properties.op.enum).toEqual(["list", "search", "get"]);
+		for (const field of ["title", "body", "kind", "pinned", "scope"])
+			expect(archive.parameters.properties, field).not.toHaveProperty(field);
+	});
+
+	it("declares the diagnostics for the main session only and refuses them in a subagent", async () => {
+		const fake = fakeHost();
+		registerArchiveTool(fake.api, { isSubagent: true });
+		const archive = fake.tools.get("archive");
+		expect(archive.parameters.properties.source.enum).toEqual(["all", "sessions", "compactions", "agents"]);
+		for (const field of ["errors", "agentId", "eventType", "until"])
+			expect(archive.parameters.properties, field).not.toHaveProperty(field);
+		for (const [name, schema] of Object.entries(
+			archive.parameters.properties as Record<string, { description?: string }>,
+		)) {
+			expect(schema.description, name).toBeTruthy();
+			expect(schema.description, name).not.toMatch(/errors|profile|events/i);
+		}
+		const main = fakeHost();
+		registerArchiveTool(main.api);
+		expect(archive.description).toBe(main.tools.get("archive").description);
+		const run = (params: Record<string, unknown>) =>
+			archive.execute("c", { ...why, ...params }, undefined, undefined, fakeCtx({ cwd: repo() }));
+		await expect(run({ op: "search", errors: true })).rejects.toThrow(
+			"errors is read by the main session only: ask your coordinator for it.",
+		);
+		for (const source of ["events", "profile"])
+			await expect(run({ op: "list", source })).rejects.toThrow(
+				`source ${source} is read by the main session only: ask your coordinator for it.`,
+			);
+		// `all` leaves the lifecycle events out there.
+		const listed = (await run({ op: "list" })).content[0].text as string;
+		expect(listed).toMatch(/^compactions: /m);
+		expect(listed).not.toMatch(/^events: /m);
 	});
 
 	it("needs only a reason, records it with the result, and ignores the former goal field of old calls", async () => {
@@ -169,8 +223,10 @@ describe("the archive tool", () => {
 		const call = tool(cwd);
 		const listed = await call(why);
 		expect(listed.text).toMatch(/^2 sessions with history, nearest first/m);
-		expect(listed.text).toContain("## me (this session)");
-		expect(listed.text).toContain("## sib (same repository)");
+		expect(listed.text).toMatch(/^- me \(this session\) · /m);
+		expect(listed.text).toMatch(/^- sib \(same repository\) · /m);
+		// One session's files, by sessionId.
+		expect((await call({ ...why, sessionId: "current" })).text).toContain("## me (this session)");
 		const found = await call({ ...why, query: "LOGIN" });
 		expect(found.text).toMatch(/^2 matching lines in 2 files, this session first/m);
 		expect(found.details).toMatchObject({ mode: "search", hits: 2, files: 2, page: 1, pages: 1 });
@@ -183,23 +239,71 @@ describe("the archive tool", () => {
 		expect(narrowed.details).toMatchObject({ hits: 1, files: 1 });
 	});
 
-	it("pages a long search and says how to continue", async () => {
+	it("pages a long search and continues it by one cursor only", async () => {
 		const cwd = repo();
 		fileFor("me", Array.from({ length: 3_000 }, (_, index) => `match ${index} ${"z".repeat(300)}`).join("\n"), cwd);
-		const call = tool(cwd);
-		const first = await call({ ...why, query: "match" });
-		expect(first.text).toMatch(/Page 1 of \d+; next: page 2 with the same query, cursor and file\.$/);
-		// One search stops at its match budget and offers a cursor for the rest.
-		expect(first.text).toMatch(/^200 matching lines in 1 file, this session first/m);
+		const fake = fakeHost();
+		registerArchiveTool(fake.api);
+		const run = async (params: Record<string, unknown>) => {
+			const result = await fake.tools.get("archive").execute("t1", params, undefined, undefined, fakeCtx({ cwd }));
+			return { text: result.content[0].text as string, details: result.details };
+		};
+		const first = await run({ ...why, query: "match" });
+		const pages = first.details.history.pages as number;
+		expect(pages).toBeGreaterThan(1);
 		expect(first.text).toMatch(
-			/Read 1 of 2 files \(1 session\)\. The search stopped at its match or time budget: for more, repeat it with cursor h1\./,
+			/Page 1 of \d+\.\n\nMore remains: call again with cursor a2\.\S+ and the same other arguments\.$/,
 		);
-		expect((await call(why)).text).toMatch(/^1 session with history/m);
-		expect((await call({ ...why, query: "nothing-like-this" })).text).toContain(
-			"Read 2 of 2 files (1 session). Every file was read.",
+		// One search stops at its match budget; the text names no second way to continue.
+		expect(first.text).toMatch(/^200 matching lines in 1 file, this session first/m);
+		expect(first.text).toContain(
+			"Read 1 of 2 files (1 session) for /match/i. The search stopped at its match or time budget; the rest is not read yet.",
 		);
-		const last = await call({ ...why, query: "match", page: first.details.pages });
-		expect(last.text).toMatch(/Page \d+ of \d+, the last\.$/);
+		expect(first.text).not.toMatch(/h1\.|next: page|with page/);
+		expect((await run(why)).text).toMatch(/^1 session with history/m);
+		const none = await run({ ...why, query: "nothing-like-this" });
+		expect(none.text).toContain("Read 2 of 2 files (1 session) for /nothing-like-this/i. Every file was read.");
+		expect(none.details.nextCursor).toBeUndefined();
+		// The cursor walks every page of this scan, then the scan's next stretch, never repeating a line.
+		let cursor = first.details.nextCursor as string | undefined;
+		const seen = new Set<string>(first.text.match(/match \d+ /g));
+		let calls = 1;
+		while (cursor && calls < 200) {
+			const next = await run({ ...why, query: "match", cursor });
+			for (const hit of next.text.match(/^>\s*\d+│ (match \d+ )/gm) ?? []) {
+				const name = /match \d+ /.exec(hit)![0];
+				expect(seen.has(name), name).toBe(false);
+				seen.add(name);
+			}
+			cursor = next.details.nextCursor;
+			calls++;
+		}
+		expect(cursor).toBeUndefined();
+		expect(seen.size).toBe(3_000);
+	});
+
+	it("checks every argument before it repairs or reads any history, and says when limit is capped", async () => {
+		const cwd = repo();
+		fileFor("me", "some history", cwd);
+		const transcript = path.join(cwd, "me.jsonl");
+		fs.writeFileSync(
+			transcript,
+			`${JSON.stringify({ type: "session", version: 3, id: "me", cwd, timestamp: "2026-01-01T00:00:00Z" })}\n`,
+		);
+		const fake = fakeHost();
+		registerArchiveTool(fake.api);
+		const ctx = fakeCtx({ cwd }) as ReturnType<typeof fakeCtx> & { sessionManager: { getSessionFile: () => string } };
+		ctx.sessionManager.getSessionFile = () => transcript;
+		const repaired = vi.spyOn(HistoryRepair.prototype, "transcript");
+		const run = (params: Record<string, unknown>) =>
+			fake.tools.get("archive").execute("t1", { ...why, ...params }, undefined, undefined, ctx);
+		await expect(run({ op: "get" })).rejects.toThrow("get requires a record id or file.");
+		await expect(run({ op: "search", query: "(" })).rejects.toThrow(/query is a regular expression/);
+		await expect(run({ op: "search", query: "x", cursor: "a2.@@" })).rejects.toThrow(/Invalid archive cursor/);
+		expect(repaired).not.toHaveBeenCalled();
+		const capped = await run({ op: "list", source: "compactions", limit: 500 });
+		expect(capped.content[0].text).toContain("limit is capped at 50.");
+		expect(repaired).toHaveBeenCalledTimes(1);
 	});
 
 	it("refuses another repository's history and says why; an invalid query names the fix", async () => {
@@ -216,12 +320,14 @@ describe("the archive tool", () => {
 });
 
 describe("fork lineage (B155)", () => {
-	it("retains host-created ancestors after source files disappear and rejects a forged header", () => {
+	it("retains host-created ancestors after source files disappear and rejects a forged header", async () => {
 		const cwd = repo();
 		const root = SessionManager.create(cwd);
 		root.materialize();
 		const middle = SessionManager.forkFrom(root.getSessionFile()!, cwd);
 		const tip = SessionManager.forkFrom(middle.getSessionFile()!, cwd);
+		// Fork edges are written by the database writer after the files.
+		expect(await sessionMirrorSettled()).toBe(true);
 		fs.unlinkSync(root.getSessionFile()!);
 		fs.unlinkSync(middle.getSessionFile()!);
 		expect(forkLineage(tip)).toEqual([middle.getSessionId(), root.getSessionId()]);
@@ -230,7 +336,9 @@ describe("fork lineage (B155)", () => {
 			forged,
 			JSON.stringify({ ...tip.getHeader(), id: "imported", parentSession: tip.getSessionFile() }) + "\n",
 		);
-		expect(forkLineage(SessionManager.open(forged))).toEqual([]);
+		const imported = SessionManager.open(forged);
+		expect(await sessionMirrorSettled()).toBe(true);
+		expect(forkLineage(imported)).toEqual([]);
 	});
 
 	it("sets the lineage at session start, so the pointer names the source's archive and it reads as the session's own", async () => {
@@ -324,6 +432,8 @@ describe("session record", () => {
 		const ctx = fakeCtx({ cwd });
 		Object.assign(ctx.sessionManager, manager(cwd, "/t/me.jsonl"));
 		await fake.fire("agent_end", { type: "agent_end", messages: [] }, ctx);
+		// Written in the background; shutdown waits for it.
+		await fake.fire("session_shutdown", { type: "session_shutdown" }, ctx);
 		expect(readRecordHeader(archiveFolder())).toMatchObject({ session: "me", ended: "Shipped in v2." });
 	});
 });

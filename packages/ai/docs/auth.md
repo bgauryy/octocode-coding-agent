@@ -162,10 +162,6 @@ await models.logout("openai");
 
 The built-in flows are private to the providers; `@octocodeai/octocode-ai/oauth` exports only the types the coding agent's extension OAuth needs.
 
-### CLI login
-
-This package's `dist/cli.js` logs in without an application: `login` (interactive), `login <provider>`, `list`. Credentials go to `auth.json` in the current directory (owner-only); the installation UUID stays in `auth.json.host-id`.
-
 ### Vertex AI
 
 An API key or Application Default Credentials (ADC); the provider's login flow configures either.

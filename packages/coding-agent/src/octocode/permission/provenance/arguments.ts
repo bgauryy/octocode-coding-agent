@@ -1,5 +1,4 @@
 import path from "node:path";
-import { archiveMutation } from "../../shared/archive-operation.ts";
 import { browserMcpUrls } from "../../../../../common/src/browser-mcp.ts";
 import { isMcpToolName } from "../../../../../common/src/mcp-names.ts";
 import { resolveToolPath } from "../../shared/home.ts";
@@ -56,7 +55,6 @@ export function consequential(
 			return target && storesData(target, cwd, workspaceRoot) ? [target] : leaves(change);
 		});
 	}
-	if (toolName === "archive" && archiveMutation(input)) return input.op === "set" ? leaves(input) : [];
 	if (toolName === "memory") return input.op === "set" ? leaves(input) : [];
 	if (isMcpToolName(toolName)) return leaves(input);
 	return [];

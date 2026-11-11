@@ -75,7 +75,7 @@ const ALLOWED: Record<string, string[]> = {
 	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`).
 	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render"],
 	// The archive tool's profile source reads a stored session through the profiler.
-	archive: ["shared", "memory", "permission", "profiler", "history", "render"],
+	archive: ["shared", "permission", "profiler", "history", "render"],
 	ui: ["shared", "permission", "render", "child-sessions", "tool-input"],
 	subagents: [
 		"shared",
@@ -101,7 +101,8 @@ const ALLOWED: Record<string, string[]> = {
 	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],
 	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser"],
 	remote: ["shared", "web-daemon", "workspace"],
-	memory: ["shared", "permission", "render"],
+	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
+	memory: ["shared", "permission", "render", "history"],
 	plan: ["shared"],
 	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
 	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths"],
@@ -186,6 +187,7 @@ describe("source layout", () => {
 			[/instanceof Error \? [^:]+: String\(/, "shared/util.ts"],
 			[/createHash\(['"]sha256['"]\)/, "../../common/src/atomic-file.ts"],
 			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "../../common/src/env.ts"],
+			[/\.replace\(\/\[\.\*\+\?\^\$\{\}\(\)\|\[\\\]\\\\\]\/g/, "../../common/src/regexp.ts"],
 		];
 		const copies = files.flatMap((file) => {
 			const relative = path.relative(sourceRoot, file).split(path.sep).join("/");

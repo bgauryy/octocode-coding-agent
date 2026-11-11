@@ -27,6 +27,16 @@ export function withRenderIsolation<T>(listener: RenderErrorListener, frame: () 
 	}
 }
 
+/**
+ * Bind `work` to the render isolation active now. A frame hands out work that renders later, from a key or pointer
+ * handler outside any frame (measuring a virtualized scroll view's rows, say); bound, a component that throws there
+ * paints its fallback and reaches the frame's listener, as it would inside the frame.
+ */
+export function bindRenderIsolation<T>(work: () => T): () => T {
+	const listener = activeListener;
+	return listener ? () => withRenderIsolation(listener, work) : work;
+}
+
 function componentName(component: Component): string {
 	const name = (component as { constructor?: { name?: unknown } }).constructor?.name;
 	return typeof name === "string" && name !== "Object" && name !== "" ? name : "Component";

@@ -30,20 +30,8 @@ function session(env: NodeJS.ProcessEnv, options: { isSubagent?: boolean } = {})
 }
 
 describe("session attach registration", () => {
-	it("does nothing with the flag off: no listener, no record, no directory", async () => {
-		for (const flag of [undefined, "0"]) {
-			const { env } = isolatedEnv(flag === undefined ? {} : { OCTOCODE_WEB_DAEMON: flag });
-			const { fake, ctx, attach, workspace } = session(env);
-			await fake.fire("session_start", {}, ctx);
-			expect(await attach.ensure(ctx)).toBeUndefined();
-			expect(workspace.bind).not.toHaveBeenCalled();
-			expect(fs.existsSync(webDaemonPaths(env).dir)).toBe(false);
-			await fake.fire("session_shutdown", {}, ctx);
-		}
-	});
-
-	it("starts an owner-only endpoint at session_start with the flag on and removes it at shutdown", async () => {
-		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON: "1" });
+	it("starts an owner-only endpoint at session_start and removes it at shutdown, with no setting or flag", async () => {
+		const { env } = isolatedEnv();
 		const { fake, ctx, id } = session(env);
 		await fake.fire("session_start", {}, ctx);
 		const file = attachRecordPath(env, id);
@@ -54,7 +42,7 @@ describe("session attach registration", () => {
 	});
 
 	it("never attaches a subagent", async () => {
-		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON: "1" });
+		const { env } = isolatedEnv();
 		const { fake, ctx, attach } = session(env, { isSubagent: true });
 		await fake.fire("session_start", {}, ctx);
 		expect(await attach.ensure(ctx)).toBeUndefined();
@@ -65,17 +53,15 @@ describe("session attach registration", () => {
 describe("/web with the daemon", () => {
 	const command = (open: any, daemon?: any) => webCommand(open, daemon);
 
-	it("opens the per-session server exactly as before when no daemon is given or it is off", async () => {
-		for (const daemon of [undefined, vi.fn(async () => false)]) {
-			const open = vi.fn(async () => {});
-			const ctx = fakeCtx({ cwd: "/tmp" });
-			await command(open, daemon).handler("backlogs", ctx);
-			expect(open).toHaveBeenCalledWith(ctx, "board");
-			expect(ctx.ui.notes.at(-1)).toEqual({
-				message: expect.stringContaining("Keep this session open for live updates"),
-				type: "info",
-			});
-		}
+	it("opens the session's own server in a host without a daemon", async () => {
+		const open = vi.fn(async () => {});
+		const ctx = fakeCtx({ cwd: "/tmp" });
+		await command(open).handler("backlogs", ctx);
+		expect(open).toHaveBeenCalledWith(ctx, "board");
+		expect(ctx.ui.notes.at(-1)).toEqual({
+			message: expect.stringContaining("Keep this session open for live updates"),
+			type: "info",
+		});
 	});
 
 	it("uses the daemon when it opens, and falls back with a visible warning when it fails", async () => {
@@ -83,7 +69,7 @@ describe("/web with the daemon", () => {
 		const ctx = fakeCtx({ cwd: "/tmp" });
 		await command(
 			open,
-			vi.fn(async () => true),
+			vi.fn(async () => {}),
 		).handler("", ctx);
 		expect(open).not.toHaveBeenCalled();
 		expect(ctx.ui.notes.at(-1)?.message).toContain("keeps running after this session closes");
@@ -95,10 +81,13 @@ describe("/web with the daemon", () => {
 		expect(open).toHaveBeenCalledWith(failing, "activity");
 		expect(failing.ui.notes.map((note) => note.type)).toContain("warning");
 		expect(failing.ui.notes.some((note) => note.message.includes("no port"))).toBe(true);
+		// The warning comes first and says the session serves the page; then where it opened.
+		expect(failing.ui.notes.map((note) => note.type)).toEqual(["warning", "info"]);
+		expect(failing.ui.notes[0].message).toContain("this session serves the page itself");
 	});
 
 	it("starts one detached daemon, attaches this session and opens the page on it", async () => {
-		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON: "1", OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
+		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
 		const { fake, ctx, attach, id } = session(env);
 		await fake.fire("session_start", {}, ctx);
 		const opened: string[] = [];

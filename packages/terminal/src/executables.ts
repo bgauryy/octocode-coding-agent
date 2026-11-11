@@ -1,4 +1,4 @@
-import { accessSync, constants, statSync } from "node:fs";
+import { constants } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, delimiter, join } from "node:path";
 
@@ -6,29 +6,6 @@ const isWindows = process.platform === "win32";
 
 function extensions(env: NodeJS.ProcessEnv): string[] {
 	return isWindows ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").toLowerCase().split(";").filter(Boolean) : [""];
-}
-
-function executable(path: string): boolean {
-	try {
-		if (!statSync(path).isFile()) return false;
-		if (!isWindows) accessSync(path, constants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-/** The first `name` on `env.PATH` that is an executable file, or undefined. */
-export function findExecutable(name: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
-	if (name.includes("/") || (isWindows && name.includes("\\"))) return executable(name) ? name : undefined;
-	for (const dir of (env.PATH ?? "").split(delimiter)) {
-		if (!dir) continue;
-		for (const ext of extensions(env)) {
-			const candidate = join(dir, name + ext);
-			if (executable(candidate)) return candidate;
-		}
-	}
-	return undefined;
 }
 
 /**

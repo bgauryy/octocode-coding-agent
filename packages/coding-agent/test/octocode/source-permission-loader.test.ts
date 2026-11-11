@@ -20,7 +20,7 @@ function setup() {
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
 	const fake = fakeHost();
 	nativeHost(fake.api).setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(fake.api, home);
+	const owner = registerSourcePolicy(fake.api, { home });
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	return {
 		root,

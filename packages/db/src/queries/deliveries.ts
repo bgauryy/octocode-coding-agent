@@ -76,20 +76,23 @@ export function pruneMessages(db: DatabaseSync, before: number): void {
 	).run(before);
 }
 
+/** Each of `messages` (rows of `messages`) with its deliveries' state, by recipient. */
+export function withDeliveries(db: DatabaseSync, messages: Row[]): Array<{ message: Row; deliveries: Row[] }> {
+	const deliveries = db.prepare(
+		"SELECT recipient, delivered_at, completed_at, dead_at, relay_to FROM deliveries WHERE message = ? ORDER BY recipient",
+	);
+	return messages.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
+}
+
 /** The messages of `team` created after `since`, newest first, each with its deliveries' state. */
 export function recentTraffic(
 	db: DatabaseSync,
 	team: string,
 	since: number,
 	limit: number,
-): Array<{ message: Row; deliveries: Row[] }> {
-	const rows = db
-		.prepare("SELECT * FROM messages WHERE team = ? AND created_at > ? ORDER BY id DESC LIMIT ?")
-		.all(team, since, limit) as Row[];
-	const deliveries = db.prepare(
-		"SELECT recipient, delivered_at, completed_at, dead_at, relay_to FROM deliveries WHERE message = ? ORDER BY recipient",
-	);
-	return rows.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
+): ReturnType<typeof withDeliveries> {
+	const sql = "SELECT * FROM messages WHERE team = ? AND created_at > ? ORDER BY id DESC LIMIT ?";
+	return withDeliveries(db, db.prepare(sql).all(team, since, limit));
 }
 
 /**

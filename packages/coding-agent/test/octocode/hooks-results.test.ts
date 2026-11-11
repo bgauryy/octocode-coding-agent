@@ -25,7 +25,7 @@ async function setup() {
 		"let input=''; process.stdin.on('data', chunk => input += chunk).on('end', () => require('node:fs').appendFileSync(JSON.parse(input).tool_input.file_path, '[hook]'));\n",
 	);
 	const fake = fakeHost();
-	registerHooks(fake.api, {}, tmp());
+	registerHooks(fake.api, { env: {}, home: tmp() });
 	registerFileTool(fake.api, new FileGuard(), fakePermission("manual"));
 	const ctx = fakeCtx({ cwd, ui: { selects: ["Review one by one", "Apply", "Reject"] } });
 	await fake.fire("session_start", { reason: "startup" }, ctx);

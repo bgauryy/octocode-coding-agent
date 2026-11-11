@@ -3,7 +3,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { cutText } from "../../../../common/src/text.ts";
 import { formatAgo, formatClock, memberStats } from "../shared/format.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";
@@ -35,7 +35,7 @@ function detailLine(label: string, raw: string, isPath = false): string {
 /** A folder as the lister reads it: relative to its own checkout `here` when inside it, else from `~`. */
 function shownFolder(folder: string, here: string | undefined): string {
 	const relative = here ? path.relative(here, folder) : "";
-	return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : tildePath(folder);
+	return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : homeTilde(folder);
 }
 
 /** The item, why, transcript and shell-log lines of one member; a line with no data is left out. */

@@ -138,7 +138,9 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 				"Summarize older turns to free context once this reply ends; the task then resumes from the summary, so end your reply after calling it.",
 			parameters: Type.Object({
 				// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
-				focus: Type.Optional(Type.String({ description: "What the summary must keep" })),
+				focus: Type.Optional(
+					Type.String({ description: "What you need after the summary: next step, open questions, files in work" }),
+				),
 			}),
 			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 				if (requests.pending)
@@ -148,15 +150,15 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 					} satisfies CompactDetails);
 				const refusal = requests.refusal(api, ctx);
 				if (refusal) throw new Error(refusal);
-				const wanted = params.focus?.trim();
-				const focus = wanted ? wanted.slice(0, MAX_COMPACTION_INSTRUCTIONS) : undefined;
+				const focus = params.focus?.trim() || undefined;
+				// Refused whole, not cut: a focus cut at the limit would drop what the agent asked the summary to keep.
+				if (focus && focus.length > MAX_COMPACTION_INSTRUCTIONS)
+					throw new Error(
+						`Compaction refused: focus is ${focus.length} characters, over the limit of ${MAX_COMPACTION_INSTRUCTIONS}. Shorten it and call again.`,
+					);
 				requests.request(focus);
-				const clipped =
-					wanted && wanted.length > MAX_COMPACTION_INSTRUCTIONS
-						? ` Focus clipped to its first ${MAX_COMPACTION_INSTRUCTIONS} characters (of ${wanted.length}).`
-						: "";
 				return textResult(
-					`Compaction queued: it runs when this reply ends, and the task resumes from the summary.${clipped} End your reply now with a one-line status.`,
+					"Compaction queued: it runs when this reply ends, and the task resumes from the summary. End your reply now with a one-line status.",
 					{ queued: true } satisfies CompactDetails,
 				);
 			},

@@ -174,24 +174,9 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		}
 
 		case "bash": {
-			const eventResult = await host.session.extensionRunner.emitUserBash({
-				type: "user_bash",
-				command: command.command,
-				excludeFromContext: command.excludeFromContext ?? false,
-				cwd: host.session.sessionManager.getCwd(),
-			});
-
-			if (eventResult?.result) {
-				host.session.recordBashResult(command.command, eventResult.result, {
-					excludeFromContext: command.excludeFromContext,
-				});
-				return success(id, "bash", eventResult.result);
-			}
-
-			const result = await host.session.executeBash(command.command, undefined, {
+			const result = await host.session.runUserBash(command.command, {
 				excludeFromContext: command.excludeFromContext,
 				id,
-				operations: eventResult?.operations,
 			});
 			return success(id, "bash", result);
 		}

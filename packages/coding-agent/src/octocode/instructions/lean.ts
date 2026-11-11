@@ -1,4 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPolicySection } from "../../core/system-prompt-spec.ts";
 
 /**
  * The whole native policy of a lean child (`lean: true` profiles): a small model gets its role, its task and the lines of
@@ -14,6 +15,8 @@ export function leanPromptSections(input: {
 	lean: string;
 } {
 	return {
-		lean: renderInstruction("sections/lean.md", { ...input, lean: true, agentTool: input.agentTool !== false }),
+		lean: renderPolicySection("lean", () =>
+			renderInstruction("sections/lean.md", { ...input, lean: true, agentTool: input.agentTool !== false }),
+		),
 	};
 }

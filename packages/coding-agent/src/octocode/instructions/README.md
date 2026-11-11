@@ -7,7 +7,7 @@ instructions/
   README.md          this map
   sections/          index.md: the map of every prompt section; <name>.md: a template composing that section's parts
   shared/            one rule each, included by the policies that need it (`{{> shared/rule.md}}`)
-  policy/            the parts of the `work`, `research`, `delegation`, `safety` and `communication` sections: work.md research.md delegation.md subagent.md safety.md communication.md scratch.md readonly.md
+  policy/            the parts of the `work`, `research`, `delegation` (main session), `children` (main session, from its first child or message to an agent), `coordinator` (a subagent that may write), `safety` and `communication` sections: work.md research.md delegation.md children.md subagent.md safety.md communication.md scratch.md readonly.md
   lean/              lean.md                  (the whole policy of a `lean: true` child)
   subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section); runner.md (an external runner's task message)
   notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
@@ -37,7 +37,7 @@ The core assembles the prompt from named sections in the order of `core/system-p
 
 [`sections/index.md`](sections/index.md) is the one map: every section of an agent's prompt in order, with its cache tier and what writes it, and each is wrapped in a tag of its name. The code reads that table (`core/system-prompt-spec.ts`), so changing it changes the prompt. A section in the `policy` or `lean` group is a template, `sections/<name>.md`, that composes its parts and states when each applies. Dynamic sections come only from what the session loaded: `mcps` and `mcp_status` from its MCP servers, `skills` from its skills, `hooks` from its hooks, and `tools` and `rules` from its tools. A section with nothing to say is removed.
 
-`octocode/turn.ts` (`registerTurnSetup`) chooses `policy.ts` or `lean.ts` for each request, and `core/agent-session/tool-loadout.ts` rebuilds the prompt through `core/system-prompt.ts` when the tools change.
+`octocode/turn.ts` (`registerTurnSetup`) chooses `policy.ts` or `lean.ts` for each request, adds the `children` section as a section patch in the request after the session's first `agent` call that starts a child or messages an agent (and from the first request of a resumed session whose entries hold one), and `core/agent-session/tool-loadout.ts` rebuilds the prompt through `core/system-prompt.ts` when the tools change.
 
 Flags are derived once, in `policyFlags` of `policy.ts`: audience (`main` = the session that answers the user, otherwise a subagent; `readOnly` = a read-only subagent, never the main session) and tools (`shell`, `web`, `mcp`, `canSave`, `agentTool`, `externalAgent`, `research`, `localReader`, `askUser`). `research` is set when the agent can reach a research server, the first MCP server whose config entry gives tools both a `reader` and a `search` role (`currentToolRoles().research`, `packages/mcp/src/roles.ts`); `research.prefix`, `research.reader` and `research.search` render its namespace and tool names from those roles.
 
@@ -56,7 +56,7 @@ After a child's context is compacted, `subagents/identity-reminder.ts` sends the
 Everything the model reads from Octocode is here, except:
 
 - **A tool's `description` and schema fields** stay in its module (`AGENTS.md`: tool descriptions own tool mechanics, and they change with the tool). Its snippet and guidelines are in `tools/<tool>/`. So are a tool's results, refusals and errors, which reply to a call and stay with the code that makes them.
-- **An MCP server's own text** comes from the server, with shipped rewrites in `packages/mcp/src/presets/`. The wording around it is here: `sections/mcps.md`, `mcp-server.md` and `mcp_status.md`, rendered through the MCP host's `render.instruction` port.
+- **An MCP server's own text** comes from the server verbatim: Octocode ships no rewrites, and only overrides the user stored with `octocode mcp compact apply` are applied. The wording around it is here: `sections/mcps.md`, `mcp-server.md` and `mcp_status.md`, rendered through the MCP host's `render.instruction` port.
 - **Headings and markers code parses** stay beside their parser (`core/compaction/summary-format.ts`, `summary-view.ts`, the `<skill>`, `<saved-results>` and `<summary>` tags) and reach the Markdown as `{{values}}`.
 
 Each agent's `<agent>/` folder shows all of it as the model receives it.

@@ -1,4 +1,3 @@
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,15 +27,12 @@ afterEach(() => {
 
 function memoryTool(mode: PermissionMode) {
 	const fake = fakeHost();
-	registerArchiveTool(
-		fake.api,
-		registerMemory(fake.api, {
-			commands: new Subcommands(),
-			isSubagent: false,
-			permission: fakePermission(mode, { api: fake.api }),
-		}),
-	);
-	const tool = fake.tools.get("archive");
+	registerMemory(fake.api, {
+		commands: new Subcommands(),
+		isSubagent: false,
+		permission: fakePermission(mode, { api: fake.api }),
+	});
+	const tool = fake.tools.get("memory");
 	/** Runs the tool; `selects` answer the permission dialogs in order, and what is left of them shows how many were asked. */
 	const run = (
 		params: Record<string, unknown>,
@@ -53,7 +49,7 @@ function memoryTool(mode: PermissionMode) {
 		return tool
 			.execute(
 				"call",
-				{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+				{ goal: "Remember a preference", reason: "user requested", ...params },
 				undefined,
 				undefined,
 				ctx,

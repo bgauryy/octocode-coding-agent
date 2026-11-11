@@ -66,10 +66,10 @@ it("opens the item through the daemon with a one-time code and no token", async 
 	const open = vi.fn(async () => undefined);
 	const opener = daemonOpener(
 		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },
-		{ env: { OCTOCODE_WEB_DAEMON: "1", DISPLAY: ":0" }, open },
+		{ env: { DISPLAY: ":0" }, open },
 	);
 	const ctx = { hasUI: true, ui: { notify: vi.fn() } } as never;
-	expect(await opener(ctx, "board", "B90")).toBe(true);
+	await opener(ctx, "board", "B90");
 	const url = new URL(String(open.mock.calls[0]));
 	expect(url.pathname).toBe("/open/one-time");
 	expect(url.searchParams.get("item")).toBe("B90");
@@ -81,7 +81,7 @@ it("prints the item address instead of opening a browser over SSH", async () => 
 	const notify = vi.fn();
 	const opener = daemonOpener(
 		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },
-		{ env: { OCTOCODE_WEB_DAEMON: "1", SSH_CONNECTION: "1 2 3 4" }, open },
+		{ env: { SSH_CONNECTION: "1 2 3 4" }, open },
 	);
 	await opener({ hasUI: true, ui: { notify } } as never, "board", "B90");
 	expect(open).not.toHaveBeenCalled();

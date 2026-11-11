@@ -56,6 +56,8 @@ export interface SessionChild {
 	isolated?: true;
 	/** The browser mode the call chose. */
 	headless?: boolean;
+	/** The hook mode a call named for it (`hooks`): a resume keeps it unless it names another. */
+	hooks?: "off" | "decisions" | "all";
 	/** The `provider/id` (with any `:thinking`) it ran on; absent when it ran on the parent's model. */
 	model?: string;
 	/** Its latest run exited before its first model turn (`details.startup`), so no conversation may be saved. */
@@ -182,6 +184,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		if (input.isolate === true) child.isolated = true;
 		else delete child.isolated;
 		if (typeof input.headless === "boolean") child.headless = input.headless;
+		if (input.hooks === "off" || input.hooks === "decisions" || input.hooks === "all") child.hooks = input.hooks;
 		const task = text(input.task);
 		if (task && !(input.resume === id && tasks.has(id))) tasks.set(id, task);
 		update(child, details, withReport ? reportOf(entry, message) : undefined);

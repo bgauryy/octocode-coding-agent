@@ -419,7 +419,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 		}
 	});
 
-	// Regression test for #10648: closing a lower overlay removed the topmost overlay instead.
+	// Closing a lower overlay removed the topmost overlay instead.
 	test.each([
 		{ lowerKind: "capturing", nonCapturing: false },
 		{ lowerKind: "non-capturing", nonCapturing: true },

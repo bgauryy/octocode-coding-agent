@@ -18,11 +18,11 @@ type AgentLoopHost = Pick<
 	| "prepareRequest"
 	| "prepareInput"
 	| "onInputSelected"
-	| "prepareNextTurn"
 	| "prepareNextTurnWithContext"
 	| "sessionId"
 	| "thinkingBudgets"
 	| "maxRetryDelayMs"
+	| "onListenerError"
 > & {
 	/** Tool choice for the next request only; read and cleared as that request is prepared. */
 	nextToolChoice?: ToolChoice;
@@ -58,6 +58,7 @@ export function createAgentLoopConfig(
 		beforeToolCall: agent.beforeToolCall,
 		afterToolCall: agent.afterToolCall,
 		unknownToolMessage: agent.unknownToolMessage,
+		onListenerError: agent.onListenerError,
 		earlyStart: agent.earlyStart,
 		finishTurn: agent.finishTurn,
 		prepareRequest: async (request, signal) => {
@@ -68,15 +69,9 @@ export function createAgentLoopConfig(
 		},
 		prepareInput: agent.prepareInput,
 		onInputSelected: agent.onInputSelected,
-		prepareNextTurn:
-			agent.prepareNextTurnWithContext || agent.prepareNextTurn
-				? async (context) => {
-						if (agent.prepareNextTurnWithContext) {
-							return agent.prepareNextTurnWithContext(context, agent.signal);
-						}
-						return agent.prepareNextTurn?.(agent.signal);
-					}
-				: undefined,
+		prepareNextTurn: agent.prepareNextTurnWithContext
+			? async (context) => agent.prepareNextTurnWithContext?.(context, agent.signal)
+			: undefined,
 		convertToLlm: agent.convertToLlm,
 		transformContext: agent.transformContext,
 		getApiKey: agent.getApiKey,

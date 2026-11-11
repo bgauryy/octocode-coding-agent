@@ -166,7 +166,7 @@ export class FocusManager {
 	}
 
 	isComponentMounted(component: Component): boolean {
-		return this.host.mountedRoots().some((child) => this.containsComponent(child, component));
+		return this.host.mountedRoots().findLast((child) => this.containsComponent(child, component)) !== undefined;
 	}
 
 	/** A retained mouse gesture must not outlive its component or visible overlay. */
@@ -187,7 +187,11 @@ export class FocusManager {
 	private containsComponent(root: Component, target: Component): boolean {
 		if (root === target) return true;
 		if (!(root instanceof Container)) return false;
-		return root.children.some((child) => this.containsComponent(child, target));
+		// Last child first: this runs on every key for the focused component, which is the editor below the transcript,
+		// so it is found before the walk enters the transcript's rows.
+		for (let index = root.children.length - 1; index >= 0; index--)
+			if (this.containsComponent(root.children[index], target)) return true;
+		return false;
 	}
 
 	/**

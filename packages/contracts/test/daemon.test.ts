@@ -147,3 +147,25 @@ it("answers a token's board access with one boolean and nothing else", () => {
 	expect(Value.Check(DaemonAccessSchema, { writable: false, token: "x" })).toBe(false);
 	expect(DAEMON_ROUTES.access).toBe("/api/access");
 });
+
+it("lets the daemon ask a session for its own tool states and tell it the board changed, nothing more", async () => {
+	const { AttachToolStatesSchema } = await import("../src/daemon.ts");
+	expect(Value.Check(AttachRequestSchema, { id: "1", method: "session.tools" })).toBe(true);
+	expect(Value.Check(AttachRequestSchema, { id: "2", method: "backlog.changed" })).toBe(true);
+	const states = {
+		native: { names: ["read", "web"], deferred: { web: true } },
+		mcp: [
+			{
+				server: "octocode",
+				connected: true,
+				saved: true,
+				tools: [{ name: "localSearch", state: "deferred", decidedBy: "recent" }],
+			},
+		],
+	};
+	expect(Value.Check(AttachToolStatesSchema, states)).toBe(true);
+	expect(Value.Check(AttachToolStatesSchema, { native: states.native })).toBe(true);
+	expect(Value.Check(AttachToolStatesSchema, { ...states, extra: 1 })).toBe(false);
+	const tool = { name: "x", state: "shown", decidedBy: "pin" };
+	expect(Value.Check(AttachToolStatesSchema, { ...states, mcp: [{ ...states.mcp[0], tools: [tool] }] })).toBe(false);
+});

@@ -8,7 +8,7 @@ import {
 	type LibraryColumn,
 	SEGMENT_RANKED_LABELS,
 } from "../archive.ts";
-import { escapeRegExp } from "../../shared/util.ts";
+import { escapeRegExp } from "../../../../../common/src/regexp.ts";
 import { RECORD_FILE, recordRankedText } from "./record.ts";
 import { fieldOf, MESSAGES_HEADING, rankedMessageText } from "./text.ts";
 

@@ -45,7 +45,7 @@ async function fixture() {
 		}),
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, hooks, ctx, started, release, script };

@@ -155,7 +155,11 @@ export interface ExtensionAPI {
 
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
-	/** Register a transformer for user and assistant Markdown before Octocode renders it in the interactive transcript. */
+	/**
+	 * Register a transformer for user and assistant Markdown before Octocode renders it in the interactive transcript.
+	 * It receives sanitized Markdown and its result is sanitized again; Mermaid diagrams are drawn after it, so it sees
+	 * a Mermaid block as its fenced source.
+	 */
 	registerMarkdownTransformer(transformer: MarkdownTransformer): void;
 
 	/** Register a custom renderer for CustomEntry. Custom entries do not participate in LLM context. */

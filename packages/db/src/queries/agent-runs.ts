@@ -64,7 +64,7 @@ function filesOf(value: unknown): AgentRun["filesChanged"] {
 }
 
 /** A stored row as the run it records. */
-export function decode(row: Row): AgentRun {
+function decode(row: Row): AgentRun {
 	const backlogSeq = number(row.backlog_seq);
 	return {
 		runId: String(row.run_id),

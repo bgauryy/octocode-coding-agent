@@ -477,7 +477,7 @@ describe("AgentSession compaction characterization", () => {
 		expect(transformContext).not.toHaveBeenCalled();
 		expect(getCurrentSystemPrompt(requestContext?.messages ?? [])).not.toBe(harness.session.agent.state.systemPrompt);
 		expect(getCurrentTools(requestContext?.messages ?? [])).toEqual([]);
-		// Regression test for #9652: split-turn summaries use a clear Markdown conversation boundary.
+		// Split-turn summaries use a clear Markdown conversation boundary.
 		expect(JSON.stringify(requestContext?.messages)).toContain("# Conversation\\n[User]: message to compact");
 		expect(requestOptions).toMatchObject({ cacheRetention: "none" });
 		expect(requestOptions?.sessionId).not.toBe("active-routing-session");
@@ -601,7 +601,7 @@ describe("AgentSession compaction characterization", () => {
 		expect(harness.session.getSessionStats().compaction.lengthRecoveries).toBe(1);
 	});
 
-	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
+	// An oversized trailing tool result must still produce a cut point.
 	it("compacts after an oversized tool result in the same run", async () => {
 		// About 2,300 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
 		// The previous request's usage (about 690 tokens, mostly system prompt and tool declarations, whose size depends on
@@ -688,7 +688,8 @@ describe("AgentSession compaction characterization", () => {
 			releaseCompaction = resolve;
 		});
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 2600, maxTokens: 100 }],
+			// The newest turn, the large result included, fits after compaction, so the compaction that waits for the test can save.
+			models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [largeTool],
 			builtinCompactionFactories: [
@@ -864,7 +865,6 @@ describe("AgentSession compaction characterization", () => {
 		await compactExpectation;
 	});
 
-	// Regression test for #8920.
 	it("aborts an in-progress manual compaction and waits until the session is idle", async () => {
 		const { harness, compactionStarted } = await createAbortableCompactionHarness();
 		harnesses.push(harness);

@@ -22,6 +22,7 @@ import {
 } from "../child-sessions/report-artifact.ts";
 import { appendHead, emptyHead, headPreview, REPORT_MAX_LINES } from "./report-head.ts";
 import { isWaitingLine } from "./pending-waits.ts";
+import { type OutcomeSource, reportOutcome } from "./report-outcome.ts";
 
 const SEPARATOR = "\n\n---\n\n";
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
@@ -43,96 +44,6 @@ export function jobNotice(message: { customType?: unknown; content?: unknown; de
 	if (details.quiet !== true) return { job: line };
 	const log = typeof details.log === "string" ? ` (log: ${visibleControls(shortPath(details.log))})` : "";
 	return { job: `${line}${log}`, quiet: true };
-}
-
-/** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
-export const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
-
-const statusWord = (token: string): ReportStatus | undefined => {
-	const word = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();
-	return REPORT_STATUSES.find((status) => status === word);
-};
-
-/**
- * `Done with the audit, but blocked by X`: an outcome word that is plain prose (no punctuation after it) and whose line
- * names another outcome. Neither reading is safe, so the report names none (unknown, never a failure).
- */
-function contradicted(token: string, rest: string): boolean {
-	if (/[^\p{L}]$/u.test(token) || !/^[ \t]*[\p{L}\p{N}]/u.test(rest)) return false;
-	const line = rest.split("\n", 1)[0] ?? "";
-	return line.split(/[^\p{L}]+/u).some((word) => statusWord(word) !== undefined);
-}
-
-/** What may follow a delimited outcome word: the end of the line, punctuation, `(`, or a spaced dash. */
-const DELIMITED = /^(?:[ \t]*(?:\n|$)|[ \t]*[.:,;!?(]|[ \t]*[-\u2013\u2014](?:[ \t]|$))/u;
-
-/**
- * Whether the first word is the report's outcome rather than the start of a sentence (`Failed login attempts now lock…`).
- * It counts when delimited, with markup around the word allowed (`**Blocked**:`) but not alone (`**Blocked** requests
- * are logged`). `done` also counts as plain prose (`Done with the audit`) unless its line names another outcome.
- */
-function leadsOutcome(status: ReportStatus, token: string, rest: string): boolean {
-	const word = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
-	const trailing = token.slice(token.lastIndexOf(word) + word.length);
-	const after = (trailing + rest).replace(/^[*_`~]+/, "");
-	if (DELIMITED.test(after)) return true;
-	return status === "done" && !contradicted(token, rest);
-}
-
-/** Where a report named its outcome: its first word (the preferred form) or a labelled last line. */
-type OutcomeSource = "first" | "last";
-
-/**
- * A report's outcome and where it stands, or undefined when it names none (an unknown outcome, never a failure). The
- * first word counts first: case and light markup around it (`**Blocked**:`, `done.`) do not matter, and one `Report:`,
- * `Status:` or `Outcome:` label may come before it (`**Report: partial.**`). Otherwise the last non-empty line counts
- * when it is exactly such a label and one outcome word (`outcome: done`), so trailing prose never matches.
- */
-export function reportOutcome(text: string | undefined): { status: ReportStatus; source: OutcomeSource } | undefined {
-	const body = (text ?? "").trim();
-	const lead = body.replace(OUTCOME_LABEL, "");
-	const token = lead.split(/\s/, 1)[0] ?? "";
-	const first = statusWord(token);
-	if (first && leadsOutcome(first, token, lead.slice(token.length))) return { status: first, source: "first" };
-	const last = body.split("\n").at(-1)?.trim() ?? "";
-	if (!OUTCOME_LABEL.test(last)) return undefined;
-	const rest = last.replace(OUTCOME_LABEL, "").trim();
-	const status = /\s/.test(rest) ? undefined : statusWord(rest);
-	return status ? { status, source: "last" } : undefined;
-}
-
-/** The outcome a report names (`reportOutcome`), without where it stands. */
-export function reportStatus(text: string | undefined): ReportStatus | undefined {
-	return reportOutcome(text)?.status;
-}
-
-/** A line that heads a section: a markdown heading, a bold label, or a short label (`Files:`, `Open questions: none`). */
-const HEADING = /^(?:#{1,6}\s+\S|\*\*[^*\n]{1,40}\*\*:?\s*$|[\p{Lu}][\p{L}]{0,24}(?: [\p{L}]{1,24})?:(?:\s|$))/u;
-/** A heading that opens the verification section; with `:`, the same line may carry the whole of it (`Verified: ran X`). */
-const VERIFICATION = /^[^\p{L}\p{N}]*(?:verification|verified|checks?)\b[^\p{L}\p{N}:]*(?::\s*(.*))?$/iu;
-/** What a list line puts before its entry: a bullet, a number, a checkbox. */
-const LIST_MARK = /^(?:[-*+•]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/;
-
-/**
- * The checks a report names in its verification section (the contract asks for the result, verification and open
- * questions after the outcome word): the entries under a `Verification`, `Verified` or `Checks` heading, up to the next
- * heading, or the one line `Verified: ran X` names. Undefined when the report has no such section; empty when it is
- * there with nothing under it.
- */
-export function reportChecks(text: string | undefined): string[] | undefined {
-	const lines = (text ?? "").split("\n");
-	const start = lines.findIndex((line) => VERIFICATION.test(line.trim()));
-	if (start < 0) return undefined;
-	const inline = VERIFICATION.exec(lines[start].trim())?.[1]?.trim() ?? "";
-	if (/[\p{L}\p{N}]/u.test(inline)) return [inline];
-	const checks: string[] = [];
-	for (const line of lines.slice(start + 1)) {
-		const trimmed = line.trim();
-		if (HEADING.test(trimmed)) break;
-		const entry = trimmed.replace(LIST_MARK, "").trim();
-		if (entry) checks.push(entry);
-	}
-	return checks;
 }
 
 /**
@@ -167,6 +78,8 @@ export class ReportTracker {
 	/** The outcome before the current section: what a follow-up that names none keeps. */
 	private prior: { status: ReportStatus; source: OutcomeSource } | undefined;
 	private readonly resultContract?: ResultContract;
+	/** The child was asked for the outcome word its report lacks (once per run): `pending` until its answer is in. */
+	private outcomeAsk: "pending" | "answered" | undefined;
 
 	private readonly scratch?: string;
 	constructor(scratch?: string, resultContract?: ResultContract) {
@@ -179,11 +92,28 @@ export class ReportTracker {
 		return this.sections > 0;
 	}
 
+	/** A finished report that names no outcome, in a run that was not asked for one yet. */
+	get lacksOutcome(): boolean {
+		return this.sections > 0 && !this.outcome && !this.failure && !this.waitOnly && this.outcomeAsk === undefined;
+	}
+
+	/**
+	 * The one question that asks the child for its outcome word. Its answer is read for that word only and adds nothing
+	 * to the report; an answer that names none, fails or never comes records `partial`.
+	 */
+	askOutcome(): string {
+		this.outcomeAsk = "pending";
+		const words = REPORT_STATUSES.join(", ").replace(/, ([^,]*)$/, " or $1");
+		return renderInstruction("notices/subagents/outcome-ask.md", { outcomes: words });
+	}
+
 	/**
 	 * A message reached the child; `job`: the notice line when it is the child's own background job ending. A `quiet` job
 	 * report starts no turn: it adds its line to the report already given instead of a follow-up answer.
 	 */
 	incoming(role: unknown, job?: string, quiet?: boolean): void {
+		// The outcome question is no new task: the report it asks about stands as it is.
+		if (this.outcomeAsk === "pending" && role === "user") return;
 		if (quiet && job) {
 			if (this.sections === 0) return;
 			this.note(`After this report: ${job}`);
@@ -211,6 +141,13 @@ export class ReportTracker {
 		waiting = false,
 		reminder = false,
 	): void {
+		if (this.outcomeAsk === "pending") {
+			if (stopReason === "toolUse") return;
+			this.outcomeAsk = "answered";
+			const named = stopReason === "stop" ? reportOutcome(answerText)?.status : undefined;
+			this.outcome = { status: named ?? "partial", source: "asked" };
+			return;
+		}
 		// The child's answer and failure reach the parent model and the saved report: a credential it quotes (an error body, a
 		// file it read) is removed here, so the preview, the scratch files and the structured result all hold clean text.
 		const raw = answerText === undefined ? undefined : redactSecrets(answerText);
@@ -366,6 +303,8 @@ export class ReportTracker {
 				...(this.resultContract ? { structured: unavailableResult(this.resultContract) } : {}),
 			};
 		}
+		// An outcome question that was never answered (the child stalled or was stopped) is a miss as well.
+		const outcome = this.outcome ?? (this.outcomeAsk ? ({ status: "partial", source: "asked" } as const) : undefined);
 		const shown = this.unsaved && !this.file ? `${this.text}\n\n${this.unsavedNote(this.unsaved)}` : this.text;
 		const body = this.failure ? `${shown}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : shown;
 		if (!this.artifact) {
@@ -385,7 +324,7 @@ export class ReportTracker {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,
 			body,
 			...(pointer ? { pointer } : {}),
-			...(this.outcome ? { outcome: this.outcome.status, outcomeSource: this.outcome.source } : {}),
+			...(outcome ? { outcome: outcome.status, outcomeSource: outcome.source } : {}),
 			...(this.failure ? { error: this.failure } : {}),
 			...(this.resultContract ? { structured: this.structured ?? unavailableResult(this.resultContract) } : {}),
 			answered: true,

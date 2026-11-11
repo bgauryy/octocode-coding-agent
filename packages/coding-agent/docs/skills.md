@@ -99,7 +99,7 @@ In step 3 an `.octocode/` copy beats a `.pi/` copy. In steps 6 and 7 the order i
 | `/configuration disable harness:pi`                | Switch off every Pi skill (Pi's own list is read-only here) |
 | `--disable skill:<name>` / `--enable skill:<name>` | The same, for one run                                       |
 
-A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/configuration list skill`). Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
+A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/configuration list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. A core skill beats the Octocode collection's copy of the same name. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
 
 The `skills` setting takes patterns and also filters auto-discovered skills: `"skills": ["!octocode-roast"]` drops one, `["!octocode-*"]` the collection, and a trusted project can bring one back with `["+octocode-roast/SKILL.md"]`.
 

@@ -22,7 +22,7 @@ import type {
 } from "./types.ts";
 
 export type { AgentEventSink } from "./agent-loop/events.ts";
-export { type RunToolCallOptions, runToolCall, type ToolCallHooks } from "./agent-loop/tool-call.ts";
+export { runToolCall } from "./agent-loop/tool-call.ts";
 
 /** The assistant message that ends a run whose loop threw: empty text, the error, no usage. */
 export function runFailureMessage(

@@ -1,7 +1,7 @@
 import { Container, hyperlink, SEPARATOR, Text, type TUI } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { theme } from "../../../theme/theme.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**

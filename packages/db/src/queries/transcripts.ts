@@ -53,11 +53,17 @@ export function bind(db: DatabaseSync, id: string, workspaceId: string | null): 
 	if (!result.changes) throw new Error("Session ID is already bound to another workspace");
 }
 
-/** Only the host operation which creates a fork supplies this edge. An imported JSONL header cannot grant archive access. */
+/**
+ * Only the host operation which creates a fork supplies this edge. An imported JSONL header cannot grant archive access.
+ * Recording the same edge again (a retry whose first commit lost its acknowledgement) succeeds; a different edge for the
+ * child is refused.
+ */
 export function linkFork(db: DatabaseSync, child: string, file: string, parent: string): void {
 	const result = db
 		.prepare(`INSERT INTO session_forks(child_id,child_file,parent_id) SELECT ?,?,?
-		WHERE NOT EXISTS(SELECT 1 FROM session_transcripts WHERE session_id=? AND file<>?)`)
+		WHERE NOT EXISTS(SELECT 1 FROM session_transcripts WHERE session_id=? AND file<>?)
+		ON CONFLICT(child_id) DO UPDATE SET child_file=excluded.child_file
+		WHERE session_forks.child_file=excluded.child_file AND session_forks.parent_id=excluded.parent_id`)
 		.run(child, file, parent, child, file);
 	if (!result.changes) throw new Error("Another transcript already uses this session ID");
 }
@@ -86,34 +92,115 @@ export function lineage(db: DatabaseSync, child: string, file: string, workspace
 		.map((row) => String(row.id));
 }
 
-interface EntryRecord {
+/**
+ * One transcript record as the session file holds it: `json` is its line without the newline, serialized by the writer
+ * of the file, and stored as is so the copy is byte-identical to the file.
+ */
+export interface EntryRow {
 	id: string;
 	parentId: string | null;
 	type: string;
+	json: string;
 }
 
-export function save(
+/** The transcript's file stamp as `save` takes it: `mtime` is compared as text only, never parsed. */
+interface SavedStamp {
+	size: number;
+	mtime: string;
+	binding: string;
+}
+
+/**
+ * Write the transcript row: its file, header (JSON text) and stamp. `previousFile` is the file the row must still name
+ * when it exists; another file there throws (another transcript claimed the session ID).
+ */
+export function writeStamp(
 	db: DatabaseSync,
 	sessionId: string,
 	file: string,
-	header: object,
-	stamp: { size: number; mtime: string; binding: string },
-	entries: readonly EntryRecord[],
-	start: number,
+	header: string,
+	stamp: SavedStamp,
 	previousFile?: string,
 ): void {
 	const result = db
 		.prepare(`INSERT INTO session_transcripts(session_id,file,header,byte_size,mtime,file_binding) VALUES (?,?,?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET file=excluded.file,header=excluded.header,
 		byte_size=excluded.byte_size,mtime=excluded.mtime,file_binding=excluded.file_binding WHERE session_transcripts.file=?`)
-		.run(sessionId, file, JSON.stringify(header), stamp.size, stamp.mtime, stamp.binding, previousFile ?? null);
+		.run(sessionId, file, header, stamp.size, stamp.mtime, stamp.binding, previousFile ?? null);
 	if (!result.changes) throw new Error("Another transcript claimed this session ID");
-	if (start === 0) db.prepare("DELETE FROM session_entries WHERE session_id=?").run(sessionId);
+}
+
+/** Insert entries at their positions (one prepared statement for the batch). */
+export function insertEntries(
+	db: DatabaseSync,
+	sessionId: string,
+	rows: readonly { position: number; record: EntryRow }[],
+): void {
+	if (rows.length === 0) return;
 	const insert = db.prepare(
 		"INSERT INTO session_entries(session_id,position,entry_id,parent_id,type,data) VALUES (?,?,?,?,?,?)",
 	);
-	for (const [offset, entry] of entries.entries()) {
-		insert.run(sessionId, start + offset, entry.id, entry.parentId ?? null, entry.type, JSON.stringify(entry));
+	for (const { position, record } of rows)
+		insert.run(sessionId, position, record.id, record.parentId ?? null, record.type, record.json);
+}
+
+/** Delete the stored entries from position `from` on. */
+export function deleteEntriesFrom(db: DatabaseSync, sessionId: string, from: number): void {
+	db.prepare("DELETE FROM session_entries WHERE session_id=? AND position>=?").run(sessionId, from);
+}
+
+/**
+ * Save the header (its JSON text) and `entries` from position `start`; `start` 0 replaces every stored entry. A test
+ * fixture: the host stores transcripts through the writer's commands (`writer/transcript-mirror.ts`,
+ * `writer/transcript-save.ts`), which call `writeStamp`, `deleteEntriesFrom` and `insertEntries` in steps. Tests use it
+ * to seed a stored transcript in one call.
+ */
+export function save(
+	db: DatabaseSync,
+	sessionId: string,
+	file: string,
+	header: string,
+	stamp: SavedStamp,
+	entries: readonly EntryRow[],
+	start: number,
+	previousFile?: string,
+): void {
+	writeStamp(db, sessionId, file, header, stamp, previousFile);
+	if (start === 0) deleteEntriesFrom(db, sessionId, 0);
+	insertEntries(
+		db,
+		sessionId,
+		entries.map((record, offset) => ({ position: start + offset, record })),
+	);
+}
+
+/**
+ * The transcript's stamp, how many entries are stored (`stored`, positions `0..stored-1`), and how many of the first
+ * of them hold exactly `lines` (`common`), read from one snapshot. It stops reading at the first difference. A stored
+ * range with a gap counts as sharing nothing. Run it outside a write transaction: it waits for no lock.
+ */
+export function storedPrefix(
+	db: DatabaseSync,
+	sessionId: string,
+	lines: readonly string[],
+): { stamp: TranscriptStamp | undefined; stored: number; common: number } {
+	const own = !db.isTransaction;
+	if (own) db.exec("BEGIN");
+	try {
+		const saved = stamp(db, sessionId);
+		const range = db
+			.prepare("SELECT COUNT(*) AS n, MAX(position) AS last FROM session_entries WHERE session_id=?")
+			.get(sessionId) as { n: number; last: number | null };
+		const stored = range.n;
+		if (!saved || stored === 0 || range.last !== stored - 1) return { stamp: saved, stored, common: 0 };
+		let common = 0;
+		for (const data of entries(db, sessionId)) {
+			if (common >= lines.length || data !== lines[common]) break;
+			common += 1;
+		}
+		return { stamp: saved, stored, common };
+	} finally {
+		if (own) db.exec("COMMIT");
 	}
 }
 
@@ -130,6 +217,23 @@ export function records(db: DatabaseSync, sessionId: string): string[] {
 export function* entries(db: DatabaseSync, sessionId: string): Generator<string> {
 	const rows = db.prepare("SELECT data FROM session_entries WHERE session_id=? ORDER BY position").iterate(sessionId);
 	for (const row of rows) yield String(row.data);
+}
+
+/** The header of every stored transcript: an offline report over all sessions reads each session's start and directory here. */
+export function headers(db: DatabaseSync): Array<{ sessionId: string; header: string }> {
+	return db
+		.prepare("SELECT session_id, header FROM session_transcripts ORDER BY session_id")
+		.all()
+		.map((row) => ({ sessionId: String(row.session_id), header: String(row.header) }));
+}
+
+/** Stream the entries of `types` of every session, each session's in file order: a read-only scan for offline reports. */
+export function* scan(db: DatabaseSync, types: readonly string[]): Generator<{ sessionId: string; data: string }> {
+	const rows = db
+		.prepare(`SELECT session_id, data FROM session_entries WHERE type IN (SELECT value FROM json_each(?))
+		ORDER BY session_id, position`)
+		.iterate(JSON.stringify(types));
+	for (const row of rows) yield { sessionId: String(row.session_id), data: String(row.data) };
 }
 
 /** Explicit transcript deletion (the workspace catalog and independently retained summaries survive it). */

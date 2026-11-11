@@ -8,6 +8,7 @@ import { SettingsPanel } from "../src/app/live/SettingsView.tsx";
 afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
+	history.replaceState(null, "", "/");
 });
 
 const snapshot: ConfigSnapshot = {
@@ -31,5 +32,16 @@ describe("per-session Settings view", () => {
 		await screen.findByText(/my-repo/);
 		const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
 		expect(init.headers).toMatchObject({ Authorization: "Bearer tok" });
+	});
+
+	it("asks the web daemon for the session the page belongs to", async () => {
+		history.replaceState(null, "", "/?s=sess-1");
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify(snapshot), { status: 200 }));
+		vi.stubGlobal("fetch", fetchMock);
+		render(<SettingsPanel access="tok" repo="my-repo" />);
+		await screen.findByText(/my-repo/);
+		const urls = (fetchMock.mock.calls as unknown as Array<[string]>).map(([url]) => url);
+		expect(urls[0]).toBe("/s/sess-1/api/config");
+		expect(urls.every((url) => url.startsWith("/s/sess-1/api/"))).toBe(true);
 	});
 });

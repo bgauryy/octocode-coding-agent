@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { collectCacheMisses, type CacheMiss } from "../../core/cache-stats.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
+import { SessionCodec } from "../../core/session-manager/codec.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
@@ -25,13 +26,17 @@ export interface Prepared {
 	misses: Map<number, CacheMiss>;
 }
 
-/** Parses JSONL text; a line that is not a JSON object (a torn last write) is skipped. */
-export function parseTranscript(text: string): Entry[] {
+/**
+ * Parses JSONL text; a line that is not a JSON object (a torn last write) is skipped. Lines are read whole through
+ * `codec` (`session-manager/codec.ts`), which must have read the file's earlier lines: text appended later continues
+ * with the same codec.
+ */
+export function parseTranscript(text: string, codec = new SessionCodec()): Entry[] {
 	const entries: Entry[] = [];
 	for (const line of text.split("\n")) {
 		if (!line.startsWith("{")) continue;
 		try {
-			const value = JSON.parse(line) as Entry;
+			const value = codec.decode(JSON.parse(line) as Entry);
 			if (typeof value.type === "string") entries.push(value);
 		} catch {
 			// A partially written line is read again once it is complete.

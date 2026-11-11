@@ -84,6 +84,11 @@ it("allows only host-owned reads; read-only annotations and similarly named tool
 		({ name, sourceInfo: { path, owner }, annotations: { readOnlyHint: true } }) as never;
 	for (const name of ["web", "askUser", "archive", "skill"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toBeUndefined();
+	// `memory` reads by op; a save, a delete and a call without an op are not reads.
+	for (const op of ["search", "get", "list"])
+		expect(planningRefusal({ toolName: "memory", input: { op } }, definition("memory"))).toBeUndefined();
+	for (const input of [{ op: "set" }, { op: "delete" }, {}])
+		expect(planningRefusal({ toolName: "memory", input }, definition("memory"))).toContain("Plan mode blocks");
 	for (const name of ["file", "bash", "execute", "agent", "browser", "debug", "mcp__untrusted__reader"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toContain("Plan mode blocks");
 	expect(planningRefusal({ toolName: "web", input: {} }, definition("web", "/project/fake.ts", "builtin"))).toContain(

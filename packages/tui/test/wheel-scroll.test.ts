@@ -18,6 +18,26 @@ describe("WheelScrollAccelerator", () => {
 	it("keeps one line per event in auto mode when the terminal already accelerates", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
 		assert.deepStrictEqual(scroll(accelerator, [0, 10, 20, 30]), [1, 1, 1, 1]);
+		// Any number of events at an ordinary pace stays one line each.
+		const steady = Array.from({ length: 60 }, (_, index) => 1000 + index * 12);
+		assert.ok(scroll(accelerator, steady).every((lines) => lines === 1));
+	});
+
+	it("moves more lines per event only inside a long dense run on such a terminal, and stops when it ends", () => {
+		const accelerator = new WheelScrollAccelerator("auto", false);
+		const flick = Array.from({ length: 30 }, (_, index) => index * 4);
+		const lines = scroll(accelerator, flick);
+		assert.deepStrictEqual(lines.slice(0, 8), [1, 1, 1, 1, 1, 1, 1, 1]);
+		assert.strictEqual(lines[8], 2);
+		assert.strictEqual(lines[23], 2);
+		assert.strictEqual(lines[24], 3);
+		// A slower event, or the other direction, ends the run.
+		assert.strictEqual(accelerator.next(1, 30 * 4 + 20), 1);
+		assert.deepStrictEqual(scroll(accelerator, [200, 204, 208]), [1, 1, 1]);
+		assert.strictEqual(accelerator.next(-1, 212), 1);
+		// A fixed line count is never changed.
+		const fixed = new WheelScrollAccelerator(1, false);
+		assert.ok(scroll(fixed, flick).every((count) => count === 1));
 	});
 
 	it("scales auto mode with wheel velocity", () => {

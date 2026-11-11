@@ -33,6 +33,18 @@ export function resolveLocalRef(root: unknown, ref: unknown): [string, unknown] 
 	return id === undefined ? undefined : [id, node];
 }
 
+/** A `$ref` node with its target's keywords merged under its own (siblings of `$ref` win), following up to 20 hops. */
+export function derefNode(root: Node, schema: unknown): unknown {
+	let current = schema;
+	for (let hops = 0; isNode(current) && current.$ref !== undefined && hops < 20; hops++) {
+		const target = resolveLocalRef(root, current.$ref);
+		if (!target || !isNode(target[1])) return current;
+		const { $ref: _ref, ...rest } = current;
+		current = { ...target[1], ...rest };
+	}
+	return current;
+}
+
 /** How often each resolvable reference target is used, by alias id. */
 export function countRefs(root: Node): Map<string, number> {
 	const uses = new Map<string, number>();

@@ -9,8 +9,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { renderHintLine } from "../hint-bar.ts";
-import { formatKeyText, keyText } from "../keybinding-hints.ts";
+import { formatKeyText, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import { plainText } from "../styled-line.ts";
 import type { TreeList } from "./tree-list.ts";
 

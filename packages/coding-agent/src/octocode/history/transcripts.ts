@@ -51,24 +51,44 @@ export function readableHistory(file: string, cwd: string, env: NodeJS.ProcessEn
 	return readRecordHeader(owner.folder)?.repository === registeredWorkspace(cwd).id;
 }
 
+/** Each archive record header read so far in this process, by folder, with the stamp of the file it was read from. */
+const headers = new Map<string, { stamp: string; record: RecordHeader | undefined }>();
+
+/** `readRecordHeader`, read again only when the record file changed since this process last read it. */
+function cachedRecordHeader(folder: string): RecordHeader | undefined {
+	let stat: fs.Stats;
+	try {
+		stat = fs.statSync(path.join(folder, RECORD_FILE));
+	} catch {
+		headers.delete(folder);
+		return undefined;
+	}
+	const stamp = `${stat.size}:${stat.mtimeMs}:${stat.ino}`;
+	const known = headers.get(folder);
+	if (known?.stamp === stamp) return known.record;
+	const record = readRecordHeader(folder);
+	headers.set(folder, { stamp, record });
+	return record;
+}
+
+/** A session of the history scope, before its segments are read. */
+type ScopedSession = Omit<HistorySession, "segments">;
+
 /**
- * The sessions with history this session may read, in the order they are searched: this one, those it was forked from
- * (nearest first), its parent session, then the repository's other sessions, most recently active first. A session
- * with neither a record nor a segment is left out.
+ * The sessions this session may read, in search order (`historyScope`), with their records but not their segments: what
+ * a repair before a read needs (`archive/repair-stamps.ts`), at the cost of a directory listing and a stat per session.
  */
-export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env): HistorySession[] {
+export function historySessions(cwd: string, env: NodeJS.ProcessEnv = process.env): ScopedSession[] {
 	const key = registeredWorkspace(cwd).id;
 	const seen = new Set<string>();
-	const sessions: HistorySession[] = [];
-	const add = (folder: string, relation: Relation, record = readRecordHeader(folder)) => {
+	const sessions: ScopedSession[] = [];
+	const add = (folder: string, relation: Relation, record = cachedRecordHeader(folder)) => {
 		const id = path.basename(path.dirname(folder));
 		if (seen.has(id)) return;
 		seen.add(id);
-		const segments = readSegments(id, env);
-		if (!record && !segments.length) return;
 		const parentRoot = relation === "parent session" ? env[TEAM_WORKSPACE_ENV] : undefined;
 		const workspaceId = parentRoot && path.isAbsolute(parentRoot) ? registeredWorkspace(parentRoot).id : key;
-		sessions.push({ id, workspaceId, folder, relation, ...(record ? { record } : {}), segments });
+		sessions.push({ id, workspaceId, folder, relation, ...(record ? { record } : {}) });
 	};
 	const byId = (id: string | undefined, relation: Relation) => {
 		if (!id) return;
@@ -89,19 +109,39 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 	} catch {
 		// No sessions folder: no other history.
 	}
+	const canonicalRoot = canonicalPath(root);
+	/** Whether a record's checkout is this repository's, by checkout path: most records share a few checkouts. */
+	const sameCheckout = new Map<string, boolean>();
+	const ours = (workspace: string) => {
+		let known = sameCheckout.get(workspace);
+		if (known === undefined) {
+			known = !fs.existsSync(workspace) || readWorkspaceIdentity(workspace)?.id === key;
+			sameCheckout.set(workspace, known);
+		}
+		return known;
+	};
 	const others = names.flatMap((name) => {
 		if (seen.has(name)) return [];
 		const folder = path.join(root, name, "archive");
-		if (canonicalPath(folder) !== path.join(canonicalPath(root), name, "archive")) return [];
-		const record = readRecordHeader(folder);
-		return record?.repository === key &&
-			(!fs.existsSync(record.workspace) || readWorkspaceIdentity(record.workspace)?.id === key)
-			? [{ folder, record }]
-			: [];
+		const record = cachedRecordHeader(folder);
+		if (record?.repository !== key || !ours(record.workspace)) return [];
+		return canonicalPath(folder) === path.join(canonicalRoot, name, "archive") ? [{ folder, record }] : [];
 	});
 	others.sort((a, b) => (b.record.lastActive ?? "").localeCompare(a.record.lastActive ?? ""));
 	for (const { folder, record } of others) add(folder, "same repository", record);
 	return sessions;
+}
+
+/**
+ * The sessions with history this session may read, in the order they are searched: this one, those it was forked from
+ * (nearest first), its parent session, then the repository's other sessions, most recently active first. A session
+ * with neither a record nor a segment is left out.
+ */
+export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env): HistorySession[] {
+	return historySessions(cwd, env).flatMap((session) => {
+		const segments = readSegments(session.id, env);
+		return session.record || segments.length ? [{ ...session, segments }] : [];
+	});
 }
 
 /** One file of a session's history: its record, or a segment. */
@@ -180,7 +220,7 @@ export function paginate(blocks: ReadonlyArray<{ heading?: string; lines: string
 	return pages.map((page) => page.join("\n"));
 }
 
-interface HistoryPage {
+export interface HistoryPage {
 	text: string;
 	page: number;
 	pages: number;
@@ -218,32 +258,6 @@ const readLines = (file: string): string[] | undefined => {
 		if (fd !== undefined) fs.closeSync(fd);
 	}
 };
-
-/** The sessions in scope, each with its record's labels and its files (record, then segments newest first), paged. */
-export function listHistory(sessions: readonly HistorySession[], page = 1): HistoryPage {
-	const files = historyFiles(sessions);
-	const blocks = sessions.map((session) => {
-		const record = session.record;
-		const facts = [
-			...(record?.lastActive ? [`last active ${record.lastActive}`] : []),
-			...(record?.name ? [`name ${record.name}`] : []),
-			...(record?.goal ? [`goal: ${record.goal}`] : []),
-			...(record?.ended ? [`ended: ${record.ended}`] : []),
-		];
-		return {
-			heading: `## ${session.id} (${session.relation}) · ${session.folder}`,
-			lines: [
-				...(facts.length > 0 ? [facts.join(" · ")] : []),
-				...files
-					.filter((file) => file.session === session)
-					.map((file) => `- ${path.basename(file.file)} · ${file.label}`),
-			],
-		};
-	});
-	const pages = paginate(blocks);
-	const index = Math.min(Math.max(page, 1), pages.length);
-	return { text: pages[index - 1] ?? "", page: index, pages: pages.length };
-}
 
 /** Matching lines one search collects before it stops and offers a cursor. */
 const MATCH_BUDGET = 200;

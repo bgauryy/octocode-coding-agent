@@ -31,7 +31,7 @@ export interface AgentEventsHost extends Pick<SessionInternals, "session" | "run
 }
 
 /** Internal handler for agent events - shared by subscribe and reconnect */
-export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent): Promise<void> {
+export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent, signal?: AbortSignal): Promise<void> {
 	const { session, run } = host;
 	// An abort requested while the run was starting, e.g. during before_agent_start, stops it
 	// here. agent_start is awaited before the first request.
@@ -47,6 +47,9 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 
 	// Emit to extensions first, then notify public listeners.
 	await host.emitExtensionEvent(event);
+	// After an abort the agent stops waiting for a streaming delta's delivery, so this one may resume after its run
+	// ended, even during the next run. Its final state comes with message_end or tool_execution_end: drop it.
+	if (signal?.aborted && (event.type === "message_update" || event.type === "tool_execution_update")) return;
 	host.emit(event.type === "agent_end" ? { ...event, willRetry: host.retry.willRetryAfterAgentEnd(event) } : event);
 
 	// Handle session persistence

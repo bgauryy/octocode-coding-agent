@@ -18,6 +18,7 @@ function fixture(body: string): { client: RpcClient; root: string } {
 		entry,
 		`import { createInterface } from "node:readline";
 const reply = (command, data) => process.stdout.write(JSON.stringify({type:"response", id:command.id, command:command.type, success:true, data}) + "\\n");
+process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"test",sessionId:"test"}) + "\\n");
 ${body}
 `,
 	);

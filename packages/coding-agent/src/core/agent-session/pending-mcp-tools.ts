@@ -4,7 +4,7 @@
  */
 
 import { isMcpToolName, mcpNamespace } from "../../../../common/src/mcp-names.ts";
-import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/status.ts";
+import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/api.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 
 /** The status of the server that owns the MCP tool: the one with the longest matching namespace. */

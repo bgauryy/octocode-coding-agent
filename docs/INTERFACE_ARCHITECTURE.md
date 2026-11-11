@@ -21,13 +21,7 @@ flowchart LR
 
 ## The user-level web daemon
 
-One detached page per OS user shows every session of the machine.
-
-| Setting                            | Effect                                                                          |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| `OCTOCODE_WEB_DAEMON=1`            | Sessions start an owner-only attach endpoint and `/web` opens the shared daemon |
-| unset (default)                    | Nothing listens; `/web` serves a per-session page                               |
-| `OCTOCODE_WEB_DAEMON_IDLE_MINUTES` | Idle time before the daemon exits with no tab and no attached session           |
+One detached page per OS user shows every session of the machine. It is what `/web` opens: every top-level session starts an owner-only attach endpoint, and `/web` starts or reuses the daemon. When the daemon cannot start or the session cannot attach, `/web` warns and serves a per-session page instead (closed with its session). `OCTOCODE_WEB_DAEMON_IDLE_MINUTES` sets the idle time before the daemon exits with no tab and no attached session.
 
 ```mermaid
 sequenceDiagram
@@ -46,7 +40,8 @@ sequenceDiagram
 | Single instance | The daemon record is written only after it listens; a run lock stops a second daemon, a launch lock serializes launchers. A record is trusted only when its process may still be the writer and an authenticated health check returns its nonce                                                                                                |
 | Upgrade         | A launcher of another build asks the daemon to drain: it hands over, tells open tabs, and exits when they leave or after 30 s                                                                                                                                                                                                                  |
 | Page scope      | A page is scoped to one session or one repository (workspace UUID); report files are served only while the checkout still matches its recorded directory                                                                                                                                                                                       |
-| Writes          | Board writes need a launch or control token (a view token gets 403). Setting and provider-key changes are accepted only from the launch token                                                                                                                                                                                                  |
+| Writes          | Board writes need a launch or control token (a view token gets 403) and repaint the board counts of the repository's attached sessions (`backlog.changed`). Setting and provider-key changes are accepted only from the launch token                                                                                                         |
+| Session settings | A session's page reaches its settings under `/s/<id>/`; the daemon asks the session what it declares of each tool (`session.tools`), since the daemon has no tools of its own                                                                                                                                                                  |
 | Limits          | Attach requests 1 MiB, responses and events 32 MiB; uploads are not carried                                                                                                                                                                                                                                                                    |
 | Local security  | Token only in the URL fragment, `Authorization` header or socket hello, never a query string; no cookies or CORS; `Host` must be `127.0.0.1:<port>` and `Origin` the daemon's; only the page and health check are tokenless; strict CSP (`default-src 'none'`, hashed scripts, `frame-ancestors 'none'`); owner-only files in a 0700 directory |
 

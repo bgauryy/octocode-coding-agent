@@ -2,7 +2,7 @@ import { type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { liveShimmer, stateMark } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
 /** Reasoning shorter than this reads as `0s` or `1s` noise: the label omits the time. */
 const MIN_SHOWN_MS = 1_000;

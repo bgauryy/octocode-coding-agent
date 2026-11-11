@@ -1,17 +1,14 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import {
-	APPLICATION_PROTOCOL_VERSION,
-	type ApplicationConnection,
-	type ApplicationCursor,
-} from "@octocodeai/octocode-contracts";
+import type { ApplicationConnection, ApplicationCursor } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
 import { redactData } from "../../../../common/src/sanitize.ts";
 import { dbStamp } from "../../../../db/src/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
+import { ownOrigin, readHello } from "../workspace/page-access.ts";
 import { readerStalled } from "../workspace/socket-pressure.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { tokenAccess, type DaemonTokens, type TokenAccess } from "./http-util.ts";
@@ -40,17 +37,6 @@ interface Tab {
 	connection?: ApplicationConnection;
 	/** Stops this tab's profiler frames. */
 	profilerOff?: () => void;
-}
-
-function validCursor(value: unknown): value is ApplicationCursor {
-	const cursor = value as ApplicationCursor | undefined;
-	return (
-		!!cursor &&
-		typeof cursor.sessionId === "string" &&
-		typeof cursor.epoch === "string" &&
-		Number.isSafeInteger(cursor.sequence) &&
-		cursor.sequence >= 0
-	);
 }
 
 /**
@@ -113,7 +99,7 @@ export class TabHub {
 	/** Called by the router after the Host header passed; the Origin must be exactly the daemon's. */
 	upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, scope: TabScope): void {
 		socket.on("error", () => socket.destroy());
-		if (req.headers.origin !== this.origin() || this.tabs.size >= MAX_TABS) {
+		if (!ownOrigin(req, this.origin(), true) || this.tabs.size >= MAX_TABS) {
 			socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
 			return;
 		}
@@ -153,24 +139,9 @@ export class TabHub {
 		});
 		socket.on("message", (data, binary) => {
 			if (authenticated) return socket.close(1008, "Updates only");
-			if (binary) return socket.close(1008, "Reopen the workspace");
-			let supplied = (data as Buffer).toString();
-			let cursor: ApplicationCursor | undefined;
-			if (supplied.startsWith("{")) {
-				let hello: { token?: unknown; protocolVersion?: unknown; cursor?: unknown };
-				try {
-					hello = JSON.parse(supplied);
-				} catch {
-					return socket.close(1008, "Invalid handshake");
-				}
-				if (!hello || hello.protocolVersion !== APPLICATION_PROTOCOL_VERSION || typeof hello.token !== "string")
-					return socket.close(1008, "Unsupported protocol; reopen the workspace");
-				supplied = hello.token;
-				if (hello.cursor !== undefined) {
-					if (!validCursor(hello.cursor)) return socket.close(1008, "Invalid cursor");
-					cursor = hello.cursor;
-				}
-			}
+			const hello = readHello(data as Buffer, binary);
+			if ("refusal" in hello) return socket.close(1008, hello.refusal);
+			const { token: supplied, cursor } = hello;
 			const access = tokenAccess(supplied, this.tokens);
 			if (!access) return socket.close(1008, "Reopen the workspace");
 			tab.access = access === "view" ? "view" : "control";

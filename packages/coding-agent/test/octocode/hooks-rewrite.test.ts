@@ -13,7 +13,7 @@ it.each(["claude", "codex"] as const)("validates %s rewritten arguments before c
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	const fake = fakeHost(HOOK_SETTINGS);
 	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	for (const command of ["rewritten", { invalid: true }]) {
 		const output = {
@@ -73,7 +73,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 			),
 		}),
 	});
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
@@ -109,7 +109,7 @@ it("projects Codex Bash command input and preserves native execution options on 
 		description: "Run",
 		parameters: Type.Object({ command: Type.String(), timeout: Type.Number(), background: Type.Boolean() }),
 	});
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {

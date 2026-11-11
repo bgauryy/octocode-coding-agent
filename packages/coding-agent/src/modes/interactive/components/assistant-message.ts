@@ -1,3 +1,4 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import {
@@ -42,9 +43,7 @@ import type { ToolExecutionComponent } from "./tool-execution.ts";
 /** A live label that no render has drawn for this long belongs to a component that left the screen. */
 const STALE_FRAME_MS = 2_000;
 
-/**
- * Component that renders a complete assistant message
- */
+/** Renders a complete assistant message. */
 export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
@@ -212,7 +211,7 @@ export class AssistantMessageComponent extends Container {
 					complete: true,
 					status: "failed",
 					stopReason: "error",
-					errorMessage: `Content unavailable: ${error instanceof Error ? error.message : "Could not prepare output"}`,
+					errorMessage: `Content unavailable: ${errorMessage(error)}`,
 				},
 				false,
 			);

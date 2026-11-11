@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { requestMcpReload } from "../../../../mcp/src/switch.ts";
+import { requestMcpReload } from "../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";

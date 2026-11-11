@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TeamOutage } from "../../src/octocode/team/panel-outage.ts";
+import { TeamOutage } from "../../src/octocode/team/panel/outage.ts";
 
 describe("TeamOutage: team database failures in the messages list", () => {
 	it("says an unusable database at once and once, then its recovery", () => {

@@ -13,7 +13,7 @@ import { ApplicationAssets } from "./assets.ts";
 import type { ApplicationStateStore } from "./state.ts";
 import { ApplicationCollection } from "./collection.ts";
 import {
-	cloneDisplay,
+	cloneMeasured,
 	normalizeApplicationContent,
 	normalizeApplicationMessage,
 	normalizeToolData,
@@ -24,7 +24,7 @@ import { toolResultText } from "./service/projection.ts";
 import { streamHint, type StreamHint } from "./service/wire.ts";
 import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-stream.ts";
 import { ToolCallStream } from "./transcript-toolcalls.ts";
-import { spillTool, spillToolData } from "./transcript-tools.ts";
+import { showsToolResult, spillTool, spillToolData, type ToolSource } from "./transcript-tools.ts";
 import { toolDisplay, type TranscriptSession } from "./transcript-display.ts";
 import { adoptContext, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
@@ -76,7 +76,7 @@ export class ApplicationTranscript {
 	}
 	private identities = new WeakMap<object, string>();
 	private sources = new Map<string, unknown>();
-	private toolSources = new Map<string, { value: unknown; owner: string; streaming: boolean }>();
+	private toolSources = new Map<string, ToolSource>();
 	private activeMessage?: string;
 	private nextOrder = 0;
 	private nextMessage = 0;
@@ -264,12 +264,16 @@ export class ApplicationTranscript {
 				});
 			}
 		if (source.role === "toolResult" && typeof source.toolCallId === "string") {
+			const id = source.toolCallId;
+			const toolName = typeof source.toolName === "string" ? source.toolName : "unknown";
+			// The tool's end event already normalized this result: the message that records it changes nothing.
+			if (showsToolResult(this.tools.get(id), this.toolSources.get(id), source, toolName)) return;
 			this.acceptTool({
 				type: "tool.completed",
-				toolCallId: source.toolCallId,
-				toolName: typeof source.toolName === "string" ? source.toolName : "unknown",
+				toolCallId: id,
+				toolName,
 				failed: source.isError === true,
-				...this.toolData(value, source.toolCallId, typeof source.toolName === "string" ? source.toolName : "unknown"),
+				...this.toolData(value, id, toolName),
 			});
 		}
 	}
@@ -304,7 +308,7 @@ export class ApplicationTranscript {
 			toolName: event.toolName,
 			...(event.type === "tool_execution_start"
 				? {
-						arguments: cloneDisplay(event.args),
+						arguments: cloneMeasured(event.args),
 						hint: toolHint(event.args),
 						startedAt: Date.now(),
 						...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),

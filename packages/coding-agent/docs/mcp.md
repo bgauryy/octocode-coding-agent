@@ -77,16 +77,16 @@ Add `--local` to enable for this workspace only. A same-named server in an Octoc
 
 ## Manage servers
 
-| Need                        | In a session                                                 | In the shell                                                                                               |
-| --------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Browse state and tools      | `/mcp`, `/mcp list`, `/mcp tools`                            | `octocode mcp list`, `octocode mcp tools [server] [tool]`                                                  |
-| Turn a server on or off     | `/configuration enable\|disable mcp:docs`                    | `octocode configuration enable\|disable mcp:docs`                                                          |
-| Add a definition            | `/configuration add mcp`, or edit `mcp.json` and `/reload`   | `octocode mcp add <server> -- <command> [args]` or `--url <url>`                                           |
-| Remove a definition         | `/configuration remove`, or edit `mcp.json`                  | `octocode mcp remove <server> [-l]`                                                                        |
-| Sign in or out, reconnect   | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs` | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs`                                        |
-| Exposure and assignment     | `/mcp exposure …`, `/mcp assign …`                           | `octocode mcp exposure <server> <mode> [-l]`                                                               |
-| Show resolved config        | `/mcp config`                                                | `octocode mcp config [--json]`                                                                             |
-| Optimize the generated file | none                                                         | `octocode mcp compact show\|check\|apply\|preset\|list` ([compact](mcp-reference.md#compact-presentation)) |
+| Need                        | In a session                                                 | In the shell                                                                                       |
+| --------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Browse state and tools      | `/mcp`, `/mcp list`, `/mcp tools`                            | `octocode mcp list`, `octocode mcp tools [server] [tool]`                                          |
+| Turn a server on or off     | `/configuration enable\|disable mcp:docs`                    | `octocode configuration enable\|disable mcp:docs`                                                  |
+| Add a definition            | `/configuration add mcp`, or edit `mcp.json` and `/reload`   | `octocode mcp add <server> -- <command> [args]` or `--url <url>`                                   |
+| Remove a definition         | `/configuration remove`, or edit `mcp.json`                  | `octocode mcp remove <server> [-l]`                                                                |
+| Sign in or out, reconnect   | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs` | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs`                                |
+| Exposure and assignment     | `/mcp exposure …`, `/mcp assign …`                           | `octocode mcp exposure <server> <mode> [-l]`                                                       |
+| Show resolved config        | `/mcp config`                                                | `octocode mcp config [--json]`                                                                     |
+| Optimize the generated file | none                                                         | `octocode mcp compact show\|check\|apply\|list` ([compact](mcp-reference.md#compact-presentation)) |
 
 `mcp add` options: `--env KEY=VALUE`, `--cwd`, `--header KEY=VALUE`, `--bearer-token-env-var`, `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, `--oauth-client-name`, `--exposure direct|hidden`, `--description`. `/mcp enable|disable` and `octocode mcp enable|disable` are retired and print a hint to `/configuration`.
 
@@ -125,7 +125,9 @@ Set `exposure` on a server, or `toolExposure` for individual tools (exact names 
 }
 ```
 
-The `mcpExposure` setting sets the default for servers that set none: `"direct"`, `"deferred"` or `"auto:<bytes>"` (keeps servers direct in name order while their blocks fit the byte budget, then defers the rest). An agent without the `mcp` tool gets deferred servers in full. `/mcp exposure <server> <direct|deferred|hidden>` saves a value. More: [exposure and results](mcp-reference.md#exposure-and-results).
+The `mcpExposure` setting sets the default for servers that set none: `"direct"`, `"deferred"`, `"recent"` (a tool called in this working directory in the last 24 hours is direct, any other is deferred) or `"auto:<bytes>"` (keeps servers direct in name order while their blocks fit the byte budget, then defers the rest). An agent without the `mcp` tool gets deferred servers in full. A deferred tool the session has called is declared in full from then on where the model can add the definition without resending its tool list ([reference](mcp-reference.md#exposure-and-results)). After a compaction, the input schemas of the deferred tools the session called (MCP and native) follow the summary as one hidden message, whole schemas only, most recent first. `/mcp exposure <server> <direct|deferred|hidden>` saves a value. More: [exposure and results](mcp-reference.md#exposure-and-results).
+
+The Tools panel of the [web Settings page](web-workspace.md#settings-page) lists every tool of each enabled server with its state in the running session and what decided it (a pin, the server's `exposure`, use in the last 24 hours, or the default), and pins one tool by saving its `toolExposure` entry. A pin applies from the next session.
 
 ## Assign servers to agents
 

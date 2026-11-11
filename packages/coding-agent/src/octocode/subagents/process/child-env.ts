@@ -6,6 +6,7 @@ import {
 	LEAN_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	MCP_DEFER_ROLES_ENV,
+	MCP_RECENT_TOOLS_ENV,
 	PARENT_SESSION_ENV,
 	PARENT_TRANSCRIPT_ENV,
 	PERMISSION_GRANTS_ENV,
@@ -20,6 +21,7 @@ import {
 } from "../../../../../common/src/env.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
 import { processAlive } from "../../shared/process.ts";
+import { SHELL_GROUPS_FILE_ENV } from "../../shared/shell-groups.ts";
 import {
 	AGENT_GOAL_ENV,
 	AGENT_ID_ENV,
@@ -46,6 +48,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	SKILL_SNAPSHOT_FILE_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	MCP_DEFER_ROLES_ENV,
+	MCP_RECENT_TOOLS_ENV,
 	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
 	LEAN_ENV,
@@ -67,6 +70,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	PARENT_PID_ENV,
 	BACKLOG_ITEM_ENV,
 	SUBAGENT_ASSIGNMENT_ENV,
+	SHELL_GROUPS_FILE_ENV,
 ];
 
 /**

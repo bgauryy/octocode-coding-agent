@@ -989,7 +989,48 @@ describe("Agent", () => {
 		}
 	});
 
-	it("keeps legacy prepareNextTurn signal callback behavior", async () => {
+	it("routes a failing tool-update listener to onListenerError and keeps the tool's result", async () => {
+		const schema = Type.Object({});
+		const tool: AgentTool<typeof schema> = {
+			name: "work",
+			label: "Work",
+			description: "Work tool",
+			parameters: schema,
+			execute: async (_id, _args, _signal, onUpdate) => {
+				onUpdate?.({ content: [{ type: "text", text: "half" }], details: {} });
+				return { content: [{ type: "text", text: "ok" }], details: {} };
+			},
+		};
+		const reported: string[] = [];
+		let requestCount = 0;
+		const agent = new Agent({
+			initialState: { tools: [tool] },
+			onListenerError: (message) => reported.push(message),
+			streamFn: () => {
+				requestCount++;
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() => {
+					const message =
+						requestCount === 1
+							? createAssistantToolUseMessage([{ type: "toolCall", id: "tool-1", name: "work", arguments: {} }])
+							: createAssistantMessage("done");
+					stream.push({ type: "done", reason: requestCount === 1 ? "toolUse" : "stop", message });
+				});
+				return stream;
+			},
+		});
+		agent.subscribe((event) => {
+			if (event.type === "tool_execution_update") throw new Error("view failed");
+		});
+
+		await agent.prompt("start");
+
+		expect(reported).toEqual(["Tool update listener error (work): Error: view failed"]);
+		const toolResult = agent.state.messages.find((message) => message.role === "toolResult");
+		expect(toolResult?.content).toEqual([{ type: "text", text: "ok" }]);
+	});
+
+	it("passes the run's abort signal to prepareNextTurnWithContext", async () => {
 		const schema = Type.Object({});
 		const tool: AgentTool<typeof schema> = {
 			name: "noop",
@@ -1002,7 +1043,7 @@ describe("Agent", () => {
 		let sawAbortSignal = false;
 		const agent = new Agent({
 			initialState: { tools: [tool] },
-			prepareNextTurn: async (signal) => {
+			prepareNextTurnWithContext: async (_context, signal) => {
 				sawAbortSignal = signal instanceof AbortSignal;
 				return undefined;
 			},

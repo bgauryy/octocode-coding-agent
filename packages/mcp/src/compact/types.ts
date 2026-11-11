@@ -55,8 +55,8 @@ export interface PresetToolOverrides {
 }
 
 /**
- * Overrides as they are kept, whether a preset ships them or `octocode mcp compact apply` stores them: each keyed on
- * the upstream text it replaces, so it applies exactly while that text is unchanged (`presetOverridesFor`).
+ * Overrides as `octocode mcp compact apply` stores them: each keyed on the upstream text it replaces, so it applies
+ * exactly while that text is unchanged (`presetOverridesFor`).
  */
 export interface PresetOverrides {
 	server?: { instructionsHash: string; text: string };
@@ -67,7 +67,7 @@ export interface GeneratedMeta {
 	/** {@link catalogHash} of the catalog the text was rendered from. */
 	hash: string;
 	generatorVersion: number;
-	/** What the text was rendered with: the stored and preset overrides that describe the catalog. */
+	/** What the text was rendered with: the stored overrides that describe the catalog. */
 	overrides?: DescriptionOverrides;
 	/** The overrides stored for this server (`octocode mcp compact apply`), kept whole while parts of them are stale. */
 	authored?: PresetOverrides;
@@ -77,7 +77,10 @@ export interface GeneratedMeta {
 	 */
 	toolHashes?: Record<string, string>;
 	instructionsHash?: string;
-	/** {@link presetHash} of the preset overrides the text was rendered with; absent without a preset. */
+	/**
+	 * Written only by releases that shipped overrides with a preset: a hash of those the text was rendered with. A file
+	 * that has it is rendered again (`resolveServerFile`).
+	 */
 	presetHash?: string;
 	optimizedBy?: { model: string; at: string };
 	generatedAt: string;

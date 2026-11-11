@@ -16,6 +16,7 @@ import { SettingEditor, type SaveSetting } from "./SettingEditor.tsx";
 import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
 import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
 import { type HarnessApi, HarnessPanel } from "./HarnessPanel.tsx";
+import { type ToolsApi, ToolsPanel } from "./ToolsPanel.tsx";
 import type { SaveCredential } from "./CredentialEditor.tsx";
 import type { SignInRequest } from "./SignIn.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";
@@ -278,6 +279,8 @@ export interface ConfigViewProps {
 	saveProvider?: (command: ConfigProviderCommand, repoId?: string) => Promise<ConfigSnapshot>;
 	/** Lists and switches the Harness panel's rows; used only when the host says the connection is `writable`. */
 	harness?: HarnessApi;
+	/** Lists each tool's exposure state and pins one tool; used only when the host says the connection is `writable`. */
+	tools?: ToolsApi;
 	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
 	repos?: readonly { id: string; name: string }[];
 }
@@ -287,7 +290,8 @@ export interface ConfigViewProps {
  * (editable through `save` when the host allows it), and workspace trust. Persistence, precedence and trust belong to
  * the host; the page only shows its answer and its refusals.
  */
-export function ConfigView({ load, save, saveCredential, saveProvider, signIn, harness, repos }: ConfigViewProps) {
+export function ConfigView(props: ConfigViewProps) {
+	const { load, save, saveCredential, saveProvider, signIn, harness, tools, repos } = props;
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
 	const [repoId, setRepoId] = useState<string | undefined>();
@@ -386,6 +390,7 @@ export function ConfigView({ load, save, saveCredential, saveProvider, signIn, h
 				workspace={repoId && snapshot.workspace ? { id: repoId, trusted: snapshot.workspace.trusted } : undefined}
 			/>
 			<HarnessPanel api={snapshot.writable ? harness : undefined} repoId={repoId} reloadKey={key} />
+			<ToolsPanel api={snapshot.writable ? tools : undefined} repoId={repoId} reloadKey={key} />
 			<Workspace workspace={snapshot.workspace} repos={repos} repoId={repoId} onRepo={setRepoId} />
 		</div>
 	);

@@ -48,16 +48,7 @@ export interface RecordedTelemetryMeasurement {
 	readonly context: Readonly<TelemetryCarrier> | null;
 }
 
-interface MutableRecordedTelemetryEvent {
-	timeMs: number;
-	name: string;
-	attributes: SpanAttributes;
-}
-
 interface MutableRecordedTelemetrySpan {
-	startedMs: number;
-	clock: number;
-	endedMs?: number;
 	id: number;
 	parentId: number | null;
 	context: TelemetryCarrier;
@@ -65,7 +56,7 @@ interface MutableRecordedTelemetrySpan {
 	links: RecordedTelemetryLink[];
 	name: string;
 	attributes: SpanAttributes;
-	events: MutableRecordedTelemetryEvent[];
+	events: RecordedTelemetryEvent[];
 	status: SpanStatus;
 	explicitStatus: boolean;
 	settled: boolean;
@@ -92,10 +83,6 @@ export function carrierField(
 	return carrier?.[CARRIER_KEYS[field]];
 }
 
-export function carrierId(carrier: Readonly<TelemetryCarrier>): string {
-	return `${carrier[CARRIER_KEYS.scope]}:${carrier[CARRIER_KEYS.span]}`;
-}
-
 // Identity survives settlement without exposing backend IDs on the generic context contract.
 export const contextCarriers = new WeakMap<TelemetryContext, TelemetryCarrier>();
 
@@ -104,7 +91,7 @@ export interface InMemoryTelemetryState {
 	propagation: TelemetryPropagation;
 	scope: string;
 	spans: MutableRecordedTelemetrySpan[];
-	measurements: { intervalMs: number; measurement: RecordedTelemetryMeasurement }[];
+	measurements: RecordedTelemetryMeasurement[];
 	nextSpanId: number;
 	nextEndSequence: number;
 }
@@ -145,8 +132,6 @@ function createSpan(
 	}
 	const id = state.nextSpanId++;
 	return {
-		startedMs: Date.now(),
-		clock: performance.now(),
 		id,
 		parentId: parent?.localId ?? null,
 		context: {
@@ -211,11 +196,7 @@ export async function startInMemorySpan<T>(
 		},
 		addEvent(name, attributes) {
 			if (recordedSpan.settled) return;
-			recordedSpan.events.push({
-				name,
-				timeMs: performance.now() - recordedSpan.clock,
-				attributes: copyAttributes(attributes),
-			});
+			recordedSpan.events.push({ name, attributes: copyAttributes(attributes) });
 		},
 		setAttributes(attributes) {
 			if (recordedSpan.settled) return;
@@ -237,7 +218,6 @@ export async function startInMemorySpan<T>(
 		throw error;
 	} finally {
 		recordedSpan.settled = true;
-		recordedSpan.endedMs = recordedSpan.startedMs + performance.now() - recordedSpan.clock;
 		recordedSpan.endSequence = state.nextEndSequence++;
 	}
 }
@@ -261,13 +241,10 @@ export function createMeasurementRecorder(
 	return (value, attributes, context) => {
 		const carrier = context === undefined ? undefined : contextCarriers.get(context);
 		state.measurements.push({
-			intervalMs: Math.floor(Date.now() / 10_000) * 10_000,
-			measurement: {
-				...metadata,
-				value,
-				attributes: copyAttributes(attributes),
-				context: carrier ? { ...carrier } : null,
-			},
+			...metadata,
+			value,
+			attributes: copyAttributes(attributes),
+			context: carrier ? { ...carrier } : null,
 		});
 	};
 }

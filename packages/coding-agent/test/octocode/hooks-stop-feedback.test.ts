@@ -29,7 +29,7 @@ it("continues Claude Stop feedback under the existing cap and lets termination w
 	write();
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(fake.api, {}, home);
+	registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = { outcome: "completed", entries: [], context: { llmMessages: [] } };
 	for (let i = 0; i < 8; i++) {

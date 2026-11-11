@@ -18,7 +18,8 @@ export function readExtensionManifest(packageJsonPath: string): ExtensionManifes
 		if (!isRecord(pkg)) {
 			return null;
 		}
-		const config = isRecord(pkg.octocode) ? pkg.octocode : pkg.pi;
+		// Only the `octocode` key: Pi's `pi` key declares Pi extensions, which never load here.
+		const config = pkg.octocode;
 		if (!isRecord(config)) return null;
 
 		const manifest: ExtensionManifest = {};

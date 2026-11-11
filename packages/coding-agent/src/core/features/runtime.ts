@@ -1,4 +1,4 @@
-import { McpServerRegistry } from "../../../../mcp/src/servers.ts";
+import { McpServerRegistry } from "../../../../mcp/src/api.ts";
 import type { ExtensionRuntime } from "./types.ts";
 
 /**

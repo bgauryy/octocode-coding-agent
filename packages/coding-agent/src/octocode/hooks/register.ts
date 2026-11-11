@@ -1,19 +1,12 @@
-import type { FileInputReplacement } from "../tool-input/claude-file.ts";
-import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
 import { registerBackgroundHooks } from "./background.ts";
-import { parsePatch } from "../tool-input/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import { say } from "../shared/commands.ts";
-import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { sessionHookMode } from "../shared/hook-mode.ts";
 import { commandsFor, hookCalls } from "./config/calls.ts";
 import { ifFilter } from "./config/if-filter.ts";
 import { emptyHooks } from "./config/parse.ts";
-import type { HookVerdict } from "./contracts.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "./patch.ts";
-import type { HookProtocol } from "./catalog.ts";
 import { createDispatcher } from "./register/dispatcher.ts";
-import { decidingDenial } from "./verdicts.ts";
 import {
 	registerInterruptHook,
 	registerPostCompactHook,
@@ -25,11 +18,12 @@ import {
 import { registerAgentHooks } from "./register/agents.ts";
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
+import { permissionRequestHook } from "./register/permission-request.ts";
 import { preToolUseGate } from "./register/pre-tool-use.ts";
 import { plural } from "../shared/text.ts";
 import { hooksPromptSection } from "./prompt-section.ts";
-import { hookCount, hooksReport } from "./register/report.ts";
-import { registerSessionStartHooks } from "./register/session-start.ts";
+import { CHILD_MODE_NOTE, hookCount, hooksReport } from "./register/report.ts";
+import { loadSessionHooks, registerSessionStartHooks } from "./register/session-start.ts";
 import { registerStopHook, registerStopRenderer } from "./register/stop.ts";
 import { testRunHooks } from "./register/test-run.ts";
 import { registerSubagentHooks } from "./register/subagent.ts";
@@ -46,22 +40,102 @@ import type { HookFailureSink, HookHostMetadata, HookSession, HookTiming, HooksV
  * Octocode's PreMessageSend gates team/API/external sends; PostMessageReceive observes actual delivery without changing
  * the body or requesting a reply.
  */
-/** Every main session runs hooks; a subagent only when its profile declares `hooks: true` (`SUBAGENT_HOOKS_ENV`). */
-const hooksEnabled = (env: NodeJS.ProcessEnv = process.env): boolean =>
-	!envFlag(env, SUBAGENT_ENV) || envFlag(env, SUBAGENT_HOOKS_ENV);
+/**
+ * Every main session runs every hook. A subagent runs none by default (`sessionHookMode`): a hook meant for the main
+ * session (a Stop hook that runs the tests, a notifier) would otherwise fire once per child. Its profile or its task can
+ * choose `decisions` (`registerDecisionHooks`) or `all`.
+ */
+/** The stand-in for background hooks where none may start. */
+const NO_BACKGROUND: ReturnType<typeof registerBackgroundHooks> = { reset: async () => {}, start: () => {} };
 
-export function registerHooks(
+/**
+ * A subagent in the `decisions` mode: the PreToolUse hooks run as a tool-call gate and the PermissionRequest hooks
+ * answer an approval about to be asked. A refusal refuses the call and a PreToolUse ask goes to the permission gate,
+ * which relays it to the parent or refuses it as it does the child's other approvals. An allow grants nothing, no
+ * context is injected, no input rewritten, and no other event (Stop, SessionStart, notifiers) runs. A hook that fails or
+ * times out fails open as in a main session, unless it is `failClosed`.
+ */
+function registerDecisionHooks(
 	api: ExtensionAPI,
-	env: NodeJS.ProcessEnv = process.env,
-	home?: string,
-	onFailure?: HookFailureSink,
-	metadata?: () => HookHostMetadata,
-	paused?: () => boolean,
+	view: HooksView,
+	session: HookSession,
+	patches: Map<string, string>,
+	options: {
+		env: NodeJS.ProcessEnv;
+		home?: string;
+		timings: Map<string, HookTiming>;
+		onFailure?: HookFailureSink;
+		metadata?: () => HookHostMetadata;
+		paused?: () => boolean;
+		projectEdit?: EditProjector;
+	},
+): void {
+	const { paused } = options;
+	const runner = createDispatcher(
+		api,
+		session,
+		options.timings,
+		options.onFailure,
+		NO_BACKGROUND,
+		true,
+		options.metadata,
+		paused,
+		options.env[PARENT_SESSION_ENV],
+		true,
+	);
+	view.suspend = () => runner.stop();
+	api.on("session_start", async (_event, ctx) => {
+		patches.clear();
+		loadSessionHooks(api, session, ctx, options.home, true);
+	});
+	api.on("session_shutdown", async () => {
+		patches.clear();
+	});
+	api.on("turn_end", async () => {
+		patches.clear();
+	});
+	view.hasPreToolUse = preToolUseMatcher(session, paused);
+	view.preToolUse = preToolUseGate(api, runner.dispatch, session, patches, options.projectEdit);
+	view.permissionRequest = permissionRequestHook(
+		session,
+		runner.dispatch,
+		options.onFailure,
+		options.projectEdit,
+		true,
+	);
+}
+
+const preToolUseMatcher =
+	(session: HookSession, paused?: () => boolean): HooksView["hasPreToolUse"] =>
+	(toolName, input, cwd) =>
+		!paused?.() &&
+		hookCalls(toolName, input, cwd).some((call, index) =>
+			commandsFor(session.config, "PreToolUse", call.names).some(
+				ifFilter(toolName, input, cwd, toolName === "file" ? index : undefined),
+			),
+		);
+
+/** What `registerHooks` needs from its host; every field is optional. */
+interface HooksOptions {
+	/** Says whether this is a subagent and which hook mode it runs (`process.env` by default). */
+	env?: NodeJS.ProcessEnv;
+	/** The user's home for user-level hook files (the OS home by default). */
+	home?: string;
+	/** Records a hook's failure or decision in the permission audit. */
+	onFailure?: HookFailureSink;
+	/** The permission mode and agent identity a hook's input carries. */
+	metadata?: () => HookHostMetadata;
+	/** True while planning pauses the hooks. */
+	paused?: () => boolean;
 	/** The file tool's projection of edit queries for Codex apply_patch hooks; without it those edits are refused. */
-	projectEdit?: EditProjector,
-): HooksView {
+	projectEdit?: EditProjector;
+}
+
+export function registerHooks(api: ExtensionAPI, options: HooksOptions = {}): HooksView {
+	const { env = process.env, home, onFailure, metadata, paused, projectEdit } = options;
 	const session: HookSession = { config: emptyHooks(), errors: [], root: undefined };
-	const enabled = hooksEnabled(env);
+	const mode = sessionHookMode(env);
+	const enabled = mode === "all";
 	const timings = new Map<string, HookTiming>();
 	const view: HooksView = {
 		summary: () =>
@@ -69,10 +143,10 @@ export function registerHooks(
 				? paused?.()
 					? "paused during planning"
 					: `on, ${plural(hookCount(session.config), "hook")}`
-				: "off in this subagent (its profile does not set hooks: true)",
+				: CHILD_MODE_NOTE[mode],
 		promptSection: () => (enabled && !paused?.() ? hooksPromptSection(session.config) : ""),
-		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings, session.switchedOff),
-		testRun: async () => "Hooks are off in this subagent (its profile does not set hooks: true).",
+		report: (cwd) => hooksReport(mode, session.config, session.errors, cwd, home, timings, session.switchedOff),
+		testRun: async () => `${CHILD_MODE_NOTE[mode]}. Test runs are off here.`,
 		preToolUse: async () => undefined,
 		permissionRequest: async () => undefined,
 		hasFilePermissionRequest: () => false,
@@ -84,7 +158,20 @@ export function registerHooks(
 	};
 	// Registered even when hooks are off: a resumed session may hold Stop feedback from an earlier run.
 	registerStopRenderer(api);
-	if (!enabled) return view;
+	const patches = new Map<string, string>();
+	if (mode === "off") return view;
+	if (mode === "decisions") {
+		registerDecisionHooks(api, view, session, patches, {
+			env,
+			home,
+			timings,
+			onFailure,
+			metadata,
+			paused,
+			projectEdit,
+		});
+		return view;
+	}
 	const background = registerBackgroundHooks(api);
 	const child = envFlag(env, SUBAGENT_ENV);
 	const parentSession = child ? env[PARENT_SESSION_ENV] : undefined;
@@ -98,7 +185,6 @@ export function registerHooks(
 	registerStopHook(api, session, runner.dispatch, child);
 	registerSessionStartHooks(api, session, runner, home, child);
 	if (child) registerSubagentHooks(api, session, runner.dispatch, env, metadata);
-	const patches = new Map<string, string>();
 	api.on("session_start", async () => {
 		patches.clear();
 	});
@@ -108,13 +194,7 @@ export function registerHooks(
 	api.on("turn_end", async () => {
 		patches.clear();
 	});
-	view.hasPreToolUse = (toolName, input, cwd) =>
-		!paused?.() &&
-		hookCalls(toolName, input, cwd).some((call, index) =>
-			commandsFor(session.config, "PreToolUse", call.names).some(
-				ifFilter(toolName, input, cwd, toolName === "file" ? index : undefined),
-			),
-		);
+	view.hasPreToolUse = preToolUseMatcher(session, paused);
 	view.hasFilePermissionRequest = (input, cwd) =>
 		hookCalls("file", input, cwd).some((call) =>
 			commandsFor(session.config, "PermissionRequest", call.names).some((hook) => hook.protocol === "claude"),
@@ -128,114 +208,7 @@ export function registerHooks(
 		}
 	};
 
-	view.permissionRequest = async (invocation, ctx, signal) => {
-		if (!isRecord(invocation.input)) return undefined;
-		const input = invocation.input;
-		if (
-			invocation.toolName === "file" &&
-			typeof input.patch === "string" &&
-			parsePatch(input.patch).hunks.some((hunk) => hunk.kind === "update") &&
-			commandsFor(session.config, "PermissionRequest", ["file", "Edit", "MultiEdit", "Write", "Delete"]).some(
-				(hook) => hook.protocol === "claude",
-			)
-		) {
-			const message =
-				"Canonical Update/Move patches cannot be represented losslessly to matching Claude PermissionRequest hooks";
-			say(ctx, message, "warning");
-			onFailure?.([invocation.toolName], message, false);
-			return { decision: "deny", message };
-		}
-		const calls = hookCalls(invocation.toolName, input, ctx.cwd);
-		const run = (
-			call: { names: string[]; tool_name: string; tool_input: unknown },
-			protocol: HookProtocol,
-			index?: number,
-		) =>
-			runner.dispatch(
-				ctx,
-				"PermissionRequest",
-				call.names,
-				() => ({
-					tool_name: call.tool_name,
-					tool_input: call.tool_input,
-					pi_tool_name: invocation.toolName,
-				}),
-				signal,
-				protocol,
-				// A Claude handler's `if` rule; a `file` call is judged per query.
-				ifFilter(invocation.toolName, input, ctx.cwd, invocation.toolName === "file" ? index : undefined),
-			);
-		const verdicts: HookVerdict[] = [];
-		const fileReplacements: FileInputReplacement[] = [];
-		const permissionUpdates: SourcePermissionUpdate[] = [];
-		for (const protocol of ["claude", "codex"] as const) {
-			if (protocol === "codex" && invocation.toolName === "file") {
-				if (
-					!commandsFor(session.config, "PermissionRequest", CODEX_PATCH_NAMES).some(
-						(hook) => hook.protocol === protocol,
-					)
-				)
-					continue;
-				try {
-					verdicts.push(
-						await run(
-							{
-								names: CODEX_PATCH_NAMES,
-								tool_name: "apply_patch",
-								tool_input: {
-									command: projectCodexPatch(input, projectEdit ? { projectEdit, cwd: ctx.cwd } : undefined),
-								},
-							},
-							protocol,
-						),
-					);
-				} catch (error) {
-					const message = `PermissionRequest projection unavailable: ${errorMessage(error)}`;
-					say(ctx, message, "warning");
-					onFailure?.([invocation.toolName], message, false);
-					verdicts.push({ permissionDecision: "deny", block: message });
-				}
-			} else {
-				const results = await Promise.all(calls.map((call, index) => run(call, protocol, index)));
-				const deny = decidingDenial(results);
-				if (deny) verdicts.push(deny);
-				else if (results.length && results.every((verdict) => verdict.permissionDecision === "allow")) {
-					permissionUpdates.push(...results.flatMap((verdict) => verdict.updatedPermissions ?? []));
-					if (invocation.toolName === "file" && Array.isArray(input.queries)) {
-						results.forEach((verdict, index) => {
-							if (verdict.updatedInput !== undefined) fileReplacements.push({ index, input: verdict.updatedInput });
-						});
-						verdicts.push({ permissionDecision: "allow" });
-					} else
-						verdicts.push(
-							results.find((verdict) => verdict.updatedInput !== undefined) ?? { permissionDecision: "allow" },
-						);
-				}
-			}
-		}
-		const deny = decidingDenial(verdicts);
-		if (deny)
-			return {
-				decision: "deny",
-				message: deny.block,
-				interrupt: deny.permissionInterrupt,
-			};
-		const replacement = verdicts.find((verdict) => verdict.updatedInput !== undefined)?.updatedInput;
-		if (replacement !== undefined && invocation.toolName !== "bash")
-			return {
-				decision: "deny",
-				message:
-					"PermissionRequest input replacement requires a supported Bash or file-query transaction; call not executed",
-			};
-		return verdicts.some((verdict) => verdict.permissionDecision === "allow")
-			? {
-					decision: "allow",
-					...(replacement !== undefined ? { updatedInput: replacement } : {}),
-					...(fileReplacements.length ? { updatedFileInputs: fileReplacements } : {}),
-					...(permissionUpdates.length ? { updatedPermissions: permissionUpdates } : {}),
-				}
-			: undefined;
-	};
+	view.permissionRequest = permissionRequestHook(session, runner.dispatch, onFailure, projectEdit);
 	view.preToolUse = preToolUseGate(api, runner.dispatch, session, patches, projectEdit);
 	view.notification = notificationHook(api, runner);
 	registerPostToolUseHook(api, runner.dispatch, session, patches);

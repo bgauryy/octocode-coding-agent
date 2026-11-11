@@ -20,8 +20,26 @@ const REPOSITORY = path.resolve(import.meta.dirname, "..", "..", "..");
 const FINAL = path.join(import.meta.dirname, "..", "src", "octocode", "instructions", "final");
 const OUTPUT = path.join(REPOSITORY, ".octocode", "tmp", "agent-prompts");
 
+/**
+ * A policy template that fails to render (an undeclared name, say) is reported as a handler error and the session
+ * starts without its policy: the capture then succeeds with a prompt that has no `work` section. Nothing is written in
+ * that case, so a broken template cannot replace the committed prompts unnoticed.
+ */
+function assertPolicySections(contexts: Awaited<ReturnType<typeof captureAll>>): void {
+	for (const context of contexts) {
+		const required = context.name === "lean" ? ["lean"] : ["work", "communication"];
+		const present = new Set(context.sections.map((section) => section.name));
+		const missing = required.filter((name) => !present.has(name));
+		if (missing.length > 0)
+			throw new Error(
+				`the ${context.name} prompt has no ${missing.join(", ")} section: a policy template failed to render (the prompt tests name the error)`,
+			);
+	}
+}
+
 async function main(): Promise<void> {
 	const contexts = await captureAll();
+	assertPolicySections(contexts);
 	const staging = `${OUTPUT}.${process.pid}`;
 	fs.rmSync(staging, { recursive: true, force: true });
 	for (const context of contexts) {

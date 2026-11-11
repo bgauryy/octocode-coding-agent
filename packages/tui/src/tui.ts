@@ -2,17 +2,17 @@
  * Minimal TUI implementation with differential rendering
  *
  * `TuiBase` composes collaborators from `./tui/`: the focus manager and overlay compositor, the
- * render scheduler, terminal queries and input listeners. This module also re-exports the public
- * names those modules own, so `./tui.ts` stays the one place to import them from.
+ * render scheduler, terminal queries and input listeners. It also re-exports the public names those modules own
+ * (`./tui/exports.ts`); components and layout import values from those owners, not from here.
  */
 
 import { matchesKey } from "./keys/match.ts";
 import { isKeyRelease } from "./keys/sequences.ts";
+import { FOCUS_IN } from "./terminal/sequences.ts";
 import type { Terminal } from "./terminal/types.ts";
 import type { TerminalColorScheme, TerminalColors } from "./terminal-colors.ts";
 import { kittyPlaceholderMode } from "./terminal-image/capabilities.ts";
 import { TmuxImageReupload } from "./terminal-image/tmux-reupload.ts";
-import { FOCUS_IN } from "./tui-alt-screen/constants.ts";
 import type { Component, TuiMouseDispatchResult, TuiMouseDispatchTarget, TuiMouseEvent } from "./tui/component.ts";
 import { applyLineResets } from "./tui/composite.ts";
 import { Container } from "./tui/container.ts";
@@ -29,43 +29,7 @@ import { RenderScheduler } from "./tui/render-scheduler.ts";
 import { TerminalQueries } from "./tui/terminal-queries.ts";
 import type { TUI, TuiMode, TuiStopOptions } from "./tui/types.ts";
 
-export {
-	type Component,
-	dispatchMouseEvent,
-	type Focusable,
-	isFocusable,
-	retargetMouseEvent,
-	type TuiMouseButton,
-	type TuiMouseDispatchResult,
-	type TuiMouseDispatchTarget,
-	type TuiMouseEvent,
-	type TuiMouseEventResult,
-	type TuiMouseEventType,
-} from "./tui/component.ts";
-export { compositeTuiLine } from "./tui/composite.ts";
-export { Container } from "./tui/container.ts";
-export { CURSOR_MARKER, FAKE_CURSOR_START, renderFakeCursor } from "./tui/cursor.ts";
-export type { TuiInputListener, TuiInputListenerResult } from "./tui/input-listeners.ts";
-export type {
-	OverlayAnchor,
-	OverlayBounds,
-	OverlayHandle,
-	OverlayMargin,
-	OverlayOptions,
-	OverlayUnfocusOptions,
-	SizeValue,
-} from "./tui/overlay-types.ts";
-export { computeRenderDelayMs, type RenderPacingOptions, type RenderPacingStats } from "./tui/render-pacing.ts";
-export type { RenderErrorListener } from "./tui/render-isolation.ts";
-
-export {
-	isViewportTUI,
-	type TUI,
-	type TuiMode,
-	type TuiStopOptions,
-	VIEWPORT_TUI,
-	type ViewportTUI,
-} from "./tui/types.ts";
+export * from "./tui/exports.ts";
 
 export abstract class TuiBase extends Container implements TUI {
 	abstract readonly mode: TuiMode;
@@ -93,7 +57,7 @@ export abstract class TuiBase extends Container implements TUI {
 	});
 	private readonly overlays = new OverlayCompositor(this.focus);
 	private readonly resizeDebounce = new ResizeDebounce(() => this.stopped || this.requestRender());
-	private readonly scheduler = new RenderScheduler({
+	protected readonly scheduler = new RenderScheduler({
 		terminal: () => this.terminal,
 		isStopped: () => this.stopped,
 		paint: () => this.ledger.frame(() => withRenderIsolation(this.reportRenderError, () => this.doRender())),

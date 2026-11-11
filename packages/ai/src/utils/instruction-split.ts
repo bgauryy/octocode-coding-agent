@@ -2,29 +2,57 @@ import type { SystemMessage } from "../types.ts";
 import { contentText } from "./text.ts";
 
 /**
- * Splits a leading system message into a base block and a project block at the named section, for adapters that
- * mark both blocks as instruction cache breakpoints. The base block holds the content and every section before the
- * boundary; the project block holds the boundary section and every later one. The base block ends with the "\n\n"
- * joiner, so the two blocks concatenate to exactly `getSystemMessageText(message)`.
- *
- * Returns undefined, meaning "send one block", when there is no boundary, the boundary names no section with
- * text, or nothing precedes it (an opaque prompt without sections never splits).
+ * The leading system prompt cut into instruction blocks. `cached` holds one or two blocks that each end in a cache
+ * breakpoint; `volatile` is the trailing block that carries none. Every block but the last ends with the "\n\n"
+ * joiner, so `instructionBlockTexts(blocks).join("")` is exactly `getSystemMessageText(message)`.
  */
-export function splitSystemMessageAtBoundary(
+export interface InstructionBlocks {
+	cached: readonly string[];
+	volatile?: string;
+}
+
+/** The blocks in prompt order. */
+export function instructionBlockTexts(blocks: InstructionBlocks): string[] {
+	return blocks.volatile === undefined ? [...blocks.cached] : [...blocks.cached, blocks.volatile];
+}
+
+/**
+ * Whether the tools keep their own breakpoint beside these blocks. A second cached block takes that slot: the base
+ * block's breakpoint already covers the tools that precede it, and the request stays within four breakpoints.
+ */
+export function keepsToolBreakpoint(blocks: InstructionBlocks | undefined): boolean {
+	return !blocks || blocks.cached.length < 2;
+}
+
+/**
+ * Splits a leading system message into up to three instruction blocks, for adapters with explicit cache breakpoints.
+ * The base block holds the content and every section before `boundary`; the session block runs from `boundary` up to
+ * `volatileBoundary`; the volatile block holds `volatileBoundary` and every later section and is sent without a
+ * breakpoint, so a change in it (the date, the working directory, MCP status) rewrites no cached block. Either
+ * boundary may be absent or name no section: its cut is then not made.
+ *
+ * Returns undefined, meaning "send one block", when the message has no sections (an opaque prompt never splits),
+ * when no cut applies, or when nothing would be left to cache before the volatile block.
+ */
+export function splitSystemMessageIntoBlocks(
 	message: SystemMessage,
 	boundary: string | undefined,
-): [base: string, project: string] | undefined {
-	if (!boundary || !message.sections) return undefined;
-	const base: string[] = [contentText(message.content)];
-	const project: string[] = [];
-	let reached = false;
+	volatileBoundary?: string,
+): InstructionBlocks | undefined {
+	if ((!boundary && !volatileBoundary) || !message.sections) return undefined;
+	const parts: [base: string[], session: string[], volatile: string[]] = [[contentText(message.content)], [], []];
+	let stage = 0;
 	for (const [name, text] of Object.entries(message.sections)) {
-		if (name === boundary) reached = true;
-		if (text === null) continue;
-		(reached ? project : base).push(text);
+		if (name === volatileBoundary) stage = 2;
+		else if (name === boundary && stage === 0) stage = 1;
+		if (text !== null) parts[stage].push(text);
 	}
-	const baseText = base.filter((part) => part.length > 0).join("\n\n");
-	const projectText = project.filter((part) => part.length > 0).join("\n\n");
-	if (baseText.length === 0 || projectText.length === 0) return undefined;
-	return [`${baseText}\n\n`, projectText];
+	const [base, session, volatile] = parts.map((part) => part.filter((text) => text.length > 0).join("\n\n"));
+	const cached = [base, session].filter((text) => text.length > 0);
+	// Without a base there is nothing a second breakpoint would save: the prompt stays one block.
+	if (base.length === 0 && volatile.length === 0) return undefined;
+	if (cached.length === 0 || (cached.length === 1 && volatile.length === 0)) return undefined;
+	const texts = volatile.length > 0 ? [...cached, volatile] : cached;
+	const joined = texts.map((text, index) => (index < texts.length - 1 ? `${text}\n\n` : text));
+	return volatile.length > 0 ? { cached: joined.slice(0, -1), volatile: joined.at(-1) } : { cached: joined };
 }

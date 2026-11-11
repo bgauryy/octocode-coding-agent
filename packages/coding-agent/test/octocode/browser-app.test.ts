@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { openFile } from "../../src/octocode/browser/open.ts";
+import { openTarget } from "../../../common/src/open-target.ts";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import {
 	APP_PROFILE_PREFIX,
@@ -23,7 +23,7 @@ import {
 } from "../../src/octocode/browser/app-window.ts";
 
 // The daemon and the system opener are external boundaries of the daemon-path test below.
-vi.mock("../../src/octocode/browser/open.ts", () => ({ openFile: vi.fn(async () => undefined) }));
+vi.mock("../../../common/src/open-target.ts", () => ({ openTarget: vi.fn(async () => undefined) }));
 vi.mock("../../src/octocode/web-daemon/launcher.ts", () => ({
 	ensureWebDaemon: async () => ({ origin: "http://127.0.0.1:7", token: "tok", record: {} }),
 	waitForSession: async () => true,
@@ -245,11 +245,11 @@ it("opens the daemon page in the default browser when web.window is browser", as
 	const ctx = { hasUI: true, ui: { notify: vi.fn() } } as never;
 	const opener = daemonOpener(
 		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },
-		{ env: { OCTOCODE_WEB_DAEMON: "1" }, window: () => "browser" },
+		{ env: {}, window: () => "browser" },
 	);
-	expect(await opener(ctx, "activity")).toBe(true);
-	expect(openFile).toHaveBeenCalledOnce();
-	const url = new URL(vi.mocked(openFile).mock.calls[0]?.[0] ?? "");
+	await opener(ctx, "activity");
+	expect(openTarget).toHaveBeenCalledOnce();
+	const url = new URL(vi.mocked(openTarget).mock.calls[0]?.[0] ?? "");
 	expect(url.origin).toBe("http://127.0.0.1:7");
 	expect(url.searchParams.get("s")).toBe("s1");
 	expect(url.href).not.toContain("tok");

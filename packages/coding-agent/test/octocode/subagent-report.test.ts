@@ -3,7 +3,9 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
 import { capOutput } from "../../src/octocode/shared/util.ts";
-import { ReportTracker, reportChecks, reportOutcome, reportStatus } from "../../src/octocode/subagents/report.ts";
+import { ReportTracker } from "../../src/octocode/subagents/report.ts";
+import { reportChecks, reportOutcome, reportStatus } from "../../src/octocode/subagents/report-outcome.ts";
+import { admitResultSchema } from "../../src/octocode/subagents/result-schema.ts";
 import { tmp } from "./helpers.ts";
 
 describe("the outcome word a report starts with", () => {
@@ -265,6 +267,89 @@ describe("incremental subagent reports", () => {
 		} finally {
 			append.mockRestore();
 		}
+	});
+});
+
+describe("a report that names no outcome", () => {
+	const ASK =
+		"Your report does not start with an outcome word. Reply with one word and nothing else: done, partial, blocked or failed, whichever fits the report you just gave. Do not repeat the report and do not call a tool.";
+
+	const headed = () => {
+		const report = new ReportTracker();
+		report.incoming("user");
+		report.answer("## Summary\nThe parser is migrated.", "stop");
+		return report;
+	};
+
+	it("is asked for its outcome word once, and the answer sets the outcome without changing the report", () => {
+		const report = headed();
+		expect(report.lacksOutcome).toBe(true);
+		const before = report.result();
+		expect(before.outcome).toBeUndefined();
+		expect(report.askOutcome()).toBe(ASK);
+		expect(report.lacksOutcome).toBe(false);
+		report.incoming("user");
+		// A tool call on the way to the answer is not the answer.
+		report.answer("Checking.", "toolUse");
+		report.answer("Blocked.", "stop");
+		const after = report.result();
+		expect(after).toMatchObject({ outcome: "blocked", outcomeSource: "asked", answered: true });
+		expect(after.text).toBe(before.text);
+		expect(after.reportArtifact).toEqual(before.reportArtifact);
+		expect(after.error).toBeUndefined();
+		expect(report.lacksOutcome).toBe(false);
+	});
+
+	it.each([
+		["a second answer without the word", "## Outcome\nIt went well.", "stop"],
+		["an answer that failed", undefined, "error"],
+		["an answer cut at the output limit", "done", "length"],
+	])("records partial after %s", (_name, text, stopReason) => {
+		const report = headed();
+		report.askOutcome();
+		report.incoming("user");
+		report.answer(text, stopReason, stopReason === "error" ? "provider down" : undefined);
+		expect(report.result()).toMatchObject({ outcome: "partial", outcomeSource: "asked", answered: true });
+		expect(report.result().error).toBeUndefined();
+		expect(report.result().text).toBe("## Summary\nThe parser is migrated.");
+	});
+
+	it("records partial when the child never answers the question", () => {
+		const report = headed();
+		report.askOutcome();
+		expect(report.result()).toMatchObject({ outcome: "partial", outcomeSource: "asked" });
+	});
+
+	it("keeps a structured result the report delivered", () => {
+		const contract = admitResultSchema({
+			type: "object",
+			properties: { verdict: { type: "string" } },
+			required: ["verdict"],
+		});
+		const report = new ReportTracker(undefined, contract);
+		report.incoming("user");
+		report.answer('## Result\nStructured result:\n```json\n{"verdict":"ok"}\n```', "stop");
+		const valid = report.result().structured;
+		expect(valid?.status).toBe("valid");
+		report.askOutcome();
+		report.incoming("user");
+		report.answer("done", "stop");
+		expect(report.result()).toMatchObject({ outcome: "done", outcomeSource: "asked", structured: valid });
+	});
+
+	it.each([
+		["names its outcome", (report: ReportTracker) => report.answer("done: migrated", "stop")],
+		["has not answered", (report: ReportTracker) => report.answer("Reading.", "toolUse")],
+		["failed", (report: ReportTracker) => report.answer("## Summary", "length")],
+		[
+			"is only a waiting line",
+			(report: ReportTracker) => report.answer("Waiting for the build job to finish.", "stop", undefined, true),
+		],
+	])("asks nothing of a report that %s", (_name, answer) => {
+		const report = new ReportTracker();
+		report.incoming("user");
+		answer(report);
+		expect(report.lacksOutcome).toBe(false);
 	});
 });
 

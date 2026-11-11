@@ -9,12 +9,11 @@ import { resolveOpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
 import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
 export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
 import { convertResponsesTools, getResponsesToolSupport } from "../openai-responses-shared/tools.ts";
+import { OPENAI_RESPONSES_MIN_OUTPUT_TOKENS } from "../openai-responses-shared/types.ts";
 import { resolveSamplingParams } from "../simple-options.ts";
 import { getCompat, isChatGPTSignIn } from "./compat.ts";
 import type { OpenAIResponsesOptions, ResponsesRequest } from "./types.ts";
 
-// OpenAI Responses rejects max_output_tokens below 16.
-const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 // Fixed reasoning.effort while configuration_update items carry the thinking level.
 const CONFIGURATION_UPDATE_REQUEST_EFFORT = "medium";
 
@@ -76,7 +75,9 @@ export function buildParams(
 	const messages = convertResponsesMessages(model, context, RESPONSES_TOOL_CALL_PROVIDERS, {
 		instructionCacheTtl,
 		instructionCacheBoundary: options?.instructionCacheBoundary,
+		instructionVolatileBoundary: options?.instructionVolatileBoundary,
 		grammarToolInputProperties,
+		supportsDeveloperRole: compat.supportsDeveloperRole,
 		supportsMidConvoSystemMessages: compat.supportsMidConvoSystemMessages,
 		supportsAdditionalTools: compat.supportsAdditionalTools,
 		supportsToolSearch: compat.supportsToolSearch,

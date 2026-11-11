@@ -109,6 +109,30 @@ describe("Anthropic SSE body lifetime", () => {
 		expect(result.stopReason).toBe("error");
 		expect(cancelled).toBe(true);
 	});
+
+	it("cancels the response body when the response hook fails", async () => {
+		let cancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			// The server keeps the stream open; only a cancel releases it.
+			cancel() {
+				cancelled = true;
+			},
+		});
+		const response = new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+		const result = await streamAnthropic(
+			getBuiltinModel("anthropic", "claude-sonnet-4-5"),
+			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
+			{
+				client: createFakeAnthropicClient(response),
+				onResponse: () => {
+					throw new Error("hook failure");
+				},
+			},
+		).result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("hook failure");
+		expect(cancelled).toBe(true);
+	});
 });
 
 type ResponseContentBlock = { type: "thinking"; thinking: string; signature: string } | { type: "text"; text: string };

@@ -54,13 +54,14 @@ describe("the task budget through native continuation routes", () => {
 			try {
 				await reopened.emit("session_start", {}, reopened.ctx);
 				expect(reopened.team.join().id).not.toBe(parent);
-				// Four saved replies, past the soft limit of 3: the message is a grant, so this run stops at 4 + 5.
+				// Four saved replies, past the soft limit of 3: the message is a grant, so this run stops at 4 + 5, after one last
+				// request without tools.
 				expect(await reopened.team.send(id, "budget loop 40 stop-at 5", { replyRequired: false })).toHaveProperty(
 					"resumed",
 				);
 				await reopened.control.settle();
 				expect(reopened.sent.at(-1)?.message.content).toContain("9 requests; limit 7");
-				expect(reopened.sent.at(-1)?.message.details).toMatchObject({ id, requests: 5 });
+				expect(reopened.sent.at(-1)?.message.details).toMatchObject({ id, requests: 6 });
 			} finally {
 				await reopened.control.stopAll();
 				reopened.team.stop();
@@ -104,7 +105,7 @@ describe("the task budget through native continuation routes", () => {
 				const resumed = await fork.run({ goal: "continue accounting", task: "budget loop 40 stop-at 5", resume: id });
 				expect(resumed.content[0].text).toContain("8 requests; limit 6");
 				expect(resumed.content[0].text).toContain(`\`resume: ${id}\``);
-				expect(resumed.details).toMatchObject({ id, requests: 5 });
+				expect(resumed.details).toMatchObject({ id, requests: 6 });
 			} finally {
 				await fork.control.stopAll();
 				fork.team.stop();
@@ -131,21 +132,22 @@ describe("the task budget through native continuation routes", () => {
 			const id = started.details.id;
 			await parent.control.settle();
 			expect(parent.sent.at(-1)?.message.content).toContain("5 requests; limit 3");
-			// A peer's message: at the hard limit it runs nothing, and the report says how to continue.
+			// Five replies to the hard limit and one last one without tools. A peer's message: past the hard limit it runs
+			// nothing, and the report says how to continue.
 			expect(await resume(id, { from: "a-peer" })).toContain("Resumed");
 			await parent.control.settle();
 			const relayed = parent.sent.at(-1)?.message;
-			expect(relayed?.content).toContain("5 requests; limit 3");
+			expect(relayed?.content).toContain("6 requests; limit 3");
 			expect(relayed?.content).toContain(`\`resume: ${id}\``);
 			// No requests in this run: the details carry no count for it.
 			expect(relayed?.details.id).toBe(id);
 			expect(relayed?.details.requests ?? 0).toBe(0);
-			// The parent forwarding that message decided it: a whole allowance from the five saved replies.
+			// The parent forwarding that message decided it: a whole allowance from the six saved replies.
 			expect(await resume(id, { from: "a-peer", forwardedBy: parent.team.join().id })).toContain("Resumed");
 			await parent.control.settle();
 			const forwarded = parent.sent.at(-1)?.message;
-			expect(forwarded?.content).toContain("10 requests; limit 8");
-			expect(forwarded?.details).toMatchObject({ id, requests: 5 });
+			expect(forwarded?.content).toContain("11 requests; limit 9");
+			expect(forwarded?.details).toMatchObject({ id, requests: 6 });
 		} finally {
 			await parent.control.stopAll();
 			parent.team.stop();

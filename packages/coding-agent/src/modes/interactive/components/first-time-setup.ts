@@ -3,8 +3,7 @@ import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar } from "./hint-bar.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
 
 export interface FirstTimeSetupResult {
 	theme: string;

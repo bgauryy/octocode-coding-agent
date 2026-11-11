@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { defaultSessionDirectories, knownSessionDirectories, type CwdSessionDirectory } from "./directories.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { mapConcurrent } from "../../../../common/src/map-concurrent.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
 import {
 	getDefaultSessionDirPath,
@@ -14,6 +15,7 @@ import {
 	sessionCwdMatches,
 } from "./storage.ts";
 import { parseSessionEntryLine } from "./entries.ts";
+import { sessionMirrorSettled } from "./mirror.ts";
 import type { SessionEntry, SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
 
 function isMessageWithContent(message: AgentMessage): message is Message {
@@ -153,31 +155,14 @@ export async function buildSessionInfo(
 
 const MAX_CONCURRENT_SESSION_INFO_LOADS = 10;
 const MAX_CONCURRENT_SESSION_DISCOVERY_LOADS = 64;
+/** Longest `listAllSessions` waits for this process's pending mirror writes (`mirror.ts`) before it lists. */
+const LIST_MIRROR_WAIT_MS = 2_000;
 const CURRENT_SESSION_LIST_PUBLISH_INTERVAL = 10;
 const ALL_SESSION_LIST_PUBLISH_INTERVAL = 100;
 
 interface SessionFileCandidate {
 	path: string;
 	stats?: Stats;
-}
-
-async function mapWithConcurrency<T, R>(
-	items: T[],
-	limit: number,
-	map: (item: T, index: number) => Promise<R>,
-	signal?: AbortSignal,
-): Promise<R[]> {
-	const results: R[] = [];
-	let nextIndex = 0;
-	const worker = async (): Promise<void> => {
-		while (nextIndex < items.length) {
-			signal?.throwIfAborted();
-			const index = nextIndex++;
-			results[index] = await map(items[index], index);
-		}
-	};
-	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-	return results;
 }
 
 function sortSessionInfos(sessions: SessionInfo[]): SessionInfo[] {
@@ -189,7 +174,7 @@ function buildSessionInfosWithConcurrency(
 	onLoaded: (info: SessionInfo | null, index: number) => void,
 	signal?: AbortSignal,
 ): Promise<(SessionInfo | null)[]> {
-	return mapWithConcurrency(
+	return mapConcurrent(
 		files,
 		MAX_CONCURRENT_SESSION_INFO_LOADS,
 		async (file, index) => {
@@ -307,9 +292,11 @@ export async function listAllSessions(
 	}
 
 	try {
+		// A workspace this process wrote its first session in is registered by the database writer: wait for it, bounded.
+		await sessionMirrorSettled(LIST_MIRROR_WAIT_MS);
 		const dirs = await knownSessionDirectories();
 
-		const dirFiles = await mapWithConcurrency(
+		const dirFiles = await mapConcurrent(
 			dirs,
 			MAX_CONCURRENT_SESSION_DISCOVERY_LOADS,
 			async (dir) => {
@@ -322,7 +309,7 @@ export async function listAllSessions(
 			abortSignal,
 		);
 		const allFiles = [...new Set(dirFiles.flat())];
-		const candidates = await mapWithConcurrency(
+		const candidates = await mapConcurrent(
 			allFiles,
 			MAX_CONCURRENT_SESSION_DISCOVERY_LOADS,
 			async (path): Promise<SessionFileCandidate> => {

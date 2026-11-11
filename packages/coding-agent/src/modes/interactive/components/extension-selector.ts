@@ -7,8 +7,7 @@ import { Container, getKeybindings, GLYPH, Spacer, Text, type TUI } from "@octoc
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, renderHintLine } from "./hint-bar.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { HintBar, keyText, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow, writeInRow } from "../../../octocode/ask/card.ts";
 import type { AskView } from "../../../octocode/shared/ask-view.ts";
 

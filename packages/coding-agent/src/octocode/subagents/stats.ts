@@ -97,11 +97,14 @@ function tokensOf(run: Run): number {
 const costOf = (run: Run): number =>
 	isRecord(run.usage?.cost) ? finiteOrZero(run.usage.cost.total) : run.usage ? 0 : finiteOrZero(run.details.cost);
 
-/** A run's outcome; `named`: stated as the first word (a run recorded before sources were kept counts as first). */
+/**
+ * A run's outcome; `named`: stated as the first word (a run recorded before sources were kept counts as first). One the
+ * child gave only when asked (`asked`) is neither named nor trailing.
+ */
 function outcomeOf(details: Record<string, unknown>): { outcome: StatsOutcome; named: boolean; trailing: boolean } {
 	const word = REPORT_STATUSES.find((status) => status === details.outcome);
 	const trailing = Boolean(word) && details.outcomeSource === "last";
-	if (word) return { outcome: word, named: !trailing, trailing };
+	if (word) return { outcome: word, named: !trailing && details.outcomeSource !== "asked", trailing };
 	return { outcome: details.status === "failed" ? "failed" : "unknown", named: false, trailing: false };
 }
 

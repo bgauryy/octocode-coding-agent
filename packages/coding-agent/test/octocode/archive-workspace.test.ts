@@ -12,11 +12,12 @@ import { expireArchiveDetails, mayRemoveArchive } from "../../src/octocode/archi
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore, MemoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { archiveFolder, setSessionLineage } from "../../src/octocode/history/archive.ts";
+import { archiveFolder, setSessionLineage, writeSegment } from "../../src/octocode/history/archive.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { planningRefusal } from "../../src/octocode/plan/gate.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { readRecords } from "../../src/octocode/archive/reads.ts";
+import { readMemories } from "../../src/octocode/memory/reads.ts";
 import type { CompactionEntry } from "../../src/core/session-manager.ts";
 
 let root: string;
@@ -63,29 +64,36 @@ it("shares explicit project notes and isolates default workspace notes", () => {
 	expect(() => project.delete(note.id)).toThrow("No memory");
 });
 
-it("exposes one tool and retains scoped write checks and plan classification", async () => {
+it("exposes two tools and retains scoped write checks and plan classification", async () => {
 	const fake = fakeHost();
-	const memory = registerMemory(fake.api, {
+	registerMemory(fake.api, {
 		commands: new Subcommands(),
 		isSubagent: false,
 		permission: fakePermission(),
 	});
-	registerArchiveTool(fake.api, memory);
-	expect([...fake.tools.keys()]).toEqual(["archive"]);
-	const tool = fake.tools.get("archive");
+	registerArchiveTool(fake.api);
+	expect([...fake.tools.keys()]).toEqual(["memory", "archive"]);
 	const ctx = fakeCtx({ cwd: root });
-	const run = (input: object) =>
-		tool.execute("call", { goal: "remember", reason: "user preference", ...input }, undefined, undefined, ctx);
-	await expect(run({ op: "set", source: "events", title: "bad" })).rejects.toThrow("set works on source memories only");
-	expect((await run({ op: "set", source: "memories", title: "remember amber" })).content[0].text).toMatch(
-		/Saved M1 \(workspace/,
+	const run = (name: string, input: object) =>
+		fake.tools
+			.get(name)
+			.execute("call", { goal: "remember", reason: "user preference", ...input }, undefined, undefined, ctx);
+	// A memory operation sent to `archive` is refused with the `memory` call to make, whatever source it names.
+	await expect(run("archive", { op: "set", source: "events", title: "bad" })).rejects.toThrow(
+		'archive no longer reads or writes memories: call the memory tool with op "set".',
 	);
+	expect(memoryStore(root).count()).toBe(0);
+	expect((await run("memory", { op: "set", title: "remember amber" })).content[0].text).toMatch(/Saved M1 \(workspace/);
 	const broken = path.join(root, "broken.jsonl");
 	fs.writeFileSync(broken, "invalid old transcript");
 	Object.assign(ctx.sessionManager, { getSessionFile: () => broken });
-	expect((await run({ op: "get", source: "memories", id: "M1" })).content[0].text).toContain("remember amber");
+	expect((await run("memory", { op: "get", id: "M1" })).content[0].text).toContain("remember amber");
 	const definition = { sourceInfo: { owner: "native" } } as Parameters<typeof planningRefusal>[1];
 	expect(planningRefusal({ toolName: "archive", input: { op: "get" } }, definition)).toBeUndefined();
+	for (const op of ["get", "list", "search"])
+		expect(planningRefusal({ toolName: "memory", input: { op } }, definition)).toBeUndefined();
+	for (const input of [{ op: "set" }, { op: "delete" }, {}])
+		expect(planningRefusal({ toolName: "memory", input }, definition)).toContain("blocks memory");
 	expect(planningRefusal({ toolName: "archive", input: { op: "set", source: "memories" } }, definition)).toContain(
 		"blocks archive",
 	);
@@ -189,7 +197,7 @@ it("refuses foreign transcript pointers in an archive record and fork header", a
 	expect(compactions.get(db.db, "child", "local")?.originVerified).toBe(false);
 });
 
-it("finds old lifecycle events beyond 50 and filters them without treating a partial page as the whole corpus", async () => {
+it("finds an old lifecycle event beyond 50 in one search, since a query tests every record", async () => {
 	const db = sharedAgentDb();
 	for (let i = 0; i < 65; i++)
 		db.transaction(() =>
@@ -204,22 +212,21 @@ it("finds old lifecycle events beyond 50 and filters them without treating a par
 				version: 1,
 			}),
 		);
-	let cursor: string | undefined;
-	const texts: string[] = [];
-	do {
-		const result = await readRecords(root, {
-			source: "events",
-			op: "search",
-			query: "oldest-needle",
-			agentId: "agent",
-			cursor,
-			limit: 10,
-		});
-		texts.push(result.text);
-		cursor = result.cursor;
-	} while (cursor);
-	expect(texts).toHaveLength(7);
-	expect(texts.at(-1)).toContain("event:event-0");
+	const found = await readRecords(root, {
+		source: "events",
+		op: "search",
+		query: "oldest-needle",
+		agentId: "agent",
+		limit: 10,
+	});
+	expect(found.text).toContain("event:event-0");
+	expect(found.text).toContain("events: 1 match in 65 records searched (every record)");
+	// Every record was searched: no cursor promises more.
+	expect(found.cursor).toBeUndefined();
+	// A listing still pages: 10 of 65, then a cursor.
+	const listed = await readRecords(root, { source: "events", op: "list", agentId: "agent", limit: 10 });
+	expect(listed.hits).toBe(10);
+	expect(listed.cursor).toBeDefined();
 	expect((await readRecords(root, { source: "events", agentId: "another" })).hits).toBe(0);
 });
 
@@ -227,10 +234,10 @@ it("lists pins first, pages every memory and does not count a list as use", asyn
 	const store = memoryStore(root);
 	const pin = store.set({ title: "Pinned policy", pinned: true, author: "user" }, 1).memory;
 	store.set({ title: "Unpinned preference", author: "user" }, 2);
-	const first = await readRecords(root, { source: "memories", op: "list", limit: 1 });
+	const first = await readMemories(store, { op: "list", limit: 1 });
 	expect(first.text).toContain(`M${pin.id}\n`);
 	expect(first.cursor).toBeDefined();
-	const next = await readRecords(root, { source: "memories", op: "list", limit: 1, cursor: first.cursor });
+	const next = await readMemories(store, { op: "list", limit: 1, cursor: first.cursor });
 	expect(next.text).toContain("Unpinned preference");
 	expect(next.cursor).toBeUndefined();
 	expect(store.get(pin.id)?.useCount).toBe(0);
@@ -267,7 +274,7 @@ it("uses the full memory index and summary corpus for keyword search, including 
 			{ detail: null },
 		);
 	}
-	const memory = await readRecords(root, { source: "memories", op: "search", keywords: "cobalt", limit: 1 });
+	const memory = await readMemories(store, { op: "search", keywords: "cobalt", limit: 1 });
 	expect(memory.text).toContain("Ancient cobalt decision");
 	const summaries = await readRecords(root, { source: "compactions", op: "search", keywords: "cobalt", limit: 1 });
 	expect(summaries.text).toContain("old cobalt summary");
@@ -293,24 +300,20 @@ it("repairs archive files in their workspace when another home or workspace is a
 	expect(fs.existsSync(path.join(env.OCTOCODE_HOME, "agent", "sessions", "configured-home"))).toBe(false);
 });
 
-it("uses the configured memory store for both archive writes and reads", async () => {
+it("uses the configured memory store for both memory writes and reads", async () => {
 	const fake = fakeHost();
-	registerArchiveTool(
-		fake.api,
-		registerMemory(fake.api, {
-			commands: new Subcommands(),
-			isSubagent: false,
-			permission: fakePermission(),
-			env: { ...process.env, OCTOCODE_AGENT_DB: path.join(root, "configured.db") },
-		}),
-	);
+	registerMemory(fake.api, {
+		commands: new Subcommands(),
+		isSubagent: false,
+		permission: fakePermission(),
+		env: { ...process.env, OCTOCODE_AGENT_DB: path.join(root, "configured.db") },
+	});
 	const run = (params: object) =>
-		fake.tools.get("archive").execute(
+		fake.tools.get("memory").execute(
 			"call",
 			{
 				goal: "Remember a rule",
 				reason: "User preference",
-				source: "memories",
 				...params,
 			},
 			undefined,
@@ -383,4 +386,93 @@ it("propagates cancellation during the final recovery read before returning a re
 	} finally {
 		spy.mockRestore();
 	}
+});
+
+it("says in the text of a paged get which page it is and how to read the next", async () => {
+	const long = { ...entry, id: "long", summary: "indigo ".repeat(4_300) };
+	saveCompaction(sharedAgentDb(), root, "session-a", long, { detail: null });
+	saveCompaction(sharedAgentDb(), root, "session-a", entry, { detail: null });
+	const fake = fakeHost();
+	registerArchiveTool(fake.api);
+	const get = async (id: string, cursor?: string) => {
+		const result = await fake.tools
+			.get("archive")
+			.execute(
+				"call",
+				{ reason: "past decision", op: "get", id, cursor },
+				undefined,
+				undefined,
+				fakeCtx({ cwd: root }),
+			);
+		return { text: result.content[0].text as string, cursor: result.details.nextCursor as string | undefined };
+	};
+	const first = await get("compaction:session-a:long");
+	expect(first.text).toMatch(
+		/\n\nPage 1 of 3\.\n\nMore remains: call again with cursor a2\.\S+ and the same other arguments\.$/,
+	);
+	const second = await get("compaction:session-a:long", first.cursor);
+	expect(second.text).toContain("Page 2 of 3.");
+	const last = await get("compaction:session-a:long", second.cursor);
+	expect(last.text).toMatch(/\n\nPage 3 of 3\.$/);
+	expect(last.cursor).toBeUndefined();
+	// A record that fits one page says nothing about pages.
+	expect((await get(`compaction:session-a:${entry.id}`)).text).not.toMatch(/Page \d/);
+});
+
+it("gives one cursor when records and session history both continue, and neither repeats", async () => {
+	const db = sharedAgentDb();
+	for (const id of ["first", "second", "third"])
+		saveCompaction(db, root, "session-a", { ...entry, id, summary: `needle summary ${id}` }, { detail: null });
+	writeSegment(
+		{
+			session: "session-a",
+			entry: "e-session-a",
+			tokensBefore: 1_000,
+			method: "cache-shared",
+			tldr: "work",
+			topics: [],
+			readFiles: [],
+			modifiedFiles: [],
+			messages: 1,
+		},
+		Array.from({ length: 3_000 }, (_, index) => `needle line ${index} ${"z".repeat(300)}`).join("\n"),
+	);
+	const fake = fakeHost();
+	registerArchiveTool(fake.api);
+	const search = async (cursor?: string) => {
+		const result = await fake.tools
+			.get("archive")
+			.execute(
+				"call",
+				{ reason: "past decision", op: "search", source: "all", query: "needle", limit: 1, cursor },
+				undefined,
+				undefined,
+				fakeCtx({ cwd: root }),
+			);
+		return { text: result.content[0].text as string, cursor: result.details.nextCursor as string | undefined };
+	};
+	const first = await search();
+	// Both parts stopped early: the result names one cursor, once, on its last line.
+	expect(first.cursor).toMatch(/^a2\./);
+	expect(first.text).not.toMatch(/cursor h1\./);
+	expect(first.text).not.toMatch(/page 2|with page/i);
+	expect(first.text.split(first.cursor!).length - 1).toBe(1);
+	expect(first.text.endsWith(`cursor ${first.cursor} and the same other arguments.`)).toBe(true);
+	expect(first.text).toContain("needle summary third");
+	expect(first.text).toContain("needle line 0 ");
+	const second = await search(first.cursor);
+	expect(second.text).toContain("needle summary second");
+	expect(second.text).not.toContain("needle summary third");
+	expect(second.text).not.toContain("needle line 0 ");
+	// Every page until the end shows each compaction once.
+	const seen = [first.text, second.text];
+	let cursor = second.cursor;
+	for (let guard = 0; cursor && guard < 200; guard++) {
+		const next = await search(cursor);
+		seen.push(next.text);
+		cursor = next.cursor;
+	}
+	expect(cursor).toBeUndefined();
+	for (const id of ["first", "second", "third"])
+		expect(seen.filter((text) => text.includes(`needle summary ${id}`))).toHaveLength(1);
 });

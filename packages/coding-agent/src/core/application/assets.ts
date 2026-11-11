@@ -20,6 +20,9 @@ const slotId = (slot: string) => createHash("sha256").update("stream:").update(s
 /** Text whose UTF-8 bytes depend on a neighbouring chunk: it starts or ends inside a surrogate pair. */
 const splitsPair = (text: string) => /^[\uDC00-\uDFFF]/.test(text) || /[\uD800-\uDBFF]$/.test(text);
 
+/** How many recently written text slots keep their text in memory for `get`. */
+const RECENT_TEXTS = 8;
+
 /** Session-owned spill storage. Only registered opaque IDs can be read; no user-controlled paths enter filesystem IO. */
 export class ApplicationAssets {
 	private directory?: string;
@@ -49,7 +52,22 @@ export class ApplicationAssets {
 		slot?: string,
 	): ApplicationAsset {
 		const value = Buffer.from(data, encoding === "base64" ? "base64" : "utf8");
-		return this.putValue(value, mimeType, encoding, name, slot);
+		const asset = this.putValue(value, mimeType, encoding, name, slot);
+		if (slot && encoding === "utf8" && asset.revision) this.remember(asset.id, asset.revision, data);
+		return asset;
+	}
+
+	/**
+	 * The text of the slots written last, by id: a streamed block is read back by the terminal after every delta, and
+	 * reading the whole file each time made a long reply cost more with every token. A few slots are kept (the blocks
+	 * of the message being streamed); `get` uses an entry only while its revision is the asset's.
+	 */
+	private readonly texts = new Map<string, { revision: string; data: string }>();
+
+	private remember(id: string, revision: string, data: string): void {
+		this.texts.delete(id);
+		this.texts.set(id, { revision, data });
+		if (this.texts.size > RECENT_TEXTS) this.texts.delete(this.texts.keys().next().value as string);
 	}
 
 	/** Store bytes already decoded and validated by upload without decoding the base64 a second time. */
@@ -101,14 +119,22 @@ export class ApplicationAssets {
 		stored.pending.bytes += value.length;
 		if (stored.pending.bytes >= PENDING_BYTES) this.store(stored);
 		stored.hash.update(value);
+		const before = stored.asset.revision;
 		stored.asset = { ...stored.asset, size, revision: stored.hash.copy().digest("hex") };
 		this.bytes += value.length;
+		const text = this.texts.get(stored.asset.id);
+		if (text && text.revision === before && stored.asset.revision)
+			this.remember(stored.asset.id, stored.asset.revision, text.data + data);
+		else this.texts.delete(stored.asset.id);
 		return { ...stored.asset };
 	}
 
 	get(id: string): ApplicationAssetPayload | undefined {
 		const stored = this.assets.get(id);
 		if (!stored) return undefined;
+		const text = this.texts.get(id);
+		if (text && text.revision === stored.asset.revision && stored.encoding === "utf8")
+			return { asset: { ...stored.asset }, encoding: stored.encoding, data: text.data };
 		this.store(stored);
 		const value = stored.value ?? readFileSync(join(this.directory!, stored.asset.id));
 		const data = value.toString(stored.encoding === "base64" ? "base64" : "utf8");
@@ -140,6 +166,7 @@ export class ApplicationAssets {
 		if (this.directory) rmSync(this.directory, { recursive: true, force: true });
 		this.directory = undefined;
 		this.assets.clear();
+		this.texts.clear();
 		this.bytes = 0;
 	}
 }

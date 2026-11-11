@@ -1,4 +1,4 @@
-import { createAbortError } from "../utils/abort.ts";
+import { assertStreamCompleted, stripStreamScratch } from "./stream-finalize.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -134,7 +134,13 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 					});
 				}
 			}
-			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			try {
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			} catch (error) {
+				// Release the streaming body so the connection closes and the server stops generating.
+				await response.body?.cancel().catch(() => {});
+				throw error;
+			}
 			stream.push({ type: "start", partial: output });
 
 			const state: AnthropicStreamState = {
@@ -151,16 +157,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			}
 			const { inputTransformations } = state;
 
-			if (options?.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error("Anthropic stream ended without a stop reason");
-			}
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error(output.errorMessage || "An unknown error occurred");
-			}
+			assertStreamCompleted(output, options?.signal, "Anthropic");
 			if (inputTransformations && inputTransformations.length > 0) {
 				appendAssistantMessageDiagnostic(output, {
 					type: "anthropic_input_transformations",
@@ -178,11 +175,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) {
-				delete (block as { index?: number }).index;
-				// partialJson is only a streaming scratch buffer; never persist it.
-				delete (block as { partialJson?: string }).partialJson;
-			}
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = redactProviderText(
 				error instanceof Error ? withNetworkCauseCode(error) : JSON.stringify(error),

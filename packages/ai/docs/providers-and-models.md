@@ -149,7 +149,7 @@ import { complete } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 ```
 
-Compat is a strict superset of the root entrypoint, so a file can switch its import path wholesale. It will be removed in a future release; migrate to `createModels()` + provider factories:
+Compat is a strict superset of the root entrypoint, so a file can switch its import path wholesale. It is supported API: the coding agent dispatches through its registry. Code that wants no global state uses `createModels()` and the provider factories instead:
 
 | Old                                                                          | New                                                                                           |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |

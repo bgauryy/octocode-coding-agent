@@ -1,8 +1,7 @@
 import { Container, getKeybindings, GLYPH, Spacer, Text } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar } from "./hint-bar.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { plainText } from "./styled-line.ts";
 
 /** One answer of a trust question: a key to press, what it does, and the value it returns. */

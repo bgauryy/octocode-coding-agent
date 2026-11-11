@@ -53,7 +53,8 @@ export const SETTINGS_DEFAULTS = {
 	sessionApi: true,
 	sessionApiTurnPermission: "session",
 	mcpPresentation: "declared",
-	mcpExposure: "direct",
+	/** MCP tools, `web` and `archive` deferred until used, again after 24 hours unused (the MCP package's `DEFAULT_MCP_EXPOSURE_SETTING`). */
+	mcpExposure: "recent",
 	collapseChangelog: false,
 	enableInstallTelemetry: true,
 	enableAnalytics: false,

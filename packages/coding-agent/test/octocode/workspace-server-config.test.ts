@@ -19,7 +19,10 @@ vi.mock("../../src/octocode/workspace/server.ts", async (original) => {
 				args[2],
 				args[3],
 				args[4],
-				createSessionConfig({ name: "repo", root: args[0].repoRoot }),
+				createSessionConfig({ name: "repo", root: args[0].repoRoot }, process.env, () => ({
+					names: ["bash", "web"],
+					declared: new Map([["web", true]]),
+				})),
 			),
 	};
 });
@@ -63,6 +66,37 @@ describe("per-session settings routes", () => {
 		expect(written.status).toBe(200);
 		const file = path.join(root, "agent", "settings.json");
 		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toMatchObject({ defaultProvider: "openai" });
+	});
+
+	it("lists this session's tool states and pins a tool with the token only", async () => {
+		const unauthorized = await app.request(DAEMON_ROUTES.configTools, undefined, { headers: { authorization: "" } });
+		expect(unauthorized.status).toBe(401);
+		const listed = await app.request(DAEMON_ROUTES.configTools);
+		expect(listed.status).toBe(200);
+		expect(listed.body).toMatchObject({ live: true, groups: expect.any(Array) });
+		const native = (body: unknown) =>
+			(body as { groups: { name: string; tools: { name: string }[] }[] }).groups.find(
+				(group) => group.name === "native",
+			)?.tools;
+		expect(native(listed.body)).toEqual(
+			expect.arrayContaining([
+				{ name: "web", state: "deferred", decidedBy: "recent" },
+				{ name: "bash", state: "direct", decidedBy: "core" },
+			]),
+		);
+
+		const pin = { kind: "native", tool: "web", pin: "direct", scope: "global" };
+		const refused = await app.request(DAEMON_ROUTES.configTools, pin, { headers: { authorization: "" } });
+		expect(refused.status).toBe(401);
+		const file = path.join(root, "agent", "settings.json");
+		expect(fs.existsSync(file)).toBe(false);
+		const pinned = await app.request(DAEMON_ROUTES.configTools, pin);
+		expect(pinned.status).toBe(200);
+		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ nativeToolExposure: { web: "direct" } });
+		// The session declared it deferred when it registered the tool; the pin waits for the next session.
+		expect(native(pinned.body)).toEqual(
+			expect.arrayContaining([{ name: "web", pin: "direct", state: "deferred", decidedBy: "recent" }]),
+		);
 	});
 
 	it("answers a sign-in status request through the session's own manager", async () => {

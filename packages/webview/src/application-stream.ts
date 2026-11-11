@@ -189,13 +189,6 @@ export class ApplicationStream {
 const LIVE_MESSAGES = 200;
 const LIVE_TOOLS = 200;
 
-/**
- * The live transcript: the newest messages, the tools that belong to them, and every tool at or after the first of
- * them. Loaded history (`history-window.ts`) takes the tools before that message as messages leave, so a tool leaves
- * the live window only when history can show it. When more tools than the cap follow, older messages leave first;
- * past the last message, the oldest tools do. A tool without an order (only an older host sends one) has no place a
- * history page could return it at, so it stays live and does not count toward the cap.
- */
 /** A tool's state without its result fields, which the next result replaces. */
 function withoutResult(tool: ApplicationTool | undefined): Partial<ApplicationTool> | undefined {
 	if (!tool) return tool;
@@ -210,6 +203,13 @@ function withoutResult(tool: ApplicationTool | undefined): Partial<ApplicationTo
 	return kept;
 }
 
+/**
+ * The live transcript: the newest messages, the tools that belong to them, and every tool at or after the first of
+ * them. Loaded history (`history-window.ts`) takes the tools before that message as messages leave, so a tool leaves
+ * the live window only when history can show it. When more tools than the cap follow, older messages leave first;
+ * past the last message, the oldest tools do. A tool without an order (only an older host sends one) has no place a
+ * history page could return it at, so it stays live and does not count toward the cap.
+ */
 function retainTranscript(source: readonly ApplicationMessage[], tools: readonly ApplicationTool[] | undefined) {
 	let messages = source.slice(-LIVE_MESSAGES);
 	if (!tools) return { messages };

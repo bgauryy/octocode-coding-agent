@@ -6,6 +6,7 @@ import { DISPLAY_OUTPUT_MAX_BYTES, outputFileReadable } from "../../utils/output
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
 import { type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
+import { BASH_UPDATE_THROTTLE_MS } from "../tools/renderers/bash.ts";
 import type { SessionInternals } from "./host.ts";
 
 export interface BashHost extends Pick<SessionInternals, "session" | "emit" | "refreshContext"> {
@@ -43,6 +44,22 @@ export class SessionBash {
 		const shellPath = session.settingsManager.getShellPath();
 		const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
 
+		// At most one `bash_execution_update` per `BASH_UPDATE_THROTTLE_MS`, as the bash tool paces its own updates: every
+		// event makes its listeners copy their state, and a chatty command prints thousands of chunks a second. Deltas
+		// wait in `pending` and leave as one; what is left leaves when the command ends, before its result is recorded.
+		let pending = "";
+		let lastUpdateAt = 0;
+		let updateTimer: NodeJS.Timeout | undefined;
+		const flushUpdate = (): void => {
+			if (updateTimer) clearTimeout(updateTimer);
+			updateTimer = undefined;
+			if (!pending) return;
+			const delta = pending;
+			pending = "";
+			lastUpdateAt = Date.now();
+			this.host.emit({ type: "bash_execution_update", id: executionId, delta });
+		};
+
 		try {
 			const result = await withSessionStorage(session.sessionManager, () =>
 				executeBashWithOperations(
@@ -52,11 +69,10 @@ export class SessionBash {
 					{
 						onChunk: (delta) => {
 							onChunk?.(delta);
-							this.host.emit({
-								type: "bash_execution_update",
-								id: executionId,
-								delta,
-							});
+							pending += delta;
+							const wait = BASH_UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
+							if (wait <= 0) flushUpdate();
+							else updateTimer ??= setTimeout(flushUpdate, wait);
 						},
 						signal: abortController.signal,
 						maxOutputBytes: session.settingsManager.getBashOutputMaxBytes(),
@@ -66,9 +82,12 @@ export class SessionBash {
 				),
 			);
 
+			flushUpdate();
 			this.host.recordBashResult(command, result, options);
 			return result;
 		} finally {
+			// A command that failed or was aborted still delivers what it printed last.
+			flushUpdate();
 			this._abortControllers.delete(abortController);
 			if (!this.isRunning) {
 				for (const done of this.idleWaiters) done();

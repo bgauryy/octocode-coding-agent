@@ -182,8 +182,8 @@ describe("a native call without a reason", () => {
 			purpose: "bash ls",
 			reasonDerived: true,
 		});
-		expect(reasonPurpose({ toolName: "steps", input: { op: "list" } })).toEqual({
-			purpose: "steps",
+		expect(reasonPurpose({ toolName: "backlogPlan", input: { op: "list" } })).toEqual({
+			purpose: "backlogPlan",
 			reasonDerived: true,
 		});
 		// An MCP tool takes no native reason, so nothing is made up for it.

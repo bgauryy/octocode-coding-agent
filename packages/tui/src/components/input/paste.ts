@@ -1,4 +1,4 @@
-import { decodePastedControlKeys } from "../../bracketed-paste.ts";
+import { decodePastedControlKeys } from "../../paste-control-keys.ts";
 import { stripControlCharacters } from "../../utils/chars.ts";
 
 const PASTE_START = "\x1b[200~";
@@ -11,7 +11,7 @@ interface BracketedPasteChunk {
 	remaining: string;
 }
 
-/** Bracketed paste mode buffering for the single-line input. */
+/** Bracketed paste mode buffering for the single-line input and the editor. */
 export class BracketedPasteBuffer {
 	private pasteBuffer: string = "";
 	private isInPaste: boolean = false;
@@ -43,7 +43,7 @@ export class BracketedPasteBuffer {
 		this.isInPaste = false;
 
 		// Keep any remaining input after the paste marker
-		const remaining = this.pasteBuffer.substring(endIndex + 6); // 6 = length of \x1b[201~
+		const remaining = this.pasteBuffer.substring(endIndex + PASTE_END.length);
 		this.pasteBuffer = "";
 		return { content, remaining };
 	}

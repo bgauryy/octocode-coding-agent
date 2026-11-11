@@ -1,4 +1,7 @@
+import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
+import { HOOK_MODES } from "../shared/hook-mode.ts";
+import { CACHE_CHOICES } from "./process/env.ts";
 import { reasonSchema } from "../shared/reason.ts";
 import { GOAL_DESCRIPTION } from "../team/identity.ts";
 import { maxSubagents } from "./claim.ts";
@@ -78,6 +81,8 @@ export function agentToolSpec(runners: readonly string[] = []) {
 					description: "Return at once for independent work.",
 				}),
 			),
+			hooks: Type.Optional(StringEnum(HOOK_MODES, { description: "User hooks the child runs (default off)" })),
+			cache: Type.Optional(StringEnum(CACHE_CHOICES, { description: "History cache tier (default: by task shape)" })),
 			isolate: Type.Optional(
 				Type.Boolean({
 					description:

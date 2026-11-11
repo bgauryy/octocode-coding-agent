@@ -30,11 +30,11 @@ Load when writing, validating or debugging an overrides file.
 
 ## Stored metadata
 
-`scripts/apply.mjs` stores the overrides next to the generated file in `<agent directory>/context-optimization/mcp/<server>.json`, with the catalog hash, each override keyed on the upstream text it replaces (the form a preset ships, below) and `optimizedBy` (the model that wrote the rewrite). When the catalog changes, a session keeps every override whose upstream text is unchanged; the others fall back to the source wording, and the product's stored-catalog listing names them under `stale overrides`.
+`scripts/apply.mjs` stores the overrides next to the generated file in `<agent directory>/context-optimization/mcp/<server>.json`, with the catalog hash, each override keyed on the upstream text it replaces (the stored form, below) and `optimizedBy` (the model that wrote the rewrite). When the catalog changes, a session keeps every override whose upstream text is unchanged; the others fall back to the source wording, and the product's stored-catalog listing names them under `stale overrides`.
 
-## Preset form
+## Stored form
 
-A preset ships each override with the hash of the upstream text it replaces: the server text with the hash of the instructions, a tool's `description` and `trigger` with the hash of the tool's description, and each field with the hash of its description at its dotted path. A server release that rewrites some texts drops only the overrides of those texts; the rest still apply, and a stale one falls back to the server's wording:
+The stored `.json` keeps each override with the hash of the upstream text it replaces: the server text with the hash of the instructions, a tool's `description` and `trigger` with the hash of the tool's description, and each field with the hash of its description at its dotted path. A server release that rewrites some texts drops only the overrides of those texts; the rest still apply, and a stale one falls back to the server's wording:
 
 ```json
 {
@@ -50,4 +50,4 @@ A preset ships each override with the hash of the upstream text it replaces: the
 }
 ```
 
-Do not compute the hashes by hand. For a preset in this repository, `yarn workspace @octocodeai/octocode-mcp run generate:compact` lists the overrides a rebuilt server left stale (tool and field, with the text before and after) and re-points the ones you accept.
+Do not compute the hashes or edit this form by hand: `scripts/apply.mjs` writes it from an overrides file in the format above. Octocode ships no overrides for any server: a server's own text applies until you store some.

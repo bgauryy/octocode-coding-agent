@@ -111,12 +111,67 @@ function identity(root: string, id: string): WorkspaceIdentity {
 	return { id, root, name: path.basename(root) || root, binding: getFileStamp(root).binding };
 }
 
-/** Read an existing workspace without creating a marker or registering it with the database. */
+/** A workspace found from a folder, with what has to stay unchanged for the same lookup to find it again. */
+interface FoundWorkspace {
+	identity: WorkspaceIdentity;
+	/** The folders the lookup passed before the root: a `.git` or declaration made in one changes its mtime. */
+	passed: string[];
+	check: string;
+}
+/** Recent lookups by the folder asked about: the session mirror asks after every append. */
+const found = new Map<string, FoundWorkspace>();
+const FOUND_LIMIT = 64;
+
+/**
+ * What decides a lookup from `cwd`: the home folder, the folder itself, the mtimes of the folders passed (a marker
+ * created in one), the root's binding and the ID file's identity and content stamp. Undefined when one is gone.
+ */
+function lookupCheck(cwd: fs.BigIntStats, idFile: string, root: string, passed: readonly string[]): string | undefined {
+	const parts = [os.homedir(), `${cwd.dev}:${cwd.ino}`];
+	for (const dir of passed) {
+		const stat = fs.statSync(dir, { bigint: true, throwIfNoEntry: false });
+		if (!stat) return undefined;
+		parts.push(String(stat.mtimeNs));
+	}
+	const rootStat = passed.length ? fs.statSync(root, { bigint: true, throwIfNoEntry: false }) : cwd;
+	const id = fs.lstatSync(idFile, { bigint: true, throwIfNoEntry: false });
+	if (!rootStat || !id) return undefined;
+	parts.push(`${rootStat.ino}:${rootStat.birthtimeNs}`, `${id.dev}:${id.ino}:${id.size}:${id.mtimeNs}:${id.ctimeNs}`);
+	return parts.join("|");
+}
+
+const idFileOf = (root: string) => path.join(root, WORKSPACE_STATE, "workspace", "id");
+
+/**
+ * Read an existing workspace without creating a marker or registering it with the database. A lookup repeated from the
+ * same folder is answered from the last one while nothing it depended on changed (`lookupCheck`).
+ */
 export function readWorkspaceIdentity(cwd: string): WorkspaceIdentity | undefined {
-	if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return undefined;
+	const stat = fs.statSync(cwd, { bigint: true, throwIfNoEntry: false });
+	if (!stat?.isDirectory()) return undefined;
+	const last = found.get(cwd);
+	if (last && lookupCheck(stat, idFileOf(last.identity.root), last.identity.root, last.passed) === last.check)
+		return { ...last.identity };
+	found.delete(cwd);
 	const root = workspaceDataRoot(cwd);
 	const id = readId(path.join(statePath(root, "workspace", false), "id"));
-	return id === undefined ? undefined : identity(root, id);
+	if (id === undefined) return undefined;
+	const workspace = identity(root, id);
+	const passed: string[] = [];
+	for (let dir = canonicalPath(cwd); dir !== root && path.dirname(dir) !== dir; dir = path.dirname(dir))
+		passed.push(dir);
+	const check = lookupCheck(stat, idFileOf(root), root, passed);
+	// Remembered only when the lookup still finds the same after the check was taken: a change during it is not hidden.
+	if (
+		check !== undefined &&
+		workspaceDataRoot(cwd) === root &&
+		readId(idFileOf(root)) === id &&
+		getFileStamp(root).binding === workspace.binding
+	) {
+		if (found.size >= FOUND_LIMIT) found.delete(found.keys().next().value!);
+		found.set(cwd, { identity: { ...workspace }, passed, check });
+	}
+	return workspace;
 }
 
 /** Whether a catalogued location still holds its original checkout. This lookup must never create missing state. */

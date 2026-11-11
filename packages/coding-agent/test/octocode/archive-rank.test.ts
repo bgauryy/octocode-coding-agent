@@ -1,11 +1,12 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { renderMessages } from "../../src/octocode/compaction/archive/render.ts";
 import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import { archiveFolder, libraryPath, type Segment, writeSegment } from "../../src/octocode/history/archive.ts";
-import { parseKeywords, stem, wordTerms } from "../../src/octocode/history/rank.ts";
+import { parseKeywords, rankHistory, stem, wordTerms } from "../../src/octocode/history/rank.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -265,5 +266,31 @@ describe("keyword terms", () => {
 		expect(parsed.labels.get("failur")).toBe("failures");
 		// Only stopwords: they are kept rather than leaving nothing to search.
 		expect(parseKeywords("what was").terms).toEqual(["what", "was"]);
+	});
+});
+
+describe("the next page of a ranked search", () => {
+	it("is read from the ranking already made while the files are unchanged", async () => {
+		const dir = tmp();
+		const files = ["a", "b"].map((name) => {
+			const file = path.join(dir, `${name}.md`);
+			fs.writeFileSync(
+				file,
+				Array.from({ length: 400 }, (_, i) => `### line ${i}\nalpha topic ${name} ${i}`).join("\n"),
+			);
+			return { file, session: { id: name, relation: "same repository" as const }, label: name };
+		});
+		const first = await rankHistory(files, "alpha topic", 1);
+		expect(first.pages).toBeGreaterThan(1);
+		const opened = vi.spyOn(fsPromises, "open");
+		const second = await rankHistory(files, "alpha topic", 2);
+		expect(second.page).toBe(2);
+		expect(second.text).not.toBe(first.text);
+		expect(opened).not.toHaveBeenCalled();
+		// A changed file is read again.
+		fs.appendFileSync(files[0].file, "\nalpha topic again");
+		await rankHistory(files, "alpha topic", 2);
+		expect(opened).toHaveBeenCalled();
+		opened.mockRestore();
 	});
 });

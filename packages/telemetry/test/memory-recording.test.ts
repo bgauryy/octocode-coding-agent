@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createTypedSpanStarter,
@@ -7,7 +6,6 @@ import {
 	type SpanAttributes,
 	type TelemetrySpan,
 } from "../src/index.ts";
-import { renderTrace } from "../src/render.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -156,51 +154,36 @@ describe("InMemoryTelemetryContext span behavior", () => {
 			ids.rootB = spanId(telemetry, root);
 		});
 
-		const traceA = await telemetry.getTrace(ids.rootA);
-		expect(traceA?.spans.map((span) => span.name)).toEqual(["root-a", "child", "grandchild"]);
-		const [rootA, child, grandchild] = traceA!.spans;
-		expect(rootA.parentId).toBeUndefined();
+		const spans = telemetry.getSpans();
+		expect(spans.map((span) => span.name)).toEqual(["root-a", "child", "grandchild", "root-b"]);
+		const [rootA, child, grandchild, rootB] = spans;
+		expect(rootA.parentId).toBeNull();
 		expect(child.parentId).toBe(rootA.id);
 		expect(grandchild.parentId).toBe(child.id);
-		expect(grandchild.id).toBe(ids.grandchild);
-		expect((await telemetry.getTrace(ids.rootB))?.spans.map((span) => span.name)).toEqual(["root-b"]);
-		expect(await telemetry.getTrace("missing:1")).toBeUndefined();
+		expect(`${grandchild.context["octocode-memory-scope"]}:${grandchild.context["octocode-memory-span"]}`).toBe(
+			ids.grandchild,
+		);
+		const trace = (span: (typeof spans)[number]) => span.context["octocode-memory-trace"];
+		expect([child, grandchild].map(trace)).toEqual([ids.rootA, ids.rootA]);
+		expect(trace(rootA)).toBe(ids.rootA);
+		expect(trace(rootB)).toBe(ids.rootB);
+		expect(rootB.parentId).toBeNull();
 	});
 
-	it("open spans are recorded by getSpans but hidden from store queries until they settle", async () => {
+	it("open spans are recorded by getSpans and marked settled once their callback settles", async () => {
 		const telemetry = new InMemoryTelemetryContext();
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		let id = "";
-		const running = telemetry.startSpan({ name: "open" }, async (span) => {
-			id = spanId(telemetry, span);
+		const running = telemetry.startSpan({ name: "open" }, async () => {
 			await gate;
 		});
 		await Promise.resolve();
 		expect(telemetry.getSpans().map((span) => [span.name, span.settled])).toEqual([["open", false]]);
-		expect(await telemetry.getTrace(id)).toBeUndefined();
-		expect((await telemetry.findTraces()).traces).toEqual([]);
 		release();
 		await running;
-		expect((await telemetry.getTrace(id))?.spans).toHaveLength(1);
-	});
-
-	it("findTraces defaults to 20 traces per page, newest first, and returns a cursor only when more remain", async () => {
-		const now = vi.spyOn(Date, "now");
-		const telemetry = new InMemoryTelemetryContext();
-		for (let index = 0; index < 21; index++) {
-			now.mockReturnValue(1000 + index);
-			await telemetry.startSpan({ name: `trace-${index}` }, () => {});
-		}
-		const first = await telemetry.findTraces();
-		expect(first.traces).toHaveLength(20);
-		expect(first.traces[0]?.spans[0]?.name).toBe("trace-20");
-		expect(first.cursor).toBeDefined();
-		const second = await telemetry.findTraces({ cursor: first.cursor });
-		expect(second.traces.map((trace) => trace.spans[0]?.name)).toEqual(["trace-0"]);
-		expect(second.cursor).toBeUndefined();
+		expect(telemetry.getSpans().map((span) => [span.name, span.settled])).toEqual([["open", true]]);
 	});
 });
 
@@ -260,41 +243,5 @@ describe("createTypedSpanStarter at runtime", () => {
 		) => Promise<void>;
 		await expect(start("job", { kind: "not-in-values", undeclared: true }, () => {})).resolves.toBeUndefined();
 		expect(telemetry.getSpans()[0]?.attributes).toEqual({ kind: "not-in-values", undeclared: true });
-	});
-});
-
-describe("render subpath", () => {
-	it("package export ./render points at the module that defines renderTrace", async () => {
-		const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
-			exports: Record<string, { source?: string; import?: string; types?: string }>;
-		};
-		const entry = manifest.exports["./render"];
-		expect(entry?.source).toBe("./src/render.ts");
-		expect(entry?.import).toBe("./dist/render.js");
-		const module = (await import(new URL(`../${entry.source}`, import.meta.url).href)) as Record<string, unknown>;
-		expect(module.renderTrace).toBe(renderTrace);
-	});
-
-	it("renders a trace read back from the in-memory store as an indented tree with errors and events", async () => {
-		vi.spyOn(Date, "now").mockReturnValue(5000);
-		const clock = vi.spyOn(performance, "now").mockReturnValue(0);
-		const telemetry = new InMemoryTelemetryContext();
-		let rootId = "";
-		await telemetry.startSpan({ name: "request", attributes: { route: "/x" } }, async (root) => {
-			rootId = spanId(telemetry, root);
-			clock.mockReturnValue(2);
-			root.addEvent("received", { bytes: 3 });
-			await root
-				.startSpan({ name: "db" }, () => {
-					clock.mockReturnValue(7);
-					throw new Error("timeout");
-				})
-				.catch(() => undefined);
-			clock.mockReturnValue(10);
-		});
-		const trace = await telemetry.getTrace(rootId);
-		expect(renderTrace(trace!.spans)).toBe(
-			['request route="/x" (10ms)', "  · received bytes=3 (+2ms)", "  db (5ms) error Error: timeout"].join("\n"),
-		);
 	});
 });

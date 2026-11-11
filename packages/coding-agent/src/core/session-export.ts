@@ -1,5 +1,6 @@
 import { resolvePath } from "../../../common/src/paths.ts";
 import { writeSessionExport } from "./export-target.ts";
+import { encodeSessionLines } from "./session-manager/codec.ts";
 import { CURRENT_SESSION_VERSION, type SessionHeader, type SessionManager } from "./session-manager.ts";
 
 type TrailingEntries = (parentId: string | null, timestamp: string) => readonly object[];
@@ -24,7 +25,8 @@ export function serializeSessionBranch(
 		parentId = entry.id;
 	}
 	entries.push(...(createTrailingEntries?.(parentId, timestamp) ?? []));
-	return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+	// Stored as a session file stores them (`session-manager/codec.ts`): the export reads back on its own.
+	return `${encodeSessionLines(entries).lines.join("\n")}\n`;
 }
 
 /** Write the current session branch and optional export-only entries as JSONL. */

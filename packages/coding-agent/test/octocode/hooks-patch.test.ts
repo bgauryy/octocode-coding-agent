@@ -111,7 +111,7 @@ async function fixture(matcher = "apply_patch", rewrite?: string) {
 			),
 		}),
 	});
-	const view = registerHooks(fake.api, {}, home);
+	const view = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { fake, view, ctx, capture };

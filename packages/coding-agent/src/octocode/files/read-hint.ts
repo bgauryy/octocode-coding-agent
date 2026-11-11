@@ -1,5 +1,5 @@
 import path from "node:path";
-import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import { OCTOCODE_DIR } from "../shared/home.ts";
 
 /**

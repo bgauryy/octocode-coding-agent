@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { openBrowser } from "../../../../common/src/open-browser.ts";
+import { openTarget } from "../../../../common/src/open-target.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { splitConfigWords } from "../../configuration/command.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
@@ -92,7 +92,7 @@ export async function openReference(host: ReferenceHost, target: string): Promis
 		if (!URL.canParse(target) || /[\x00-\x1f\x7f-\x9f]/u.test(target)) throw new Error("Invalid reference target");
 		const url = new URL(target);
 		if (["https:", "http:", "mailto:"].includes(url.protocol)) {
-			openBrowser(url.href);
+			await openTarget(url.href);
 			return;
 		}
 		const location = referenceLocation(target);

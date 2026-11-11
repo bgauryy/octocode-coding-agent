@@ -26,7 +26,7 @@ describe("coordinator planning graph", () => {
 	it("plans work for two or more children as one backlog graph: owner, files, check and real dependencies per item", () => {
 		for (const text of delegation()) {
 			const plan = text.split("\n").find((line) => line.startsWith("  1. First plan the work as a graph")) ?? "";
-			expect(plan).toContain("one backlog `add`");
+			expect(plan).toContain("one `backlogPlan` `add`");
 			expect(plan).toContain("its owner (you or one child), its files, its pass/fail check and only real `dependsOn`");
 			// Reservations and busy children are scheduling, not dependencies.
 			expect(plan).toContain("a file a child reserves, or a busy child, is not one");
@@ -64,8 +64,11 @@ describe("coordinator planning graph", () => {
 		for (const research of [FAKE_RESEARCH, undefined]) {
 			const sections = octocodePromptSections({ research, profiles: [], canDelegate: false });
 			const child = Object.values(sections).join("\n");
-			// The slot holds the subagent policy instead: it finishes its own task and starts no agents.
-			expect(sections.delegation).toContain("You are a subagent: finish your task yourself.");
+			// A child's own section holds the subagent policy: it finishes its own task and starts no agents. The
+			// `delegation` name stays the coordinator's, so a child never reads a `<delegation>` tag it cannot act on.
+			expect(sections.coordinator).toContain("You are a subagent: finish your task yourself.");
+			expect(sections.delegation).toBe("");
+			expect(octocodePromptSections({ research, profiles: [], canDelegate: true }).coordinator).toBe("");
 			for (const rule of [
 				"plan the work as a graph",
 				"Check the graph before you start it",
@@ -81,9 +84,15 @@ describe("coordinator planning graph", () => {
 	});
 
 	it("plans the graph without the backlog when the session runs without the backlog tool", () => {
-		const text =
-			octocodePromptSections({ research: FAKE_RESEARCH, profiles: [], canDelegate: true, canBacklog: false })
-				.delegation ?? "";
+		// The delegation section and, once a child started, the `children` section: neither may name the backlog.
+		const sections = octocodePromptSections({
+			research: FAKE_RESEARCH,
+			profiles: [],
+			canDelegate: true,
+			canBacklog: false,
+			childStarted: true,
+		});
+		const text = `${sections.delegation}\n${sections.children}`;
 		const plan = text.split("\n").find((line) => line.startsWith("  1. First plan the work as a graph")) ?? "";
 		expect(plan).toContain("plan the work as a graph: one part per piece");
 		expect(plan).toContain("show the user the plan as a table: part, owner, depends on");

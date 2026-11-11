@@ -26,7 +26,7 @@ async function hookRuntime(hooks: unknown) {
 	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
-	const view = registerHooks(fake.api, {}, tmp());
+	const view = registerHooks(fake.api, { env: {}, home: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const beforeSend = async (message: MessageEnvelope, context: ExtensionContext, signal?: AbortSignal) => {
 		const verdict = await view.messageSend(message, signal ? { ...context, signal } : context);

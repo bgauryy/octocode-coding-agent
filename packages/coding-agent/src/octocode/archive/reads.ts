@@ -1,13 +1,15 @@
 import { agentEvents, agents, compactions } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { memoryStore, describeMemory, noMemory, memoryToolLine } from "../memory/store.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { matchTexts, HISTORY_BYTES } from "../history/search.ts";
 import { ownArchives } from "../history/archive.ts";
 import { historyScope } from "../history/transcripts.ts";
 import path from "node:path";
+import { splitSummary } from "../../core/compaction/summary-view.ts";
+import { summarySection, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
+import { plural } from "../shared/text.ts";
 
-const SOURCES = ["memories", "compactions", "events", "agents", "sessions"] as const;
+const SOURCES = ["compactions", "events", "agents", "sessions"] as const;
 type DataSource = (typeof SOURCES)[number];
 export interface ReadParams extends agentEvents.EventFilter {
 	source?: string;
@@ -17,23 +19,20 @@ export interface ReadParams extends agentEvents.EventFilter {
 	keywords?: string;
 	cursor?: string;
 	limit?: number;
-	scope?: "workspace" | "project" | "global" | "all";
-	page?: number;
+	/** False in a subagent: `all` leaves out lifecycle events, which only the main session reads. */
+	diagnostics?: boolean;
 }
 interface Position {
 	seq: number;
-	pinned?: number;
-	updated?: number;
-	offset?: number;
 }
 interface RecordHit {
 	id: string;
 	seq: number;
+	/** The whole record, as a search tests it and `get` returns it. */
 	text: string;
+	/** Its index line for a listing. */
+	line: string;
 	source: DataSource;
-	position?: Position;
-	score?: number;
-	preview?: string;
 }
 type Cursor = Partial<Record<DataSource, Position>>;
 
@@ -57,10 +56,7 @@ function isCursor(parsed: unknown): parsed is Cursor {
 			before &&
 			typeof before === "object" &&
 			Number.isSafeInteger(before.seq) &&
-			before.seq >= 0 &&
-			(before.pinned === undefined || [0, 1, 2].includes(before.pinned)) &&
-			(before.updated === undefined || Number.isSafeInteger(before.updated)) &&
-			(before.offset === undefined || (Number.isSafeInteger(before.offset) && before.offset >= 0)),
+			before.seq >= 0,
 	);
 }
 
@@ -68,13 +64,7 @@ function summaryText(row: compactions.SummaryRow): string {
 	return `${row.summary}\n\nDetail: ${row.detailState}${row.detailState === "present" && row.detailFile ? ` (${row.detailFile})` : ""}`;
 }
 
-export function getRecord(cwd: string, id: string, store = memoryStore(cwd)): string {
-	if (/^M\d+$/.test(id)) {
-		const memory = store.get(Number(id.slice(1)));
-		if (!memory) throw noMemory(Number(id.slice(1)));
-		store.markUsed([memory.id]);
-		return describeMemory(memory);
-	}
+export function getRecord(cwd: string, id: string): string {
 	const agent = sharedAgentDb();
 	const workspace = registeredWorkspace(cwd, agent).id;
 	if (id.startsWith("event:")) {
@@ -113,137 +103,210 @@ export function getRecord(cwd: string, id: string, store = memoryStore(cwd)): st
 	throw new Error("No visible archive record with that id.");
 }
 
-/** Each source has a keyset cursor. Search coverage is explicit: later pages cannot be hidden by a recent window. */
+/** Records one filtered read tests per batch, in the search worker. */
+const FILTER_BATCH = 500;
+/** The most records one read returns per source; a larger `limit` is capped, and the result says so. */
+export const MAX_RECORDS = 50;
+/** Records per source a read returns without `limit`. */
+const DEFAULT_RECORDS = 10;
+/** Records per source a listing of every source (the overview) returns without `limit`. */
+export const OVERVIEW_RECORDS = 5;
+/** Characters of a search hit's text shown before its id points to the rest (`get`). */
+const HIT_CHARS = 800;
+
+const firstLine = (text: string | null | undefined): string =>
+	(text ?? "")
+		.split("\n")
+		.map((line) => line.trim())
+		.find(Boolean) ?? "";
+const isoTime = (ms: number | null | undefined): string | undefined =>
+	typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+/** One index line of a record: its id and named fields, each `label value`, empty fields left out. */
+const indexLine = (id: string, fields: Array<string | undefined | false>): string =>
+	[id, ...fields.filter((field): field is string => typeof field === "string" && field !== "")].join(" · ");
+const field = (label: string, value: unknown): string | undefined =>
+	typeof value === "string" || typeof value === "number" ? (value === "" ? undefined : `${label} ${value}`) : undefined;
+
+/** A source's rows below `before` (newest first), at most `count`, each with its full text and its index line. */
+function sourceRows(
+	source: DataSource,
+	scope: { db: ReturnType<typeof sharedAgentDb>["db"]; workspace: string; own: string[] },
+	before: number,
+	count: number,
+	params: ReadParams,
+): RecordHit[] {
+	const { db, workspace, own } = scope;
+	if (source === "events")
+		return agentEvents.list(db, workspace, before, count, params).map((row) => ({
+			id: `event:${row.id}`,
+			seq: row.seq,
+			text: JSON.stringify(row),
+			line: indexLine(`event:${row.id}`, [
+				row.time,
+				row.type,
+				field("agent", row.name),
+				field("session", row.sessionId),
+			]),
+			source,
+		}));
+	if (source === "compactions")
+		return compactions.visible(db, workspace, own, before, count, params.keywords).map((row) => {
+			const id = `compaction:${row.sessionId}:${row.entryId}`;
+			const tldr = summarySection(splitSummary(row.summary).body, TLDR_HEADING)
+				.filter((line) => !/^topics:/i.test(line))
+				.map((line) => line.replace(/^\s*(?:[-*]\s+)?/, "").trim())
+				.join(" ");
+			return {
+				id,
+				seq: row.seq,
+				text: summaryText(row),
+				line: indexLine(id, [isoTime(row.committedAt), tldr || firstLine(row.summary)]),
+				source,
+			};
+		});
+	if (source === "sessions")
+		return compactions.sessionIndex(db, workspace, own, before, count).map((row) => {
+			const id = `session:${row.sessionId}`;
+			return {
+				id,
+				seq: row.seq,
+				text: JSON.stringify(row),
+				line: indexLine(id, [field("last compaction", isoTime(row.committedAt))]),
+				source,
+			};
+		});
+	return agents
+		.inWorkspace(db, workspace)
+		.map((row, i, all) => {
+			const id = `agent:${String(row.id)}`;
+			return {
+				id,
+				seq: all.length - i,
+				text: JSON.stringify(row),
+				line: indexLine(id, [
+					field("role", row.role),
+					field("status", row.status),
+					field("parent", row.parent_id),
+					field("model", row.model),
+					field("task:", firstLine(row.task as string | null)),
+				]),
+				source,
+			};
+		})
+		.filter((row) => row.seq < before)
+		.slice(0, count);
+}
+
+/**
+ * Records of the selected sources, newest first, each source with a keyset cursor. Without `query` or `keywords` a read
+ * lists `limit` records per source, one index line each (`get` an id for the whole record). With them it searches: every
+ * record of a source is tested, in batches, until `limit` match or the sources run out (or the byte budget does), so
+ * a match is never hidden behind a page; matches show the start of their text. A source's line says how many records it
+ * searched and whether any remain; the cursor exists only while one does.
+ */
 export async function readRecords(
 	cwd: string,
 	params: ReadParams,
 	signal?: AbortSignal,
-	store = memoryStore(cwd),
 ): Promise<{
 	text: string;
 	cursor?: string;
 	hits: number;
 }> {
 	const cursor = cursorOf(params.cursor);
-	const selected = params.source === "all" || !params.source ? [...SOURCES] : [params.source as DataSource];
-	const limit = Math.min(50, Math.max(1, Math.floor(params.limit ?? 10)));
+	// The overview leaves out the session index: the session-history part lists the same sessions with their goals.
+	const selected =
+		params.source === "all" || !params.source
+			? SOURCES.filter(
+					(source) =>
+						(source !== "events" || params.diagnostics !== false) &&
+						(source !== "sessions" || !!params.query?.trim() || !!params.keywords?.trim()),
+				)
+			: [params.source as DataSource];
+	const all = params.source === "all" || !params.source;
+	const listing = !params.query?.trim() && !params.keywords?.trim();
+	// The default listing of every source is an overview: fewer records of each.
+	const limit = Math.min(
+		MAX_RECORDS,
+		Math.max(1, Math.floor(params.limit ?? (all && listing ? OVERVIEW_RECORDS : DEFAULT_RECORDS))),
+	);
 	const agent = sharedAgentDb();
-	const workspace = registeredWorkspace(cwd, agent).id;
-	const own = ownArchives().map((folder) => path.basename(path.dirname(folder)));
-	const collected: RecordHit[] = [];
-	const scanned = new Map<DataSource, number>();
+	const scope = {
+		db: agent.db,
+		workspace: registeredWorkspace(cwd, agent).id,
+		own: ownArchives().map((folder) => path.basename(path.dirname(folder))),
+	};
+	const regex = params.query?.trim() ? new RegExp(params.query.trim(), "i") : undefined;
+	const words = params.keywords?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+	const filtered = regex !== undefined || words.length > 0;
+	const groups: string[] = [];
+	let hits = 0;
 	let remaining = HISTORY_BYTES;
 	for (const source of selected) {
 		signal?.throwIfAborted();
 		if (!SOURCES.includes(source)) continue;
-		const before = cursor[source]?.seq ?? Number.MAX_SAFE_INTEGER;
+		let before = cursor[source]?.seq ?? Number.MAX_SAFE_INTEGER;
 		if (before === 0 || remaining === 0) continue;
-		let rows: RecordHit[];
-		if (source === "memories") {
-			const ranked = params.keywords
-				? store.searchPage(params.keywords, params.scope ?? "all", cursor[source]?.offset ?? 0, limit + 1)
+		const matches: Array<RecordHit & { score: number }> = [];
+		let searched = 0;
+		let ended = false;
+		while (matches.length < limit && remaining > 0) {
+			signal?.throwIfAborted();
+			// A listing reads one page; a search reads batches until enough match.
+			const want = filtered ? FILTER_BATCH : limit;
+			const rows = sourceRows(source, scope, before, want + 1, params);
+			const batch: RecordHit[] = [];
+			for (const row of rows.slice(0, want)) {
+				const size = Buffer.byteLength(row.text);
+				if (size > HISTORY_BYTES) throw new Error(`${row.id} exceeds the search budget; get it directly by id.`);
+				if (size > remaining) {
+					remaining = 0;
+					break;
+				}
+				remaining -= size;
+				batch.push(row);
+			}
+			const found = regex
+				? await matchTexts(
+						batch.map((row) => row.text),
+						regex,
+						signal,
+					)
 				: undefined;
-			const notes =
-				ranked ??
-				store.scan(
-					params.scope ?? "all",
-					{
-						id: before,
-						pinned: cursor[source]?.pinned ?? 2,
-						updated: cursor[source]?.updated ?? Number.MAX_SAFE_INTEGER,
-					},
-					limit + 1,
-				);
-			rows = notes.map((row, i) => ({
-				id: `M${row.id}`,
-				seq: row.id,
-				text: describeMemory(row),
-				preview: memoryToolLine(row, 160),
-				source,
-				position: {
-					seq: row.id,
-					pinned: Number(row.pinned),
-					updated: row.updatedAt,
-					...(ranked ? { offset: (cursor[source]?.offset ?? 0) + i + 1 } : {}),
-				},
-				...(ranked ? { score: ranked[i].score } : {}),
-			}));
-		} else if (source === "events")
-			rows = agentEvents
-				.list(agent.db, workspace, before, limit + 1, params)
-				.map((row) => ({ id: `event:${row.id}`, seq: row.seq, text: JSON.stringify(row), source }));
-		else if (source === "compactions")
-			rows = compactions.visible(agent.db, workspace, own, before, limit + 1, params.keywords).map((row) => ({
-				id: `compaction:${row.sessionId}:${row.entryId}`,
-				seq: row.seq,
-				text: summaryText(row),
-				source,
-			}));
-		else if (source === "sessions")
-			rows = compactions
-				.sessionIndex(agent.db, workspace, own, before, limit + 1)
-				.map((row) => ({ id: `session:${row.sessionId}`, seq: row.seq, text: JSON.stringify(row), source }));
-		else
-			rows = agents
-				.inWorkspace(agent.db, workspace)
-				.map((row, i, all) => ({
-					id: `agent:${String(row.id)}`,
-					seq: all.length - i,
-					text: JSON.stringify(row),
-					source,
-				}))
-				.filter((row) => row.seq < before)
-				.slice(0, limit + 1);
-		let batch = rows.slice(0, limit);
-		let bytes = 0;
-		const bounded: RecordHit[] = [];
-		for (const row of batch) {
-			const size = Buffer.byteLength(row.text);
-			if (size > HISTORY_BYTES) throw new Error(`${row.id} exceeds the search budget; get it directly by id.`);
-			if (bytes + size > remaining) break;
-			bytes += size;
-			bounded.push(row);
+			let stopped = false;
+			for (const [index, row] of batch.entries()) {
+				searched++;
+				before = row.seq;
+				const lower = words.length > 0 ? row.text.toLowerCase() : "";
+				const score = words.reduce((sum, word) => sum + (lower.includes(word) ? 1 : 0), 0);
+				if ((!found || found.has(index)) && (words.length === 0 || score > 0)) matches.push({ ...row, score });
+				if (matches.length >= limit) {
+					stopped = index < batch.length - 1 || rows.length > want;
+					break;
+				}
+			}
+			ended = !stopped && remaining > 0 && rows.length <= want && batch.length === Math.min(rows.length, want);
+			if (ended || !filtered || matches.length >= limit) break;
 		}
-		batch = bounded;
-		cursor[source] =
-			rows.length > batch.length ? (batch.at(-1)?.position ?? { seq: batch.at(-1)?.seq ?? before }) : { seq: 0 };
-		remaining -= bytes;
-		collected.push(...batch);
-		scanned.set(source, batch.length);
-	}
-	let matches = collected;
-	if (params.query) {
-		const found = await matchTexts(
-			collected.map((row) => row.text),
-			new RegExp(params.query, "i"),
-			signal,
+		cursor[source] = { seq: ended ? 0 : before };
+		if (words.length > 0) matches.sort((a, b) => b.score - a.score || b.seq - a.seq);
+		hits += matches.length;
+		const coverage = ended ? "every record" : "more remain";
+		const shown = filtered
+			? matches.map(
+					(row) => `${row.id}\n${row.text.slice(0, HIT_CHARS)}${row.text.length > HIT_CHARS ? "… (get by id)" : ""}`,
+				)
+			: matches.map((row) => row.line);
+		groups.push(
+			filtered
+				? `${source}: ${matches.length === 0 ? "no match" : plural(matches.length, "match")} in ${plural(searched, "record")} searched (${coverage})${shown.length ? `\n${shown.join("\n\n")}` : ""}`
+				: `${source}: ${plural(matches.length, "record")}${ended ? "" : ", newest first; more remain"}${shown.length ? ` (get one by id)\n${shown.join("\n")}` : ""}`,
 		);
-		matches = collected.filter((_, i) => found.has(i));
 	}
-	if (params.keywords?.trim()) {
-		const words = params.keywords.toLowerCase().split(/\s+/).filter(Boolean);
-		matches = matches
-			.map((row) => ({
-				...row,
-				score: row.score ?? words.reduce((sum, word) => sum + (row.text.toLowerCase().includes(word) ? 1 : 0), 0),
-			}))
-			.filter((row) => row.score > 0)
-			.sort((a, b) => b.score - a.score || b.seq - a.seq);
-	}
-	if (params.op === "search") store.markUsed(matches.filter((row) => row.source === "memories").map((row) => row.seq));
-	const groups = selected.map((source) => {
-		const batch = matches.filter((row) => row.source === source);
-		return `${source}: ${batch.length} matches in ${scanned.get(source) ?? 0} scanned records on this page\n${batch
-			.map(
-				(row) =>
-					`${row.id}\n${row.preview ?? `${row.text.slice(0, 800)}${row.text.length > 800 ? "… (get by id)" : ""}`}`,
-			)
-			.join("\n\n")}`;
-	});
 	const more = selected.some((source) => cursor[source]?.seq !== 0);
 	return {
 		text: groups.join("\n\n"),
-		hits: matches.length,
+		hits,
 		...(more ? { cursor: Buffer.from(JSON.stringify(cursor)).toString("base64url") } : {}),
 	};
 }

@@ -256,11 +256,6 @@ export function setItemRank(db: DatabaseSync, rowId: number, rank: number): numb
 	return num((db.prepare("SELECT version FROM backlog WHERE id = ?").get(rowId) as { version: number }).version);
 }
 
-/** Clears an item's origin link at `at`, bumping its version. */
-export function clearOrigin(db: DatabaseSync, rowId: number, at: number): void {
-	db.prepare("UPDATE backlog SET from_item = NULL, updated_at = ?, version = version + 1 WHERE id = ?").run(at, rowId);
-}
-
 /** Ongoing backlog items assigned to session `sessionId` in `repoKey` (most important first), for the resume brief. */
 export function ongoingItems(
 	db: DatabaseSync,

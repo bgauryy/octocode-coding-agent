@@ -40,6 +40,8 @@ export interface McpSessionHandoff {
 	servers: AddedServers;
 	stopped: readonly string[];
 	available: readonly string[];
+	/** The tools the session counts as in use (`mcpExposure: "recent"`), so a child defers the same ones; absent otherwise. */
+	recent?: readonly string[];
 }
 
 /** The owner of the session's added servers answers requests for them. Returns the unregistration. */

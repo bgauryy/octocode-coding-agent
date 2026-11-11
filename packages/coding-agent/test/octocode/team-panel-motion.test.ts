@@ -1,9 +1,9 @@
 import { animationClock, GLYPH, MOTION, SPINNER } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { collapsedRows } from "../../src/octocode/team/panel-compact.ts";
-import { type Moving, PanelMotion } from "../../src/octocode/team/panel-motion.ts";
-import { panelMark, panelState } from "../../src/octocode/team/panel-state.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
+import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
+import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
 import { AgentsView, widgetLines } from "../../src/octocode/team/panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

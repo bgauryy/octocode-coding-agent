@@ -53,6 +53,7 @@ import type {
 	PendingUserInput,
 } from "./agent-session/types.ts";
 import type { BashResult } from "./bash-executor.ts";
+import { runUserBash, type UserBashOptions } from "./agent-session/user-bash.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
 import type { CompactionPreparation, CompactionResult } from "./compaction/index.ts";
 import type { ExtensionRunner, ReplacedSessionContext } from "./features/index.ts";
@@ -137,8 +138,8 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	// Private seams (tests replace or call these on the instance)
 
 	/** Internal handler for agent events - shared by subscribe and reconnect */
-	private _handleAgentEvent = async (event: AgentEvent): Promise<void> => {
-		await handleAgentEvent(this._c.agentEvents, event);
+	private _handleAgentEvent = async (event: AgentEvent, signal?: AbortSignal): Promise<void> => {
+		await handleAgentEvent(this._c.agentEvents, event, signal);
 	};
 
 	private async _emitExtensionEvent(event: AgentEvent): Promise<void> {
@@ -256,6 +257,9 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			throw new Error("Shell execution is blocked during planning. Leave with /plan --off.");
 		return this._c.bash.execute(command, onChunk, options);
 	}
+	runUserBash(command: string, options?: UserBashOptions): Promise<BashResult> {
+		return runUserBash(this, command, options);
+	}
 	setSessionName(name: string, source?: SessionNameSource): void {
 		this.sessionManager.appendSessionInfo(name, source);
 		const nameSource = this.sessionManager.getSessionNameSource();
@@ -315,13 +319,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		return readUntrackedDiff(root, file);
 	}
 	async exportToHtml(outputPath?: string, options: { themeName?: string } = {}): Promise<string> {
-		return exportToHtml(
-			this,
-			(name) => this.getToolDefinition(name),
-			outputPath,
-			options,
-			async () => import("../octocode/ui/reason-row.ts"),
-		);
+		return exportToHtml(this, (name) => this.getToolDefinition(name), outputPath, options);
 	}
 	exportToJsonl(outputPath?: string): string {
 		return exportSessionToJsonl(this.sessionManager, outputPath);

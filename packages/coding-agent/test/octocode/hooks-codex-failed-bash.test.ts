@@ -26,7 +26,7 @@ async function run(result: Record<string, unknown>) {
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(fake.api, {}, home);
+	registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const results = await fake.emit(
 		"tool_result",

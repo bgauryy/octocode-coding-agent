@@ -1,6 +1,7 @@
 import { ScrollView } from "../components/scroll-view.ts";
 import { getLayoutNode } from "../layout-node.ts";
-import { Container, type Component } from "../tui.ts";
+import type { Component } from "../tui/component.ts";
+import { Container } from "../tui/container.ts";
 
 /** Detach every scroll view, including ones hidden by a stack's visibility predicate. */
 export function detachScrollViews(...roots: Component[]): void {

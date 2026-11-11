@@ -6,6 +6,7 @@ import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { Thought } from "../render/thought.ts";
 import { addUsage, contentText, emptyUsage } from "../shared/util.ts";
+import { appliedFileOutcomes } from "../shared/file-outcomes.ts";
 import { JOB_TYPE, TIMER_TYPE } from "../shared/messages.ts";
 import { imagesOf } from "./screenshots.ts";
 import { jobNotice } from "./report.ts";
@@ -225,7 +226,10 @@ function noteVerification(
 	event: Record<string, unknown>,
 	progress: (update: { editedAfterVerify: boolean }) => void,
 ): void {
-	if (event.isError === true) return;
+	// A `file` batch in which a query failed is an error result that still applied the others.
+	const applied =
+		event.toolName === "file" && isRecord(event.result) && appliedFileOutcomes(event.result.details).length > 0;
+	if (event.isError === true && !applied) return;
 	if (event.toolName === "file") {
 		if (state.verification !== "current") return;
 		state.verification = "stale";

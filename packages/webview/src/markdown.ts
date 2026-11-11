@@ -9,6 +9,7 @@ import json from "highlight.js/lib/languages/json";
 import python from "highlight.js/lib/languages/python";
 import typescript from "highlight.js/lib/languages/typescript";
 import { marked } from "marked";
+import { safeWebLink } from "./link.ts";
 
 for (const [name, language] of Object.entries({ javascript, typescript, json, bash, python, diff }))
 	hljs.registerLanguage(name, language);
@@ -43,16 +44,6 @@ export const MARKDOWN_TAGS = [
 	"span",
 ] as const;
 
-/** Only external web links are navigable; local paths remain text for explicit inspection. */
-export function safeMarkdownLink(value: string): string | null {
-	try {
-		const url = new URL(value);
-		return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;
-	} catch {
-		return null;
-	}
-}
-
 /** The language a fenced block declared, when it is one this page can highlight or label. */
 export function codeLanguage(code: Element): string | undefined {
 	return code.className.match(/^language-([\w+-]+)$/)?.[1];
@@ -71,7 +62,7 @@ export function sanitizeMarkdown(source: string): DocumentFragment {
 		RETURN_DOM_FRAGMENT: true,
 	});
 	for (const link of fragment.querySelectorAll("a")) {
-		const href = safeMarkdownLink(link.getAttribute("href") ?? "");
+		const href = safeWebLink(link.getAttribute("href") ?? "");
 		if (href) {
 			link.href = href;
 			link.target = "_blank";

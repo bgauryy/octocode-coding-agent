@@ -1,11 +1,21 @@
 import { formatDuration } from "../../shared/format.ts";
-import { configFileLines, tildePath } from "../../shared/home.ts";
+import { configFileLines } from "../../shared/home.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import { clipText } from "../../shared/util.ts";
 import { hookLabel, hookFiles } from "../config.ts";
 import type { HookTiming } from "./types.ts";
+import type { HookMode } from "../../shared/hook-mode.ts";
 import { HOOK_EVENTS, profileEvents, profileSupport, UPSTREAM_ONLY_EVENTS, type HookProtocol } from "../catalog.ts";
 import type { HookConfig } from "../contracts.ts";
 import { hookIdentity } from "../config/calls.ts";
+
+/** What a subagent that does not run every hook runs of the user's hooks, for `/status` and `/hooks`. */
+export const CHILD_MODE_NOTE: Record<HookMode, string> = {
+	off: "off in this subagent (neither its profile nor its task turned hooks on)",
+	decisions:
+		"PreToolUse and PermissionRequest hooks can deny or ask; their other output and every other hook are off in this subagent (hook mode decisions)",
+	all: "on",
+};
 
 export const hookCount = (config: HookConfig): number =>
 	HOOK_EVENTS.reduce((sum, event) => sum + config[event].reduce((n, group) => n + group.hooks.length, 0), 0);
@@ -16,8 +26,9 @@ function timingText(timing: HookTiming | undefined): string {
 	return ` · ${timing.runs} run${timing.runs === 1 ? "" : "s"}${failed}, avg ${formatDuration(timing.totalMs / timing.runs)}, max ${formatDuration(timing.maxMs)}`;
 }
 
+/** `mode` is `all` in a main session. In a subagent in the `decisions` mode `config` holds its PreToolUse and PermissionRequest hooks alone; in the `off` mode nothing is loaded and nothing is listed. */
 export function hooksReport(
-	enabled: boolean,
+	mode: HookMode,
 	config: HookConfig,
 	errors: string[],
 	cwd: string,
@@ -25,15 +36,16 @@ export function hooksReport(
 	timings = new Map<string, HookTiming>(),
 	switchedOff = 0,
 ): string {
+	const enabled = mode === "all";
 	const loaded = HOOK_EVENTS.flatMap((event) =>
 		config[event].flatMap((group) =>
 			group.hooks.map((hook) => {
 				const command = clipText(hookLabel(hook), 80);
-				return `  ${event} [${group.matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${tildePath(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0].dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
+				return `  ${event} [${group.matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${homeTilde(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0].dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
 			}),
 		),
 	);
-	// Children skip the user's hooks unless their profile sets `hooks: true` (register.ts), so say it where the hooks are configured.
+	// Children run no hook unless their profile or task turns hooks on (register.ts), so say it where the hooks are configured.
 	const subagentEvents = (["SubagentStart", "SubagentStop"] as const).filter((name) =>
 		config[name].some((group) => group.hooks.length > 0),
 	);
@@ -41,13 +53,13 @@ export function hooksReport(
 		...errors,
 		...(enabled && subagentEvents.length > 0
 			? [
-					`${subagentEvents.join(" and ")} hooks run only in subagents whose profile sets hooks: true; other subagents skip them`,
+					`${subagentEvents.join(" and ")} hooks run only in subagents whose hook mode is all (profile hooks: true, or the task's hooks field); other subagents skip them`,
 				]
 			: []),
 	];
 	return [
-		enabled ? "Hooks: on" : "Hooks: off in this subagent (its profile does not set hooks: true).",
-		...(enabled ? [`Loaded (${loaded.length}):`, ...(loaded.length > 0 ? loaded : ["  none"])] : []),
+		enabled ? "Hooks: on" : `Hooks: ${CHILD_MODE_NOTE[mode]}.`,
+		...(mode === "off" ? [] : [`Loaded (${loaded.length}):`, ...(loaded.length > 0 ? loaded : ["  none"])]),
 		...(enabled && switchedOff > 0
 			? [`${switchedOff} hook${switchedOff === 1 ? "" : "s"} off: harness switched off, /harness to enable`]
 			: []),

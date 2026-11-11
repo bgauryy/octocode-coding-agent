@@ -30,7 +30,11 @@ async function run(hook: Hook, options: { hasUI?: boolean } = {}) {
 	const cwd = project(hook);
 	const { api, fire } = fakeHost();
 	const failures: Array<{ what: readonly string[]; note: string; allowed: boolean }> = [];
-	const hooks = registerHooks(api, {}, tmp(), (what, note, allowed) => failures.push({ what, note, allowed }));
+	const hooks = registerHooks(api, {
+		env: {},
+		home: tmp(),
+		onFailure: (what, note, allowed) => failures.push({ what, note, allowed }),
+	});
 	const notify = vi.fn();
 	const ctx = {
 		cwd,
@@ -163,7 +167,7 @@ describe("observer hook dispatch failures", () => {
 			JSON.stringify({ hooks: { [event]: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 		);
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const notify = vi.fn();
 		let calls = 0;
 		const ctx = {

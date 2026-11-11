@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { unansweredCalls, unreportedWork } from "../../src/octocode/sessions/work.ts";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { agentRuns } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { latestRequest } from "../../src/octocode/sessions/brief.ts";
+import { danglingChildren, unansweredCalls, unreportedWork } from "../../src/octocode/sessions/work.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 
 const start = (call: string, runId?: string) => [
 	{
@@ -75,5 +82,82 @@ describe("tool calls with no recorded result, on resume", () => {
 		expect(unansweredCalls([assistant([call("a", "x")], "aborted")])).toEqual([]);
 		expect(unansweredCalls([assistant([call("a", "x")], "error")])).toEqual([]);
 		expect(unansweredCalls([])).toEqual([]);
+	});
+});
+
+describe("the resume note's unanswered calls and last request", () => {
+	it("keeps a long call's arguments and a long request whole", () => {
+		const command = `echo ${"x".repeat(1_000)}`;
+		const entries = [
+			{ type: "message", message: { role: "user", content: `please ${"y".repeat(1_000)} done` } },
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					stopReason: "toolUse",
+					content: [{ type: "toolCall", id: "a", name: "bash", arguments: { command } }],
+				},
+			},
+		];
+		expect(unansweredCalls(entries)).toEqual([`bash(${JSON.stringify({ command })})`]);
+		expect(latestRequest(entries)).toBe(`please ${"y".repeat(1_000)} done`);
+	});
+
+	it("names the children a dangling agent call started and how each ended", () => {
+		const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "resume-children-")));
+		vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
+		vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
+		const db = openAgentDb();
+		const store = TeamStore.open(root, db.file);
+		try {
+			const ws = store.workspaceId;
+			const at = Date.parse("2026-11-11T10:00:00Z");
+			agentRuns.begin(
+				db.db,
+				{ workspaceId: ws, agentId: "general-old", parentSessionId: "s1", goal: "earlier" },
+				at - 1,
+			);
+			agentRuns.begin(
+				db.db,
+				{ workspaceId: ws, agentId: "general-a", parentSessionId: "s1", goal: "child C1" },
+				at + 1,
+			);
+			agentRuns.begin(
+				db.db,
+				{ workspaceId: ws, agentId: "general-b", parentSessionId: "s1", goal: "child C2" },
+				at + 2,
+			);
+			agentRuns.begin(
+				db.db,
+				{ workspaceId: ws, agentId: "general-x", parentSessionId: "other", goal: "elsewhere" },
+				at + 3,
+			);
+			agentRuns.finish(db.db, "general-a", { endReason: "left", endDetail: "parent exited" }, at + 10);
+			const entries = [
+				{
+					type: "message",
+					timestamp: "2026-11-11T10:00:00Z",
+					message: {
+						role: "assistant",
+						stopReason: "toolUse",
+						timestamp: at,
+						content: [{ type: "toolCall", id: "c", name: "agent", arguments: { type: "task", tasks: [] } }],
+					},
+				},
+			];
+			expect(danglingChildren(db, "s1", entries)).toEqual([
+				'general-a (goal "child C1"), ended: left (parent exited)',
+				'general-b (goal "child C2"), no end recorded',
+			]);
+			// No unanswered `agent` call: no children to name.
+			expect(
+				danglingChildren(db, "s1", [...entries, { type: "message", message: { role: "toolResult", toolCallId: "c" } }]),
+			).toEqual([]);
+		} finally {
+			store.close();
+			db.close();
+			vi.unstubAllEnvs();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

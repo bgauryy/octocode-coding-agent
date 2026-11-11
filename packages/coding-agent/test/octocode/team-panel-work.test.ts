@@ -5,10 +5,10 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TimerRow } from "../../../db/src/api.ts";
 import { RunningWork, type WorkRow, workCounts } from "../../src/octocode/shared/running-work.ts";
 import { AgentsView, widgetLines } from "../../src/octocode/team/panel.ts";
-import { collapsedRows } from "../../src/octocode/team/panel-compact.ts";
-import { roster } from "../../src/octocode/team/panel-roster.ts";
-import { PanelMotion, type Moving } from "../../src/octocode/team/panel-motion.ts";
-import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel-work.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
+import { roster } from "../../src/octocode/team/panel/roster.ts";
+import { PanelMotion, type Moving } from "../../src/octocode/team/panel/motion.ts";
+import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel/work.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { encodeCondition } from "../../src/octocode/timer/conditions/index.ts";
 import { timerWorkRows } from "../../src/octocode/timer/work.ts";
@@ -44,7 +44,7 @@ const bare: WorkRow = { kind: "bash", id: "bash-4", title: "tail -f server.log",
 const timer: WorkRow = {
 	kind: "timer",
 	id: "#4",
-	title: "until port 5173 is listening",
+	title: "until `nc -z localhost 5173` exits 0",
 	detail: "open the app",
 	dueAt: NOW + 240_000,
 };
@@ -70,7 +70,7 @@ describe("running work rows", () => {
 		const [row] = render([timer]);
 		expect(row).toContain("timer");
 		expect(row).toContain("#4");
-		expect(row).toContain("until port 5173 is listening › open the app");
+		expect(row).toContain("until `nc -z localhost 5173` exits 0 › open the app");
 		expect(row).toMatch(/in 4m\s*$/);
 		expect(render([{ ...timer, dueAt: NOW - 1 }])[0]).toMatch(/due\s*$/);
 	});
@@ -323,8 +323,8 @@ describe("timer rows", () => {
 			row({
 				id: 5,
 				kind: "until",
-				condition_kind: "port",
-				condition: encodeCondition({ kind: "port", port: 5173, host: "127.0.0.1" }),
+				condition_kind: "command",
+				condition: encodeCondition({ kind: "command", command: "nc -z localhost 5173" }),
 				deadline_at: NOW + 3_600_000,
 				due_at: NOW + 15_000,
 			}),
@@ -333,7 +333,7 @@ describe("timer rows", () => {
 		expect(rows.map((r) => [r.id, r.title, r.detail, r.dueAt])).toEqual([
 			["#2", "after 1m", "check the build", NOW + 60_000],
 			["#3", "every 5m · run 2 of 4", "check the build", NOW + 120_000],
-			["#5", "until port 5173 is listening", "check the build", NOW + 3_600_000],
+			["#5", "until `nc -z localhost 5173` exits 0", "check the build", NOW + 3_600_000],
 		]);
 		expect(rows.every((r) => r.kind === "timer")).toBe(true);
 	});

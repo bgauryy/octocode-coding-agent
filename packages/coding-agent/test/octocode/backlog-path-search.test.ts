@@ -8,6 +8,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { backlogToolName } from "./backlog-fixture.ts";
 
 const READY = { goal: "Result can be checked", why: "Users need it" };
 
@@ -32,16 +33,17 @@ function setup() {
 	registerBacklog(fake.api, { commands: new Subcommands(), isSubagent: false });
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
-	const tool = fake.tools.get("backlog");
 	const ctx = fakeCtx({ cwd });
 	return {
 		cwd,
 		backlog: async (params: Record<string, unknown>) => {
+			const name = backlogToolName(params.op);
+			const tool = fake.tools.get(name);
 			const args = tool.validationParameters ? { reason: "test", ...params } : params;
 			const valid = validateToolArguments(tool, {
 				type: "toolCall",
 				id: "id",
-				name: "backlog",
+				name,
 				arguments: args,
 			} as never);
 			const result = (await tool.execute("id", valid, undefined, undefined, ctx)) as {
@@ -59,7 +61,7 @@ describe("backlog list by path", () => {
 	async function seed() {
 		const t = setup();
 		const add = (title: string, extra: Record<string, unknown>) =>
-			t.backlog({ op: "add", title, ...READY, state: "todo", ...extra });
+			t.backlog({ op: "add", items: [{ title, ...READY, state: "todo", ...extra }] });
 		await add("file item", { paths: ["packages/db/src/queries/a.ts"] }); // B1
 		await add("shallow folder", { paths: ["packages/db/"] }); // B2
 		await add("deep folder", { paths: ["packages/db/src/queries"] }); // B3
@@ -72,7 +74,7 @@ describe("backlog list by path", () => {
 
 	it("finds exact file, containing folders and mentions, ranked with reasons", async () => {
 		const t = await seed();
-		const out = await t.backlog({ op: "list", paths: ["packages/db/src/queries/a.ts"] });
+		const out = await t.backlog({ op: "list", touchingPaths: ["packages/db/src/queries/a.ts"] });
 		expect(refs(out)).toEqual(["B1", "B3", "B2", "B6", "B5"]);
 		expect(line(out, "B1")).toContain("matched: exact path");
 		expect(line(out, "B3")).toContain("matched: folder packages/db/src/queries in Where");
@@ -82,12 +84,12 @@ describe("backlog list by path", () => {
 
 	it("finds items under a folder query and respects path boundaries", async () => {
 		const t = await seed();
-		const under = await t.backlog({ op: "list", paths: ["packages/db/src/queries"] });
+		const under = await t.backlog({ op: "list", touchingPaths: ["packages/db/src/queries"] });
 		expect(refs(under)).toEqual(["B3", "B2", "B4", "B1", "B6", "B5"]);
 		expect(line(under, "B1")).toContain("is under packages/db/src/queries");
-		const lookalike = await t.backlog({ op: "list", paths: ["packages/db/src/queries/a"] });
+		const lookalike = await t.backlog({ op: "list", touchingPaths: ["packages/db/src/queries/a"] });
 		expect(refs(lookalike)).toEqual(["B3", "B2"]);
-		expect(refs(await t.backlog({ op: "list", paths: ["packages/dbx"] }))).toEqual(["B4"]);
+		expect(refs(await t.backlog({ op: "list", touchingPaths: ["packages/dbx"] }))).toEqual(["B4"]);
 	});
 
 	it("normalizes ./, absolute, trailing slash and Windows separators", async () => {
@@ -100,19 +102,19 @@ describe("backlog list by path", () => {
 			"packages\\db\\src\\queries\\a.ts",
 			"packages/db/src/queries/a.ts:12",
 		])
-			expect(refs(await t.backlog({ op: "list", paths: [input] })), input).toEqual(want);
-		expect(refs(await t.backlog({ op: "list", paths: ["packages/tui/"] }))).toEqual(["B7"]);
+			expect(refs(await t.backlog({ op: "list", touchingPaths: [input] })), input).toEqual(want);
+		expect(refs(await t.backlog({ op: "list", touchingPaths: ["packages/tui/"] }))).toEqual(["B7"]);
 	});
 
 	it("hides closed items unless asked and combines with type and state", async () => {
 		const t = setup();
-		await t.backlog({ op: "add", title: "open", ...READY, state: "todo", paths: ["src/x.ts"] });
-		await t.backlog({ op: "add", title: "bug", type: "bug", ...READY, state: "todo", paths: ["src"] });
-		await t.backlog({ op: "add", title: "gone", ...READY, state: "todo", paths: ["src/x.ts"] });
-		await t.backlog({ op: "update", id: "B3", close: { kind: "obsolete", text: "no longer needed" } });
-		expect(refs(await t.backlog({ op: "list", paths: ["src/x.ts"] }))).toEqual(["B1", "B2"]);
-		expect(refs(await t.backlog({ op: "list", paths: ["src/x.ts"], states: ["closed"] }))).toEqual(["B3"]);
-		expect(refs(await t.backlog({ op: "list", paths: ["src/x.ts"], type: "bug" }))).toEqual(["B2"]);
+		await t.backlog({ op: "add", items: [{ title: "open", ...READY, state: "todo", paths: ["src/x.ts"] }] });
+		await t.backlog({ op: "add", items: [{ title: "bug", type: "bug", ...READY, state: "todo", paths: ["src"] }] });
+		await t.backlog({ op: "add", items: [{ title: "gone", ...READY, state: "todo", paths: ["src/x.ts"] }] });
+		await t.backlog({ op: "close", id: "B3", close: { kind: "obsolete", text: "no longer needed" } });
+		expect(refs(await t.backlog({ op: "list", touchingPaths: ["src/x.ts"] }))).toEqual(["B1", "B2"]);
+		expect(refs(await t.backlog({ op: "list", touchingPaths: ["src/x.ts"], states: ["closed"] }))).toEqual(["B3"]);
+		expect(refs(await t.backlog({ op: "list", touchingPaths: ["src/x.ts"], ofType: "bug" }))).toEqual(["B2"]);
 	});
 });
 

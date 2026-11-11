@@ -1,9 +1,9 @@
-import { open } from "node:fs/promises";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
 import { formatBytes } from "../../utils/bytes.ts";
 import { type CappedOutputFile, createCappedOutputFile } from "../../utils/output-files.ts";
 import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 import { OutputHead } from "./output-head.ts";
+import { readSavedOutput } from "./saved-output.ts";
 import {
 	collapseCarriageReturns,
 	collapseLine,
@@ -97,6 +97,8 @@ export class OutputAccumulator {
 	private totalDecodedBytes = 0;
 	private completedLines = 0;
 	private currentLineBytes = 0;
+	/** Bytes of the newest line that ended with a newline, for a header that names the line it shows part of. */
+	private lastCompletedLineBytes = 0;
 	private hasOpenLine = false;
 	private finished = false;
 
@@ -239,33 +241,14 @@ export class OutputAccumulator {
 		if (!this.tempFilePath) {
 			return { content: new TextDecoder().decode(Buffer.concat(this.rawChunks)), truncated: false };
 		}
-		const file = await open(this.tempFilePath, "r");
-		try {
-			const size = (await file.stat()).size;
-			if (size <= maxBytes) {
-				return { content: new TextDecoder().decode(await file.readFile()), truncated: this.spillDroppedBytes > 0 };
-			}
-			const headBytes = Math.floor(maxBytes / 2);
-			const tailBytes = maxBytes - headBytes;
-			const head = Buffer.alloc(headBytes);
-			const tail = Buffer.alloc(tailBytes);
-			await file.read(head, 0, headBytes, 0);
-			await file.read(tail, 0, tailBytes, size - tailBytes);
-			// Cut at character boundaries: streaming decode holds back an incomplete trailing sequence,
-			// and the tail skips leading continuation bytes.
-			const headText = new TextDecoder().decode(head, { stream: true });
-			let tailStart = 0;
-			while (tailStart < tail.length && (tail[tailStart] & 0xc0) === 0x80) tailStart++;
-			const tailText = new TextDecoder().decode(tail.subarray(tailStart));
-			const omitted = size - headBytes - tailBytes;
-			return { content: `${headText}\n\n[... ${omitted} bytes omitted ...]\n\n${tailText}`, truncated: true };
-		} finally {
-			await file.close();
-		}
+		const saved = readSavedOutput(this.tempFilePath, maxBytes);
+		return { content: saved.content, truncated: saved.truncated || this.spillDroppedBytes > 0 };
 	}
 
+	/** Bytes of the last line: the unterminated one, else the newest one that ended with a newline. */
 	getLastLineBytes(): number {
-		return this.currentLineBytes + this.openBytes;
+		if (this.hasOpenLine || this.openBytes > 0) return this.currentLineBytes + this.openBytes;
+		return this.lastCompletedLineBytes;
 	}
 
 	private withoutAnsi(text: string, final = false): string {
@@ -331,6 +314,11 @@ export class OutputAccumulator {
 			this.currentLineBytes += bytes;
 			this.hasOpenLine = true;
 		} else {
+			const previousNewline = text.lastIndexOf("\n", lastNewline - 1);
+			this.lastCompletedLineBytes =
+				previousNewline === -1
+					? this.currentLineBytes + byteLength(text.slice(0, lastNewline))
+					: byteLength(text.slice(previousNewline + 1, lastNewline));
 			this.completedLines += newlines;
 			const tail = text.slice(lastNewline + 1);
 			this.currentLineBytes = byteLength(tail);
@@ -366,7 +354,11 @@ export class OutputAccumulator {
 		}
 
 		const firstNewline = this.tailText.indexOf("\n");
-		return firstNewline === -1 ? this.tailText : this.tailText.slice(firstNewline + 1);
+		// A tail that holds only the end of one long line keeps that end: the snapshot shows it as a partial line, where
+		// cutting at the newline would leave nothing.
+		return firstNewline === -1 || firstNewline === this.tailText.length - 1
+			? this.tailText
+			: this.tailText.slice(firstNewline + 1);
 	}
 
 	private shouldUseTempFile(): boolean {

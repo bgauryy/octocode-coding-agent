@@ -7,6 +7,7 @@ import {
 	buildSystemPrompt,
 	normalizeBuildSystemPromptOptions,
 } from "../../system-prompt.ts";
+import { PolicyRenderError } from "../../system-prompt-spec.ts";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -112,6 +113,8 @@ export async function dispatchBeforeAgentStart(
 					error: message,
 					stack,
 				});
+				// The one handler error that is not contained: without its policy sections the run must not start.
+				if (err instanceof PolicyRenderError) throw err;
 			}
 		}
 	}

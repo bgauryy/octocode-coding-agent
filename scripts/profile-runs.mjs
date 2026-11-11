@@ -41,12 +41,20 @@ function getRuntimeCommand(runtime, mode, profileDir, profileName, cpuProfile, n
 	};
 }
 
-function createBenchmarkEnv(options, isolatedAgentDir) {
+/**
+ * An isolated run gets its own agent dir, Octocode home and agent database under `tempRoot`: the database path ignores
+ * the agent dir (it follows `OCTOCODE_AGENT_DB`, else the home), so isolating the agent dir alone would still open the
+ * user's real database.
+ */
+export function createBenchmarkEnv(options, tempRoot) {
 	const env = { ...process.env, OCTOCODE_TIMING: "1" };
 	if (options.agentDir) {
 		env[agentDirEnvName] = options.agentDir;
-	} else if (isolatedAgentDir) {
-		env[agentDirEnvName] = isolatedAgentDir;
+	} else if (tempRoot) {
+		const home = join(tempRoot, "home");
+		env[agentDirEnvName] = join(tempRoot, "agent");
+		env.OCTOCODE_HOME = home;
+		env.OCTOCODE_AGENT_DB = join(home, "agent", "workspaces.db");
 	}
 	if (options.mode === "tui") {
 		env[startupBenchmarkEnvName] = "1";
@@ -71,7 +79,7 @@ async function runTuiBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 	const command = getRuntimeCommand(runtime, "tui", profileDir, profileName, options.cpuProfile, bundledDistCliPath);
 	const child = spawn(command.executable, command.args, {
 		cwd: packageDir,
-		env: createBenchmarkEnv(options, isolatedAgentDir),
+		env: createBenchmarkEnv(options, tempRoot),
 		stdio: ["inherit", "inherit", "pipe"],
 		shell: process.platform === "win32" && runtime === "bun",
 	});
@@ -133,7 +141,7 @@ async function runRpcBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 	const command = getRuntimeCommand(runtime, "rpc", profileDir, profileName, options.cpuProfile, bundledDistCliPath);
 	const child = spawn(command.executable, command.args, {
 		cwd: packageDir,
-		env: createBenchmarkEnv(options, isolatedAgentDir),
+		env: createBenchmarkEnv(options, tempRoot),
 		stdio: ["pipe", "pipe", "pipe"],
 		shell: process.platform === "win32" && runtime === "bun",
 	});

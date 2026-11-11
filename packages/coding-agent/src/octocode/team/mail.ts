@@ -272,7 +272,7 @@ export class Mail {
 	}
 }
 
-/** The ids of the messages to `me` that a Octocode message carries, when it is team mail (details are untrusted data). */
+/** The ids of the messages to `me` that an Octocode message carries, when it is team mail (details are untrusted data). */
 export function mailIds(message: { role?: string; customType?: string; details?: unknown }, me: string): number[] {
 	if (message.role !== "custom" || message.customType !== INTERNAL_MESSAGE_TYPE) return [];
 	const mail = (message.details as Partial<MailDetails> | undefined)?.messages;

@@ -49,7 +49,7 @@ function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage
 		: pendingMessages;
 	const delta = getToolStateChanges(
 		getCurrentTools([...context.messages, ...baseline]),
-		(context.tools ?? []).map(toToolDeclaration),
+		(context.tools ?? []).map(declarationOf),
 	);
 	// Pending tools keep their previous declaration until they register or the host drops them.
 	const awaiting = context.pendingToolNames?.();
@@ -71,6 +71,43 @@ function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage
 }
 
 const NO_CHANGES: ToolStateChanges = { toolsAdded: [], toolsRemoved: [] };
+
+type Declared = NonNullable<AgentContext["tools"]>[number];
+const declarations = new WeakMap<
+	Declared,
+	{
+		source: Pick<Declared, "name" | "description" | "parameters" | "constrainedSampling">;
+		declaration: ReturnType<typeof toToolDeclaration>;
+	}
+>();
+
+/**
+ * The declaration of an executable tool, built once per tool object and reused while its name, description,
+ * parameters object and sampling flag are the same: this runs for every tool before every request, and each
+ * `toToolDeclaration` copies the whole schema. A declaration is never edited after it is built.
+ */
+function declarationOf(tool: Declared): ReturnType<typeof toToolDeclaration> {
+	const known = declarations.get(tool);
+	if (
+		known &&
+		known.source.name === tool.name &&
+		known.source.description === tool.description &&
+		known.source.parameters === tool.parameters &&
+		known.source.constrainedSampling === tool.constrainedSampling
+	)
+		return known.declaration;
+	const declaration = toToolDeclaration(tool);
+	declarations.set(tool, {
+		source: {
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+			constrainedSampling: tool.constrainedSampling,
+		},
+		declaration,
+	});
+	return declaration;
+}
 
 /** Copy a system message with its tool fields replaced by `changes`; empty lists omit the field. */
 function withToolChanges(message: SystemMessage, { toolsAdded, toolsRemoved }: ToolStateChanges): SystemMessage {

@@ -8,19 +8,23 @@ import {
 	writableSource,
 	type LoadedMcpConfig,
 	type McpServerEntry,
-} from "../../../../mcp/src/config.ts";
-import { globalMcpConfigPath, projectMcpConfigPath } from "../../../../mcp/src/paths.ts";
-import { presetEntries } from "../../../../mcp/src/preset.ts";
-import { browserPreset } from "../../../../mcp/src/presets/browser/index.ts";
-import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
-import { mcpGroupLabel, mcpServerGroup, mcpServerSource } from "../../../../mcp/src/group.ts";
-import { isEnabled } from "../../../../mcp/src/server.ts";
-import { tildePath } from "../../octocode/shared/home.ts";
-import { validateMcpServerConfig } from "../../../../mcp/src/servers.ts";
+	globalMcpConfigPath,
+	projectMcpConfigPath,
+	presetEntries,
+	browserPreset,
+	recommendedPresets,
+	mcpGroupLabel,
+	mcpServerGroup,
+	mcpServerSource,
+	isEnabled,
+	validateMcpServerConfig,
+} from "../../../../mcp/src/api.ts";
 import { applied, closestIds, nameOf, refused } from "../result.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "../types.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 
-const load = (ctx: ConfigContext): LoadedMcpConfig =>
+/** The configured servers, as a session started in `ctx.cwd` loads them; connects nothing. */
+export const loadMcpServers = (ctx: ConfigContext): LoadedMcpConfig =>
 	loadMcpConfig({
 		agentDir: ctx.agentDir,
 		cwd: ctx.cwd,
@@ -38,7 +42,12 @@ function ownerScope(entry: McpServerEntry): ConfigScope | "default" {
  * Where an enable/disable lands, as `octocode mcp enable` decides: another agent's file is never written, a change
  * becomes an override in Octocode's own file of that scope.
  */
-function switchTarget(entry: McpServerEntry, loaded: LoadedMcpConfig, scope: ConfigScope, ctx: ConfigContext): string {
+export function switchTarget(
+	entry: McpServerEntry,
+	loaded: LoadedMcpConfig,
+	scope: ConfigScope,
+	ctx: ConfigContext,
+): string {
 	const projectConfig = loaded.projectConfig ?? projectMcpConfigPath(ctx.cwd);
 	const ownProject = entry.scope === "project" ? writableSource(entry) : undefined;
 	const projectOverride = entry.override && entry.overrideScope !== "global";
@@ -57,7 +66,7 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 			"MCP servers have no per-run form here: the MCP owner saves every switch. Use global or project scope.",
 		);
 	const enabled = op.verb === "enable";
-	const loaded = load(ctx);
+	const loaded = loadMcpServers(ctx);
 	const entry = loaded.servers.find((server) => server.name === name);
 	if (!entry)
 		return refused(
@@ -88,7 +97,7 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 export const mcpAdapter: ConfigAdapter = {
 	kinds: ["mcp"],
 	async list(ctx) {
-		return load(ctx).servers.map((entry): ConfigEntry => {
+		return loadMcpServers(ctx).servers.map((entry): ConfigEntry => {
 			const enabled = isEnabled({ entry });
 			const setBy = ownerScope(entry);
 			return {
@@ -102,7 +111,7 @@ export const mcpAdapter: ConfigAdapter = {
 				default: true,
 				appliesWhen: ctx.live?.mcpSwitch ? "now" : "next-session",
 				// The same words as the `/harness` row: `Core · built in`, `Global · ~/.octocode/mcp.json`.
-				detail: `${mcpGroupLabel(mcpServerGroup(entry))} · ${mcpServerSource(entry, (file) => tildePath(file))}`,
+				detail: `${mcpGroupLabel(mcpServerGroup(entry))} · ${mcpServerSource(entry, (file) => homeTilde(file))}`,
 			};
 		});
 	},

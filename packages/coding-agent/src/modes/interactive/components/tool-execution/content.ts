@@ -1,13 +1,14 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Box, Container, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
-import type { ApplicationContentBlock } from "@octocodeai/octocode-contracts";
+import { resultPurposeData, type ApplicationContentBlock } from "@octocodeai/octocode-contracts";
 import { ApplicationAssets } from "../../../../core/application/assets.ts";
 import { normalizeApplicationContent } from "../../../../core/application/normalize.ts";
 import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { formatDuration } from "../../../../octocode/shared/format.ts";
-import { keyHint } from "../keybinding-hints.ts";
+import { keyHint } from "../../../../theme/theme-tui-helpers.ts";
 import { purposeRows, reasonRow } from "../../../../octocode/ui/reason-row.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
@@ -17,7 +18,7 @@ interface GenericToolDisplay {
 	toolName: string;
 	toolCallId: string;
 	args: unknown;
-	/** The result so far: its content, and its structured data, where an MCP result may state its call's purpose. */
+	/** The result so far: its content, and its structured data; either may state the call's purpose (`resultPurposeData`). */
 	result: Pick<ToolExecutionResult, "content" | "structuredContent"> | undefined;
 	expanded: boolean;
 	showImages: boolean;
@@ -55,7 +56,7 @@ export class GenericToolContent extends Container {
 				display.background,
 			),
 		);
-		const reason = reasonRow(display.toolName, display.args, display.result?.structuredContent);
+		const reason = reasonRow(display.toolName, display.args, resultPurposeData(display.result));
 		if (reason) {
 			const row = new Box(display.outputPad, 0, display.background);
 			row.addChild(reason);
@@ -70,7 +71,7 @@ export class GenericToolContent extends Container {
 					id: `${display.toolCallId}:unavailable`,
 					type: "unsupported",
 					providerType: "tool-result",
-					text: `Content unavailable: ${error instanceof Error ? error.message : "Could not prepare output"}`,
+					text: `Content unavailable: ${errorMessage(error)}`,
 				},
 			];
 		}
@@ -118,7 +119,7 @@ export class GenericToolContent extends Container {
 					display.background,
 				),
 			);
-		const purpose = display.result && purposeRows(display.toolName, display.args, display.result.structuredContent);
+		const purpose = display.result && purposeRows(display.toolName, display.args, resultPurposeData(display.result));
 		if (purpose) {
 			const row = new Box(display.outputPad, 0, display.background);
 			row.addChild(purpose);

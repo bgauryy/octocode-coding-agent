@@ -76,6 +76,27 @@ await drain();`);
 	expect(writes[1]).toEqual({ updateDone: true, endDone: false });
 });
 
+it("stops holding a run on a stalled reader once the run aborts, and still writes its events in order", () => {
+	const writes = run(`out({ type: "turn_start" });
+const controller = new AbortController();
+let endDone = false;
+void waitForEventBackpressure({ type: "message_end" }, controller.signal).then(() => { endDone = true; });
+await tick();
+const before = endDone;
+controller.abort();
+await tick();
+const after = endDone;
+const aborted = await waitForEventBackpressure({ type: "agent_end" }, controller.signal).then(() => true);
+out({ type: "agent_end" });
+writeRawStdout(JSON.stringify({ before, after, aborted }));
+await drain();`);
+	expect(writes).toEqual([
+		{ type: "turn_start" },
+		{ type: "agent_end" },
+		{ before: false, after: true, aborted: true },
+	]);
+});
+
 function update(toolCallId: string, n: number) {
 	return { type: "tool_execution_update", toolCallId, n };
 }

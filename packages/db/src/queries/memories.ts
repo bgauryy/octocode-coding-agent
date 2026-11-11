@@ -8,9 +8,10 @@ export interface MemoryContext {
 }
 /** A read with `all` sees global notes, repository notes and this workspace's notes. */
 export type ScopeFilter = MemoryScope | "all";
-/** Narrows a list or count: only pinned memories, and none of the `exclude` ids (those already in context). */
+/** Narrows a list or count: only pinned memories, only one kind, and none of the `exclude` ids (those already in context). */
 export interface MemoryFilter {
 	pinnedOnly?: boolean;
+	kind?: string;
 	exclude?: ReadonlySet<number>;
 }
 
@@ -29,7 +30,7 @@ function scopeSql(context: MemoryContext, scope: ScopeFilter): { sql: string; pa
 		params: [project, workspaceId ?? ""],
 	};
 }
-/** `scopeSql` narrowed by `options`: only pinned memories, and none of the `exclude` ids. */
+/** `scopeSql` narrowed by `options`: only pinned memories, only one kind, and none of the `exclude` ids. */
 function filterSql(
 	repoKey: MemoryContext,
 	scope: ScopeFilter,
@@ -37,8 +38,12 @@ function filterSql(
 ): { sql: string; params: string[] } {
 	const where = scopeSql(repoKey, scope);
 	return {
-		sql: `${where.sql}${options.pinnedOnly ? " AND m.pinned = 1" : ""}${options.exclude?.size ? " AND m.id NOT IN (SELECT value FROM json_each(?))" : ""}`,
-		params: [...where.params, ...(options.exclude?.size ? [JSON.stringify([...options.exclude])] : [])],
+		sql: `${where.sql}${options.pinnedOnly ? " AND m.pinned = 1" : ""}${options.kind ? " AND m.kind = ?" : ""}${options.exclude?.size ? " AND m.id NOT IN (SELECT value FROM json_each(?))" : ""}`,
+		params: [
+			...where.params,
+			...(options.kind ? [options.kind] : []),
+			...(options.exclude?.size ? [JSON.stringify([...options.exclude])] : []),
+		],
 	};
 }
 
@@ -96,6 +101,14 @@ export function searchFts(
 				`WHERE memories_fts MATCH ? AND ${where.sql} AND m.id NOT IN (SELECT value FROM json_each(?)) ORDER BY bm25_score, m.id DESC LIMIT ? OFFSET ?`,
 		)
 		.all(match, ...where.params, JSON.stringify([...exclude]), limit, offset);
+}
+
+/** The searchable text of every memory, whatever its scope: an offline report replays stored prompts against it. */
+export function texts(db: DatabaseSync): Array<{ title: string; keywords: string; body: string }> {
+	return db
+		.prepare("SELECT title, keywords, body FROM memories ORDER BY id")
+		.all()
+		.map((row) => ({ title: String(row.title), keywords: String(row.keywords), body: String(row.body) }));
 }
 
 /** The newest `limit` memories of `scope`, for the search that scores them in memory (no FTS5). */

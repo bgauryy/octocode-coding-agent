@@ -156,6 +156,15 @@ describe("agent stats", () => {
 		expect(renderStats(stats)).toContain("outcome word 50% · trailing outcome 1");
 	});
 
+	it("counts an outcome the child gave only when asked as neither named nor trailing", () => {
+		const stats = agentStats([
+			report({ id: "a", profile: "x", status: "done", outcome: "partial", outcomeSource: "asked" }, "1"),
+			report({ id: "b", profile: "x", status: "done", outcome: "done", outcomeSource: "first" }, "2"),
+		]);
+		expect([stats[0].ended, stats[0].named, stats[0].trailing]).toEqual([2, 1, 0]);
+		expect(stats[0].outcomes).toMatchObject({ partial: 1, done: 1, unknown: 0 });
+	});
+
 	it("records each run's model requests (background and foreground) and shows p50, p95 and max", () => {
 		const runs = [4, 10, 20, 98].map((requests, index) =>
 			report({ id: `r${index}`, profile: "x", status: "done", requests }, `q${index}`),

@@ -5,6 +5,14 @@ import { getActiveBackgroundAnsi } from "../utils/ansi-tracker.ts";
 import { extractAnsiCode } from "../utils/ansi-codes.ts";
 import type { LayoutBox, ScrollbarGeometry } from "./types.ts";
 
+/**
+ * Rows already cut for a scrollbar cell. A scroll moves the same rows by a line or two, so nearly every row of the
+ * next frame was cut in the last one: without this each frame re-segments every visible row, the largest fixed cost of
+ * a scroll frame. The key holds everything the result depends on; the map is emptied when it grows past a few screens.
+ */
+const cutRows = new Map<string, string>();
+const CUT_ROWS_LIMIT = 2048;
+
 function replaceScrollbarCell(
 	line: string,
 	column: number,
@@ -13,7 +21,22 @@ function replaceScrollbarCell(
 	preserveTargetBackground: boolean,
 ): string {
 	if (isImageLine(line)) return line;
+	const key = `${column}\0${totalWidth}\0${preserveTargetBackground ? 1 : 0}\0${replacement}\0${line}`;
+	const known = cutRows.get(key);
+	if (known !== undefined) return known;
+	const cut = cutScrollbarCell(line, column, totalWidth, replacement, preserveTargetBackground);
+	if (cutRows.size >= CUT_ROWS_LIMIT) cutRows.clear();
+	cutRows.set(key, cut);
+	return cut;
+}
 
+function cutScrollbarCell(
+	line: string,
+	column: number,
+	totalWidth: number,
+	replacement: string,
+	preserveTargetBackground: boolean,
+): string {
 	const graphemeRange = getGraphemeCellRange(line, column);
 	const start = graphemeRange?.start ?? column;
 	const end = graphemeRange?.end ?? column + 1;

@@ -61,7 +61,7 @@ describe("Claude continue:false stops the turn on tool events (audit finding 2)"
 		const ctx = fakeCtx({ cwd: tmp() });
 		const abort = vi.fn();
 		ctx.abort = abort;
-		const hooks = registerHooks(fake.api, {}, home);
+		const hooks = registerHooks(fake.api, { env: {}, home });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const result = await hooks.preToolUse(
 			{ toolName: "bash", toolCallId: "c", input: { command: "true" } } as never,
@@ -79,7 +79,7 @@ describe("Claude continue:false stops the turn on tool events (audit finding 2)"
 		const ctx = fakeCtx({ cwd: tmp() });
 		const abort = vi.fn();
 		ctx.abort = abort;
-		registerHooks(fake.api, {}, home);
+		registerHooks(fake.api, { env: {}, home });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await fake.emit(
 			"tool_result",
@@ -120,7 +120,7 @@ describe("output limits (audit finding 8)", () => {
 		});
 		const fake = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({ cwd: tmp() });
-		registerHooks(fake.api, {}, home);
+		registerHooks(fake.api, { env: {}, home });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const results = (await fake.emit("before_agent_start", {}, ctx)) as Array<
 			{ message?: { content: string } } | undefined
@@ -158,7 +158,7 @@ describe("Claude PermissionRequest with several handlers (S1)", () => {
 		});
 		const fake = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({ cwd: tmp() });
-		const hooks = registerHooks(fake.api, {}, home);
+		const hooks = registerHooks(fake.api, { env: {}, home });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const decision = await hooks.permissionRequest(
 			captureToolInvocation("one", "bash", { command: "true" })!,
@@ -188,13 +188,11 @@ describe("SubagentStart runs once per subagent (S2)", () => {
 			model: null,
 			thinkingLevel: "off",
 		});
-		registerHooks(
-			fake.api,
-			{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent" },
+		registerHooks(fake.api, {
+			env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent" },
 			home,
-			undefined,
-			() => ({ permissionMode: "workspace" }),
-		);
+			metadata: () => ({ permissionMode: "workspace" }),
+		});
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await fake.emit("before_agent_start", {}, ctx);
 		await fake.emit("before_agent_start", {}, ctx);
@@ -214,11 +212,10 @@ describe("Codex hooks in a child session (audit finding 6)", () => {
 		const fake = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({ cwd: tmp() });
 		ctx.sessionManager.getSessionId = () => "child-session";
-		const hooks = registerHooks(
-			fake.api,
-			{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" },
+		const hooks = registerHooks(fake.api, {
+			env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" },
 			home,
-		);
+		});
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await hooks.preToolUse({ toolName: "bash", toolCallId: "c", input: { command: "true" } } as never, ctx);
 		expect(JSON.parse(fs.readFileSync(capture, "utf8"))).toMatchObject({

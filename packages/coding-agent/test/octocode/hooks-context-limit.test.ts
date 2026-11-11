@@ -110,7 +110,7 @@ it.each([false, true])("applies the per-handler context limit in actual dispatch
 	});
 	const f = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp() });
-	const hooks = registerHooks(f.api, {}, home);
+	const hooks = registerHooks(f.api, { env: {}, home });
 	await f.fire("session_start", { reason: "startup" }, ctx);
 	try {
 		await hooks.preToolUse(

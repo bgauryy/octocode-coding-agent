@@ -36,29 +36,65 @@ describe("resize coalescing", () => {
 		tui.stop();
 	});
 
-	it("restarts the wait on each event and fires once, after the last", (t) => {
-		t.mock.timers.enable({ apis: ["setTimeout"] });
+	it("fires a lone resize after the short wait", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 		let fired = 0;
-		const debounce = new ResizeDebounce(() => fired++, 12);
-		for (let i = 0; i < 5; i++) {
-			debounce.trigger();
-			t.mock.timers.tick(10);
-		}
-		assert.strictEqual(fired, 0);
-		t.mock.timers.tick(1);
+		const debounce = new ResizeDebounce(() => fired++, { delayMs: 12 });
+		debounce.trigger();
+		t.mock.timers.tick(11);
 		assert.strictEqual(fired, 0);
 		t.mock.timers.tick(1);
 		assert.strictEqual(fired, 1);
-		t.mock.timers.tick(100);
+		t.mock.timers.tick(500);
 		assert.strictEqual(fired, 1);
 	});
 
-	it("fires again for a resize after the quiet time", (t) => {
-		t.mock.timers.enable({ apis: ["setTimeout"] });
+	it("keeps the first frame of a burst on time, then waits for the burst to pause", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 		let fired = 0;
-		const debounce = new ResizeDebounce(() => fired++, 12);
+		const debounce = new ResizeDebounce(() => fired++, { delayMs: 12, burstDelayMs: 80, maxWaitMs: 250 });
+		// Events every 4 ms: the first frame still fires 12 ms after the first event.
+		for (let i = 0; i < 3; i++) {
+			debounce.trigger();
+			t.mock.timers.tick(4);
+		}
+		t.mock.timers.tick(0);
+		assert.strictEqual(fired, 1);
+		// The drag goes on (last event at 60 ms): no frame at every step, one 80 ms after it stops.
+		for (let at = 16; at <= 60; at += 4) {
+			t.mock.timers.tick(at - Date.now());
+			debounce.trigger();
+		}
+		t.mock.timers.tick(79);
+		assert.strictEqual(fired, 1);
+		t.mock.timers.tick(1);
+		assert.strictEqual(fired, 2);
+		t.mock.timers.tick(500);
+		assert.strictEqual(fired, 2);
+	});
+
+	it("repaints at the max wait while a burst never pauses", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		const firedAt: number[] = [];
+		const debounce = new ResizeDebounce(() => firedAt.push(Date.now()), {
+			delayMs: 12,
+			burstDelayMs: 80,
+			maxWaitMs: 250,
+		});
+		// An event every 16 ms until 592 ms, time advancing 1 ms at a time so each frame records its own time.
+		for (let at = 0; at < 800; at++) {
+			if (at <= 600 && at % 16 === 0) debounce.trigger();
+			t.mock.timers.tick(1);
+		}
+		assert.deepStrictEqual(firedAt, [12, 262, 512, 672]);
+	});
+
+	it("fires again for a resize after the quiet time", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		let fired = 0;
+		const debounce = new ResizeDebounce(() => fired++, { delayMs: 12, burstDelayMs: 80 });
 		debounce.trigger();
-		t.mock.timers.tick(12);
+		t.mock.timers.tick(100);
 		debounce.trigger();
 		t.mock.timers.tick(12);
 		assert.strictEqual(fired, 2);

@@ -382,7 +382,7 @@ describe("parseCommandArgs", () => {
 	});
 
 	test("should handle quoted empty string", () => {
-		// Empty quotes keep their position as an empty argument (#10867)
+		// Empty quotes keep their position as an empty argument
 		expect(parseCommandArgs('"" " "')).toEqual(["", " "]);
 		expect(parseCommandArgs("a '' c")).toEqual(["a", "", "c"]);
 		expect(parseCommandArgs('a ""')).toEqual(["a", ""]);
@@ -471,7 +471,6 @@ describe("expandPromptTemplate", () => {
 		expect(commands.map((command) => command.name)).toEqual(["prompt:config:2", "prompt:config:3"]);
 	});
 
-	// #10867
 	test("should use positional default for empty quoted argument without shifting later args", () => {
 		const template = {
 			name: "review",
@@ -676,7 +675,6 @@ Analyze GitHub issue(s): $ARGUMENTS`,
 });
 
 describe("loadPromptTemplates - diagnostics", () => {
-	// Regression test for #9354.
 	test("reports invalid YAML frontmatter and keeps valid siblings", () => {
 		const testDir = mkdtempSync(join(tmpdir(), "octocode-test-prompts-invalid-"));
 		const invalidPromptPath = join(testDir, "invalid.md");

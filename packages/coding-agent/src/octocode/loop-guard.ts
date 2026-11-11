@@ -1,11 +1,12 @@
 import { renderInstruction } from "../core/prompt-template.ts";
-import { archiveMutation } from "./shared/archive-operation.ts";
+import { memoryMutation } from "./shared/archive-operation.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import { sha256 } from "../../../common/src/atomic-file.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";
 import { say } from "./shared/commands.ts";
+import type { Gate } from "./permission/judge.ts";
 
 /**
  * Repeated calls without progress. The same tool, the same arguments and the same outcome several times in a row means
@@ -17,7 +18,8 @@ import { say } from "./shared/commands.ts";
  *
  * Every result is counted from `message_end`, which the agent loop emits in tool-call order for executed, blocked,
  * invalid and unknown calls alike; the outcome of an executed call is hashed earlier, on `tool_result`, before the turn
- * budget may replace its text.
+ * budget may replace its text. The refusal itself is the `loop` step of the `tool_call` pipeline (`permission/judge.ts`),
+ * so it is audited like every other refusal; this module only supplies the step's body.
  */
 
 /** Identical outcomes in a row that earn the first note. */
@@ -29,7 +31,7 @@ const LOOP_REPEAT_EVERY = 3;
 export const LOOP_HALT_AT = 8;
 
 /** Tools whose repeated, identical calls are legitimate: messaging, questions and bookkeeping. */
-const EXEMPT = new Set(["agent", "askUser", "backlog", "coordinate", "steps"]);
+const EXEMPT = new Set(["agent", "askUser", "backlog", "backlogPlan", "coordinate"]);
 /**
  * A shell command that waits (polling a job, a log, a port) is expected to repeat: `sleep`, `wait` or `watch` run as a
  * command (at the start or after `;`, `&&`, `||`, `|`), or `tail -f`. The words inside an argument do not count.
@@ -51,7 +53,7 @@ export function loopNote(tool: string, count: number, failed: boolean): string |
 function loopCallKey(toolName: string, input: unknown): string | undefined {
 	if (EXEMPT.has(toolName)) return undefined;
 	const args = asRecord(input);
-	if (toolName === "archive" && archiveMutation(args)) return undefined;
+	if (toolName === "memory" && memoryMutation(args)) return undefined;
 	if (toolName === "bash" && typeof args.command === "string" && WAITING.test(args.command)) return undefined;
 	const key = argumentsKey(withoutReasons(args) as Record<string, unknown>);
 	return key ? `${toolName}\0${key}` : undefined;
@@ -68,7 +70,11 @@ function withoutReasons(value: unknown): unknown {
 	);
 }
 
-export function registerLoopGuard(api: ExtensionAPI): void {
+/**
+ * Counts results and adds the notes; returns the `loop` step's body, which refuses the next identical call past
+ * `LOOP_HALT_AT` and ends the run. `tool-gates.ts` runs it first in the pipeline.
+ */
+export function registerLoopGuard(api: ExtensionAPI): Gate {
 	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
 	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
 	let lastCall: string | undefined;
@@ -94,22 +100,6 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 	api.on("before_agent_start", reset);
 	api.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) calls.set(event.toolCallId, { key: loopCallKey(event.toolName, event.args) });
-	});
-	api.on("tool_call", async (event, ctx) => {
-		const call = calls.get(event.toolCallId);
-		if (call) call.checked = true;
-		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
-		// The count keys calls by the arguments the model sent; `event.input` is already validated (and maybe coerced).
-		const key = calls.has(event.toolCallId)
-			? calls.get(event.toolCallId)?.key
-			: loopCallKey(event.toolName, event.input);
-		if (key !== lastCall) return undefined;
-		halted(ctx, event.toolName, count);
-		return {
-			block: true,
-			terminate: true,
-			reason: refusal(event.toolName, count),
-		};
 	});
 	api.on("tool_result", async (event) => {
 		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
@@ -147,4 +137,17 @@ export function registerLoopGuard(api: ExtensionAPI): void {
 			? { message: { ...message, content: [...message.content, { type: "text" as const, text: note }] } }
 			: undefined;
 	});
+	// The `loop` step: every call that reaches the `tool_call` pipeline passes here first.
+	return async (event, ctx) => {
+		const call = calls.get(event.toolCallId);
+		if (call) call.checked = true;
+		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
+		// The count keys calls by the arguments the model sent; `event.input` is already validated (and maybe coerced).
+		const key = calls.has(event.toolCallId)
+			? calls.get(event.toolCallId)?.key
+			: loopCallKey(event.toolName, event.input);
+		if (key !== lastCall) return undefined;
+		halted(ctx, event.toolName, count);
+		return { block: true, terminate: true, reason: refusal(event.toolName, count) };
+	};
 }

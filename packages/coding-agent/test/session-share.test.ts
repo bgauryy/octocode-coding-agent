@@ -146,6 +146,20 @@ describe("shareSession", () => {
 		expect(statuses[0]).toContainEqual({ url: "https://gist.github.com/test/forced-gist" });
 	});
 
+	it("shows the text of a non-Error export failure instead of a generic line", async () => {
+		fakeGh(() => exitingChild("", 0));
+		const errors: string[] = [];
+		const context = shareContext(errors);
+		context.session.exportToHtml = async () => {
+			// oxlint-disable-next-line typescript/only-throw-error -- the test needs a non-Error rejection
+			throw "disk quota exceeded";
+		};
+
+		await shareSession(context as never);
+
+		expect(errors).toEqual(["Failed to export session: disk quota exceeded"]);
+	});
+
 	it("reports a gh gist spawn failure instead of throwing it", async () => {
 		fakeGh(() => failingChild("spawn gh EACCES", "EACCES", -13));
 		const errors: string[] = [];

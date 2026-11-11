@@ -15,11 +15,16 @@ export function parseWebArgs(args: string): { view: "board" | "activity"; item?:
 	return ITEM_REF.test(item) ? { view: "board", item } : undefined;
 }
 
+/**
+ * `/web`: the user-level daemon's page when `daemon` is given (every session), else this session's own server. When the
+ * daemon cannot start or this session cannot attach, the session's own server opens instead, after a warning that says
+ * why, so `/web` never fails silently.
+ */
 export function webCommand(
-	/** Opens the page and resolves to its address. */
+	/** This session's own server, the fallback: opens the page and resolves to its address. */
 	open: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<string>,
-	/** The user-level daemon (`OCTOCODE_WEB_DAEMON=1`): true when it opened the page, false when it is off; a throw falls back to `open`. */
-	daemon?: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<boolean>,
+	/** The user-level daemon: opens its page on this session; throws when it cannot. */
+	daemon?: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<void>,
 ): Subcommand {
 	return {
 		description: "Open the web workspace",
@@ -32,21 +37,20 @@ export function webCommand(
 			}
 			const { view, item } = parsed;
 			const itemArg = item ? [item] : [];
-			try {
-				if (daemon) {
-					try {
-						if (await daemon(ctx, view, ...itemArg)) {
-							say(ctx, "Opened the web workspace. It keeps running after this session closes.");
-							return;
-						}
-					} catch (error) {
-						say(
-							ctx,
-							"The web daemon is unavailable (" + errorMessage(error) + "); using this session's own server.",
-							"warning",
-						);
-					}
+			if (daemon) {
+				try {
+					await daemon(ctx, view, ...itemArg);
+					say(ctx, "Opened the web workspace. It keeps running after this session closes.");
+					return;
+				} catch (error) {
+					say(
+						ctx,
+						`The web daemon could not start (${errorMessage(error)}), so this session serves the page itself.`,
+						"warning",
+					);
 				}
+			}
+			try {
 				const url = await open(ctx, view, ...itemArg);
 				say(
 					ctx,

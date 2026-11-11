@@ -11,7 +11,7 @@ import { PeerRegistry } from "./peer-registry.ts";
 
 /**
  * The octocode-agents-communication package keeps path leases for agents of every vendor (Claude, Codex, Octocode) in one
- * SQLite database. A Octocode session writes only after asking this: a live lease of another agent that covers the file
+ * SQLite database. An Octocode session writes only after asking this: a live lease of another agent that covers the file
  * refuses the write, as one of Octocode's own team reservations does. Advisory and one-way: each database is opened
  * read-only and never written, Octocode's own leases stay in its team database, and a missing, unreadable or newer-than-known
  * database means "no peer lease" (the write goes ahead), never a blocked session. The default database is always read;

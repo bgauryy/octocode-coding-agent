@@ -4,12 +4,13 @@ import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapsho
 import { choice } from "./format.ts";
 
 export const FILE_ROLES = ["changed", "reviewed", "produced"] as const;
-export const VERIFICATION_STATUSES = ["not_run", "passed", "failed", "not_applicable"] as const;
+export const VERIFICATION_STATUSES = ["not_run", "passed", "failed", "not_applicable", "not_stated"] as const;
 export const VERIFICATION_LABELS: Record<(typeof VERIFICATION_STATUSES)[number], string> = {
 	not_run: "Not run",
 	passed: "Passed",
 	failed: "Failed",
 	not_applicable: "Not applicable",
+	not_stated: "Not stated",
 };
 
 /** Every editor field as text: drafts serialize them as-is and `toMutation` parses them once on save. */

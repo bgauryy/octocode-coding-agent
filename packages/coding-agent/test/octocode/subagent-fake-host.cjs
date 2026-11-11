@@ -46,12 +46,30 @@ process.stdin.setEncoding("utf8").on("data", (chunk) => {
 			started = true;
 			task = command.message;
 			void run();
+		} else if (command.type === "prompt" && command.message.startsWith(OUTCOME_ASK)) {
+			answerOutcomeAsk(command.message);
 		} else {
 			commands.push(command);
 			onCommand(command);
 		}
 	}
 });
+
+/** How the parent's one question about a report without an outcome word starts (`notices/subagents/outcome-ask.md`). */
+const OUTCOME_ASK = "Your report does not start with an outcome word.";
+/**
+ * The child's turn on that question: one more model request, answered `done` unless the task names another answer.
+ * It reports no tokens, so a scenario's usage stays what its own replies spent.
+ */
+function answerOutcomeAsk(message) {
+	log("outcome-ask");
+	emit({ type: "response", command: "prompt", success: true, data: { disposition: "started" } });
+	emit({ type: "agent_start" });
+	emit({ type: "message_end", message: { role: "user", content: message } });
+	const spent = { ...usage, input: 0, output: 0, totalTokens: 0, cost: { ...usage.cost, total: 0 } };
+	emit(say(/outcome ask answers "([^"]*)"/.exec(task)?.[1] ?? "done", { usage: spent }));
+	emit({ type: "agent_settled" });
+}
 process.stdin.on("end", () => {
 	log("stdin-closed");
 	if (!ignoreClose) process.exit(0);
@@ -162,7 +180,7 @@ async function scenario() {
 		});
 		emit(
 			say(
-				`CACHE ${process.env.OCTOCODE_PROMPT_CACHE_KEY} SESSION ${process.argv[process.argv.indexOf("--session-id") + 1]}`,
+				`done: CACHE ${process.env.OCTOCODE_PROMPT_CACHE_KEY} SESSION ${process.argv[process.argv.indexOf("--session-id") + 1]}`,
 				{ usage: turn(500, 2000, 0) },
 			),
 		);
@@ -366,17 +384,27 @@ async function scenario() {
 	} else if (/(?:^|\n)budget loop \d+/.test(task)) {
 		// `budget loop N`: N tool-calling replies, 15 ms apart, then a final answer. A steer is logged with its text; an
 		// abort is logged and settles the run aborted, as Octocode does. The `pid` line lets a test check the process is gone.
-		// `budget loop N stop-at K`: the parent's budget must stop the run at reply K, so the child waits there for the abort
-		// (at most 10 s) instead of racing it with the next reply; the run then ends with exactly K replies however loaded the host is.
+		// `budget loop N stop-at K`: the parent's budget must end the run at reply K (the hard limit), so the child waits there
+		// for the parent's last word (an abort, or the steer that takes the tools away; at most 10 s) instead of racing it with
+		// the next reply. A steer with `toolChoice: "none"` gets one more reply without tool calls, as a model without tools
+		// gives; a plain `budget loop N` ignores it and keeps asking for tools, as a provider that cannot turn them off does.
 		log(`pid ${process.pid}`);
 		log(`prompt ${JSON.stringify(task)}`);
 		const total = Number(task.match(/(?:^|\n)budget loop (\d+)/)[1]);
 		const stopAt = Number(task.match(/(?:^|\n)budget loop \d+ stop-at (\d+)/)?.[1] ?? 0);
+		const lastWord = (command) =>
+			command.type === "abort" || (command.type === "steer" && command.toolChoice === "none");
 		let seen = 0;
 		for (let n = 1; n <= total; n++) {
 			emit(say(`step ${n}`, { stopReason: "toolUse" }));
 			if (n === stopAt)
-				await Promise.race([nextCommand("abort"), new Promise((resolve) => setTimeout(resolve, 10_000))]);
+				await Promise.race([
+					new Promise((resolve) => {
+						if (commands.slice(seen).some(lastWord)) return resolve();
+						onCommand = (command) => lastWord(command) && resolve();
+					}),
+					new Promise((resolve) => setTimeout(resolve, 10_000)),
+				]);
 			await new Promise((resolve) => setTimeout(resolve, 15));
 			for (; seen < commands.length; seen++) {
 				const command = commands[seen];
@@ -384,6 +412,10 @@ async function scenario() {
 				if (command.type === "abort") {
 					emit({ type: "agent_settled", aborted: true });
 					end = "hold";
+					return;
+				}
+				if (stopAt && command.type === "steer" && command.toolChoice === "none") {
+					emit(say(`partial: stopped after step ${n}`));
 					return;
 				}
 			}

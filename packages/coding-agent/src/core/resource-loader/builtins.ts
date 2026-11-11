@@ -1,9 +1,10 @@
 import "../../octocode/mcp-host/core-install.ts";
 import "../../octocode/mcp-host/render-install.ts";
+import "../../octocode/ui/export-rows-install.ts";
 import octocode from "../../octocode/index.ts";
 import llamaFeature from "../../octocode/llama/index.ts";
 import { withCoreToolReason } from "../../octocode/permission/native-tools.ts";
-import { defaultMcpExtension } from "../../../../mcp/src/default.ts";
+import { defaultMcpExtension } from "../../../../mcp/src/api.ts";
 import type { BuiltinFeatureId } from "../features/builtin-ids.ts";
 import type { Feature } from "../features/types.ts";
 

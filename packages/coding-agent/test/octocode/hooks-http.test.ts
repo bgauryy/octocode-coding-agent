@@ -176,7 +176,7 @@ describe("Claude HTTP hook transport", () => {
 		});
 		const { home } = configured(url, { onFailure: "block" });
 		const fake = fakeHost(HOOK_SETTINGS);
-		const hooks = registerHooks(fake.api, {}, home);
+		const hooks = registerHooks(fake.api, { env: {}, home });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -188,7 +188,7 @@ describe("Claude HTTP hook transport", () => {
 		async (url) => {
 			const { home } = configured(url, { onFailure: "block" });
 			const fake = fakeHost(HOOK_SETTINGS);
-			const hooks = registerHooks(fake.api, {}, home);
+			const hooks = registerHooks(fake.api, { env: {}, home });
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			await fake.fire("session_start", { reason: "startup" }, ctx);
 			expect(
@@ -342,7 +342,7 @@ describe("HTTP hook responses", () => {
 		const { home } = configured("http://127.0.0.1:9/hook", { onFailure: "block" });
 		const fake = fakeHost(HOOK_SETTINGS);
 		const noted: string[] = [];
-		const hooks = registerHooks(fake.api, {}, home, (what, note) => noted.push(...what, note));
+		const hooks = registerHooks(fake.api, { env: {}, home, onFailure: (what, note) => noted.push(...what, note) });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -360,7 +360,7 @@ describe("HTTP hook responses", () => {
 		);
 		const { home } = configured(url);
 		const fake = fakeHost(HOOK_SETTINGS);
-		const hooks = registerHooks(fake.api, {}, home);
+		const hooks = registerHooks(fake.api, { env: {}, home });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await hooks.preToolUse({ toolName: "bash", toolCallId: "context", input: { command: "true" } } as never, ctx);
@@ -384,7 +384,11 @@ describe("HTTP hook responses", () => {
 		const { home } = configured(url, {}, {}, "PermissionRequest");
 		const fake = fakeHost(HOOK_SETTINGS);
 		const audited: Array<{ what: readonly string[]; note: string; allowed: boolean }> = [];
-		const hooks = registerHooks(fake.api, {}, home, (what, note, allowed) => audited.push({ what, note, allowed }));
+		const hooks = registerHooks(fake.api, {
+			env: {},
+			home,
+			onFailure: (what, note, allowed) => audited.push({ what, note, allowed }),
+		});
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
@@ -411,7 +415,7 @@ describe("HTTP hook responses", () => {
 		const { home } = configured(url);
 		const fake = fakeHost(HOOK_SETTINGS);
 		const notes: string[] = [];
-		const hooks = registerHooks(fake.api, {}, home, (_what, note) => notes.push(note));
+		const hooks = registerHooks(fake.api, { env: {}, home, onFailure: (_what, note) => notes.push(note) });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await hooks.preToolUse({ toolName: "bash", toolCallId: "rewrite", input: { command: "true" } } as never, ctx);

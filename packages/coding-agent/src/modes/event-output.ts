@@ -45,7 +45,23 @@ export function createEventOutput<E extends OutputEvent>(write: (event: E) => vo
 /**
  * The backpressure a run observes between agent events. Updates are exempt: the tool does not wait for them, and waiting
  * here would hold each update's snapshot in memory until stdout drains, which is what coalescing them is to avoid.
+ * Once the run's `signal` aborts, it stops waiting: a reader that stopped reading must not hold cancellation, and the
+ * few events left in an aborted run stay queued for stdout in order.
  */
-export async function waitForEventBackpressure(event: OutputEvent): Promise<void> {
-	if (event.type !== "tool_execution_update") await waitForRawStdoutBackpressure();
+export async function waitForEventBackpressure(event: OutputEvent, signal?: AbortSignal): Promise<void> {
+	if (event.type === "tool_execution_update" || signal?.aborted) return;
+	const drained = waitForRawStdoutBackpressure();
+	if (!signal) return drained;
+	// A write failure after the abort has its own handler (or none); it no longer belongs to this run.
+	void drained.catch(() => {});
+	let onAbort = () => {};
+	const aborted = new Promise<void>((resolve) => {
+		onAbort = resolve;
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+	try {
+		await Promise.race([drained, aborted]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { requestJson } from "../src/request.ts";
+import { requestJson, SIGN_IN_MESSAGE } from "../src/request.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -56,5 +56,26 @@ it("preserves caller cancellation and clears timers after success or server erro
 		vi.fn(async () => ({ ok: false, json: async () => ({ error: "Item changed" }) })),
 	);
 	await expect(requestJson("/api/backlogs")).rejects.toThrow("Item changed");
+	expect(vi.getTimerCount()).toBe(0);
+});
+
+it("uses the caller's text when an error body is not JSON and the sign-in text for a refused token", async () => {
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response("<html>502 Bad Gateway</html>", { status: 502 })),
+	);
+	await expect(requestJson("/api/backlogs", {}, "Could not load the board")).rejects.toThrow(
+		"Could not load the board",
+	);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response(JSON.stringify({ error: "Item changed" }), { status: 409 })),
+	);
+	await expect(requestJson("/api/backlogs", {}, "Could not load the board")).rejects.toThrow("Item changed");
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response("no", { status: 401 })),
+	);
+	await expect(requestJson("/api/backlogs")).rejects.toThrow(SIGN_IN_MESSAGE);
 	expect(vi.getTimerCount()).toBe(0);
 });

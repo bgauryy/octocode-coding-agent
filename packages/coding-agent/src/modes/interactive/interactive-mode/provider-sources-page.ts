@@ -13,8 +13,8 @@ import type {
 	ProviderSourceEnvironment,
 	ToggleableSourceId,
 } from "../../../core/provider-sources/types.ts";
-import type { PageRow } from "../components/manage-page.ts";
-import { keyText } from "../components/keybinding-hints.ts";
+import type { PageRow } from "../../../theme/manage-page.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import type { PageResult } from "./provider-detail.ts";
 import { piConfigDirs, showPiProviders } from "./provider-pi.ts";
 import { type PageContext, signInToProvider } from "./provider-signin.ts";

@@ -8,7 +8,7 @@ import type {
 } from "../../core/features/index.ts";
 import { appliedFileOutcomes, contextReads, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
-import { writeSessionRecord } from "../history/archive/record.ts";
+import { flushSessionRecords, scheduleSessionRecord } from "../history/archive/record.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -17,7 +17,7 @@ import { sessionLineage, setSessionLineage } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CACHE_RETENTION_ENV } from "../../../../common/src/env.ts";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
-import { registerTurnBudget } from "../shared/turn-budget.ts";
+import { registerTurnBudget } from "./turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
 import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { shellParserReady } from "../permission/shell/mutation.ts";
@@ -45,9 +45,14 @@ import {
 	settleRestoredFiles,
 } from "./restore.ts";
 import { liveStateLines } from "./live-state.ts";
+import { addLedgerEdits } from "./edit-ledger.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carryFileLists, summaryMethodOf, windowBudget, writeSummary } from "./summary.ts";
 import { requestView } from "./request-view.ts";
+import { sessionMirrorSettled } from "../../core/session-manager/mirror.ts";
+
+/** Longest a forked session's start waits for its fork edge (`session-manager/mirror.ts`) before reading its lineage. */
+const FORK_EDGE_WAIT_MS = 2_000;
 
 /**
  * Tool results and call arguments stay verbatim until Octocode compacts (a long result is bounded and spilled to a file when
@@ -79,7 +84,7 @@ export function registerCompaction(
 	isSubagent = false,
 	parentId?: string,
 ): CompactRequests {
-	// One assistant message's tool results share a text budget; the overflow is saved to a file (`shared/turn-budget.ts`).
+	// One assistant message's tool results share a text budget; the overflow is saved to a file (`compaction/turn-budget.ts`).
 	registerTurnBudget(api);
 	const tooLarge = new TooLargeRecovery();
 	const lifetimes = new PromptCacheLifetimes();
@@ -164,6 +169,8 @@ export function registerCompaction(
 		// default summary (when Octocode's fails) has them too.
 		addFileToolOps(event.preparation, ctx.cwd);
 		carryFileLists(event.preparation, event.branchEntries);
+		// This session's bash writes and its subagents' changes join the list, with a Recovery line saying whose they are.
+		const ledger = await addLedgerEdits(event.preparation, ctx.cwd);
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
 		const cacheTtlMs = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
@@ -177,7 +184,7 @@ export function registerCompaction(
 			continuity,
 			parentId,
 			cacheTtlMs,
-			() => liveStateLines(ctx, event.branchEntries, workSince),
+			() => [...ledger, ...liveStateLines(ctx, event.branchEntries, workSince)],
 			instructionTtlMs,
 		);
 	});
@@ -193,22 +200,35 @@ export function registerCompaction(
 		archive.discard();
 		continuity.discard();
 		// A forked session's history before the fork is in its sources' archives: its own (`ownArchives`, the pointer).
+		// The fork edge is written by the database writer: a fork made just now is read once it is acknowledged (bounded).
+		if (ctx.sessionManager.getHeader()?.parentSession) await sessionMirrorSettled(FORK_EDGE_WAIT_MS);
 		setSessionLineage(forkLineage(ctx.sessionManager));
 		recordWarned = false;
 	});
 	// The session's record (goal, ending, repository) is rewritten after each run, so other sessions of the repository
 	// can tell what it was for and how it ended (`archive` tool). A failure is warned about once and never thrown.
 	let recordWarned = false;
+	// The write runs in the background (the run's end does not wait for the disk), so the UI is taken now: the context
+	// may be retired by the time it fails.
 	api.on("agent_end", async (_event, ctx) => {
+		const ui = ctx.hasUI ? ctx.ui : undefined;
+		const warn = (error: unknown) => {
+			try {
+				if (!recordWarned && ui)
+					notify(ui, `The session record could not be written (${errorMessage(error)}).`, "warning");
+			} catch {
+				// A UI closed since the run ended has no one to tell.
+			}
+			recordWarned = true;
+		};
 		try {
 			const record = sessionRecordOf(ctx.sessionManager, sessionLineage());
-			if (record) writeSessionRecord(record);
+			if (record) scheduleSessionRecord(record).catch(warn);
 		} catch (error) {
-			if (!recordWarned && ctx.hasUI)
-				notify(ctx.ui, `The session record could not be written (${errorMessage(error)}).`, "warning");
-			recordWarned = true;
+			warn(error);
 		}
 	});
+	api.on("session_shutdown", async () => flushSessionRecords());
 	// File contents summarized away by compaction, or on another branch, are no longer in context: the guard keeps only
 	// the reads the context still shows, then the files worked on most recently are read back (and count as read).
 	// Switching to a model whose window the context does not fit compacts first, on the previous model: the next
@@ -250,13 +270,17 @@ export function registerCompaction(
 	// The restored files count as read from the first model call that carries them (Octocode may hold the message until the
 	// running turn ends).
 	api.on("context", async (event, ctx) => {
-		// Before every request, in a run or at its start: when the cache was last used longer ago than its lifetime (an idle
-		// gap, or a long tool in the run), this request rewrites it anyway, so old results are cleared first. A bash result is
-		// cleared only when its command is read-only, which the bash parse must confirm: load it first.
+		// Before every request, in a run or at its start: old results are cleared when this request rewrites the cache anyway
+		// (an idle gap or a long tool past its lifetime, a model switch, a folded system update) or when clearing them costs
+		// less than re-sending them (`clearing-cost.ts`). A bash result is cleared only when its command is read-only, which
+		// the bash parse must confirm: load it first.
 		await shellParserReady();
+		const usage = ctx.getContextUsage();
 		clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
 			rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
-			contextWindow: ctx.model?.contextWindow,
+			// A usage without a known window reports 0.
+			contextWindow: usage !== undefined && usage.contextWindow > 0 ? usage.contextWindow : ctx.model?.contextWindow,
+			...(typeof usage?.tokens === "number" ? { contextTokens: usage.tokens } : {}),
 		});
 		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
 		// Every request shows the messages as `requestView` describes; the cache-sharing summary request uses it too.
@@ -310,9 +334,9 @@ function archiveCompaction(
 
 /**
  * Adds every path the `file` tool changed in the summarized messages to Octocode's modified-file list (in place). A call's
- * result is found by `toolCallId`; a path counts only when the call succeeded and its outcome is `ok`, read from the
- * outcome itself (`appliedFileOutcomes`), so a `patch` call counts as a `queries` call does (a call where every query
- * failed has `isError` and no details). Adds every file Octocode's local tools read (their verified `details.localReads`,
+ * result is found by `toolCallId`; a path counts only when its outcome is `ok`, read from the outcome itself
+ * (`appliedFileOutcomes`), so a `patch` call counts as a `queries` call does, and a batch in which one query failed
+ * (an error result) still counts the others (a call where every query failed has no details). Adds every file Octocode's local tools read (their verified `details.localReads`,
  * as `seenFiles` reads them; native sessions have no `read` tool) to the read-file list. Those paths are absolute, so one
  * that a call changed under a relative path leaves that list here: `computeFileLists` compares the spellings.
  */
@@ -332,7 +356,7 @@ export function addFileToolOps(
 		for (const part of parts(message)) {
 			if (!isRecord(part) || part.type !== "toolCall" || part.name !== "file") continue;
 			const result = typeof part.id === "string" ? results.get(part.id) : undefined;
-			if (!result || result.isError === true) continue;
+			if (!result) continue;
 			for (const outcome of appliedFileOutcomes(result.details)) preparation.fileOps.edited.add(outcome.path);
 		}
 	}

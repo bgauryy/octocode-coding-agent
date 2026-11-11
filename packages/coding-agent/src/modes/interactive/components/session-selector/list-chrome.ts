@@ -1,6 +1,6 @@
 import { type Input, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { keyText } from "../keybinding-hints.ts";
+import { keyText } from "../../../../theme/theme-tui-helpers.ts";
 import type { NameFilter } from "../session-selector-search.ts";
 import type { GroupMode } from "./groups.ts";
 import { folderColumn } from "./utils.ts";

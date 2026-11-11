@@ -1,14 +1,23 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { clipText } from "../shared/util.ts";
-import { MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
-import { type Memory, type MemoryStore, memoryGetCall, memoryTags, type ScopeFilter } from "./store.ts";
+import { clearsFloor, MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
+import {
+	type Memory,
+	type MemoryKind,
+	type MemoryStore,
+	memoryGetCall,
+	memoryTags,
+	type ScopeFilter,
+} from "./store.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
-export const MEMORY_HEADER = renderInstruction("notices/memory-header.md");
+export const MEMORY_HEADER = renderInstruction("notices/memory-header.md", { again: false });
+/** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
+export const MEMORY_HEADER_AGAIN = renderInstruction("notices/memory-header.md", { again: true });
 
-/** Characters of pinned memories per injection, and of everything injected at once. */
+/** Characters of pinned memory lines per injection, and of the whole injected message (header and notes included). */
 export const PINNED_BUDGET = 1200;
 export const TOTAL_BUDGET = 2400;
 /** Unseen pinned memories read per injection: more than the shortest lines that fit `PINNED_BUDGET`. */
@@ -19,8 +28,6 @@ const SEARCH_WINDOW = 3;
 const RELATIVE_THRESHOLD = 0.3;
 /** Shorter prompt words (`ts`, `ok`) match too much by chance to pull a memory in. */
 const MIN_TERM_LENGTH = 3;
-/** Distinct prompt words a hit must share with a memory, unless one of them is in its title or keywords. */
-const MIN_MATCHED_TERMS = 2;
 /** Longest line one memory takes in an injection; a longer one ends with where to read it whole. */
 const LINE_MAX = 600;
 
@@ -38,8 +45,24 @@ interface Injection {
  * are dropped when the kept entry is unknown).
  */
 export function injectedIds(entries: readonly unknown[]): Map<number, number | undefined> {
+	return new Map(keptInjections(entries).flatMap((injection) => injection.ids));
+}
+
+/**
+ * Whether an injection that opens with the whole caveat (`MEMORY_HEADER`) is still in context on this branch, by the
+ * same rule as `injectedIds`: a later injection then opens with `MEMORY_HEADER_AGAIN`. After a compaction that kept
+ * none, or kept only later ones, the next injection states the caveat whole again.
+ */
+export function headerInContext(entries: readonly unknown[]): boolean {
+	return keptInjections(entries).some((injection) => injection.whole);
+}
+
+/** The injections a compaction has not summarized away, oldest first. */
+function keptInjections(
+	entries: readonly unknown[],
+): Array<{ at: number; ids: Array<[number, number | undefined]>; whole: boolean }> {
 	// Each injection with its position among the entries, so a compaction can drop those before its first kept entry.
-	let injections: Array<{ at: number; ids: Array<[number, number | undefined]> }> = [];
+	let injections: Array<{ at: number; ids: Array<[number, number | undefined]>; whole: boolean }> = [];
 	const position = new Map<string, number>();
 	entries.forEach((entry, at) => {
 		if (!isRecord(entry)) return;
@@ -55,12 +78,13 @@ export function injectedIds(entries: readonly unknown[]): Map<number, number | u
 		const updated = Array.isArray(details.updated) ? details.updated : [];
 		injections.push({
 			at,
+			whole: typeof entry.content === "string" && entry.content.startsWith(MEMORY_HEADER),
 			ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
 				typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
 			),
 		});
 	});
-	return new Map(injections.flatMap((injection) => injection.ids));
+	return injections;
 }
 
 /** Of the `injected` ids, those whose memory is unchanged since: a memory edited after its injection is sent again. */
@@ -83,25 +107,11 @@ export function lastInjection(entries: readonly unknown[]): string | undefined {
 }
 
 /**
- * Whether a hit clears the absolute floor: it shares `MIN_MATCHED_TERMS` distinct words with the prompt, or one in its
- * title or keywords. One chance body word (`write` in a note about write-ahead logs) is not enough.
- */
-function relevant(memory: Memory, words: ReadonlySet<string>): boolean {
-	const head = new Set(terms(`${memory.title} ${memory.keywords}`).map(stem));
-	const body = new Set(terms(memory.body).map(stem));
-	let matched = 0;
-	for (const word of words) {
-		if (head.has(word)) return true;
-		if (body.has(word)) matched++;
-	}
-	return matched >= MIN_MATCHED_TERMS;
-}
-
-/**
- * What to inject before a prompt: pinned memories (up to `PINNED_BUDGET` chars; skipped with `pinned: false`), then the top `topK` BM25 hits for
- * the prompt's words of 3+ letters that clear the absolute floor (`relevant`) and score at least
- * `RELATIVE_THRESHOLD` of the best such hit, all within `TOTAL_BUDGET`, skipping `seen` ids. Undefined when nothing
- * new qualifies.
+ * What to inject before a prompt: pinned memories (up to `PINNED_BUDGET` chars; skipped with `pinned: false`, only
+ * those of `pinnedKind` when it is set), then the top `topK` BM25 hits for the prompt's words of 3+ letters that clear the absolute floor (`clearsFloor`) and score at least
+ * `RELATIVE_THRESHOLD` of the best such hit, the whole message (header and held-back note too) within `TOTAL_BUDGET`,
+ * skipping `seen` ids. An empty `query` injects pinned memories only. Undefined when nothing
+ * new qualifies. The first line is the caveat, whole unless `headerInContext` says an earlier injection still shows it.
  */
 export function selectInjection(
 	store: MemoryStore,
@@ -111,6 +121,10 @@ export function selectInjection(
 		seen: ReadonlySet<number>;
 		topK: number;
 		pinned?: boolean;
+		/** Only pinned memories of this kind are injected as pins and counted as held back; hits are not narrowed. */
+		pinnedKind?: MemoryKind;
+		/** The whole caveat is already in context (`headerInContext`): open with the short header. */
+		headerInContext?: boolean;
 		now?: number;
 	},
 ): Injection | undefined {
@@ -118,44 +132,54 @@ export function selectInjection(
 	const lines: string[] = [];
 	const ids: number[] = [];
 	const updated: number[] = [];
-	let used = 0;
-	const take = (memory: Memory, budget: number): boolean => {
+	const header = options.headerInContext === true ? MEMORY_HEADER_AGAIN : MEMORY_HEADER;
+	// The whole message counts toward `TOTAL_BUDGET`: the header, each line and its newline, and the held-back note.
+	let used = header.length;
+	let pinnedUsed = 0;
+	const take = (memory: Memory, pinned: boolean): boolean => {
 		if (options.seen.has(memory.id) || ids.includes(memory.id)) return false;
 		const line = injectedLine(memory, now);
-		if (used + line.length + 1 > budget) return false;
+		if (used + line.length + 1 > TOTAL_BUDGET) return false;
+		if (pinned && pinnedUsed + line.length + 1 > PINNED_BUDGET) return false;
 		lines.push(line);
 		ids.push(memory.id);
 		updated.push(memory.updatedAt);
 		used += line.length + 1;
+		if (pinned) pinnedUsed += line.length + 1;
 		return true;
 	};
 	// Pinned memories that do not fit wait for a later prompt; the model is told how many instead of meeting silence. Seen
 	// ones are left out of the listing, so each prompt reaches the next ones, and the count covers every one held back.
 	let heldBack = 0;
 	if (options.pinned !== false) {
-		const unseen = { pinnedOnly: true, exclude: options.seen };
-		for (const memory of store.list(options.scope, PINNED_WINDOW, unseen)) take(memory, PINNED_BUDGET);
+		const unseen = {
+			pinnedOnly: true,
+			exclude: options.seen,
+			...(options.pinnedKind ? { kind: options.pinnedKind } : {}),
+		};
+		for (const memory of store.list(options.scope, PINNED_WINDOW, unseen)) take(memory, true);
 		heldBack = store.count(options.scope, unseen) - ids.length;
 	}
+	const note =
+		heldBack > 0
+			? [renderInstruction("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })]
+			: [];
+	for (const line of note) used += line.length + 1;
 	const words = terms(options.query, MAX_QUERY_TERMS).filter((word) => word.length >= MIN_TERM_LENGTH);
 	const stems = new Set(words.map(stem));
 	const found =
 		words.length > 0
 			? store.search(words.join(" "), options.scope, options.topK * SEARCH_WINDOW, new Set([...options.seen, ...ids]))
 			: [];
-	const hits = found.filter((hit) => relevant(hit, stems));
+	const hits = found.filter((hit) => clearsFloor(hit, stems));
 	const best = hits[0]?.score ?? 0;
 	let added = 0;
 	for (const hit of hits) {
 		if (added >= options.topK || hit.score < best * RELATIVE_THRESHOLD) break;
-		if (take(hit, TOTAL_BUDGET)) added++;
+		if (take(hit, false)) added++;
 	}
 	if (ids.length === 0) return undefined;
-	const note =
-		heldBack > 0
-			? [renderInstruction("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })]
-			: [];
-	return { content: [MEMORY_HEADER, ...lines, ...note].join("\n"), ids, updated };
+	return { content: [header, ...lines, ...note].join("\n"), ids, updated };
 }
 
 /**

@@ -1,5 +1,6 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { formatCost } from "../../shared/format.ts";
 import { plural } from "../../shared/text.ts";
 import { textResult } from "../../shared/util.ts";
 import type { BudgetStanding } from "../model.ts";
@@ -10,11 +11,13 @@ export interface ChildBudgets {
 	/** Adds `requests` to child `id`'s limits for this run; the new standing, or the refusal. */
 	grant(id: string, requests: number): BudgetStanding | string;
 	usage(id: string): BudgetStanding | undefined;
+	/** What running child `id` has cost so far in this run, in dollars. */
+	cost?(id: string): number | undefined;
 }
 
 /**
  * `coordinate` action `grant`: the parent process counts the child's requests, so the new limits hold at once; the child
- * hears of them in its mail. A message that fails costs only that word: the limits are raised either way.
+ * hears of them in its mail. The result names the requests the child has used and what they cost so far. A message that fails costs only that word: the limits are raised either way.
  */
 export async function grantRequests(
 	team: Pick<Team, "send" | "asks" | "id">,
@@ -31,8 +34,9 @@ export async function grantRequests(
 	const standing = budgets.grant(id, requests);
 	if (typeof standing === "string") throw new Error(standing);
 	const told = await tell(team, id, requests, standing, openAsk(team, id), signal);
+	const cost = formatCost({ cost: budgets.cost?.(id) ?? 0, unpriced: false });
 	return textResult(
-		`Granted ${requests} more requests to ${id} for this run: it has used ${standing.used} of ${standing.soft} and stops at ${standing.hard}. ${told}`,
+		`Granted ${requests} more requests to ${id} for this run: it has used ${standing.used} of ${standing.soft}${cost ? ` (${cost} so far)` : ""} and stops at ${standing.hard}. ${told}`,
 		{ summary: `Granted ${plural(requests, "request")} to ${id}` },
 	);
 }

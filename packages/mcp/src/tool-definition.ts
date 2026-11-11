@@ -12,6 +12,7 @@ import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import { hostRender, hostUi } from "./host.ts";
 import type { McpExposure } from "./config.ts";
+import { deferredParameters } from "./deferred-schema.ts";
 import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
@@ -68,7 +69,17 @@ export interface McpToolDefinitionOptions {
 	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
 	 * server's own input schema, and a failed validation shows `signature()`.
 	 */
-	compact?: { signature: () => string | undefined; summary?: string };
+	compact?: {
+		signature: () => string | undefined;
+		summary?: string;
+		/**
+		 * No block of the prompt describes the tool (a deferred tool in `declared` mode): the declaration carries the
+		 * server's whole description, and a failed validation shows the server's input schema.
+		 */
+		whole?: boolean;
+		/** The tool is deferred: its declared parameters remember the server's input schema (`deferredParameters`). */
+		deferred?: boolean;
+	};
 }
 
 export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpToolDefinition<TSchema, McpToolDetails> {
@@ -84,11 +95,17 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		// Providers declare input schemas; include the server's output contract in the same cached tool description.
 		// A thin declaration leaves both to the typed signature, whose return type is the output schema.
 		description: compact
-			? (compact.summary ?? firstSentence(description))
+			? compact.whole
+				? description
+				: (compact.summary ?? firstSentence(description))
 			: tool.outputSchema
 				? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
 				: description,
-		parameters: compact ? thinParameters(inputSchema) : inputSchema,
+		parameters: compact
+			? compact.deferred
+				? deferredParameters(thinParameters(inputSchema), tool.inputSchema)
+				: thinParameters(inputSchema)
+			: inputSchema,
 		...(tool.annotations?.destructiveHint === true ? { annotations: { destructiveHint: true as const } } : {}),
 		...(compact ? { validationParameters: inputSchema } : {}),
 		// Shown after a failed validation, for every tool: a failure at the top level (a native `reason`, `type` or
@@ -103,7 +120,11 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				cap === undefined || !properties.includes("queries")
 					? ""
 					: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
-				block ? `Expected signature (TypeScript):\n${block}` : "",
+				block
+					? `Expected signature (TypeScript):\n${block}`
+					: compact?.whole
+						? `Input schema (JSON Schema):\n${JSON.stringify(tool.inputSchema)}`
+						: "",
 			].filter(Boolean);
 			return hints.length ? hints.join("\n\n") : undefined;
 		},

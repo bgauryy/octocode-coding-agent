@@ -105,7 +105,7 @@ describe("source hook profiles", () => {
 		fs.rmSync(path.join(process.env.OCTOCODE_HOME!, "hooks.json"));
 		const { api, fire } = fakeHost(HOOK_SETTINGS);
 		const audit = vi.fn();
-		const hooks = registerHooks(api, {}, home, audit);
+		const hooks = registerHooks(api, { env: {}, home, onFailure: audit });
 		const ctx = {
 			cwd,
 			hasUI: false,

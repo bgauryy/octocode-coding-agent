@@ -1,10 +1,12 @@
 /**
- * The agent database API: the one door to it. Every SQL statement against the `workspaces.db` schema lives in `queries/`, one
- * module per table family, as a named function that takes the open `DatabaseSync` (`AgentDb.db`) and returns plain
- * values or rows already mapped. Features import the namespace they need from here and never call `prepare`/`exec`
+ * The agent database API: the one door to it. Every statement that reads or writes rows of the `workspaces.db` schema
+ * lives in `queries/`, one module per table family, as a named function that takes the open `DatabaseSync` (`AgentDb.db`)
+ * and returns plain values or rows already mapped. Schema creation and migrations (`schema.ts`, `migrations.ts`,
+ * `migrate.ts`), connection PRAGMAs and transactions (`db.ts`) and the busy helpers (`sqlite.ts`) run their own SQL. Features import the namespace they need from here and never call `prepare`/`exec`
  * themselves; `scripts/check-db-boundary.mjs` fails when they do, or when they import a private query module.
  * Connections come from `sharedDatabase` (one per process and file) or `openDatabase`; transactions stay with
- * `AgentDb.transaction`.
+ * `AgentDb.transaction`. Derived writes that must not wait on the calling thread go to `sharedDbWriter` (one worker per
+ * file) as typed commands (`writer/`).
  */
 export * as workspaces from "./queries/workspaces.ts";
 export * as agentEvents from "./queries/agent-events.ts";
@@ -33,7 +35,27 @@ export * as maintenance from "./queries/maintenance.ts";
 export * as expire from "./queries/expire.ts";
 export * as timers from "./queries/timers.ts";
 export * as shellHistory from "./queries/shell-history.ts";
-export { type AgentDb, type Db, dbStamp, closeSharedAgentDb, openDatabase, sharedDatabase } from "./db.ts";
+export { type AgentDb, type Db, dbStamp, openDatabase, sharedDatabase } from "./db.ts";
+export { isBusy } from "./sqlite.ts";
+export {
+	closeSharedAgentDb,
+	DB_WRITER_QUEUE_LIMIT,
+	DbWriter,
+	DbWriterBusyError,
+	DbWriterCommandError,
+	DbWriterUnavailableError,
+	type DbWriterErrorKind,
+	sharedDbWriter,
+	writerErrorKind,
+} from "./writer/client.ts";
+export type { DbWriterLocations } from "./writer/protocol.ts";
+export type {
+	FileStamp,
+	MirrorRecord,
+	MirrorWorkspace,
+	TranscriptCommand,
+	TranscriptResult,
+} from "./writer/transcript-mirror.ts";
 export { AgentDbError } from "./schema.ts";
 export { USER_AUTHOR } from "./author.ts";
 export { allRows, num, type Row } from "./rows.ts";

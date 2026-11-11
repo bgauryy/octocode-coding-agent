@@ -22,6 +22,11 @@ export interface RequestLayer {
 	hash: string;
 	/** The adapter marked this layer as the end of a cacheable prefix. */
 	breakpoint?: boolean;
+	/**
+	 * The lifetime that breakpoint asked for (`5m`, `1h`, `30m`, `12h`), the provider's default when the marker names
+	 * none. Each breakpoint keeps its own: a request with long instructions and short history marks both tiers.
+	 */
+	ttl?: string;
 }
 
 export interface RequestTrace {
@@ -30,6 +35,7 @@ export interface RequestTrace {
 	/**
 	 * How the request asked for caching, e.g. `ephemeral`, `ephemeral-1h`, `default-1h` (Bedrock), `key`, `key+24h`,
 	 * `key+12h+breakpoint-12h` (OpenAI explicit mode) or `explicit` (explicit mode without breakpoints: no caching).
+	 * A marker's TTL here is the first marker's; each breakpoint's own is on its layer (`RequestLayer.ttl`).
 	 */
 	cacheMode?: string;
 }
@@ -72,6 +78,15 @@ function cacheControlOf(block: unknown): Record_ | undefined {
 	return isRecord(control) ? control : undefined;
 }
 
+/** A breakpoint layer's fields: the lifetime its marker asks for, or `fallback` (the provider default) without one. */
+function marked(control: Record_ | undefined, fallback: string): Partial<RequestLayer> {
+	if (!control) return {};
+	return { breakpoint: true, ttl: typeof control.ttl === "string" && control.ttl ? control.ttl : fallback };
+}
+
+/** Anthropic-style `cache_control` and Bedrock `cachePoint` markers without a `ttl` live five minutes. */
+const MARKER_DEFAULT_TTL = "5m";
+
 /** The marker of a message block, or of the last part of its content. */
 function messageControl(message: Record_): Record_ | undefined {
 	const own = cacheControlOf(message);
@@ -83,21 +98,21 @@ function messageControl(message: Record_): Record_ | undefined {
 function describeAnthropic(payload: Record_): RequestTrace {
 	const layers: RequestLayer[] = [];
 	let control: Record_ | undefined;
-	const mark = (found: Record_ | undefined): boolean => {
+	const mark = (found: Record_ | undefined): Partial<RequestLayer> => {
 		control ??= found;
-		return found !== undefined;
+		return marked(found, MARKER_DEFAULT_TTL);
 	};
 	const tools = payload.tools;
 	if (Array.isArray(tools) && tools.length > 0) {
 		const found = tools.map(cacheControlOf).find((candidate) => candidate !== undefined);
-		layers.push(layer("tools", tools, mark(found) ? { breakpoint: true } : {}));
+		layers.push(layer("tools", tools, mark(found)));
 	}
 	const system = payload.system;
 	if (typeof system === "string") {
 		layers.push(layer("system", system, { index: 0 }));
 	} else if (Array.isArray(system)) {
 		system.forEach((block, index) => {
-			layers.push(layer("system", block, { index, ...(mark(cacheControlOf(block)) ? { breakpoint: true } : {}) }));
+			layers.push(layer("system", block, { index, ...mark(cacheControlOf(block)) }));
 		});
 	}
 	const messages = payload.messages;
@@ -105,9 +120,7 @@ function describeAnthropic(payload: Record_): RequestTrace {
 		messages.forEach((message, index) => {
 			const role = isRecord(message) && typeof message.role === "string" ? message.role : undefined;
 			const found = isRecord(message) ? messageControl(message) : undefined;
-			layers.push(
-				layer("message", message, { ...(role ? { role } : {}), index, ...(mark(found) ? { breakpoint: true } : {}) }),
-			);
+			layers.push(layer("message", message, { ...(role ? { role } : {}), index, ...mark(found) }));
 		});
 	}
 	const cacheMode = markerMode(control);
@@ -159,8 +172,11 @@ function describeOpenAi(payload: Record_, itemsKey: "input" | "messages"): Reque
 	if (Array.isArray(tools) && tools.length > 0) {
 		const found = tools.map(cacheControlOf).find((candidate) => candidate !== undefined);
 		control ??= found;
-		layers.push(layer("tools", tools, found ? { breakpoint: true } : {}));
+		layers.push(layer("tools", tools, marked(found, MARKER_DEFAULT_TTL)));
 	}
+	// A breakpoint without its own ttl inherits the request TTL (Azure), whose default is 30m.
+	const options = isRecord(payload.prompt_cache_options) ? payload.prompt_cache_options : {};
+	const requestTtl = typeof options.ttl === "string" && options.ttl ? options.ttl : "30m";
 	if (typeof payload.instructions === "string" && payload.instructions !== "") {
 		layers.push(layer("system", payload.instructions, { index: 0 }));
 	}
@@ -177,9 +193,8 @@ function describeOpenAi(payload: Record_, itemsKey: "input" | "messages"): Reque
 			// Tools declared in place (`additional_tools`) are tool definitions wherever they sit.
 			const kind =
 				isRecord(item) && item.type === "additional_tools" ? "tools" : isSystemRole(role) ? "system" : "message";
-			layers.push(
-				layer(kind, item, { ...(role ? { role } : {}), index, ...(marker || explicit ? { breakpoint: true } : {}) }),
-			);
+			const ttl = explicit ? marked(explicit, requestTtl) : marked(marker, MARKER_DEFAULT_TTL);
+			layers.push(layer(kind, item, { ...(role ? { role } : {}), index, ...ttl }));
 		});
 	}
 	const cacheMode = openAiCacheMode(payload, breakpoint, control);
@@ -204,7 +219,7 @@ function describeBedrock(payload: Record_): RequestTrace {
 			layer(
 				"tools",
 				tools.filter((tool) => !isCachePoint(tool)),
-				found ? { breakpoint: true } : {},
+				marked(found, MARKER_DEFAULT_TTL),
 			),
 		);
 	}
@@ -213,7 +228,7 @@ function describeBedrock(payload: Record_): RequestTrace {
 		if (!isCachePoint(block)) layers.push(layer("system", block, { index }));
 		else if (layers.at(-1)?.kind === "system") {
 			control ??= block.cachePoint as Record_;
-			layers[layers.length - 1].breakpoint = true;
+			Object.assign(layers[layers.length - 1], marked(block.cachePoint as Record_, MARKER_DEFAULT_TTL));
 		}
 	});
 	const messages = Array.isArray(payload.messages) ? payload.messages : [];
@@ -223,7 +238,7 @@ function describeBedrock(payload: Record_): RequestTrace {
 		const found = cachePointOf(content);
 		control ??= found;
 		const wire = isRecord(message) ? { ...message, content: content.filter((block) => !isCachePoint(block)) } : message;
-		layers.push(layer("message", wire, { ...(role ? { role } : {}), index, ...(found ? { breakpoint: true } : {}) }));
+		layers.push(layer("message", wire, { ...(role ? { role } : {}), index, ...marked(found, MARKER_DEFAULT_TTL) }));
 	});
 	const cacheMode = markerMode(control);
 	return { layers, ...(cacheMode ? { cacheMode } : {}) };

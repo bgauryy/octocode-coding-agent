@@ -1,4 +1,4 @@
-import { createAbortError } from "../utils/abort.ts";
+import { assertStreamCompleted } from "./stream-finalize.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
@@ -7,7 +7,7 @@ import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } fro
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
-import { splitSystemMessageAtBoundary } from "../utils/instruction-split.ts";
+import { keepsToolBreakpoint, splitSystemMessageIntoBlocks } from "../utils/instruction-split.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
 	collapseSystemMessages,
@@ -94,7 +94,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 				addCustomHeadersMiddleware(client, customHeaders);
 			}
 			// Up to four checkpoints: tools (or, when split at the boundary, a second system point instead), system, the
-			// last user message and, when a slot is left, the previous request's tail. Instruction checkpoints come first so a one-hour TTL never
+			// last user message (a trailing volatile system block takes none) and, when a slot is left, the previous request's tail. Instruction checkpoints come first so a one-hour TTL never
 			// follows a five-minute one.
 			const { history: cacheRetention, instructions: instructionCacheRetention } = capLayeredCacheRetention(
 				model,
@@ -103,7 +103,11 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			const inferenceMaxTokens = options.maxTokens ?? (isAnthropicClaudeModel(model) ? model.maxTokens : undefined);
 			const initialSystemMessage = getInitialSystemMessage(normalizedContext.messages);
 			const splitPrompt = initialSystemMessage
-				? splitSystemMessageAtBoundary(initialSystemMessage, options.instructionCacheBoundary)
+				? splitSystemMessageIntoBlocks(
+						initialSystemMessage,
+						options.instructionCacheBoundary,
+						options.instructionVolatileBoundary,
+					)
 				: undefined;
 			const initialSystemPrompt =
 				splitPrompt ?? (initialSystemMessage ? getSystemMessageText(initialSystemMessage) : undefined);
@@ -113,9 +117,9 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 				getCurrentTools(normalizedContext.messages),
 				options.toolChoice,
 				supportsStrictMode,
-				// A split prompt's base point covers the tools before it; its slot goes to the history lookback. Nova takes
+				// A second cached system block takes the tools' slot: the base point covers the tools before it. Nova takes
 				// no point on tools; the system point covers them.
-				splitPrompt || !supportsToolCachePoint(model)
+				!keepsToolBreakpoint(splitPrompt) || !supportsToolCachePoint(model)
 					? undefined
 					: getCachePoint(model, instructionCacheRetention, options.env),
 			);
@@ -192,16 +196,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 				}
 			}
 
-			if (options.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error("Bedrock stream ended without a stop reason");
-			}
-			if (output.stopReason === "error" || output.stopReason === "aborted") {
-				throw new Error(output.errorMessage || "An unknown error occurred");
-			}
+			assertStreamCompleted(output, options.signal, "Bedrock");
 
 			// A stream can settle without stopping every block, so finalize here too.
 			for (const block of output.content) finalizeStreamingBlock(block);

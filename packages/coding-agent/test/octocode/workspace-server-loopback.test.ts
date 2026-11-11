@@ -1,4 +1,5 @@
 import { fixtureBacklog } from "./backlog-fixture.ts";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -6,6 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import { mermaidScript } from "@octocodeai/octocode-webview";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 
@@ -86,6 +88,49 @@ describe("per-session board over loopback", () => {
 		expect(uncaught).toEqual([]);
 		const health = await fetch(new URL("/", url.origin));
 		expect(health.status).toBe(200);
+	});
+
+	it("serves the page with a script-hash CSP header, as the daemon does, and no 'unsafe-inline' script", async () => {
+		const url = await board();
+		const page = await fetch(new URL("/", url.origin));
+		expect(page.status).toBe(200);
+		const csp = page.headers.get("content-security-policy") ?? "";
+		const scripts = csp.match(/script-src[^;]*/)![0];
+		expect(scripts).not.toContain("unsafe-inline");
+		expect(csp).toMatch(/default-src 'none'/);
+		expect(csp).toMatch(/frame-ancestors 'none'/);
+		expect(csp).toMatch(/connect-src 'self'/);
+		expect(page.headers.get("x-content-type-options")).toBe("nosniff");
+		const html = await page.text();
+		expect(html).not.toContain(url.hash.slice("#access=".length));
+		// The header names the hash of the one script the browser will run, so the page still loads it.
+		const script = html.slice(html.indexOf("<script>") + "<script>".length, html.lastIndexOf("</script>"));
+		expect(script).toContain("WorkspaceView.mountPage()");
+		expect(scripts).toContain(`'sha256-${createHash("sha256").update(script).digest("base64")}'`);
+		// The docs view runs the bundled Mermaid text as an inline script.
+		expect(scripts).toContain(
+			`'sha256-${createHash("sha256")
+				.update(await mermaidScript())
+				.digest("base64")}'`,
+		);
+		// A later render (new data) keeps the same script, so the header still covers it.
+		const again = await (await fetch(new URL("/", url.origin))).text();
+		expect(again.slice(again.indexOf("<script>") + "<script>".length, again.lastIndexOf("</script>"))).toBe(script);
+	});
+
+	it("accepts the bearer scheme in any letter case, as the daemon and the session API do", async () => {
+		const url = await board();
+		const token = url.hash.slice("#access=".length);
+		for (const scheme of ["Bearer", "bearer", "BEARER"]) {
+			const response = await fetch(new URL(WORKSPACE_ROUTES.backlogs, url.origin), {
+				headers: { authorization: `${scheme} ${token}` },
+			});
+			expect(response.status).toBe(200);
+		}
+		const refused = await fetch(new URL(WORKSPACE_ROUTES.backlogs, url.origin), {
+			headers: { authorization: "Bearer wrong" },
+		});
+		expect(refused.status).toBe(401);
 	});
 
 	it("does not serve reports through a symbolic link that leaves .octocode/", async () => {

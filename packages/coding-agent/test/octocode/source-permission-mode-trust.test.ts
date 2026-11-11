@@ -36,7 +36,7 @@ async function editInManualMode(settingsFile: "settings.json" | "settings.local.
 	}
 	const fake = fakeHost();
 	const ctx = { ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => trusted };
-	const policy = registerSourcePolicy(fake.api, home);
+	const policy = registerSourcePolicy(fake.api, { home });
 	await policy.refresh(ctx);
 	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "manual" }, isSubagent: false });
 	permission.start(ctx);

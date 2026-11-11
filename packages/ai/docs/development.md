@@ -19,7 +19,7 @@ Create a new API implementation file (for example `bedrock-converse-stream.ts`) 
 - An options interface extending `StreamOptions` (for example `BedrockOptions`)
 - Message conversion functions to transform the `TranscriptContext` messages to provider format; read the prompt and tools from the transcript with `getInitialSystemMessage()`, `getCurrentTools()`, and `resolveTranscript()`
 - Tool conversion if the provider supports tools
-- Response parsing to emit standardized events (`text`, `tool_call`, `thinking`, `usage`, `stop`)
+- Response parsing to emit the standard stream events (`start`, `text_*`, `thinking_*`, `toolcall_*`, `content_update`, then `done` or `error`; usage travels on the message), listed in the [event reference](tools.md#complete-event-reference)
 
 Add a lazy wrapper `src/api/<api-id>.lazy.ts` (`<name>Api()` via `lazyApi()`) so providers can reference the implementation without importing its SDK. Add any root-level `export type` re-exports in `src/index.ts` that should remain available from `@octocodeai/octocode-ai`.
 
@@ -37,7 +37,7 @@ Each catalog fetch times out after 60 seconds (`scripts/generate-models/fetchers
 - `createProvider()` wiring catalog + auth + the lazy API wrapper
 - Auth: `envApiKeyAuth` for standard key providers, a custom `ApiKeyAuth` for ambient auth (AWS profiles, ADC), `lazyOAuth` where an OAuth flow exists
 - Register the factory in `src/providers/all.ts`
-- If it is a new API: register it in the builtin list in `src/compat.ts` and add the package subpath export in `package.json`
+- If it is a new API: register it in the builtin list in `src/compat.ts`; the `./api/*` subpath export in `package.json` already exports the new file
 
 ### 5. Tests (`test/`)
 

@@ -25,6 +25,14 @@ export interface RenderSchedulerHost {
 const MIN_RENDER_INTERVAL_MS = 40;
 
 /**
+ * Minimum time between frames a pointer asked for (wheel, scrollbar drag, selection). A wheel sends events a few
+ * milliseconds apart and each wants the viewport to follow the hand: at the 40 ms streaming cadence scrolling moved 25
+ * times a second, in visible steps. 8 ms lets it reach about 120 frames a second, and events inside one interval still
+ * share a frame, so a fast spin cannot queue more frames than the terminal can show.
+ */
+const INTERACTIVE_RENDER_INTERVAL_MS = 8;
+
+/**
  * The render loop: coalesces render requests into frames, throttles them to a minimum interval,
  * lets keyboard input preempt the throttle, and optionally gates frames on terminal output pressure.
  */
@@ -185,23 +193,34 @@ export class RenderScheduler {
 		});
 	}
 
+	/**
+	 * Ask for a frame that follows pointer input: at once when the last frame is older than the interactive interval,
+	 * otherwise when that interval ends, replacing a slower streaming timer. Output pressure still defers it.
+	 */
+	requestInteractive(): void {
+		const elapsed = performance.now() - this.lastRenderAt;
+		if (elapsed >= INTERACTIVE_RENDER_INTERVAL_MS) {
+			this.requestImmediate();
+			return;
+		}
+		if (this.immediateRenderScheduled) return;
+		this.renderRequested = true;
+		this.cancelTimer();
+		this.schedule(INTERACTIVE_RENDER_INTERVAL_MS);
+	}
+
 	private cancelTimer(): void {
 		if (!this.renderTimer) return;
 		clearTimeout(this.renderTimer);
 		this.renderTimer = undefined;
 	}
 
-	private schedule(): void {
+	private schedule(intervalMs = MIN_RENDER_INTERVAL_MS): void {
 		if (this.host.isStopped() || this.renderTimer || !this.renderRequested) {
 			return;
 		}
 		const elapsed = performance.now() - this.lastRenderAt;
-		const delay = computeRenderDelayMs(
-			MIN_RENDER_INTERVAL_MS,
-			this.lastFrameCostMs,
-			elapsed,
-			this.pacing.adaptiveCadence,
-		);
+		const delay = computeRenderDelayMs(intervalMs, this.lastFrameCostMs, elapsed, this.pacing.adaptiveCadence);
 		const dueAt = this.pacing.metrics ? performance.now() + delay : 0;
 		const lifecycle = this.lifecycle;
 		const timer = setTimeout(() => {

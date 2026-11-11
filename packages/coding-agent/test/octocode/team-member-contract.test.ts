@@ -1,7 +1,7 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describe, expect, it } from "vitest";
-import { needsYou } from "../../src/octocode/team/panel-attention.ts";
-import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
+import { needsYou } from "../../src/octocode/team/panel/attention.ts";
+import { FinishedTracker } from "../../src/octocode/team/panel/finished.ts";
 import { WaitingApprovals } from "../../src/octocode/team/session/approvals.ts";
 import { buildRoster } from "../../../webview/src/app/live/agent-roster.ts";
 

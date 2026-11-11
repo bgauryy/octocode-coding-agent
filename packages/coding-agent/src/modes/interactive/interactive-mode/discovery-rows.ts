@@ -15,7 +15,8 @@ import {
 	problemSummary,
 	sourceSummary,
 } from "../../../core/discovery/context-view.ts";
-import { homePath, skillFolder } from "../../../core/discovery/display-paths.ts";
+import { skillFolder } from "../../../core/discovery/display-paths.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import type { KeybindingProblem } from "../../../core/keybindings.ts";
 import { foundSummary } from "../../../core/discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "../../../core/discovery/vendors/types.ts";
@@ -142,13 +143,13 @@ export function startupWarnings(
 	);
 	const notes = skillDiagnostics.filter(isCodexNote);
 	const problems = skillDiagnostics.filter((d) => d.type !== "collision" && !isCodexNote(d));
-	const line = (d: ResourceDiagnostic) => `${d.path ? `${homePath(d.path)}: ` : ""}${d.message}`;
+	const line = (d: ResourceDiagnostic) => `${d.path ? `${homeTilde(d.path)}: ` : ""}${d.message}`;
 	const warnings: ContextWarning[] = [...view.warnings];
 	const winner = collisions[0]?.collision?.winnerPath;
 	if (collisions.length > 0 && winner)
 		warnings.push({
 			text: `${plural(collisions.length, "duplicate skill", "duplicate skills")} skipped: a skill with the same name loads from ${skillFolder(winner)} (ctrl+o lists them)`,
-			details: collisions.map((d) => `${d.collision?.name}: ${homePath(d.collision?.loserPath ?? "")}`),
+			details: collisions.map((d) => `${d.collision?.name}: ${homeTilde(d.collision?.loserPath ?? "")}`),
 		});
 	const problemFiles = new Set(problems.map((d) => d.path ?? d.message));
 	if (problems.length > 0)
@@ -156,7 +157,7 @@ export function startupWarnings(
 			text: `${plural(problemFiles.size, "skill file", "skill files")} with problems: invalid SKILL.md or folder; fix or remove them (ctrl+o lists them)`,
 			details: problems.map(line),
 		});
-	for (const { path, problem } of keybindings) warnings.push({ text: `${homePath(path)}: ${problem}`, details: [] });
+	for (const { path, problem } of keybindings) warnings.push({ text: `${homeTilde(path)}: ${problem}`, details: [] });
 	return {
 		warnings,
 		notes:

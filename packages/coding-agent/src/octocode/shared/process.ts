@@ -34,7 +34,10 @@ export function parentGone(parentPid: number): boolean {
 
 const startTimes = new Map<number, string | undefined>();
 
-/** `ps` in UTC and the C locale: `lstart` is printed in the reader's time zone, so two Pis in different zones would disagree. */
+/**
+ * `ps` in UTC and the C locale: `lstart` is printed in the reader's time zone, so two Octocode processes in different
+ * zones would disagree.
+ */
 export const PS_UTC_ENV = (): NodeJS.ProcessEnv => ({ ...process.env, LC_ALL: "C", TZ: "UTC0" });
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -68,8 +71,9 @@ function psStart(pid: number, env: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * When the process with this pid started, as whole seconds since the epoch in a decimal string (time-zone free, so
- * Pis in different zones agree), or undefined when unknown (Windows, no `ps`, no such process). A pid alone proves
- * nothing once the system reuses it; the pid plus this value names one process. This process's own value is read once.
+ * two Octocode processes in different zones agree), or undefined when unknown (Windows, no `ps`, no such process). A
+ * pid alone proves nothing once the system reuses it; the pid plus this value names one process. This process's own
+ * value is read once.
  */
 export function processStartTime(pid: number): string | undefined {
 	if (process.platform === "win32" || !Number.isInteger(pid) || pid <= 0) return undefined;

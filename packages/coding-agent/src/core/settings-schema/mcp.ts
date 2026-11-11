@@ -11,10 +11,24 @@ export const McpSettingsProperties = {
 		}),
 	),
 	mcpExposure: Type.Optional(
-		Type.Union([Type.Literal("direct"), Type.Literal("deferred"), Type.String({ pattern: "^auto:[0-9]+$" })], {
+		Type.Union(
+			[
+				Type.Literal("direct"),
+				Type.Literal("deferred"),
+				Type.Literal("recent"),
+				Type.String({ pattern: "^auto:[0-9]+$" }),
+			],
+			{
+				description:
+					'How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server\'s or tool\'s own `exposure` wins). "direct": the full description and schema. "deferred": the server\'s purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. "recent" (the default): a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. "auto:<bytes>": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server\'s full schema either way, and nothing is deferred for an agent without the `mcp` tool.',
+				default: SETTINGS_DEFAULTS.mcpExposure,
+			},
+		),
+	),
+	nativeToolExposure: Type.Optional(
+		Type.Record(Type.String(), Type.Union([Type.Literal("direct"), Type.Literal("deferred")]), {
 			description:
-				'How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server\'s or tool\'s own `exposure` wins). "direct": the full description and schema. "deferred": the server\'s purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. "auto:<bytes>": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server\'s full schema either way, and nothing is deferred for an agent without the `mcp` tool.',
-			default: SETTINGS_DEFAULTS.mcpExposure,
+				'Pins a deferrable native tool (web, archive, models, backlogPlan): "direct" always declares its full schema, "deferred" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure "recent" until this working directory calls it, and direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema.',
 		}),
 	),
 };

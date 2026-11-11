@@ -3,7 +3,6 @@ import { defineConfig } from "vitest/config";
 
 const workspaceSourcePaths = {
 	telemetryIndex: fileURLToPath(new URL("./packages/telemetry/src/index.ts", import.meta.url)),
-	telemetryTesting: fileURLToPath(new URL("./packages/telemetry/src/testing/index.ts", import.meta.url)),
 	mcpIndex: fileURLToPath(new URL("./packages/mcp/src/client/index.ts", import.meta.url)),
 	mcpOAuth: fileURLToPath(new URL("./packages/mcp/src/client/oauth/index.ts", import.meta.url)),
 	aiIndex: fileURLToPath(new URL("./packages/ai/src/index.ts", import.meta.url)),
@@ -44,7 +43,6 @@ export default defineConfig({
 			},
 
 			{ find: /^@octocodeai\/octocode-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
-			{ find: /^@octocodeai\/octocode-telemetry\/testing$/, replacement: workspaceSourcePaths.telemetryTesting },
 			// The package root exports only the CLI and RPC; extension fixtures import the loader's host module.
 			{ find: /^@octocodeai\/octocodecode\/mcp$/, replacement: workspaceSourcePaths.mcpIndex },
 			{ find: /^@octocodeai\/octocodecode\/mcp\/oauth$/, replacement: workspaceSourcePaths.mcpOAuth },

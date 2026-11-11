@@ -1,6 +1,8 @@
 import { Type, type Static } from "typebox";
 import { ApplicationCommandSchema, ApplicationCursorSchema } from "./application.ts";
 import { WorkspaceCommandSchema } from "./protocol.ts";
+import { TOOL_DECIDED_BY, ToolExposureStateSchema } from "./tool-exposure.ts";
+import { StringEnum } from "./schema.ts";
 
 /** Version of the daemon's own HTTP surface and record; a launcher and daemon of different versions do not talk. */
 export const DAEMON_PROTOCOL_VERSION = 1 as const;
@@ -154,6 +156,10 @@ export const AttachRequestSchema = Type.Union([
 		method: Type.Literal("workspace.execute"),
 		params: Type.Object({ command: WorkspaceCommandSchema }, { additionalProperties: false }),
 	}),
+	/** What the running session declares of each tool (`AttachToolStates`), for the Settings → Tools panel of its page. */
+	Type.Object({ ...requestId, method: Type.Literal("session.tools") }),
+	/** The daemon changed this session's board: the session repaints what it shows of it (the terminal footer counts). */
+	Type.Object({ ...requestId, method: Type.Literal("backlog.changed") }),
 ]);
 
 /** A request's answer: the same `id`, then a result or an error. */
@@ -171,6 +177,47 @@ export const AttachHelloResultSchema = Type.Object(
 		sessionId: Text(),
 		protocolVersion: Type.Literal(ATTACH_PROTOCOL_VERSION),
 		capabilities: Type.Array(Text(64), { maxItems: 32 }),
+	},
+	{ additionalProperties: false },
+);
+
+/** A tool or server name as a session reports it; the Tools panel leaves out a name it cannot show. */
+const ToolName = Type.String({ minLength: 1, maxLength: 256 });
+
+/**
+ * The answer to `session.tools`: what the running session declares of each tool. `native.names` lists every registered
+ * native tool and `native.deferred` how each deferrable one was declared (true: deferred); `mcp` is each MCP server's
+ * tool states, absent when the session has no MCP host. A session advertises the request with the `tools` capability.
+ */
+export const AttachToolStatesSchema = Type.Object(
+	{
+		native: Type.Object(
+			{
+				names: Type.Array(ToolName, { maxItems: 500 }),
+				deferred: Type.Record(Type.String({ maxLength: 256 }), Type.Boolean()),
+			},
+			{ additionalProperties: false },
+		),
+		mcp: Type.Optional(
+			Type.Array(
+				Type.Object(
+					{
+						server: ToolName,
+						connected: Type.Boolean(),
+						saved: Type.Boolean(),
+						tools: Type.Array(
+							Type.Object(
+								{ name: ToolName, state: ToolExposureStateSchema, decidedBy: StringEnum(TOOL_DECIDED_BY) },
+								{ additionalProperties: false },
+							),
+							{ maxItems: 2000 },
+						),
+					},
+					{ additionalProperties: false },
+				),
+				{ maxItems: 500 },
+			),
+		),
 	},
 	{ additionalProperties: false },
 );
@@ -306,6 +353,7 @@ export type AttachRecord = Static<typeof AttachRecordSchema>;
 export type AttachRequest = Static<typeof AttachRequestSchema>;
 export type AttachResponse = Static<typeof AttachResponseSchema>;
 export type AttachHelloResult = Static<typeof AttachHelloResultSchema>;
+export type AttachToolStates = Static<typeof AttachToolStatesSchema>;
 export type AttachEvent = Static<typeof AttachEventSchema>;
 export type DaemonSession = Static<typeof DaemonSessionSchema>;
 export type DaemonUnavailableSession = Static<typeof DaemonUnavailableSessionSchema>;

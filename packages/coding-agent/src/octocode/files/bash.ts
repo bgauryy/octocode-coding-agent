@@ -10,7 +10,7 @@ import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";
 import { createReadHint } from "./read-hint.ts";
 import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
-import { foregroundPlan } from "./bash/auto.ts";
+import { foregroundPlan, timeLeft } from "./bash/auto.ts";
 import { sleepHint } from "./bash/long-commands.ts";
 import { hostQuirkHint } from "./bash/host-hints.ts";
 import type { BashDetails } from "./outcome.ts";
@@ -24,7 +24,7 @@ import {
 	verificationJson,
 	verificationLine,
 } from "./bash/verification.ts";
-import { recordShellMutation } from "./bash/mutation.ts";
+import { bashConcurrency, recordShellMutation } from "./bash/mutation.ts";
 import { timedTool } from "../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
@@ -165,6 +165,8 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			abortGraceMs: BASH_ABORT_GRACE_MS,
+			// A command that changes something runs alone in its message; reads stay concurrent.
+			concurrency: bashConcurrency,
 			description: bashDescription(),
 			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
 			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
@@ -194,10 +196,8 @@ export function registerBashTool(
 					showJobs();
 					return backgroundStarted(job, ctx.cwd, verification);
 				}
-				const { timeout, clamped, movable, auto, deliberate, capped } = foregroundPlan(
-					params,
-					settings.backgroundAfterSeconds,
-				);
+				const plan = foregroundPlan(params, settings.backgroundAfterSeconds);
+				const { timeout, clamped, movable, auto, deliberate, capped } = plan;
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
@@ -218,7 +218,9 @@ export function registerBashTool(
 						movable
 							? (child, output, startedAt, reason) => {
 									movedFor = reason;
-									const moved = { output, startedAt, verification, reason: params.reason };
+									// A call with its own timeout still stops its command then, wherever it runs by that time.
+									const left = timeLeft(plan.stopAfterSeconds, startedAt);
+									const moved = { output, startedAt, verification, reason: params.reason, timeout: left };
 									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, moved);
 									if (verification) verification.startedAt = startedAt;
 									showJobs();
@@ -250,7 +252,8 @@ export function registerBashTool(
 						settings.type === "bash" && !raw.details?.exitCode
 							? readHint(params.command, ctx.cwd, sessionId)
 							: undefined;
-					const waitHint = settings.type === "bash" ? sleepHint(params.command) : undefined;
+					const timer = (api.getActiveTools?.() ?? []).includes("timer");
+					const waitHint = settings.type === "bash" ? sleepHint(params.command, timer) : undefined;
 					const notes = [...notices, ...(hint ? [hint] : []), ...(waitHint ? [waitHint] : [])].join("\n\n");
 					const result = notes
 						? { ...raw, content: [{ type: "text" as const, text: `${contentText(raw.content)}\n\n${notes}` }] }

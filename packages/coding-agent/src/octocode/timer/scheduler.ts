@@ -2,7 +2,7 @@ import { type AgentDb, type TimerRow, timers } from "../../../../db/src/api.ts";
 import { onSecond } from "../shared/clock.ts";
 import type { CheckInput } from "./condition.ts";
 import { conditionTiming } from "./conditions/index.ts";
-import { type CheckOutcome, type TimerCondition, decideFire, rowCondition } from "./model.ts";
+import { type CheckOutcome, type TimerCondition, decideFire, rowCondition, rowRemoved } from "./model.ts";
 
 /** Events for one path arrive in bursts (a build writing files): one check follows the last event after this long. */
 const POKE_DEBOUNCE_MS = 150;
@@ -232,7 +232,6 @@ export class TimerScheduler {
 	private input(row: TimerRow): CheckInput {
 		return {
 			cwd: row.cwd ?? process.cwd(),
-			baseline: row.baseline ?? undefined,
 			row: { id: row.id, checks: row.checks, spentUsd: row.spent_usd, sessionId: row.session_id },
 		};
 	}
@@ -252,6 +251,10 @@ export class TimerScheduler {
 			);
 			this.deps.wrote?.();
 			row = timers.get(db, row.id) ?? row;
+		} else {
+			// A row stored with a condition kind this version removed: it ends now, with the way to set it again.
+			const removed = rowRemoved(row);
+			if (removed) check = { met: false, exit: null, output: "", refused: removed };
 		}
 		if (this.stopped) return;
 		const decision = decideFire(row, check);

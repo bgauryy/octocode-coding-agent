@@ -1,4 +1,4 @@
-import { AltScreenSearchComponent, AltScreenSearchIndex, getAltScreenSearchMatchKey } from "../alt-screen-search.ts";
+import { AltScreenSearchComponent, AltScreenSearchIndex, getAltScreenSearchMatchKey } from "./search-index.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
@@ -34,6 +34,8 @@ export class AltScreenSearchController {
 			(query) => this.updateSearchQuery(query),
 			this.searchNavigationButtonStyle,
 		);
+		// The search starts from the rows in view: their position must count every row above them.
+		this.host.getPrimaryScrollView().settleContent();
 		const search: ActiveSearch = {
 			component,
 			index: new AltScreenSearchIndex(),
@@ -64,6 +66,7 @@ export class AltScreenSearchController {
 		const search = this.activeSearch;
 		if (!search || query === search.query) return;
 		const selected = search.matches[search.selectedIndex];
+		if (!selected) this.host.getPrimaryScrollView().settleContent();
 		search.anchorRow = selected?.segments[0]?.row ?? this.host.getPrimaryScrollView().scrollTop;
 		search.query = query;
 		search.selectionMode = "query";

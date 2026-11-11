@@ -11,6 +11,7 @@ import {
 	type CompactionResult,
 	estimateTokens,
 	finalizeCompactionResult,
+	fitCompactionToWindow,
 } from "./compaction/index.ts";
 import type { ExtensionRunner } from "./features/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
@@ -60,11 +61,14 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 }
 
 /**
- * Ask `session_before_compact` extensions, summarize (theirs or the default), save the compaction entry, refresh the
- * context and announce `session_compact`. Throws "Compaction cancelled" when an extension cancels.
+ * Fit the kept tail to the target window, ask `session_before_compact` extensions, summarize (theirs or the default),
+ * save the compaction entry, refresh the context and announce `session_compact`. Throws "Compaction cancelled" when an
+ * extension cancels, and `CompactionFitError` before any request when nothing kept can fit the window.
  */
 export async function runCompaction(host: CompactionHost, run: CompactionRun): Promise<CompactionResult> {
-	const { reason, willRetry, preparation, signal } = run;
+	const { reason, willRetry, signal } = run;
+	// Sized for the target window before any request: a summary that could never be saved is not paid for.
+	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow);
 	const startedAt = new Date().toISOString();
 	let extensionCompaction: CompactionResult | undefined;
 

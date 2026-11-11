@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintLine, keyText } from "./keybinding-hints.ts";
+import { hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
 
 export type AuthSelectorProvider = {
 	detail?: string;

@@ -1,3 +1,4 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 /**
  * Starting the interactive mode: mounting the terminal UI, the startup header, managed tools and the first session
  * binding, then the main loop that reads user input and sends prompts.
@@ -15,10 +16,10 @@ import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { ensureTool } from "../../../utils/tools-manager.ts";
 import { checkForNewOctocodeVersion } from "../../../utils/version-check.ts";
 import { createChatViewport } from "../chat-viewport.ts";
-import { formatKeyText, keyHint, keyText, rawKeyHint } from "../components/keybinding-hints.ts";
+import { formatKeyText, keyHint, keyText, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../../../theme/theme.ts";
-import { bindFooterState } from "../state/bind-footer.ts";
+import { bindFooterUntilStop } from "../state/bind-footer.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { offerForkOfTornSession } from "./session-navigation.ts";
@@ -78,6 +79,7 @@ type StartupHost = Pick<
 	| "showStatus"
 	| "showWarning"
 	| "statusContainer"
+	| "stop"
 	| "themeController"
 	| "transcriptScrollView"
 	| "ui"
@@ -242,7 +244,7 @@ export async function init(host: StartupHost): Promise<void> {
 
 	// Footer data (branch, statuses, providers) is a state source: each real change asks for one frame,
 	// so its writers never request frames themselves.
-	bindFooterState(host);
+	bindFooterUntilStop(host);
 
 	host.updateAvailableProviderCount();
 
@@ -343,7 +345,7 @@ export async function run(host: StartupHost): Promise<void> {
 		try {
 			await getApplicationPort(host.session).invoke("prompt", initialMessage, { images: initialImages });
 		} catch (error: unknown) {
-			host.showError(promptFailure(error));
+			host.showError(errorMessage(error));
 		}
 	}
 
@@ -352,7 +354,7 @@ export async function run(host: StartupHost): Promise<void> {
 			try {
 				await getApplicationPort(host.session).invoke("prompt", message);
 			} catch (error: unknown) {
-				host.showError(promptFailure(error));
+				host.showError(errorMessage(error));
 			}
 		}
 	}
@@ -362,14 +364,9 @@ export async function run(host: StartupHost): Promise<void> {
 		try {
 			await getApplicationPort(host.session).invoke("prompt", userInput, { attachImagePaths: true });
 		} catch (error: unknown) {
-			host.showError(promptFailure(error));
+			host.showError(errorMessage(error));
 		}
 	}
-}
-
-/** What the user sees when a prompt fails: the error's message, or a generic line when a non-Error was thrown. */
-function promptFailure(error: unknown): string {
-	return error instanceof Error ? error.message : "Unknown error occurred";
 }
 
 export async function getUserInput(host: StartupHost): Promise<string> {

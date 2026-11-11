@@ -1,4 +1,4 @@
-import type { AltScreenSearchComponent, AltScreenSearchIndex, AltScreenSearchMatch } from "../alt-screen-search.ts";
+import type { AltScreenSearchComponent, AltScreenSearchIndex, AltScreenSearchMatch } from "./search-index.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
 import type { ScrollbarGeometry } from "../layout/types.ts";
 import type { OverlayHandle } from "../tui.ts";

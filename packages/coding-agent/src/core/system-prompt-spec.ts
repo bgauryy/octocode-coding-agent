@@ -10,8 +10,9 @@ export interface SystemPromptSectionSpec {
 	name: string;
 	/**
 	 * `base`: depends only on the tools and the install, so sessions in other projects or on other days share it (the
-	 * first instruction cache block). `session`: stable for a session but project- or role-specific. `volatile`: changes
-	 * during a session (the date, plan mode, MCP connection state), so it comes last and its patches stay small.
+	 * first instruction cache block). `session`: stable for a session but project- or role-specific (the second cache
+	 * block). `volatile`: differs between sessions of one project or changes during one (the working directory, the
+	 * date, plan mode, MCP connection state), so it comes last, in a block without a cache breakpoint.
 	 */
 	tier: "base" | "session" | "volatile";
 	/** The module that writes the content. */
@@ -61,6 +62,35 @@ export function systemPromptSectionSpec(name: string): SystemPromptSectionSpec |
 export const NON_BASE_SECTIONS: ReadonlySet<string> = new Set(
 	SYSTEM_PROMPT_SECTIONS.filter((spec) => spec.tier !== "base").map((spec) => spec.name),
 );
+
+/** Volatile sections: the first one present starts the trailing instruction block, which has no cache breakpoint. */
+export const VOLATILE_SECTIONS: ReadonlySet<string> = new Set(
+	SYSTEM_PROMPT_SECTIONS.filter((spec) => spec.tier === "volatile").map((spec) => spec.name),
+);
+
+/**
+ * A policy section could not be rendered. Unlike any other handler error, `before_agent_start` does not contain this
+ * one (`features/runner/emit-transforms.ts`): the run fails with it, because a session without its policy sections
+ * would otherwise start and look healthy.
+ */
+export class PolicyRenderError extends Error {
+	constructor(section: string, cause: unknown) {
+		super(
+			`The \`${section}\` prompt section failed to render (${cause instanceof Error ? cause.message : String(cause)}). The session does not start without its policy: fix the instruction template.`,
+			{ cause },
+		);
+		this.name = "PolicyRenderError";
+	}
+}
+
+/** Render one policy section (or the values its templates read), turning any failure into a `PolicyRenderError` that names it. */
+export function renderPolicySection<T>(section: string, render: () => T): T {
+	try {
+		return render();
+	} catch (error) {
+		throw error instanceof PolicyRenderError ? error : new PolicyRenderError(section, error);
+	}
+}
 
 const SECTION_NAME = /^[a-z][a-z0-9_-]*$/;
 

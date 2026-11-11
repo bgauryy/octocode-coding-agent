@@ -11,13 +11,17 @@ import { teamTask, withIdentity } from "../src/octocode/instructions/task.ts";
 import { loadProfiles, profileSelectsTool } from "../src/octocode/subagents/profiles.ts";
 import { registerTurnSetup } from "../src/octocode/turn.ts";
 import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
-import { createMcpToolDefinition } from "../../mcp/src/tool-definition.ts";
-import { createMcpToolName } from "../../mcp/src/tool-names.ts";
-import { recommendedPresets } from "../../mcp/src/recommended/index.ts";
-import { publishToolRoles, resolveToolRoles } from "../../mcp/src/roles.ts";
+import {
+	createMcpToolDefinition,
+	createMcpToolName,
+	recommendedPresets,
+	publishToolRoles,
+	resolveToolRoles,
+	MCPS_SECTION,
+	renderMcpsSection,
+	type Tool,
+} from "../../mcp/src/api.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { MCPS_SECTION, renderMcpsSection } from "../../mcp/src/section.ts";
-import type { Tool } from "../../mcp/src/client/index.ts";
 import { fakeHost } from "../test/octocode/fake-host.ts";
 
 const destination = process.argv[2];

@@ -562,6 +562,19 @@ describe("every catalog model gets its longest supported cache tier by default",
 			{ mode: "explicit" },
 		]);
 		expect(JSON.stringify(split.input)).not.toContain('"ttl"');
+		// A volatile boundary (beside the default `project_context` one) ends the instructions with a block that has no
+		// breakpoint; the text is unchanged.
+		const tail = await rawPayload(astra(), "test-key", turn, {
+			...DEFAULTS,
+			instructionVolatileBoundary: "environment",
+		});
+		const tailBlocks = (tail.input as Payload[])[0].content as Payload[];
+		expect(tailBlocks.map((block) => block.prompt_cache_breakpoint)).toStrictEqual([
+			{ mode: "explicit" },
+			{ mode: "explicit" },
+			undefined,
+		]);
+		expect(tailBlocks.map((block) => block.text).join("")).toBe(instructionBlocks.map((block) => block.text).join(""));
 	});
 
 	it("Azure gpt-6-astra: capabilities report the 30m instruction breakpoint tier the adapter sends", () => {

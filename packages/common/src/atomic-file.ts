@@ -5,15 +5,25 @@ import { withFileWriteLock } from "./file-write-lock.ts";
 
 /**
  * Crash-safe file replacement: write a sibling temp file, fsync it, rename it over the target and fsync the
- * directory. A reader sees the old bytes or the new ones, never a torn file. Symlinks are written through (the link
- * stays a link), and an existing file keeps its mode unless `mode` is set. `atomicWriteFile` can also check, just
+ * directory (`durability` can skip the fsyncs). A reader sees the old bytes or the new ones, never a torn file.
+ * Symlinks are written through (the link stays a link), and an existing file keeps its mode unless `mode` is set. `atomicWriteFile` can also check, just
  * before the rename, that the target still holds what was read. Async replacements share a cross-process lock;
  * unrelated writers that do not acquire it can still race the content check. Temporary files are removed on failure.
  */
 
+/**
+ * What a write flushes before it returns: `all` the data and the directory entry (survives a crash), `data` the data
+ * only (a crash may undo the rename and leave the old file), `none` neither (a crash may leave the old file or, on some
+ * filesystems, an empty or zeroed one), for derived files that are rebuilt or verified before use. Every level renames
+ * a complete temp file, so a reader never sees a torn file.
+ */
+type WriteDurability = "all" | "data" | "none";
+
 interface AtomicWriteOptions {
 	/** File mode of the result (e.g. `0o600` for credentials), applied exactly rather than through the umask. */
 	mode?: number;
+	/** Default `all`. */
+	durability?: WriteDurability;
 	signal?: AbortSignal;
 	beforeCommit?: () => void;
 }
@@ -65,8 +75,8 @@ interface WriteIo {
 	realpath(file: string): unknown;
 	/** The permission bits of an existing file, else undefined. */
 	mode(file: string): unknown;
-	/** Create `temp` (exclusive), write `data`, set `mode` exactly when given (open() applies the umask), fsync, close. */
-	write(temp: string, data: string | Uint8Array, mode: number | undefined): unknown;
+	/** Create `temp` (exclusive), write `data`, set `mode` exactly when given (open() applies the umask), fsync when `sync`, close. */
+	write(temp: string, data: string | Uint8Array, mode: number | undefined, sync: boolean): unknown;
 	rename(from: string, to: string): unknown;
 	remove(file: string): unknown;
 	/** fsync a directory, so the rename survives a crash; some filesystems cannot, and the rename is atomic anyway. */
@@ -121,12 +131,12 @@ const syncIo: WriteIo = {
 			return undefined;
 		}
 	},
-	write: (temp, data, mode) => {
+	write: (temp, data, mode, sync) => {
 		const fd = fs.openSync(temp, "wx", mode ?? 0o666);
 		try {
 			fs.writeFileSync(fd, data);
 			if (mode !== undefined) fs.fchmodSync(fd, mode);
-			fs.fsyncSync(fd);
+			if (sync) fs.fsyncSync(fd);
 		} finally {
 			fs.closeSync(fd);
 		}
@@ -143,12 +153,12 @@ const asyncIo: WriteIo = {
 			(stat) => stat.mode & 0o7777,
 			() => undefined,
 		),
-	write: async (temp, data, mode) => {
+	write: async (temp, data, mode, sync) => {
 		const handle = await fs.promises.open(temp, "wx", mode ?? 0o666);
 		try {
 			await handle.writeFile(data);
 			if (mode !== undefined) await handle.chmod(mode);
-			await handle.sync();
+			if (sync) await handle.sync();
 		} finally {
 			await handle.close();
 		}
@@ -182,15 +192,16 @@ function* writeSteps(
 	const target = (yield io.realpath(file)) as string;
 	const temp = tempSibling(target);
 	const mode = options.mode ?? ((yield io.mode(target)) as number | undefined);
+	const durability = options.durability ?? "all";
 	try {
-		yield io.write(temp, data, mode);
+		yield io.write(temp, data, mode, durability !== "none");
 		if (check) yield check(target);
 		yield io.rename(temp, target);
 	} catch (error) {
 		yield io.remove(temp);
 		throw error;
 	}
-	yield io.syncDirectory(path.dirname(target));
+	if (durability === "all") yield io.syncDirectory(path.dirname(target));
 }
 
 /**

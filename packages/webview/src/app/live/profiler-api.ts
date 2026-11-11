@@ -16,7 +16,7 @@ import {
 	isProfileMessage,
 	isProfileRequest,
 } from "../../profiler-guards.ts";
-import { requestJson } from "../../request.ts";
+import { requestBlob, requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
 
 /** The profiler's route and a path under it, scoped like every other host route. */
@@ -76,11 +76,8 @@ export function createProfilerApi(access: string) {
 			return value as unknown as ProfileTimeline;
 		},
 		/** The trace export as a file: the host refuses it without the token, so a plain link cannot fetch it. */
-		profilerTrace: async (signal?: AbortSignal): Promise<Blob> => {
-			const response = await fetch(profilerRoute(PROFILER_PATHS.trace), { headers, signal });
-			if (!response.ok) throw new Error(`Could not export the trace (HTTP ${response.status})`);
-			return response.blob();
-		},
+		profilerTrace: (signal?: AbortSignal): Promise<Blob> =>
+			requestBlob(profilerRoute(PROFILER_PATHS.trace), { headers, signal }, "Could not export the trace"),
 		profilerInsights: async (signal?: AbortSignal): Promise<ProfileInsights> => {
 			const value = await read(PROFILER_PATHS.insights, signal, "Could not load the insights");
 			if (!isRecord(value) || !Array.isArray(value.findings) || !value.findings.every(isProfileFinding))

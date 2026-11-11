@@ -2,7 +2,8 @@ import { type Static, Type } from "typebox";
 import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { reasonSchema } from "../../shared/reason.ts";
-import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
+import { elisionMarkers } from "../../shared/util.ts";
+import { escapeRegExp } from "../../../../../common/src/regexp.ts";
 import type { QueryOutcome } from "../outcome.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
@@ -155,4 +156,14 @@ export function formatOutcomes(outcomes: QueryOutcome[]): string {
 				`${index + 1}. ${outcome.ok ? "OK" : "FAILED"} ${outcome.type} ${outcome.path}: ${outcome.ok ? withoutPath(outcome.message, outcome.path) : outcome.message}${outcome.ok && outcome.sourceSha256 ? ` sourceSha256=${outcome.sourceSha256}` : ""}`,
 		)
 		.join("\n");
+}
+
+/**
+ * The text of a `file` result. A `queries` batch (`total` queries, more than one) in which any failed starts with
+ * "k of n failed", so a partly applied batch does not read as done; a single query and a patch (which stops at its
+ * first failure) keep the plain list.
+ */
+export function batchText(outcomes: QueryOutcome[], failed: number, total?: number): string {
+	const list = formatOutcomes(outcomes);
+	return failed > 0 && total !== undefined && total > 1 ? `${failed} of ${total} failed\n${list}` : list;
 }

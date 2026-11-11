@@ -1,5 +1,5 @@
 import type { getKeybindings } from "../../keybindings.ts";
-import { decodePastedControlKeys } from "../../bracketed-paste.ts";
+import { decodePastedControlKeys } from "../../paste-control-keys.ts";
 import { matchesKey } from "../../keys/match.ts";
 import { cjkBreakRegex, isWhitespaceChar } from "../../utils/chars.ts";
 import type { EditorModel } from "./model.ts";

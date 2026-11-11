@@ -9,6 +9,8 @@
  * bidi character stays visible instead of vanishing. `visibleControls` is not injective: a literal `\u{200d}` typed in the text and an escaped ZWJ read the
  * same. That is accepted: the escape exists so a reader can see that something was there, not to round-trip the text.
  */
+import { escapeRegExp } from "./regexp.ts";
+
 // An unterminated string ends at its line: a stray introducer must not swallow the rest of the text.
 const OSC_SEQUENCE = /(?:\u001b\]|\u009d)[^\n]*?(?:\u0007|\u001b\\|\u009c|(?=\n)|$)/gu;
 /** DCS, SOS, PM and APC strings. */
@@ -195,9 +197,7 @@ function registeredValuePattern(): RegExp | undefined {
 			forms.add(value);
 			forms.add(JSON.stringify(value).slice(1, -1));
 		}
-		const escaped = [...forms]
-			.sort((left, right) => right.length - left.length)
-			.map((form) => form.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+		const escaped = [...forms].sort((left, right) => right.length - left.length).map(escapeRegExp);
 		secretValuePattern = new RegExp(escaped.join("|"), "gu");
 	}
 	return secretValuePattern;

@@ -8,6 +8,7 @@ import {
 	getBestAutocompleteMatchIndex,
 	SLASH_COMMAND_SELECT_LIST_LAYOUT,
 } from "./autocomplete-patterns.ts";
+import { AutocompleteIndexingProgress } from "./autocomplete-progress.ts";
 import { untilAutocompleteAborted } from "./autocomplete-request.ts";
 import {
 	findAtQuery,
@@ -16,7 +17,6 @@ import {
 	isInsideToken,
 	listOptions,
 	mergeTriggerCharacters,
-	startProgressTicker,
 	type DismissedToken,
 } from "./autocomplete-token.ts";
 import type { EditorLastAction, EditorState, EditorTheme } from "./types.ts";
@@ -51,17 +51,18 @@ export class EditorAutocomplete {
 	private autocompleteStartToken: number = 0;
 	private autocompleteRequestId: number = 0;
 	private autocompletePending = false;
-	private stopIndexing?: () => void;
 	private dismissed?: DismissedToken;
 	/** True while the list is a placeholder for a file index that is still building. */
 	autocompleteIndexing = false;
 
 	private readonly host: EditorAutocompleteHost;
 	private readonly theme: EditorTheme;
+	private readonly indexingProgress: AutocompleteIndexingProgress;
 
 	constructor(host: EditorAutocompleteHost, theme: EditorTheme) {
 		this.host = host;
 		this.theme = theme;
+		this.indexingProgress = new AutocompleteIndexingProgress(this, host);
 	}
 
 	setAutocompleteProvider(provider: AutocompleteProvider): void {
@@ -244,14 +245,14 @@ export class EditorAutocomplete {
 			this.host.state.cursorCol,
 			{ signal: controller.signal, force: options.force },
 		);
-		this.showIndexingProgress();
+		this.indexingProgress.show();
 		const suggestions = await untilAutocompleteAborted(request, controller.signal);
 
 		if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) {
 			return;
 		}
 
-		this.stopIndexingProgress();
+		this.indexingProgress.stop();
 		this.autocompleteAbort = undefined;
 
 		if (!suggestions || !Array.isArray(suggestions.items) || suggestions.items.length === 0) {
@@ -317,7 +318,7 @@ export class EditorAutocomplete {
 	}
 
 	/** Replaces the list with a row-less `@` list that shows `emptyText` (no match, or index progress). */
-	private showPlaceholder(query: string, indexing: boolean, emptyText?: string): void {
+	showPlaceholder(query: string, indexing: boolean, emptyText?: string): void {
 		this.autocompleteIndexing = indexing;
 		this.autocompletePrefix = `@${query}`;
 		this.autocompleteList = this.createAutocompleteList(this.autocompletePrefix, [], emptyText);
@@ -329,27 +330,6 @@ export class EditorAutocomplete {
 		const query = findAtQuery(this.host.state, this.autocompleteTriggerPattern);
 		if (query === null) this.cancelAutocomplete();
 		else this.showPlaceholder(query, false);
-	}
-
-	/** While the provider builds its file index, shows "Indexing… N files" and refreshes it until the request ends. */
-	private showIndexingProgress(): void {
-		const status = this.autocompleteProvider?.indexingStatus?.();
-		const query = findAtQuery(this.host.state, this.autocompleteTriggerPattern);
-		if (!status || this.autocompleteList || query === null) return;
-		this.showPlaceholder(query, true, status);
-		this.host.requestRender();
-		this.stopIndexing = startProgressTicker(
-			() => (this.autocompleteIndexing ? this.autocompleteProvider?.indexingStatus?.() : null),
-			(text) => {
-				this.autocompleteList?.setEmptyText(text);
-				this.host.requestRender();
-			},
-		);
-	}
-
-	private stopIndexingProgress(): void {
-		this.stopIndexing?.();
-		this.stopIndexing = undefined;
 	}
 
 	/** Esc: closes the list, cancels a pending request and keeps the token closed until the cursor leaves it. */
@@ -366,7 +346,7 @@ export class EditorAutocomplete {
 
 	private cancelAutocompleteRequest(): void {
 		this.autocompletePending = false;
-		this.stopIndexingProgress();
+		this.indexingProgress.stop();
 		this.autocompleteStartToken += 1;
 		if (this.autocompleteDebounceTimer) {
 			clearTimeout(this.autocompleteDebounceTimer);

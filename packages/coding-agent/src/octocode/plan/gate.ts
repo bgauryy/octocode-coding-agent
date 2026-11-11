@@ -1,9 +1,7 @@
-import { archiveRead } from "../shared/archive-operation.ts";
+import { archiveRead, memoryRead } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
-import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { currentToolRoles, createMcpToolName, type McpServerStatus } from "../../../../mcp/src/api.ts";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
-import { createMcpToolName } from "../../../../mcp/src/tool-names.ts";
-import type { McpServerStatus } from "../../../../mcp/src/status.ts";
 import { untilCommand } from "../shared/until-command.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);
@@ -37,6 +35,7 @@ export function planningRefusal(
 ): string | undefined {
 	const native = definition?.sourceInfo.owner === "native";
 	if (native && event.toolName === "archive" && archiveRead(event.input)) return undefined;
+	if (native && event.toolName === "memory" && memoryRead(event.input)) return undefined;
 	if (native && reads.has(event.toolName)) return undefined;
 	// A timer changes only this session's own timers; an until-command must be one plan mode would run as bash.
 	if (native && event.toolName === "timer") {

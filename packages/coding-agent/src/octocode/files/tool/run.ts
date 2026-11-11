@@ -118,9 +118,11 @@ function guardedOperations(
 		writeFile: async (file: string, content: string) => {
 			reserved?.();
 			try {
+				// The user's bytes are flushed; the directory is not (a crash may undo the rename, never tear the file).
 				await atomicWriteFile(file, content, read ?? checked, {
 					signal,
 					beforeCommit: reserved,
+					durability: "data",
 				});
 				const bytes = Buffer.from(content);
 				written = {

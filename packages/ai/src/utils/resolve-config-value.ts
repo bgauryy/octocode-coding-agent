@@ -3,7 +3,7 @@
  * Used by auth-storage.ts and model-registry.ts.
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 
 /** How to start a shell on this host; `getShellConfig` of the coding agent is the usual provider. */
 export interface ConfigValueShell {
@@ -21,7 +21,16 @@ export function setConfigValueShell(provider: (() => ConfigValueShell) | undefin
 
 // Successful shell command results are cached briefly so rotating tokens (gcloud, keychains) refresh; failures never are.
 const COMMAND_RESULT_TTL_MS = 5 * 60_000;
-const commandResultCache = new Map<string, { value: string; expiresAt: number }>();
+// In its last minute a cached result is still served while the command runs again in the background, so a request
+// does not wait for it; a failed refresh keeps the cached result until it expires.
+const COMMAND_REFRESH_AHEAD_MS = 60_000;
+const COMMAND_TIMEOUT_MS = 10_000;
+interface CachedCommandResult {
+	value: string;
+	expiresAt: number;
+	refreshing?: boolean;
+}
+const commandResultCache = new Map<string, CachedCommandResult>();
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_VAR_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
 
@@ -145,7 +154,8 @@ export function isConfigValueConfigured(config: string, env?: Record<string, str
 
 /**
  * Resolve a config value (API key, header value, etc.) to an actual value.
- * - If starts with "!", executes the rest as a shell command and uses stdout (successes cached for a few minutes, failures never)
+ * - If starts with "!", executes the rest as a shell command and uses stdout (successes cached for a few minutes and
+ *   refreshed in the background in their last minute, failures never)
  * - Interpolates "$ENV_VAR" or "${ENV_VAR}" references with the named environment variable
  * - In non-command values, "$$" escapes a literal "$" and "$!" escapes a literal "!"
  * - Otherwise treats the value as a literal
@@ -166,7 +176,7 @@ function executeWithConfiguredShell(command: string): { executed: boolean; value
 		const result = spawnSync(shell, commandFromStdin ? args : [...args, command], {
 			encoding: "utf-8",
 			input: commandFromStdin ? command : undefined,
-			timeout: 10000,
+			timeout: COMMAND_TIMEOUT_MS,
 			stdio: [commandFromStdin ? "pipe" : "ignore", "pipe", "ignore"],
 			shell: false,
 			windowsHide: true,
@@ -195,7 +205,7 @@ function executeWithDefaultShell(command: string): string | undefined {
 	try {
 		const output = execSync(command, {
 			encoding: "utf-8",
-			timeout: 10000,
+			timeout: COMMAND_TIMEOUT_MS,
 			stdio: ["ignore", "pipe", "ignore"],
 		});
 		return output.trim() || undefined;
@@ -214,9 +224,89 @@ function executeCommandUncached(commandConfig: string): string | undefined {
 		: executeWithDefaultShell(command);
 }
 
+/**
+ * Run a command without blocking: stdout trimmed when it exits 0, else undefined. `executed` is false when the shell
+ * itself could not start. The child does not keep the process alive.
+ */
+function runCommandInBackground(
+	file: string,
+	args: string[],
+	options: { input?: string; shell: boolean },
+): Promise<{ executed: boolean; value: string | undefined }> {
+	return new Promise((resolve) => {
+		let stdout = "";
+		let settled = false;
+		const finish = (result: { executed: boolean; value: string | undefined }) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(result);
+		};
+		const child = spawn(file, args, {
+			shell: options.shell,
+			stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+			windowsHide: true,
+		});
+		const timer = setTimeout(() => {
+			child.kill();
+			finish({ executed: true, value: undefined });
+		}, COMMAND_TIMEOUT_MS);
+		timer.unref();
+		child.unref();
+		(child.stdout as { unref?: () => void } | null)?.unref?.();
+		child.stdout?.setEncoding("utf-8");
+		child.stdout?.on("data", (chunk: string) => {
+			stdout += chunk;
+		});
+		child.on("error", (error: NodeJS.ErrnoException) =>
+			finish({ executed: error.code !== "ENOENT", value: undefined }),
+		);
+		child.on("close", (status) =>
+			finish({ executed: true, value: status === 0 ? stdout.trim() || undefined : undefined }),
+		);
+		if (options.input !== undefined) child.stdin?.end(options.input);
+	});
+}
+
+/** `executeCommandUncached` without blocking the thread. */
+async function executeCommandInBackground(commandConfig: string): Promise<string | undefined> {
+	const command = commandConfig.slice(1);
+	if (process.platform === "win32" && configuredShell) {
+		try {
+			const { shell, args, commandTransport } = configuredShell();
+			const fromStdin = commandTransport === "stdin";
+			const result = await runCommandInBackground(shell, fromStdin ? args : [...args, command], {
+				shell: false,
+				...(fromStdin ? { input: command } : {}),
+			});
+			if (result.executed) return result.value;
+		} catch {
+			// Falls back to the default shell, as the synchronous path does.
+		}
+	}
+	return (await runCommandInBackground(command, [], { shell: true })).value;
+}
+
+function refreshCommandResult(commandConfig: string, entry: CachedCommandResult): void {
+	if (entry.refreshing) return;
+	entry.refreshing = true;
+	void executeCommandInBackground(commandConfig).then(
+		(value) => {
+			// Cleared or replaced meanwhile; a failure leaves the cached result to expire.
+			if (value === undefined || commandResultCache.get(commandConfig) !== entry) return;
+			commandResultCache.set(commandConfig, { value, expiresAt: Date.now() + COMMAND_RESULT_TTL_MS });
+		},
+		() => undefined,
+	);
+}
+
 function executeCommand(commandConfig: string): string | undefined {
 	const cached = commandResultCache.get(commandConfig);
-	if (cached && cached.expiresAt > Date.now()) return cached.value;
+	const now = Date.now();
+	if (cached && cached.expiresAt > now) {
+		if (cached.expiresAt - now <= COMMAND_REFRESH_AHEAD_MS) refreshCommandResult(commandConfig, cached);
+		return cached.value;
+	}
 	commandResultCache.delete(commandConfig);
 
 	const result = executeCommandUncached(commandConfig);

@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { memberWorktree, worktreeLabel } from "../../src/octocode/worktree-paths/member-worktree.ts";
 import { worktreeFooterText } from "../../src/octocode/worktrees/footer.ts";
-import { roster } from "../../src/octocode/team/panel-roster.ts";
+import { roster } from "../../src/octocode/team/panel/roster.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { describeChild } from "../../src/octocode/subagents/children.ts";
 import { renderAgentCall, renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import { agentDetailText } from "../../src/octocode/subagents/run-text.ts";
-import { collapsedRows } from "../../src/octocode/team/panel-compact.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { GIT_TEST_ENV, makeRepo } from "./worktree-fixture.ts";
 

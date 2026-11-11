@@ -2,21 +2,12 @@ import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../core/agent-session.ts";
 import { buildToolDisplay } from "../../core/application/transcript-display.ts";
 import type { ToolRenderers } from "../../core/features/types.ts";
+import { displayText } from "../../octocode/render/display.ts";
 
 type ToolEvent = Extract<
 	AgentSessionEvent,
 	{ type: "tool_execution_start" | "tool_execution_update" | "tool_execution_end" }
 >;
-
-/** The text blocks of a result, joined. */
-function resultText(result: unknown): string {
-	const content = result && typeof result === "object" && "content" in result ? result.content : undefined;
-	return Array.isArray(content)
-		? content
-				.flatMap((block) => (block?.type === "text" && typeof block.text === "string" ? [block.text] : []))
-				.join("\n")
-		: "";
-}
 
 /**
  * Adds each tool event's `display` (how every surface draws the call) to the RPC stream, so a client such as the ACP
@@ -47,7 +38,7 @@ export function createToolDisplayAttacher(renderers: (toolName: string) => ToolR
 				toolName: tool.toolName,
 				args: callArgs,
 				result,
-				text: resultText(result),
+				text: displayText(result),
 				status,
 			});
 			return { ...tool, display };

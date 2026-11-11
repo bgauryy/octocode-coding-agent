@@ -97,6 +97,8 @@ describe("shared MCP host capabilities", () => {
 			servers: { plugin: config },
 			stopped: [stopped.entry.name],
 			available: ["plugin", "stopped", "file"],
+			// The default `mcpExposure` (`recent`) hands the in-use set over, so the child defers the same tools.
+			recent: [],
 		});
 		await stopped.close();
 	});

@@ -1,17 +1,11 @@
 import type { ImageProtocol } from "../terminal-image/types.ts";
 import { getKittyImagePlacementRows } from "../terminal-image/kitty-metadata.ts";
 import { deleteAllKittyPlacements, isImageLine } from "../terminal-image.ts";
-import {
-	BEGIN_SYNCHRONIZED_OUTPUT,
-	DISABLE_AUTOWRAP,
-	DISABLE_MOUSE,
-	ENABLE_AUTOWRAP,
-	END_SYNCHRONIZED_OUTPUT,
-	EXIT_ALT_SCREEN,
-} from "./constants.ts";
+import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
+import { DISABLE_AUTOWRAP, DISABLE_MOUSE, ENABLE_AUTOWRAP, EXIT_ALT_SCREEN } from "./constants.ts";
 import { sameRowAfterErase, trimTrailingBlanks } from "../tui/trailing-blanks.ts";
 import { deleteKittyImagesFor, prepareKittyScreen } from "./kitty-cache.ts";
-import { planScrollShift } from "./scroll-shift.ts";
+import { planScrollShift, type TrimmedRowsMemo } from "./scroll-shift.ts";
 import type { CachedKittyImage } from "./types.ts";
 
 /** What one alternate-screen frame write depends on. */
@@ -153,11 +147,14 @@ export function renderAltScreenOutput(options: {
 	uploadedKittyImages: Map<number, CachedKittyImage>;
 	cursorPos: { row: number; col: number } | null;
 	showHardwareCursor: boolean;
+	/** The screen's own trimmed-row memo for the scroll-shift planner. */
+	trimmedRows?: TrimmedRowsMemo;
 }): { buffer: string; fullRedraw: boolean } {
 	const { screen, imageProtocol, uploadedKittyImages } = options;
 	const { fullRedraw, imagesNeedRedraw, redrawImages, isWezTerm } = planAltScreenRedraw(options);
 	const hadUploadedKittyImages = uploadedKittyImages.size > 0;
-	const shift = !fullRedraw && !redrawImages ? planScrollShift(screen, options.previousScreen) : undefined;
+	const shift =
+		!fullRedraw && !redrawImages ? planScrollShift(screen, options.previousScreen, options.trimmedRows) : undefined;
 	const preparedKittyScreen =
 		redrawImages && imageProtocol === "kitty"
 			? prepareKittyScreen(uploadedKittyImages, screen)

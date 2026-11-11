@@ -2,32 +2,32 @@ import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../.
 import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "../../../../common/src/env.ts";
-import { contentText } from "../shared/util.ts";
 import { registerMemoryCommand } from "./command.ts";
-import { injectedIds, MEMORY_MESSAGE_TYPE, selectInjection, unchangedIds } from "./inject.ts";
+import { headerInContext, injectedIds, MEMORY_MESSAGE_TYPE, selectInjection, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import { memoryStore } from "./store.ts";
-import { createMemoryActions } from "./tool.ts";
+import { createMemoryTool } from "./tool.ts";
 
 /** BM25 hits injected per prompt beside the pinned memories: fewer in a subagent, whose task is narrow. */
 const TOP_K = 5;
 const SUBAGENT_TOP_K = 3;
+/** The one kind of pinned memory a subagent is given. */
+const SUBAGENT_PINNED_KIND = "preference";
 
 /**
- * Text that started the run. A subagent with a goal searches by it: the brief opens with shared context, so its first
- * words say little about the task. A user prompt is `prompt`; an idle custom message carries its own content.
+ * What recall searches by: a user's prompt, or a subagent's goal (its brief opens with shared context, so its first words
+ * say little about the task). A run a custom message started (an agent's result, a bash job's notice, the resume after a
+ * compaction, a digest, a timer) searches nothing: its text is machine-written, so it gets the unseen pinned memories
+ * only, and the next prompt recalls by what the user asked.
  */
 function agentStartQuery(event: BeforeAgentStartEvent, goal: string | undefined): string {
-	if (goal) return goal;
-	if (event.messageType === "custom") {
-		return contentText(event.message.content);
-	}
-	return event.prompt;
+	if (event.messageType === "custom") return "";
+	return goal ?? event.prompt;
 }
 
 /**
- * Durable memories: Archive actions, automatic injection of pinned and relevant memories before each prompt (hidden
- * from the transcript), and `/memory`. A session only starts in a trusted folder, so project memories are always
+ * Durable memories: the `memory` tool, automatic injection of pinned and relevant memories before each prompt (hidden
+ * from the transcript; a subagent's pins are its pinned preferences), and `/memory`. A session only starts in a trusted folder, so project memories are always
  * eligible. The user sees which memories were recalled; the notice does not reach the model. `goal` is a subagent's
  * goal (`OCTOCODE_AGENT_GOAL`), its recall query.
  */
@@ -52,13 +52,16 @@ export function registerMemory(
 			if (!autoEnv()) return undefined;
 			const store = storeFor(ctx);
 			if (!store.autoSetting()) return undefined;
+			const branch = ctx.sessionManager.getBranch();
 			const injection = selectInjection(store, {
 				query: agentStartQuery(event, goal),
 				scope: "all",
-				seen: unchangedIds(store, injectedIds(ctx.sessionManager.getBranch())),
+				seen: unchangedIds(store, injectedIds(branch)),
+				headerInContext: headerInContext(branch),
 				topK: options.isSubagent ? SUBAGENT_TOP_K : TOP_K,
-				// A subagent gets no pinned memories: its task brief carries none, and it can read them with Archive.
-				pinned: !options.isSubagent,
+				// Owner decision, 2026-11-11: a subagent gets pinned memories of kind `preference` only, within the same
+				// pinned budget; pinned facts, decisions and other kinds stay out, and it reads those with the `memory` tool.
+				...(options.isSubagent ? { pinnedKind: SUBAGENT_PINNED_KIND } : {}),
 			});
 			failedSession = undefined;
 			if (!injection) return undefined;
@@ -104,5 +107,5 @@ export function registerMemory(
 	});
 
 	if (!options.isSubagent) registerMemoryCommand(options.commands, { store: storeFor, autoEnv });
-	return createMemoryActions(storeFor, { isSubagent: options.isSubagent, permission: options.permission });
+	api.registerTool(createMemoryTool(storeFor, { isSubagent: options.isSubagent, permission: options.permission }));
 }

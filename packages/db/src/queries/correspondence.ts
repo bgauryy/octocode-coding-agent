@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
+import { withDeliveries } from "./deliveries.ts";
 
 /** What `me` and `other` exchanged in `team` since `since`: whether any message went either way, and whether `me` still had a question to `other` that its leaving left unanswered. */
 export interface Correspondence {
@@ -44,8 +45,5 @@ export function involving(
 			 AND (sender IN (${marks}) OR id IN (SELECT message FROM deliveries WHERE recipient IN (${marks}))) ORDER BY id`,
 		)
 		.all(since, ...agentIds, ...agentIds) as Row[];
-	const deliveries = db.prepare(
-		"SELECT recipient, delivered_at, completed_at, dead_at, relay_to FROM deliveries WHERE message = ? ORDER BY recipient",
-	);
-	return rows.map((message) => ({ message, deliveries: deliveries.all(num(message.id)) as Row[] }));
+	return withDeliveries(db, rows);
 }

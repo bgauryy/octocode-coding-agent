@@ -155,4 +155,32 @@ describe("append-only message deltas", () => {
 		await settle();
 		expect(fold(events(resumed), view).snapshot!.messages).toEqual(redactData(f.service.getSnapshot().messages));
 	});
+
+	it("encodes nothing before a view first connects, and a view connecting mid-stream continues the streamed block", async () => {
+		const f = fixture();
+		// Attached as for the terminal, with no view connected.
+		f.service.start();
+		const watched = fixture();
+		const early = reader(watched.service);
+		await settle();
+		for (const g of [f, watched]) {
+			g.start();
+			for (const piece of tokens(30)) g.token(piece);
+		}
+		// No frame was made or kept before a view connected, though the events were counted as frames would be.
+		expect((f.service as unknown as { replay: { frames: unknown[] } }).replay.frames).toEqual([]);
+		const late = reader(f.service);
+		await settle();
+		expect(late[0].type).toBe("snapshot");
+		expect(late[0].cursor.sequence).toBe(early.at(-1)!.cursor.sequence);
+		const view = fold(late);
+		expect(view.snapshot!.messages).toEqual(fold(early).snapshot!.messages);
+		f.token("tail ");
+		await settle();
+		const append = late.at(-1);
+		expect(append?.type === "event" && append.event.type === "message.delta" && append.event.block).toBeTruthy();
+		f.end();
+		await settle();
+		expect(fold(events(late), view).snapshot!.messages).toEqual(redactData(f.service.getSnapshot().messages));
+	});
 });

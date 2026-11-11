@@ -2,6 +2,8 @@
 
 `octocode [options] [--] [@files...] [messages...]` starts Octocode. `octocode --help` lists every flag; `octocode completion bash|zsh|fish` prints shell completion. Subcommands (`install`, `configuration`, `mcp`, `trust`, ...) are in [commands](commands.md#shell-entry-points).
 
+For another agent, script or CI job, start with the [external-agent guide](external-agents.md): setup, safe subprocess invocation, permissions and completion handling.
+
 ## Choose a mode
 
 ```mermaid

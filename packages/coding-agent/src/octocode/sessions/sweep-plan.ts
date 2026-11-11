@@ -10,6 +10,7 @@ import { staleEntries } from "../shared/sweep.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { shotsDir } from "../subagents/screenshots.ts";
 import { idleSince, pathSize, realDirectory } from "./sweep-fs.ts";
+import { namedByCheckpoint } from "./sweep-named.ts";
 import {
 	folderName,
 	running,
@@ -75,7 +76,7 @@ const daysAgo = (now: number, at: number) => Math.floor((now - at) / DAY_MS);
  *
  * Rules, per `resolveRetention` (`0` turns a rule off): `days` for a session's folder when Octocode no longer lists it
  * (and no process runs it), stale output and bash logs, idle checkpoints, subagent screenshots and old
- * `<workspace>/.octocode/tmp` entries; `sessionDays` for a transcript whose last write is older, with its session folders
+ * `<workspace>/.octocode/tmp` entries (an output or bash log the session's latest checkpoint names stays); `sessionDays` for a transcript whose last write is older, with its session folders
  * and database rows. The current session, running sessions, a recorded directory that cannot be read, and a live bash
  * job are never touched.
  */
@@ -215,7 +216,13 @@ export async function planSweep(
 				const own = owner ? { session: owner.id } : {};
 				const cutoff = now - outputMs;
 				const output = path.join(scope.temp, name, "output");
-				for (const file of await staleEntries(output, outputMs, undefined, now))
+				const bash = path.join(scope.temp, name, "bash");
+				const staleOutput = await staleEntries(output, outputMs, undefined, now);
+				// A running job's owner record is written once at its start: its age says nothing, and its log is still open.
+				const staleBash = await staleEntries(bash, outputMs, await liveJobFiles(bash), now);
+				// A file the session's latest checkpoint still points the model to is evidence, however old: it goes with the session.
+				const named = await namedByCheckpoint(index.agent, owner?.id, [...staleOutput, ...staleBash]);
+				for (const file of staleOutput.filter((entry) => !named.has(entry)))
 					await add({
 						kind: "output",
 						path: file,
@@ -224,9 +231,7 @@ export async function planSweep(
 						idleBefore: cutoff,
 						...own,
 					});
-				// A running job's owner record is written once at its start: its age says nothing, and its log is still open.
-				const bash = path.join(scope.temp, name, "bash");
-				for (const file of await staleEntries(bash, outputMs, await liveJobFiles(bash), now))
+				for (const file of staleBash.filter((entry) => !named.has(entry)))
 					await add({
 						kind: "output",
 						path: file,
@@ -274,7 +279,7 @@ export async function planSweep(
 				idleBefore: now - outputMs,
 			});
 
-		// Extras of a session with neither a Octocode file nor a folder left are dead weight. Only rows of a workspace this
+		// Extras of a session with neither an Octocode file nor a folder left are dead weight. Only rows of a workspace this
 		// pass read in full (or of none) are judged: a missing or unreadable checkout may still hold the transcript.
 		// `forget` keeps a row that still has a transcript mirror or compaction summary; the rest are dropped.
 		const seenWorkspaces = new Set(scanned.flatMap(({ scope }) => (scope.workspaceId ? [scope.workspaceId] : [])));

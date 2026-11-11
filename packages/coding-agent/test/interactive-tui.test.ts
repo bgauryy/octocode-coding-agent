@@ -107,7 +107,7 @@ describe("createInteractiveTui", () => {
 			await terminal.waitForRender();
 			terminal.sendInput("\x1b[<64;1;1M");
 			await terminal.waitForRender();
-			expect(terminal.getViewport()[3]).toContain("↓ Jump to latest message · ctrl+j");
+			expect(terminal.getViewport()[3]).toMatch(/↓ \d+ rows below · Jump to latest message · ctrl\+j/);
 		} finally {
 			ui.stop();
 			setKeybindings(previousKeybindings);
@@ -368,7 +368,7 @@ type RenderSessionEntriesContext = {
 
 describe("InteractiveMode transcript rebuild", () => {
 	it("drops the fullscreen selection when session entries are re-rendered", async () => {
-		// Regression test for #9311: selection coordinates survived session switches.
+		// Selection coordinates survived session switches.
 		const terminal = new RecordingTerminal(40, 4);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",

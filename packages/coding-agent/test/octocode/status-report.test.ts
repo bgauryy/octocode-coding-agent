@@ -3,7 +3,7 @@ import { visibleWidth } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { builtinDescription, BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { HintBar } from "../../src/modes/interactive/components/hint-bar.ts";
+import { HintBar } from "../../src/theme/theme-tui-helpers.ts";
 import { ThinkingSelectorComponent } from "../../src/modes/interactive/components/thinking-selector.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";

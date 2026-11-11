@@ -43,17 +43,14 @@ describe.skipIf(process.platform === "win32")(
 		it("delivers the report within the short exit deadline, as a success, long before its busy deadline", async () => {
 			const started = Date.now();
 			// The busy deadline would be 25+ minutes: the run must not wait for it.
-			const outcome = await runSubagent(
-				"settled but alive",
-				[],
-				tmp(),
-				undefined,
-				{ id: "a-settled-alive" },
-				undefined,
-				() => undefined,
-				undefined,
-				{ idleMs: 10 * 60_000, busyMs: 15 * 60_000 },
-			);
+			const outcome = await runSubagent({
+				task: "settled but alive",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-settled-alive" },
+				onProgress: () => undefined,
+				limits: { idleMs: 10 * 60_000, busyMs: 15 * 60_000 },
+			});
 			expect(outcome.text).toContain("FINAL REPORT");
 			expect(outcome.error).toBeUndefined();
 			expect(Date.now() - started).toBeLessThan(15_000);

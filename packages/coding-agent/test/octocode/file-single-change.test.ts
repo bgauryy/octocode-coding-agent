@@ -101,12 +101,12 @@ describe("file tool: a single flat change", () => {
 		const tool = fileTool();
 		const taught = /file takes either queries .* or patch .*not both/;
 		// An unknown change type and a missing path are left as sent. A change beside a patch is the patch's call: the
-		// change fields are not wrapped, so nothing is written.
+		// change fields are not wrapped, so nothing is written, and an empty patch is an error.
 		await expect(call(tool, { reason: "r", type: "copy", path: "a.txt" }, cwd)).rejects.toThrow(taught);
 		await expect(call(tool, { reason: "r", type: "write", content: "x" }, cwd)).rejects.toThrow(taught);
 		await expect(
 			call(tool, { reason: "r", type: "write", path: "a.txt", patch: "*** Begin Patch\n*** End Patch" }, cwd),
-		).resolves.toMatchObject({ details: { outcomes: [] } });
+		).rejects.toThrow(/Empty patch: it changes no file/);
 		expect(fs.existsSync(path.join(cwd, "a.txt"))).toBe(false);
 	});
 });

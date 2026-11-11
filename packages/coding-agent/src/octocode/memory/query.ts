@@ -78,6 +78,32 @@ export function jaccard(a: readonly string[], b: readonly string[]): number {
 	return shared / union;
 }
 
+/** The text of a memory that relevance is judged on. */
+interface MemoryText {
+	title: string;
+	keywords: string;
+	body: string;
+}
+
+/** Distinct prompt words a hit must share with a memory's body, unless one of them is in its title or keywords. */
+const MIN_MATCHED_TERMS = 2;
+
+/**
+ * Whether a memory clears the relevance floor for the prompt stems `words`: it shares `MIN_MATCHED_TERMS` distinct
+ * words with the prompt, or one in its title or keywords. One chance body word (`write` in a note about write-ahead
+ * logs) is not enough.
+ */
+export function clearsFloor(memory: MemoryText, words: ReadonlySet<string>): boolean {
+	const head = new Set(terms(`${memory.title} ${memory.keywords}`).map(stem));
+	const body = new Set(terms(memory.body).map(stem));
+	let matched = 0;
+	for (const word of words) {
+		if (head.has(word)) return true;
+		if (body.has(word)) matched++;
+	}
+	return matched >= MIN_MATCHED_TERMS;
+}
+
 /** `M7`, `m7` or `7` → 7; anything else → undefined. */
 export function parseMemoryId(raw: string | undefined): number | undefined {
 	const match = /^\s*m?(\d{1,15})\s*$/i.exec(raw ?? "");

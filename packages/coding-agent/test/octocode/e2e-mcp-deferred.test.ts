@@ -140,7 +140,7 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 	const sections = (getCurrentSystemMessage(requests[0].messages)?.sections ?? {}) as Record<string, string>;
 	expect(getCurrentTools(requests[0].messages).map((tool) => tool.name)).toContain("mcp__secretecho__echo_secret");
 	expect(sections.mcps).toContain(
-		'<mcp name="secretecho" tools="mcp__secretecho__*">\nReads the secret echo service token.\nSecret echo service. Call echo_secret to read the service token.\n- echo_secret: Return the secret echo service token.\n</mcp>',
+		'<mcp name="secretecho" tools="mcp__secretecho__*">\nReads the secret echo service token.\nSecret echo service. Call echo_secret to read the service token.\n- echo_secret\n</mcp>',
 	);
 	expect(sections.mcps).not.toContain("declare namespace");
 	expect(sections.mcps).not.toContain("additionalProperties");

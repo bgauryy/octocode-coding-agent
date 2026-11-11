@@ -8,7 +8,12 @@ import type {
 	ChatCompletionContentPartText,
 } from "openai/resources/chat/completions.js";
 import type { CacheRetention } from "../../types.ts";
-import { countCacheBreakpoints } from "../anthropic-messages/cache-breakpoints.ts";
+import { instructionBlockTexts, keepsToolBreakpoint, type InstructionBlocks } from "../../utils/instruction-split.ts";
+import {
+	countCacheBreakpoints,
+	findPreviousTailIndex,
+	MAX_CACHE_BREAKPOINTS,
+} from "../anthropic-messages/cache-breakpoints.ts";
 import type { OpenAICompatCacheControl, ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 type ChatCompletionInstructionMessageParam = ChatCompletionDeveloperMessageParam | ChatCompletionSystemMessageParam;
@@ -33,44 +38,33 @@ export function getCompatCacheControl(
 	return { type: "ephemeral", ...(ttl ? { ttl } : {}) };
 }
 
-/** The system prompt split into a base and a project block (see `splitSystemMessageAtBoundary`). */
-export type SplitSystemPrompt = readonly [base: string, project: string];
-
-/** Anthropic accepts at most four explicit cache breakpoints per request. */
-const MAX_CACHE_BREAKPOINTS = 4;
-
 /**
  * Marks the leading instructions and last tool with `instructionCacheControl` and the last
  * conversation message with `cacheControl`. Either may be undefined to skip that layer. A second history breakpoint
  * on the previous request's tail uses the free slot, so a long assistant turn cannot push the last cache write out of
  * the 20-block lookback window.
  *
- * With `splitSystem`, the leading prompt becomes two marked blocks and the tools-only marker is dropped: the base
- * block's marker already covers the tools that precede it, so the marker count is unchanged. Without a leading
- * string prompt equal to the two blocks joined, the prompt stays one block.
+ * With `splitSystem`, the leading prompt becomes its cached blocks, each marked, and then the volatile block without
+ * a marker. A second cached block replaces the tools-only marker: the base block's marker already covers the tools
+ * that precede it, so the marker count never exceeds four. Without a leading string prompt equal to the blocks
+ * joined, the prompt stays one block.
  */
 export function applyAnthropicCacheControl(
 	messages: ChatCompletionMessageParam[],
 	tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
 	cacheControl: OpenAICompatCacheControl | undefined,
 	instructionCacheControl: OpenAICompatCacheControl | undefined,
-	splitSystem?: SplitSystemPrompt,
+	splitSystem?: InstructionBlocks,
 ): void {
 	if (instructionCacheControl) {
 		const split = splitSystem && addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl);
-		if (!split) {
-			addCacheControlToSystemPrompt(messages, instructionCacheControl);
-			addCacheControlToLastTool(tools, instructionCacheControl);
-		}
+		if (!split) addCacheControlToSystemPrompt(messages, instructionCacheControl);
+		if (!split || keepsToolBreakpoint(splitSystem)) addCacheControlToLastTool(tools, instructionCacheControl);
 	}
 	if (cacheControl) {
 		addCacheControlToLastConversationMessage(messages, cacheControl);
 		addHistoryLookbackBreakpoint(messages, cacheControl, countCacheBreakpoints([messages, tools]));
 	}
-}
-
-function hasCacheControl(message: ChatCompletionMessageParam): boolean {
-	return Array.isArray(message.content) && countCacheBreakpoints(message.content[message.content.length - 1]) > 0;
 }
 
 /**
@@ -84,40 +78,22 @@ function addHistoryLookbackBreakpoint(
 	usedBreakpoints: number,
 ): void {
 	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return;
-	let finalIndex = -1;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (hasCacheControl(messages[i])) {
-			finalIndex = i;
-			break;
-		}
-	}
-	if (finalIndex < 0) return;
-	let assistantIndex = -1;
-	for (let i = finalIndex - 1; i >= 0; i--) {
-		if (messages[i].role === "assistant") {
-			assistantIndex = i;
-			break;
-		}
-	}
-	for (let i = assistantIndex - 1; i >= 0; i--) {
-		const message = messages[i];
-		if (Array.isArray(message.content) && message.content.length === 0) continue;
-		if (message.role === "assistant") return;
-		if (message.role === "user" || message.role === "tool") addCacheControlToMessage(message, cacheControl);
-		return;
-	}
+	const tailIndex = findPreviousTailIndex(messages);
+	if (tailIndex < 0) return;
+	const message = messages[tailIndex];
+	if (message.role === "user" || message.role === "tool") addCacheControlToMessage(message, cacheControl);
 }
 
 function addSplitCacheControlToSystemPrompt(
 	messages: ChatCompletionMessageParam[],
-	[base, project]: SplitSystemPrompt,
+	blocks: InstructionBlocks,
 	cacheControl: OpenAICompatCacheControl,
 ): boolean {
 	const message = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
-	if (!message || message.content !== `${base}${project}`) return false;
+	if (!message || message.content !== instructionBlockTexts(blocks).join("")) return false;
 	message.content = [
-		{ type: "text", text: base, cache_control: cacheControl },
-		{ type: "text", text: project, cache_control: cacheControl },
+		...blocks.cached.map((text) => ({ type: "text", text, cache_control: cacheControl })),
+		...(blocks.volatile === undefined ? [] : [{ type: "text", text: blocks.volatile }]),
 	] as ChatCompletionTextPartWithCacheControl[];
 	return true;
 }

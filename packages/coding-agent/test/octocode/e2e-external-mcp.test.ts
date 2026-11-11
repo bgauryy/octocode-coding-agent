@@ -290,8 +290,8 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 	return { agent, faux, requests, step, toolCall, mcpBlock, dispose };
 }
 
-it("tells the agent a default-exposed server's instructions and every tool, description and field", async () => {
-	const { agent, faux, requests, step, toolCall, mcpBlock } = await startMultiToolSession({});
+it("tells the agent a direct server's instructions and every tool, description and field", async () => {
+	const { agent, faux, requests, step, toolCall, mcpBlock } = await startMultiToolSession({ exposure: "direct" });
 	faux.setResponses([
 		toolCall("mcp__inventory__search_items", { query: "bolt", limit: 5 }),
 		toolCall("mcp__inventory__search_items", { query: "bolt", limit: "five" }),
@@ -330,6 +330,31 @@ it("tells the agent a default-exposed server's instructions and every tool, desc
 	expect(results[2]).toMatchObject({ toolName: "mcp__inventory__reserve_item", isError: false });
 });
 
+it("defers an unused server by default: each tool's whole description and field names, its schema on use", async () => {
+	const { agent, faux, requests, toolCall, step, mcpBlock } = await startMultiToolSession({});
+	faux.setResponses([
+		toolCall("mcp__inventory__search_items", { query: "bolt", limit: "five" }),
+		step(fauxAssistantMessage("done")),
+	]);
+	await agent.prompt("Find a bolt.");
+	expect(mcpBlock()).toContain(INSTRUCTIONS);
+	const declarations = getCurrentTools(requests[0].messages);
+	for (const [name, tool] of Object.entries(TOOLS)) {
+		const declared = declarations.find((candidate) => candidate.name === `mcp__inventory__${name}`);
+		// The server's own description, unchanged; the top-level field names without the field docs.
+		expect(declared?.description, name).toContain(tool.description);
+		const parameters: { properties?: object } | undefined = declared?.parameters;
+		expect(Object.keys(parameters?.properties ?? {}), name).not.toEqual([]);
+		const schema = JSON.stringify(declared?.parameters);
+		for (const [field, description] of Object.entries(tool.fields))
+			expect(schema, `${name}.${field}`).not.toContain(description);
+	}
+	// A call the full schema rejects returns that schema, field docs included.
+	const refused = agent.messages.find((message) => message.role === "toolResult");
+	expect(refused).toMatchObject({ toolName: "mcp__inventory__search_items", isError: true });
+	expect(JSON.stringify(refused?.content)).toContain(TOOLS.search_items.fields.query);
+});
+
 it("indexes a deferred server's tools and loads one tool's full description and field docs on demand", async () => {
 	const { agent, faux, requests, step, mcpBlock } = await startMultiToolSession({
 		exposure: "deferred",
@@ -349,7 +374,12 @@ it("indexes a deferred server's tools and loads one tool's full description and 
 
 	const block = mcpBlock();
 	expect(block).toContain(INSTRUCTIONS);
-	for (const [name, tool] of Object.entries(TOOLS)) expect(block).toContain(`- ${name}: ${tool.description}`);
+	// A deferred tool is listed by name; its declaration carries the server's whole description, unchanged.
+	const declared = getCurrentTools(requests[0].messages);
+	for (const [name, tool] of Object.entries(TOOLS)) {
+		expect(block).toContain(`\n- ${name}\n`);
+		expect(declared.find((one) => one.name === `mcp__inventory__${name}`)?.description).toBe(tool.description);
+	}
 	expect(block).not.toContain("declare namespace");
 
 	const result = agent.messages.find((message) => message.role === "toolResult");

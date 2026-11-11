@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +48,6 @@ const deps = (own: Partial<ConditionDeps> = {}): ConditionDeps => ({
 	blockers: () => undefined,
 	agentEnd: () => undefined,
 	watchDatabase: () => () => undefined,
-	roots: () => [root],
 	judge: judgeStub,
 	...own,
 });
@@ -58,101 +56,69 @@ const owner = { workspaceId: "w", sessionId: "s1", cwd: "/" };
 
 describe("the closed list of until conditions", () => {
 	it("takes exactly one condition, named from the list", () => {
-		expect(parseUntil({ file: { path: "a", is: "exists" } })).toEqual({ kind: "file", path: "a", is: "exists" });
-		expect(parseUntil({ file: { path: "a" } })).toMatchObject({ is: "changed" });
+		expect(parseUntil({ command: " test -e a " })).toEqual({ kind: "command", command: "test -e a" });
+		expect(parseUntil({ unlocked: "src/a.ts" })).toEqual({ kind: "unlocked", path: "src/a.ts" });
 		expect(parseUntil({ item: { ref: "B1", state: "done" } })).toMatchObject({ kind: "item" });
 		expect(parseUntil({ agent: { name: "ui" } })).toMatchObject({ kind: "agent" });
-		expect(parseUntil({ port: { port: 5173 } })).toEqual({ kind: "port", port: 5173, host: "127.0.0.1" });
 		expect(() => parseUntil({ job: "x" })).toThrow(/no condition job/);
 		expect(() => parseUntil({ message: "x" })).toThrow(/no condition message/);
 		expect(() => parseUntil({})).toThrow(/exactly one/);
 		expect(() => parseUntil({ command: "true", unlocked: "a" })).toThrow(/exactly one/);
-		expect(() => parseUntil({ file: { path: "a", glob: "*" } })).toThrow(/no field glob/);
-		expect(() => parseUntil({ file: { path: "a", is: "dir" } })).toThrow(/until.file.is/);
+		expect(() => parseUntil({ item: { ref: "B1", state: "done", glob: "*" } })).toThrow(/no field glob/);
 		expect(() => parseUntil({ item: { ref: "B1", state: "lost" } })).toThrow(/until.item.state/);
 		expect(() => parseUntil({ item: { ref: " ", state: "done" } })).toThrow(/until.item.ref/);
 		expect(parseUntil({ item: { ref: "B1", state: "done" } })).toEqual({ kind: "item", ref: "B1", state: "done" });
 	});
 
-	it("limits port to loopback and valid numbers", () => {
-		expect(parseUntil({ port: { port: 80, host: "localhost" } })).toMatchObject({ host: "localhost" });
-		expect(() => parseUntil({ port: { port: 80, host: "10.0.0.5" } })).toThrow(/loopback/);
-		expect(() => parseUntil({ port: { port: 0 } })).toThrow(/1 to 65535/);
+	it("refuses the removed file and port conditions with the command that replaces each", () => {
+		expect(() => parseUntil({ file: { path: "out.txt", is: "exists" } })).toThrow(
+			"until.file was removed; set the timer with until.command instead: test -e out.txt",
+		);
+		expect(() => parseUntil({ file: { path: "my out.txt", is: "absent" } })).toThrow("test ! -e 'my out.txt'");
+		expect(() => parseUntil({ file: { path: "log.txt" } })).toThrow(/until\.file was removed.*test log\.txt -nt mark/);
+		expect(() => parseUntil({ port: { port: 5173 } })).toThrow(
+			"until.port was removed; set the timer with until.command instead: nc -z localhost 5173",
+		);
+		expect(() => parseUntil({ port: { port: 80, host: "127.0.0.1" } })).toThrow("nc -z 127.0.0.1 80");
+		// Malformed values still name the replacement, as does a check whose trigger is a removed kind.
+		expect(() => parseUntil({ file: "a" })).toThrow("test path -nt mark");
+		expect(() => parseUntil({ check: "up?", port: { port: 3000 } })).toThrow("nc -z localhost 3000");
+		expect(() => parseUntil({ command: "true", file: { path: "a" } })).toThrow(/until\.file was removed/);
 	});
 
 	it("check names one trigger from the same list and cannot nest", () => {
-		const parsed = parseUntil({ check: "done?", file: { path: "a" } });
-		expect(parsed).toMatchObject({ kind: "check", question: "done?", on: { kind: "file" } });
+		const parsed = parseUntil({ check: "done?", command: "test -e a" });
+		expect(parsed).toMatchObject({ kind: "check", question: "done?", on: { kind: "command" } });
 		expect(() => parseUntil({ check: "x" })).toThrow(/trigger condition/);
-		expect(() => parseUntil({ check: "x", command: "true", file: { path: "a" } })).toThrow(/exactly one/);
+		expect(() => parseUntil({ check: "x", command: "true", unlocked: "a" })).toThrow(/exactly one/);
 	});
 
 	it("stores each kind and reads it back from the row", () => {
-		const file = timerFields(
-			{ note: "n", until: { file: { path: "a.txt", is: "exists" } } },
-			T0,
-			{ ...owner, cwd: root },
-			deps(),
-		);
-		expect(file.condition).toMatchObject({ kind: "file", baseline: expect.any(String) });
-		const row = timers.insert(agent.db, { ...file, workspaceId });
-		expect(timerLine(row, T0)).toContain("a.txt exists");
+		const item = timerFields({ note: "n", until: { item: { ref: "B1", state: "done" } } }, T0, { ...owner, cwd: root });
+		expect(item.condition).toEqual({ kind: "item", value: expect.any(String), cwd: root });
+		expect(item.intervalMs).toBe(60_000);
+		const row = timers.insert(agent.db, { ...item, workspaceId });
+		expect(timerLine(row, T0)).toContain("B1 is done");
 		expect(timerLine(row, T0)).toContain("watching");
-		const port = timerFields({ note: "n", until: { port: { port: 5173 } } }, T0, { ...owner, cwd: root }, deps());
-		expect(port.intervalMs).toBe(5000);
-		expect(timerFields({ note: "n", until: { command: "true" } }, T0, owner).intervalMs).toBe(15_000);
+		const command = timerFields({ note: "n", until: { command: "test -e a.txt" } }, T0, owner);
+		expect(command.intervalMs).toBe(15_000);
+		expect(timerLine(timers.insert(agent.db, { ...command, workspaceId }), T0)).toContain(
+			"until `test -e a.txt` exits 0 · next check in 0s (polling every 15s)",
+		);
 	});
 });
 
 describe("deterministic conditions", () => {
-	it("file exists / absent", async () => {
-		const target = path.join(root, "out.txt");
-		const exists = { kind: "file", path: "out.txt", is: "exists" } as const;
-		const absent = { ...exists, is: "absent" } as const;
-		const run = (condition: TimerCondition) => check()(condition, { cwd: root, baseline: undefined });
-		expect(await run(exists)).toMatchObject({ met: false });
-		expect(await run(absent)).toMatchObject({ met: true });
-		fs.writeFileSync(target, "x");
-		expect(await run(exists)).toMatchObject({ met: true });
-		expect(await run(absent)).toMatchObject({ met: false });
-	});
-
-	it("file changed compares with the baseline taken at set time, and holds through the settle window", async () => {
-		const target = path.join(root, "log.txt");
-		fs.writeFileSync(target, "one");
-		const condition = parseUntil({ file: { path: "log.txt" } })!;
-		const baseline = timerFields(
-			{ note: "n", until: { file: { path: "log.txt" } } },
-			T0,
-			{ ...owner, cwd: root },
-			deps(),
-		).condition!.baseline;
-		const run = () => check()(condition, { cwd: root, baseline });
-		expect(await run()).toMatchObject({ met: false });
-		fs.writeFileSync(target, "one and more");
-		expect(await run()).toMatchObject({ met: true });
-		// A write still going on while the check settles is not "changed" yet.
-		const writer = setInterval(() => fs.appendFileSync(target, "."), 60);
-		try {
-			expect((await run()).met).toBe(false);
-		} finally {
-			clearInterval(writer);
-		}
-	});
-
-	it("file refuses a path outside the workspace, and follows no symlink out of it", async () => {
-		const outside = tmp();
-		fs.writeFileSync(path.join(outside, "secret"), "x");
-		fs.symlinkSync(outside, path.join(root, "link"));
-		for (const raw of [path.join(outside, "secret"), "../escape", "link/secret"]) {
-			const outcome = await check()({ kind: "file", path: raw, is: "exists" }, { cwd: root, baseline: undefined });
-			expect(outcome).toMatchObject({ met: false, refused: expect.stringContaining("outside the workspace") });
-		}
-		fs.rmSync(outside, { recursive: true, force: true });
+	it("a command replaces the removed file and port waits: it is met when it exits 0", async () => {
+		const run = (command: string) => check()({ kind: "command", command }, { cwd: root });
+		expect(await run("test -e out.txt")).toMatchObject({ met: false, exit: 1 });
+		expect(await run("test ! -e out.txt")).toMatchObject({ met: true, exit: 0 });
+		fs.writeFileSync(path.join(root, "out.txt"), "x");
+		expect(await run("test -e out.txt")).toMatchObject({ met: true, exit: 0 });
 	});
 
 	it("item with several refs fires when any reaches the state and names it", async () => {
-		const input = { cwd: root, baseline: undefined };
+		const input = { cwd: root };
 		const states: Record<string, string> = { B1: "ongoing", B2: "done" };
 		const parsed = parseUntil({ item: { ref: ["B1", "B2"], state: "done" } });
 		expect(parsed).toEqual({ kind: "item", ref: "B1,B2", state: "done" });
@@ -171,7 +137,7 @@ describe("deterministic conditions", () => {
 	});
 
 	it("item state ready fires once every dependsOn item is done or closed", async () => {
-		const input = { cwd: root, baseline: undefined };
+		const input = { cwd: root };
 		const ready = parseUntil({ item: { ref: "B5", state: "ready" } })!;
 		let open = ["B2", "B3"];
 		const host = { item: () => "todo", blockers: () => open };
@@ -187,7 +153,7 @@ describe("deterministic conditions", () => {
 
 	it("item, agent and unlocked read the host", async () => {
 		const item = { kind: "item", ref: "B12", state: "done" } as const;
-		const input = { cwd: root, baseline: undefined };
+		const input = { cwd: root };
 		expect(await check({ item: () => "ongoing" })(item, input)).toMatchObject({ met: false });
 		expect(await check({ item: () => "done" })(item, input)).toMatchObject({ met: true });
 		expect(await check()(item, input)).toMatchObject({ refused: expect.stringContaining("no backlog item B12") });
@@ -200,17 +166,6 @@ describe("deterministic conditions", () => {
 		const held = check({ reservation: () => "src/a.ts is reserved by b" });
 		expect(await held({ kind: "unlocked", path: "src/a.ts" }, input)).toMatchObject({ met: false });
 	});
-
-	it("port connects to a loopback listener only", async () => {
-		const server = net.createServer().listen(0, "127.0.0.1");
-		await new Promise((resolve) => server.once("listening", resolve));
-		const { port } = server.address() as net.AddressInfo;
-		const condition = { kind: "port", port, host: "127.0.0.1" } as const;
-		const input = { cwd: root, baseline: undefined };
-		expect(await check()(condition, input)).toMatchObject({ met: true });
-		await new Promise((resolve) => server.close(resolve));
-		expect(await check()(condition, input)).toMatchObject({ met: false });
-	});
 });
 
 describe("event sources only poke a check", () => {
@@ -220,12 +175,7 @@ describe("event sources only poke a check", () => {
 		scheduleDeps: Partial<ConditionDeps> = {},
 	) => {
 		const row = timers.insert(agent.db, {
-			...timerFields(
-				{ note: "n", until, every: 60 },
-				Date.now(),
-				{ ...owner, workspaceId, cwd: root },
-				deps(scheduleDeps),
-			),
+			...timerFields({ note: "n", until, every: 60 }, Date.now(), { ...owner, workspaceId, cwd: root }),
 		});
 		const woken: unknown[] = [];
 		const instance = new TimerScheduler({
@@ -240,13 +190,23 @@ describe("event sources only poke a check", () => {
 		return { row, woken, instance };
 	};
 
-	it("wakes on a file event long before the safety poll, through the parent directory", async () => {
-		const target = path.join(root, "build.done");
-		const { woken } = watched({ file: { path: "build.done", is: "exists" } }, conditionWatcher(deps()));
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		// An atomic save: write a temp name, rename over the target.
-		fs.writeFileSync(`${target}.tmp`, "x");
-		fs.renameSync(`${target}.tmp`, target);
+	it("wakes on a database event long before the safety poll", async () => {
+		let state = "todo";
+		let changed: () => void = () => undefined;
+		const own: Partial<ConditionDeps> = {
+			item: () => state,
+			watchDatabase: (poke) => {
+				changed = poke;
+				return () => undefined;
+			},
+		};
+		const { row, woken } = watched({ item: { ref: "B1", state: "done" } }, conditionWatcher(deps(own)), own);
+		// The first check is due at once and finds nothing: the next one is a minute away.
+		await vi.waitFor(() => expect(timers.get(agent.db, row.id)!.due_at).toBeGreaterThan(Date.now() + 30_000), {
+			timeout: 4000,
+		});
+		state = "done";
+		changed();
 		await vi.waitFor(() => expect(woken).toHaveLength(1), { timeout: 4000 });
 		expect(woken[0]).toMatchObject({ status: "done", stop_reason: "met" });
 	});
@@ -360,7 +320,7 @@ describe("the agentic check", () => {
 		const j = judging([verdict("met")]);
 		const outcome = await check({ item: () => "todo", judge: (r) => j.judge.judge(r) })(
 			parseUntil({ check: "q", item: { ref: "B1", state: "done" } })!,
-			{ cwd: root, baseline: undefined, row: { id: 1, checks: 0, spentUsd: 0, sessionId: "s1" } },
+			{ cwd: root, row: { id: 1, checks: 0, spentUsd: 0, sessionId: "s1" } },
 		);
 		expect(outcome).toMatchObject({ met: false });
 		expect(outcome.spend).toBeUndefined();
@@ -371,7 +331,7 @@ describe("the agentic check", () => {
 		const j = judging([verdict("met", "migration finished")]);
 		const outcome = await check({ item: () => "done", judge: (r) => j.judge.judge(r) })(
 			parseUntil({ check: "q?", item: { ref: "B1", state: "done" } })!,
-			{ cwd: root, baseline: undefined, row: { id: 1, checks: 0, spentUsd: 0, sessionId: "s1" } },
+			{ cwd: root, row: { id: 1, checks: 0, spentUsd: 0, sessionId: "s1" } },
 		);
 		expect(outcome).toMatchObject({
 			met: true,
@@ -479,7 +439,7 @@ describe("the agentic check", () => {
 		const until = { check: "q", agent: { name: "ui" } };
 		const row = timers.insert(
 			agent.db,
-			timerFields({ note: "n", until, every: 30 }, T0, { ...owner, workspaceId, cwd: root }, deps(own)),
+			timerFields({ note: "n", until, every: 30 }, T0, { ...owner, workspaceId, cwd: root }),
 		);
 		const woken: Array<NonNullable<ReturnType<typeof timers.get>>> = [];
 		const instance = new TimerScheduler({
@@ -570,7 +530,7 @@ describe("the timer tool and check", () => {
 	};
 	const set = (host: ReturnType<typeof fakeHost>, ctx: unknown, until: unknown) =>
 		host.tools.get("timer").execute("c", { op: "set", note: "n", until }, undefined, undefined, ctx);
-	const checkUntil = { check: "done?", file: { path: "x.txt" } };
+	const checkUntil = { check: "done?", command: "test -e x.txt" };
 
 	it("refuses a check while it is off and nobody can be asked", async () => {
 		const { host, ctx } = session({ hasUI: false });
@@ -619,20 +579,38 @@ describe("the timer tool and check", () => {
 	it("sets deterministic waits with no ask, and shows spend in the footer once a check spent", async () => {
 		const { host, ctx } = session();
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		await set(host, ctx, { file: { path: "x.txt", is: "exists" } });
-		await set(host, ctx, { port: { port: 5173 } });
+		await set(host, ctx, { unlocked: "x.txt" });
+		await set(host, ctx, { command: "nc -z localhost 5173" });
 		expect(ctx.ui.confirms).toHaveLength(0);
 		expect(
 			runningWorkOf(host.api)
 				.all()
 				.map((row) => row.title),
-		).toEqual(["until x.txt exists", "until port 5173 is listening"]);
+		).toEqual(["until x.txt unlocked", "until `nc -z localhost 5173` exits 0"]);
 		const row = timers.forSession(agent.db, "s1")[0];
 		timers.recordResult(agent.db, row.id, { exit: null, output: "", spend: { calls: 1, usd: 0.003 } }, Date.now());
 		const list = await host.tools.get("timer").execute("l", { op: "list" }, undefined, undefined, ctx);
 		expect(list.content[0].text).toContain("watching");
-		expect(list.content[0].text).toContain("polling every 5s");
+		expect(list.content[0].text).toContain("polling every 15s");
 		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("declares no file or port condition, and refuses a call that sends one before the schema does", async () => {
+		const { host } = session();
+		const tool = host.tools.get("timer");
+		expect(Object.keys(tool.parameters.properties.until.properties).sort()).toEqual(
+			["agent", "check", "command", "item", "unlocked"].sort(),
+		);
+		expect(tool.description).toContain("`test -e path`");
+		expect(tool.description).toContain("`nc -z localhost 3000`");
+		const call = (until: unknown) => () => tool.prepareArguments({ op: "set", note: "n", reason: "r", until });
+		expect(call({ file: { path: "build.done", is: "exists" } })).toThrow(
+			"until.file was removed; set the timer with until.command instead: test -e build.done",
+		);
+		expect(call({ port: { port: 3000 } })).toThrow("nc -z localhost 3000");
+		const kept = { op: "set", note: "n", until: { command: "test -e build.done" } };
+		expect(tool.prepareArguments(kept)).toBe(kept);
+		expect(tool.prepareArguments({ op: "list" })).toEqual({ op: "list" });
 	});
 });
 
@@ -640,8 +618,84 @@ describe("gates see a command wherever until carries it", () => {
 	it("reads the command of a plain until and of a check's trigger", () => {
 		expect(untilCommand({ until: { command: "test -f a" } })).toBe("test -f a");
 		expect(untilCommand({ until: { check: "q", command: "make -q" } })).toBe("make -q");
-		expect(untilCommand({ until: { file: { path: "a" } } })).toBeUndefined();
+		expect(untilCommand({ until: { unlocked: "a" } })).toBeUndefined();
 		expect(untilCommand({ until: { command: "  " } })).toBeUndefined();
 		expect(untilCommand({})).toBeUndefined();
+	});
+});
+
+describe("a timer stored with a removed condition", () => {
+	/** A row as an earlier version wrote it: the table still accepts the kinds `file` and `port`. */
+	const stored = (kind: "file" | "port" | "check", value: unknown) =>
+		timers.insert(agent.db, {
+			workspaceId,
+			sessionId: "s1",
+			note: "open the app",
+			at: T0,
+			kind: "until",
+			dueAt: T0 + 5000,
+			intervalMs: 5000,
+			condition: {
+				kind,
+				value: typeof value === "string" ? value : JSON.stringify(value),
+				cwd: root,
+				baseline: "absent",
+			},
+			deadlineAt: T0 + 3_600_000,
+		});
+	const run = async (now: number) => {
+		const woken: Array<NonNullable<ReturnType<typeof timers.get>>> = [];
+		const checked = vi.fn(check());
+		const failed = vi.fn();
+		const instance = new TimerScheduler({
+			db: () => agent,
+			sessionId: "s1",
+			now: () => now,
+			check: checked,
+			watch: conditionWatcher(deps()),
+			wake: (each) => woken.push(each),
+			failed,
+		});
+		started.push(instance);
+		instance.refresh();
+		await instance.tick();
+		expect(failed).not.toHaveBeenCalled();
+		expect(checked).not.toHaveBeenCalled();
+		return woken;
+	};
+
+	it("is listed without a crash and stays active until its next check is due", async () => {
+		const row = stored("file", { path: "build.done", is: "exists" });
+		expect(timerLine(row, T0)).toContain("until file (not readable by this version)");
+		expect(await run(T0 + 1000)).toEqual([]);
+		expect(timers.get(agent.db, row.id)).toMatchObject({ status: "active" });
+	});
+
+	it("ends failed at its next check, with the command to set it again, instead of waiting out its deadline", async () => {
+		const file = stored("file", { path: "build.done", is: "exists" });
+		const port = stored("port", { port: 5173, host: "127.0.0.1" });
+		const judged = stored("check", {
+			question: "up?",
+			on: { kind: "port", value: '{"port":8080,"host":"localhost"}' },
+		});
+		const woken = await run(T0 + 6000);
+		expect(woken.map((row) => [row.id, row.status, row.stop_reason])).toEqual([
+			[file.id, "failed", "until.file was removed; set the timer with until.command instead: test -e build.done"],
+			[port.id, "failed", "until.port was removed; set the timer with until.command instead: nc -z 127.0.0.1 5173"],
+			[judged.id, "failed", "until.port was removed; set the timer with until.command instead: nc -z localhost 8080"],
+		]);
+		expect(wakeText(woken[0])).toBe(
+			[
+				`Timer ${file.id} fired: stopped: until.file was removed; set the timer with until.command instead: test -e build.done (timer failed).`,
+				"Note: open the app",
+			].join("\n"),
+		);
+		expect(timers.activeCount(agent.db, "s1")).toBe(0);
+	});
+
+	it("names the replacement even when the stored text cannot be read", async () => {
+		stored("file", "not json");
+		const [ended] = await run(T0 + 6000);
+		expect(ended).toMatchObject({ status: "failed", stop_reason: expect.stringContaining("test path -nt mark") });
 	});
 });

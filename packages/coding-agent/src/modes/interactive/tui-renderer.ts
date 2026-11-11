@@ -8,8 +8,8 @@ import {
 } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openItemLink, setItemClicksIntercepted } from "../../octocode/shared/item-ref.ts";
-import { openBrowser } from "../../../../common/src/open-browser.ts";
-import { keyText } from "./components/keybinding-hints.ts";
+import { openTarget } from "../../../../common/src/open-target.ts";
+import { keyText } from "../../theme/theme-tui-helpers.ts";
 import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -43,7 +43,12 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 				const label = ` ↓ ${rowsBelow} rows below · Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
 				return theme.bg("selectedBg", theme.fg("text", label));
 			},
-			openUrl: (url) => openItemLink(url, options.openReference ?? openBrowser),
+			openUrl: (url) =>
+				openItemLink(
+					url,
+					// Best effort without a host to report to: the link stays on screen to copy.
+					options.openReference ?? ((target) => void openTarget(target).catch(() => undefined)),
+				),
 			onRightClickPaste: options.onRightClickPaste,
 			copyOnSelect: options.fullscreenCopyOnSelect,
 			wheelScrollLines: options.fullscreenWheelScrollLines ?? "auto",

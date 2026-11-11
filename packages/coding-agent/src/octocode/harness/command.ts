@@ -1,8 +1,7 @@
 import path from "node:path";
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
-import { getMcpSwitch, requestMcpReload } from "../../../../mcp/src/switch.ts";
+import { getMcpSessionStatus, getMcpSwitch, requestMcpReload } from "../../../../mcp/src/api.ts";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { createConfiguration } from "../../configuration/index.ts";
 import { buildInventory, type InventoryItem, renderInventory } from "./inventory.ts";
@@ -14,7 +13,7 @@ import { hookEventsReport } from "../hooks/register/report.ts";
 import type { HooksView } from "../hooks/register/types.ts";
 import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
 import { HarnessPicker } from "./picker.ts";
 import { switchHarness } from "./vendor-items.ts";
@@ -215,7 +214,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 						items: inventory.items,
 						apply,
 						paths: {
-							global: `${tildePath(path.join(agentDir, "settings.json"))} (MCP: its mcp.json)`,
+							global: `${homeTilde(path.join(agentDir, "settings.json"))} (MCP: its mcp.json)`,
 							project: `${path.join(CONFIG_DIR_NAME, "settings.json")} (MCP: ${path.join(CONFIG_DIR_NAME, "mcp.json")})`,
 						},
 						height: process.stdout.rows ?? 24,
@@ -254,7 +253,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 	}
 
 	commands.add("harness", {
-		description: "Choose which agents' skills, MCPs and hooks load; manage plugins",
+		description: "Other agents' skills, MCPs, hooks and plugins",
 		argumentHint: "[list|install|update|remove|hooks|config]",
 		dialog: "interaction",
 		complete: (prefix): AutocompleteItem[] | null => {

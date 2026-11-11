@@ -22,5 +22,13 @@ export function* ancestors<T extends ParentLinked>(
 
 /** The root-first path that ends at `start`; `ancestors` says where the walk stops. */
 export function pathFromRoot<T extends ParentLinked>(start: T | undefined, lookup: (id: string) => T | undefined): T[] {
-	return [...ancestors(start, lookup)].reverse();
+	// The same walk as `ancestors`, without a generator: this runs for the whole branch on most session reads.
+	const path: T[] = [];
+	const seen = new Set<string>();
+	for (let current = start; current && !seen.has(current.id);) {
+		seen.add(current.id);
+		path.push(current);
+		current = current.parentId ? lookup(current.parentId) : undefined;
+	}
+	return path.reverse();
 }

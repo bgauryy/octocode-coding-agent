@@ -1,4 +1,5 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { sameSecret } from "../../../../common/src/env.ts";
 import net, { type AddressInfo } from "node:net";
 import { Value } from "typebox/value";
 import {
@@ -11,6 +12,7 @@ import {
 	type AttachRecord,
 	type AttachRequest,
 	type AttachResponse,
+	type AttachToolStates,
 } from "@octocodeai/octocode-contracts/daemon";
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -35,6 +37,10 @@ export interface AttachSource {
 	repo: AttachRecord["repo"];
 	/** The session's workspace connection (application port, snapshot, commands and change subscription). */
 	workspace: RevisedWorkspace;
+	/** What this session declares of each tool, for the Tools panel of its page; absent: the session cannot say. */
+	tools?: () => AttachToolStates;
+	/** Repaints what the session shows of its board (the footer counts) after the daemon changed the board. */
+	boardChanged?: () => void;
 }
 
 export interface AttachEndpoint {
@@ -147,6 +153,12 @@ async function answer(source: AttachSource, peer: Peer, request: AttachRequest):
 			return undefined;
 		case "workspace.execute":
 			return workspace.execute(request.params.command);
+		case "session.tools":
+			if (!source.tools) throw new Error("Tool states are unavailable in this session.");
+			return source.tools();
+		case "backlog.changed":
+			source.boardChanged?.();
+			return undefined;
 	}
 }
 
@@ -161,7 +173,6 @@ export async function startAttachServer(
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<AttachEndpoint> {
 	const token = randomBytes(32).toString("hex");
-	const expected = Buffer.from(token);
 	interface Entry {
 		socket: net.Socket;
 		peer: Peer;
@@ -215,9 +226,7 @@ export async function startAttachServer(
 						: {};
 				if (message.method !== "attach.hello" || typeof params.token !== "string")
 					return refuse(id, "unauthorized", "Say attach.hello first.");
-				const supplied = Buffer.from(params.token);
-				if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
-					return refuse(id, "unauthorized", "Wrong attach token.");
+				if (!sameSecret(token, params.token)) return refuse(id, "unauthorized", "Wrong attach token.");
 				if (params.protocolVersion !== ATTACH_PROTOCOL_VERSION)
 					return refuse(id, "protocol", "Unsupported attach protocol; restart this session to connect.");
 				if (peers.size >= MAX_CONNECTIONS) return refuse(id, "busy", "Too many daemon connections.");
@@ -235,6 +244,7 @@ export async function startAttachServer(
 							...(source.workspace.application ? ["application"] : []),
 							"workspace",
 							...(source.workspace.profiler ? ["profiler"] : []),
+							...(source.tools ? ["tools"] : []),
 						],
 					},
 				});

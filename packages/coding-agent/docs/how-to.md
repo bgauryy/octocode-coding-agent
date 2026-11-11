@@ -17,6 +17,14 @@ In a worktree, `--continue` and `--resume` see only that folder's sessions: pres
 
 Sessions persist as JSONL transcripts in `.octocode/code/sessions/` of the checkout (`--session-dir` picks another folder) and are mirrored in Octocode's database, including tool results, child reports, branches and compactions. If the database is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
 
+A transcript writes repeated data once and refers back to it from later lines of the same file. Reading the file restores every entry whole, and nothing else is needed: a copied, forked or exported file reads on its own. Transcripts written by earlier versions read unchanged.
+
+| Repeated data                                                           | Stored as                                                                                                                                                                                        |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A request's layer list (sizes and hashes, for the profiler)             | The layers that differ from an earlier request's list                                                                                                                                            |
+| System prompt text, sections and tool declarations, also in compactions | One copy per file, referred to by its hash                                                                                                                                                       |
+| A bash result's output, repeated for the terminal and for scripts       | A position in the result text; when the output was saved to a file, that file's path, read when a script asks for the output; the result text stays in the transcript after that file is deleted |
+
 ```mermaid
 flowchart TD
   A[Need a saved conversation] --> B{Transcript file exists?}
@@ -66,7 +74,7 @@ Details: [MCP quick setup](mcp.md#quick-setup), [MCP precedence](configuration.m
 
 ## Give the agent a durable rule for this repository
 
-- `/memory add <title>` opens an editor for a workspace memory, or tell the agent "remember that ..." and it saves one with `archive` (`op: set`, `source: memories`). Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
+- `/memory add <title>` opens an editor for a workspace memory, or tell the agent "remember that ..." and it saves one with `memory` (`op: set`). Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
 - It may not appear later when injection is off (`/memory auto`), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows the latest injection.
 
 Details: [memory](memory.md).
@@ -85,7 +93,7 @@ Octocode sessions message each other directly. A Claude Code or Codex session th
 
 1. Write the message to a file, and name a reply file in it.
 2. Run the other tool's CLI as a one-shot proxy from `bash`: its cheapest model, with no MCP servers, skills or saved session, told to pass the file's text word for word to the intended session and print the result.
-3. Wait for the reply file with a timer (`until file`) and a short deadline.
+3. Wait for the reply file with a timer (`until` with the command `test -e <reply file>`) and a short deadline.
 
 For Claude Code the proxy command is:
 
@@ -132,10 +140,10 @@ flowchart TD
   I1 --> T2[Step]
 ```
 
-- Ask the agent to create an epic and its items: the `backlog` tool takes `type: "epic"` and `parentId` on each child. `backlog list` with `parentId` lists an epic's items; `backlog get` on the epic shows its derived state and done count.
-- Steps of one piece of work are the `steps` tool's tasks under the item you claim (`add`, `list`, `update`). An item cannot be done while it has open tasks.
+- Ask the agent to create an epic and its items: the `backlogPlan` tool's `add` takes one entry per item in `items`, with `type: "epic"` on the epic and `parentId` on each child. `backlogPlan` `list` with `underEpic` lists an epic's items; `backlog` `get` on the epic shows its derived state and done count.
+- Steps of one piece of work are a checklist you keep under an item on the board (`/backlog` or the web workspace). The agent reads them with the item (`backlog get`) and after a resume, and cannot finish or close the item while one is open: finish or drop the steps on the board. The agent keeps its own steps in the item's plan and notes.
 - See the hierarchy with `/web backlogs` (**Tree** view) or `/backlog tui`.
-- Close an item that is not needed instead of deleting it: ask the agent (`backlog update` with `close`), run `/backlog B12 close`, or use **Close** on the web board. Give a kind (obsolete, duplicate of another item, won't do) and a reason; the item is kept, hidden from the default board and shown with `states: ["closed"]`. Reopen it with a note. `backlog get B12` ends with the audit trail.
+- Close an item that is not needed instead of deleting it: ask the agent (`backlog` with op `close`), run `/backlog B12 close`, or use **Close** on the web board. Give a kind (obsolete, duplicate of another item, won't do) and a reason; the item is kept, hidden from the default board and shown by `backlogPlan` `list` with `states: ["closed"]`. Reopen it with a note (`backlogPlan` `edit` with a state and `note`). `backlog` `get` with `changes` ends with the audit trail.
 
 Details: [backlog view](web-workspace.md#backlog-board), [web controls](web-workspace.md#backlog-board).
 

@@ -1,7 +1,7 @@
 import { createAssistantMessageEventStream, Type } from "@octocodeai/octocode-ai";
 import { complete, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel, getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { Agent, streamProxy } from "@octocodeai/octocode-agent-core";
+import { Agent } from "@octocodeai/octocode-agent-core";
 
 // Keep this entry browser-safe. It is bundled by scripts/check-browser-smoke.mjs
 // to catch accidental Node-only runtime imports in browser-facing package exports.
@@ -19,5 +19,4 @@ console.log(
 	schema.type,
 	typeof stream.push,
 	agent.hasQueuedMessages(),
-	typeof streamProxy,
 );

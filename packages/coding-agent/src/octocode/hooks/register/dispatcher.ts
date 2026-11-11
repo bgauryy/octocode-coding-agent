@@ -15,7 +15,7 @@ import { httpDecisionNote, labelHttpVerdict } from "../http-origin.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
-import { conflictingRewrites, firstRewrite, reducePermission } from "../verdicts.ts";
+import { conflictingRewrites, decisionOnly, firstRewrite, reducePermission } from "../verdicts.ts";
 import { capContext, CLAUDE_HOOK_CONTEXT_MAX, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
@@ -39,6 +39,8 @@ export function createDispatcher(
 	paused?: () => boolean,
 	/** A subagent's parent session id: Codex hooks in a child receive it as `session_id`. */
 	parentSession?: string,
+	/** A subagent in the `decisions` hook mode: only a hook's refusal or ask takes effect (`decisionOnly`), and a background hook, which can decide nothing, does not start. */
+	decisionsOnly = false,
 ): { dispatch: Dispatch; reportFailure: ReportFailure; stop(): Promise<void> } {
 	let controller = new AbortController();
 	const active = new Set<Promise<HookVerdict>>();
@@ -191,7 +193,7 @@ export function createDispatcher(
 				event !== "SessionEnd" &&
 				(hook.async || hook.asyncRewake)
 			) {
-				if (!signal?.aborted)
+				if (!signal?.aborted && !decisionsOnly)
 					background.start(
 						hook,
 						event,
@@ -216,7 +218,7 @@ export function createDispatcher(
 				),
 			);
 			if (guarded && signal?.aborted) return {};
-			const verdict = labelHttpVerdict(
+			const answered = labelHttpVerdict(
 				hook,
 				hook.type === "prompt"
 					? event === "PermissionRequest"
@@ -224,6 +226,7 @@ export function createDispatcher(
 						: interpretPromptHook(event, run, hook.continueOnBlock)
 					: interpret(event, run, hook.protocol),
 			);
+			const verdict = decisionsOnly ? decisionOnly(answered) : answered;
 			const decision = signal?.aborted ? undefined : httpDecisionNote(hook, verdict);
 			if (decision) onFailure?.([`${event} ${stringOrEmpty(payload.tool_name)}`.trim()], decision, true);
 			if (verdict.systemMessage) say(ctx, verdict.systemMessage, "warning");

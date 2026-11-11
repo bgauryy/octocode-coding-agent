@@ -150,11 +150,6 @@ export function toolHash({ name, description, inputSchema, outputSchema }: Compa
 	return sha256({ name, description, inputSchema, outputSchema });
 }
 
-/** sha256 of the preset's overrides, so a release that changes them renders the stored file again. */
-export function presetHash(overrides: DescriptionOverrides | undefined): string | undefined {
-	return overrides && sha256(overrides);
-}
-
 /** sha256 of the server instructions, so a server override is kept exactly while they are unchanged. */
 export function instructionsHash(instructions: string | undefined): string {
 	return sha256(instructions ?? "");

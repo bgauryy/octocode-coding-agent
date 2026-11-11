@@ -15,6 +15,7 @@ import type {
 	StreamFn,
 	ToolExecutionMode,
 } from "../types.ts";
+import type { ListenerErrorReporter } from "../listener-errors.ts";
 import type { AgentInitialState } from "./state.ts";
 
 /** Options for constructing an {@link Agent}. */
@@ -35,9 +36,6 @@ export interface AgentOptions {
 	prepareRequest?: PrepareRequest;
 	prepareInput?: PrepareInput;
 	onInputSelected?: (batch: InputBatch) => void;
-	prepareNextTurn?: (
-		signal?: AbortSignal,
-	) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
 	prepareNextTurnWithContext?: (
 		context: PrepareNextTurnContext,
 		signal?: AbortSignal,
@@ -49,4 +47,6 @@ export interface AgentOptions {
 	transport?: Transport;
 	maxRetryDelayMs?: number;
 	toolExecution?: ToolExecutionMode;
+	/** Receives a listener that threw while the run went on; see `AgentLoopConfig.onListenerError`. */
+	onListenerError?: ListenerErrorReporter;
 }

@@ -1,4 +1,4 @@
-import { compositeTuiLine } from "../tui.ts";
+import { compositeTuiLine } from "../tui/composite.ts";
 import { renderIsolated } from "../tui/render-isolation.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { allocateStackSizes, Stack, type StackChild, type StackOptions, visibleStackEntries } from "./stack.ts";

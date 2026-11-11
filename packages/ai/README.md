@@ -14,19 +14,19 @@ flowchart LR
 
 ## Pages
 
-| Page                                                           | Covers                                                                                                   |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [Providers and models](docs/providers-and-models.md)           | Factories, model queries, static catalog, dynamic providers, migrating from the global API               |
-| [Auth](docs/auth.md)                                           | Auth resolution, header transforms, credential store, environment variables, OAuth, Vertex AI, CLI login |
-| [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, partial JSON, validation, event reference                          |
-| [Images](docs/images.md)                                       | Image input and generation                                                                               |
-| [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, llama.cpp                                                           |
-| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Reasoning options, thinking events, stop reasons                                                         |
-| [Errors and observability](docs/errors-and-observability.md)   | Telemetry, errors, aborts, payload and stream-event debugging                                            |
-| [Custom providers](docs/custom-providers.md)                   | `createProvider()`, direct API calls, OpenAI compatibility settings                                      |
-| [Conversations](docs/conversations.md)                         | Cross-provider handoff, system messages, serialization                                                   |
-| [Browser and bundling](docs/browser-and-bundling.md)           | Browser use, tree shaking, env overrides, model discovery                                                |
-| [Development](docs/development.md)                             | Adding a provider, faux provider for tests                                                               |
+| Page                                                           | Covers                                                                                        |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [Providers and models](docs/providers-and-models.md)           | Factories, model queries, static catalog, dynamic providers, migrating from the global API    |
+| [Auth](docs/auth.md)                                           | Auth resolution, header transforms, credential store, environment variables, OAuth, Vertex AI |
+| [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, partial JSON, validation, event reference               |
+| [Images](docs/images.md)                                       | Image input and generation                                                                    |
+| [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, llama.cpp                                                |
+| [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Reasoning options, thinking events, stop reasons                                              |
+| [Errors and observability](docs/errors-and-observability.md)   | Telemetry, errors, aborts, payload and stream-event debugging                                 |
+| [Custom providers](docs/custom-providers.md)                   | `createProvider()`, direct API calls, OpenAI compatibility settings                           |
+| [Conversations](docs/conversations.md)                         | Cross-provider handoff, system messages, serialization                                        |
+| [Browser and bundling](docs/browser-and-bundling.md)           | Browser use, tree shaking, env overrides, model discovery                                     |
+| [Development](docs/development.md)                             | Adding a provider, faux provider for tests                                                    |
 
 ## Supported providers
 

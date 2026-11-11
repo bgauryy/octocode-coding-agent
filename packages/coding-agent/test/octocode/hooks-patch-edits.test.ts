@@ -146,7 +146,7 @@ it("runs matching Codex PreToolUse and PostToolUse hooks for edit queries with o
 	);
 	const { cwd, file, projectEdit, snapshots } = setup(LETTERS);
 	const fake = fakeHost(HOOK_SETTINGS);
-	const view = registerHooks(fake.api, {}, home, undefined, undefined, undefined, projectEdit);
+	const view = registerHooks(fake.api, { env: {}, home, projectEdit });
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const edits = [{ oldText: "e", newText: "E" }];

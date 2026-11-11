@@ -6,7 +6,6 @@ export type { ConditionDeps };
 /** What one check needs besides the condition: where it runs and what the row recorded. */
 export interface CheckInput {
 	cwd: string;
-	baseline: string | undefined;
 	row?: { id: number; checks: number; spentUsd: number; sessionId: string };
 }
 
@@ -16,13 +15,13 @@ export interface CheckInput {
  */
 export function conditionChecker(deps: ConditionDeps) {
 	return (condition: TimerCondition, input: CheckInput | string): Promise<CheckOutcome> => {
-		const given = typeof input === "string" ? { cwd: input, baseline: undefined } : input;
+		const given = typeof input === "string" ? { cwd: input } : input;
 		return checkCondition(condition, { ...given, deps });
 	};
 }
 
-/** An event source for a condition (a file's directory, the database file); the scheduler turns each poke into one check. */
+/** An event source for a condition (the database file); the scheduler turns each poke into one check. */
 export function conditionWatcher(deps: ConditionDeps) {
 	return (condition: TimerCondition, cwd: string, poke: () => void, failed: () => void) =>
-		watchCondition(condition, { cwd, baseline: undefined, deps }, poke, failed);
+		watchCondition(condition, { cwd, deps }, poke, failed);
 }

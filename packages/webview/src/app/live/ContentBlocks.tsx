@@ -1,4 +1,4 @@
-import { parseApplicationTool } from "@octocodeai/octocode-contracts";
+import { parseApplicationTool, resultPurposeData } from "@octocodeai/octocode-contracts";
 import type {
 	ApplicationAsset,
 	ApplicationContentBlock,
@@ -6,7 +6,7 @@ import type {
 	ContentAnnotation,
 } from "@octocodeai/octocode-contracts";
 import { memo, useEffect, useState } from "react";
-import { safeMarkdownLink } from "../../markdown.ts";
+import { safeWebLink } from "../../link.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { toolState } from "../model/ui-state.ts";
 import { Button } from "../ui/primitives.tsx";
@@ -151,7 +151,7 @@ function Citations({ annotations }: { annotations?: readonly ContentAnnotation[]
 				([key, annotation], index) => {
 					const label =
 						annotation.title ?? annotation.text ?? annotation.url ?? annotation.fileId ?? `Source ${index + 1}`;
-					const href = annotation.url && safeMarkdownLink(annotation.url);
+					const href = annotation.url && safeWebLink(annotation.url);
 					return (
 						<li key={key}>
 							{href ? (
@@ -171,7 +171,7 @@ function Citations({ annotations }: { annotations?: readonly ContentAnnotation[]
 }
 
 function Resource({ uri, name }: { uri?: string; name: string }) {
-	const href = uri && safeMarkdownLink(uri);
+	const href = uri && safeWebLink(uri);
 	return (
 		<p className="resource-reference">
 			{href ? (
@@ -349,7 +349,7 @@ export function ToolContent({
 			) : (
 				tool?.text && <pre className="text output">{tool.text}</pre>
 			)}
-			<ToolPurposes structuredContent={tool?.structuredContent} shown={reason} />
+			<ToolPurposes structuredContent={resultPurposeData(tool)} shown={reason} />
 			<RawToolData tool={tool} args={args} />
 			<AssetExpansionButton expansion={expansion} label="Load full tool result" />
 			{nested.map((child) => (

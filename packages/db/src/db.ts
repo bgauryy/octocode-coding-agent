@@ -196,8 +196,8 @@ export function sharedDatabase(locations: DatabaseLocations): AgentDb {
 	}
 }
 
-/** Closes all process-owned agent databases (tests, process exit); the next access opens a fresh connection. */
-export function closeSharedAgentDb(): void {
+/** Closes all process-owned connections; `api.ts`'s `closeSharedAgentDb` also stops their writers (`writer/client.ts`). */
+export function closeSharedConnections(): void {
 	for (const connection of shared.values()) connection.close();
 	shared.clear();
 	refused.clear();

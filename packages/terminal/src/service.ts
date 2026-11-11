@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carapaceComplete } from "./carapace.ts";
-import { untilAborted } from "./abort.ts";
+import { untilSettledOrAborted } from "./abort.ts";
 import { DEFAULT_TIMINGS, DriverProcess, type DriverTimings } from "./driver-process.ts";
-import { findExecutable, PathCommands } from "./executables.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
+import { PathCommands } from "./executables.ts";
 import { BRANCH_SUBCOMMANDS, gitBranches } from "./git-refs.ts";
 import { parseShellLine, quoteForShell, type ShellLine } from "./line.ts";
 import { type ResolvedShell, resolveShell } from "./shells/index.ts";
@@ -109,14 +110,14 @@ export class ShellCompletionService {
 		}
 		if (signal.aborted) return undefined;
 		if (line.commandPosition && !line.openQuote) {
-			const names = await untilAborted(this.path.list(this.options.env), signal);
+			const names = await untilSettledOrAborted(this.path.list(this.options.env), signal);
 			if (!names || signal.aborted) return undefined;
 			const items = names
 				.filter((name) => name.startsWith(line.currentValue))
 				.map((name): ShellCompletion => ({ value: quoteForShell(name), label: name, kind: "command" }));
 			return items.length ? { start: line.currentStart, items, source: "path" } : undefined;
 		}
-		const branches = await untilAborted(this.branchCompletions(line, signal), signal);
+		const branches = await untilSettledOrAborted(this.branchCompletions(line, signal), signal);
 		if (signal.aborted) return undefined;
 		if (branches) return branches;
 		if (trusted && this.options.carapace) return this.fromCarapace(line, signal);
@@ -147,7 +148,7 @@ export class ShellCompletionService {
 	}
 
 	private async fromCarapace(line: ShellLine, signal: AbortSignal): Promise<ShellCompletions | undefined> {
-		if (this.carapace === null) this.carapace = findExecutable("carapace", this.options.env);
+		if (this.carapace === null) this.carapace = findOnPath("carapace", this.options.env);
 		if (!this.carapace) return undefined;
 		const matches = await carapaceComplete(this.carapace, [...line.words, line.currentValue], {
 			cwd: this.options.cwd,

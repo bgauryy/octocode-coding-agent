@@ -1,6 +1,7 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { plainText, styledLine } from "../styled-line.ts";
+import { styledLine } from "../../../../../../common/src/sanitize.ts";
+import { plainText } from "../styled-line.ts";
 import type { ToolCallInfo } from "./types.ts";
 
 export { plainText };

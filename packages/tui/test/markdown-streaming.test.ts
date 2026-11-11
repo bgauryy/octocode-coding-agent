@@ -1,8 +1,9 @@
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { Markdown } from "../src/components/markdown.ts";
 import { lexMarkdown } from "../src/components/markdown/incremental.ts";
 import type { DefaultTextStyle } from "../src/components/markdown/types.ts";
+import { getCapabilities, resetCapabilitiesCache, setCapabilities } from "../src/terminal-image/capabilities.ts";
 import { defaultMarkdownTheme } from "./test-themes.ts";
 
 const DOCUMENT = [
@@ -74,14 +75,39 @@ function fresh(text: string, width: number, style?: DefaultTextStyle): string[] 
 	return new Markdown(text, 1, 1, defaultMarkdownTheme, style).render(width);
 }
 
+/** An OSC 8 id is `<component>-<block>-<link>-<piece>`: the component part is unique, the rest follows source order. */
+const LINK_ID = /\x1b\]8;id=(oc\d+)-/g;
+
+function linkComponents(lines: string[]): Set<string> {
+	return new Set(lines.flatMap((line) => [...line.matchAll(LINK_ID)].map((match) => match[1])));
+}
+
+/** `streamed` matches `full` byte for byte, except that each component keeps its own hyperlink ids. */
+function assertRendersAs(streamed: string[], full: string[], message?: string): void {
+	const streamedComponents = linkComponents(streamed);
+	const fullComponents = linkComponents(full);
+	assert.ok(streamedComponents.size <= 1 && fullComponents.size <= 1, message);
+	assert.ok(![...streamedComponents].some((component) => fullComponents.has(component)), message);
+	const shared = (lines: string[]) => lines.map((line) => line.replace(LINK_ID, "\x1b]8;id=oc-"));
+	assert.deepStrictEqual(shared(streamed), shared(full), message);
+}
+
+function linkIds(lines: string[]): Array<[id: string, url: string]> {
+	return [...lines.join("\n").matchAll(/\x1b\]8;id=([^;]+);([^\x1b]+)\x1b\\/g)].map((match) => [match[1], match[2]]);
+}
+
 describe("Markdown streaming", () => {
+	// Pinned on so the comparisons cover OSC 8 links whatever terminal runs the tests.
+	before(() => setCapabilities({ ...getCapabilities(), hyperlinks: true }));
+	after(() => resetCapabilitiesCache());
+
 	for (const width of [20, 60]) {
 		it(`renders every prefix of a streamed document as a full render does (width ${width})`, () => {
 			const streamed = new Markdown("", 1, 1, defaultMarkdownTheme, STYLE);
 			for (let end = 1; end <= DOCUMENT.length; end++) {
 				const text = DOCUMENT.slice(0, end);
 				streamed.setText(text);
-				assert.deepStrictEqual(
+				assertRendersAs(
 					streamed.render(width),
 					fresh(text, width, STYLE),
 					`prefix ${end}: ${JSON.stringify(text.slice(-30))}`,
@@ -99,7 +125,7 @@ describe("Markdown streaming", () => {
 			step = ((step * 7 + 3) % 40) + 1;
 			const text = DOCUMENT.slice(0, end);
 			streamed.setText(text);
-			assert.deepStrictEqual(streamed.render(50), new Markdown(text, 0, 0, defaultMarkdownTheme).render(50));
+			assertRendersAs(streamed.render(50), new Markdown(text, 0, 0, defaultMarkdownTheme).render(50));
 		}
 	});
 
@@ -114,7 +140,7 @@ describe("Markdown streaming", () => {
 		];
 		for (const text of steps) {
 			streamed.setText(text);
-			assert.deepStrictEqual(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
+			assertRendersAs(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
 		}
 	});
 
@@ -129,7 +155,7 @@ describe("Markdown streaming", () => {
 		];
 		for (const text of steps) {
 			streamed.setText(text);
-			assert.deepStrictEqual(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
+			assertRendersAs(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
 		}
 	});
 
@@ -143,7 +169,7 @@ describe("Markdown streaming", () => {
 			`${DOCUMENT.slice(0, 120)}X${DOCUMENT.slice(120)}`,
 		]) {
 			streamed.setText(text);
-			assert.deepStrictEqual(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
+			assertRendersAs(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
 		}
 	});
 
@@ -152,7 +178,7 @@ describe("Markdown streaming", () => {
 		const body = "First [ref] here.\n\nSecond paragraph.\n\nThird paragraph.\n\n";
 		for (const text of [body, `${body}[ref]: https://example.com`, `${body}[ref]: https://example.com\n\nMore.`]) {
 			streamed.setText(text);
-			assert.deepStrictEqual(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
+			assertRendersAs(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
 		}
 	});
 
@@ -162,18 +188,41 @@ describe("Markdown streaming", () => {
 		const streamed = new Markdown(DOCUMENT, 0, 0, theme);
 		const widths = [30, 80, 30, 12];
 		for (const width of widths) {
-			assert.deepStrictEqual(streamed.render(width), new Markdown(DOCUMENT, 0, 0, theme).render(width));
+			assertRendersAs(streamed.render(width), new Markdown(DOCUMENT, 0, 0, theme).render(width));
 		}
 		marker = "B";
 		streamed.invalidate();
 		const after = streamed.render(30);
-		assert.deepStrictEqual(after, new Markdown(DOCUMENT, 0, 0, theme).render(30));
+		assertRendersAs(after, new Markdown(DOCUMENT, 0, 0, theme).render(30));
 		assert.ok(after.some((line) => line.includes("[B:")));
 		assert.ok(!after.some((line) => line.includes("[A:")));
 		// streaming after the theme change keeps using the new theme
 		streamed.setText(`${DOCUMENT}\n# More`);
 		assert.ok(streamed.render(30).some((line) => line.includes("[B:")));
 		assert.ok(!streamed.render(30).some((line) => line.includes("[A:")));
+	});
+
+	it("keeps hyperlink ids stable while streaming and unique per link and component", () => {
+		const first = "See [alpha beta gamma delta](https://a.test) and [b](https://b.test) and [b](https://b.test).";
+		const streamed = new Markdown(first, 0, 0, defaultMarkdownTheme);
+		const before = linkIds(streamed.render(12));
+		const wrapped = before.filter(([, url]) => url === "https://a.test/");
+		// a wrapped link reopens with the same id on every row; separate links differ even with the same destination
+		assert.ok(wrapped.length > 1, JSON.stringify(before));
+		assert.strictEqual(new Set(wrapped.map(([id]) => id)).size, 1);
+		assert.strictEqual(before.filter(([, url]) => url === "https://b.test/").length, 2);
+		assert.strictEqual(new Set(before.map(([id]) => id)).size, 3);
+		streamed.setText(`${first}\n\nNext [c](https://c.test) here.`);
+		const grown = linkIds(streamed.render(12));
+		assert.deepStrictEqual(grown.slice(0, before.length), before);
+		assert.deepStrictEqual(grown.at(-1)?.[1], "https://c.test/");
+		assert.ok(!before.some(([id]) => id === grown.at(-1)?.[0]));
+		const other = linkIds(new Markdown(first, 0, 0, defaultMarkdownTheme).render(12));
+		assert.deepStrictEqual(
+			other.map(([, url]) => url),
+			before.map(([, url]) => url),
+		);
+		assert.ok(!other.some(([id]) => before.some(([seen]) => seen === id)));
 	});
 
 	it("keeps the tokens of finished blocks when the source grows", () => {

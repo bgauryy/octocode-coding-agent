@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { declaredExposure, isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
+import { declaredInFull } from "./redeclare.ts";
 import { isEnabled } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { createMcpToolDefinition } from "./tool-definition.ts";
@@ -63,7 +64,12 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		toolOwners.set(name, owner(tool.name));
 		current.add(name);
 		const exposure = declaredExposure(state.toolExposure(entry, tool.name));
-		const thin = presentation.isThin(server, tool);
+		// A deferred tool the transcript already declares in full (loaded before a resume, or on this branch) stays full.
+		const loaded =
+			presentation.isThin(server, tool) &&
+			declaredInFull(state.declaredBefore, name, tool) &&
+			presentation.load(server, tool.name);
+		const thin = !loaded && presentation.isThin(server, tool);
 		// A thin declaration depends on the tool's own block of the generated file, not on the rest of the catalog.
 		const metadata = {
 			tool,
@@ -73,6 +79,9 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			timeoutMs: connection.timeoutMs,
 			compact: thin ? presentation.signature(server, tool.name) : null,
 			summary: thin ? presentation.summary(server, tool.name) : null,
+			// `declared`: no generated file describes a deferred tool, so its declaration keeps the server's description.
+			whole: thin && presentation.declared,
+			deferred: thin && presentation.isDeferred(server, tool.name),
 		};
 		const cached = isDeepStrictEqual(registeredMetadata.get(name), metadata) ? cachedDefinitions.get(name) : undefined;
 		if (cached) {
@@ -96,6 +105,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 						compact: {
 							signature: () => presentation.signature(server, tool.name),
 							...(metadata.summary ? { summary: metadata.summary } : {}),
+							...(metadata.whole ? { whole: true } : {}),
+							...(metadata.deferred ? { deferred: true } : {}),
 						},
 					}
 				: {}),
@@ -115,6 +126,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				// A dropped server keeps its tools declared; its calls fail here, at once, until it is connected again.
 				const down = client.rejectWhileDown();
 				if (down) throw down;
+				state.recordToolUse(server, tool.name);
 				return client;
 			},
 		});

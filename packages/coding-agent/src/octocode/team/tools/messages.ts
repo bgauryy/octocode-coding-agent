@@ -215,7 +215,7 @@ export function registerSendMessageTool(
 				// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
 				const waits =
 					process.env[PARENT_WAITS_ENV] === "1" && team.parentId !== undefined && result.sent.includes(team.parentId)
-						? ` ${renderInstruction("notices/mail/parent-waits.md")}`
+						? ` ${renderInstruction("shared/parent-waits.md")}`
 						: "";
 				if (result.relayed)
 					return textResult(
@@ -287,16 +287,16 @@ export function registerSendMessageTool(
 			},
 			display(input) {
 				const { args } = input;
-				/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
 				const summary = [
 					args.forward === undefined ? "" : `forward #${String(args.forward)}`,
+					// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 					args.to === undefined ? "" : `→ ${String(args.to)}`,
 					args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`,
 				]
 					.filter(Boolean)
 					.join(" · ");
+				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const message = String(args.message ?? "");
-				/* oxlint-enable typescript/no-unnecessary-type-conversion */
 				const head = { title: "Send", ...(summary ? { summary } : {}), kind: "agent" as const, blocks: [] };
 				const details: Record<string, unknown> = asRecord(input.result?.details);
 				if (!input.result || input.status === "failed" || typeof details.id !== "number")

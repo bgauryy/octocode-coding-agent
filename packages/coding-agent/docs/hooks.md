@@ -63,7 +63,7 @@ A tool event takes the tool name and its input as JSON: `/harness hooks test Pre
 
 Hooks you configured for Claude Code or Codex load from their usual files once that harness is on ([Discovery](#discovery)). To turn every hook off set `"disableAllHooks": true` in any loaded hook file. To turn off one host, file or hook without editing it, use `/configuration` ([plugins](plugins.md#inspect-and-switch)). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files always apply.
 
-An agent sees which hooks may act on its calls in the `hooks` section of its prompt: one line per event and tool matcher, never a command, URL or prompt, and absent without a hook. Subagents run hooks only when their profile sets `hooks: true`.
+An agent sees which hooks may act on its calls in the `hooks` section of its prompt: one line per event and tool matcher, never a command, URL or prompt, and absent without a hook. A subagent runs none of your hooks unless its profile or the coordinator's task turns them on ([hooks in subagents](#hooks-in-subagents)).
 
 ## Discovery
 
@@ -211,7 +211,7 @@ Host timeout defaults and background lifetime stay native.
 
 | Output                                                                                      | Effect                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hookSpecificOutput: {"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}` | Approves this request only; no session grant                                                                                                                                                                                                                            |
+| `hookSpecificOutput: {"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}` | Approves this request only; no session grant. A provenance hit or a hook ask still needs a person; headless it is refused                                                                                                                                               |
 | `"behavior":"deny"` with optional `message`                                                 | Denies; the audit keeps the message folded to one line, redacted and clipped                                                                                                                                                                                            |
 | Claude `interrupt: true` on a denial                                                        | Audits the refusal, then stops the turn                                                                                                                                                                                                                                 |
 | `continue: false`                                                                           | Stops the turn and beats a nested allow (Codex rejects it when true)                                                                                                                                                                                                    |
@@ -313,9 +313,45 @@ Both expose `prompt` and ignore the matcher. Exit 2 or a JSON block prevents sub
 
 `PreCompact` and `PostCompact`: native `PreCompact` is observational and native rejects `PostCompact`. Source-profile `PreCompact` blocks cancel compaction (Claude failure policies apply; the cancellation signal reaches the hook's processes); Claude ignores `continue` (use `decision: "block"` or exit 2), Codex keeps `continue: false`. `PostCompact` runs after the summary is saved with `trigger` (`manual` or `auto`) and `compact_summary`: Claude observes; Codex `continue: false` stops the operation, so automatic retry and queued continuation do not proceed (a later explicit operation may still consume queued messages).
 
+### Hooks in subagents
+
+A subagent runs none of your hooks by default, so a `Stop` hook that runs the tests or a notifier does not fire once per child. **With the default, a deny hook does not cover delegated work**: a call your `PreToolUse` hook would refuse in the main session goes ahead in a subagent unless its profile or the coordinator turns hooks on for it.
+
+| Mode        | What runs in the subagent                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `off`       | Nothing (the default)                                                                                       |
+| `decisions` | Your `PreToolUse` and `PermissionRequest` hooks, and only their deny or ask takes effect (the table below)  |
+| `all`       | Every hook, as in the main session, plus `SubagentStart` and `SubagentStop` ([child agents](#child-agents)) |
+
+Who chooses the mode, first match wins:
+
+| Where                                                       | Value                          | Effect                                                            |
+| ----------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------- |
+| Profile front matter `hooks: false` (or `off`)              | forbids hooks                  | The subagent runs none, whatever the task asks                    |
+| The coordinator's task (`agent` type `task`, field `hooks`) | `off`, `decisions` or `all`    | Applies to that child; a resumed or messaged child keeps its mode |
+| Profile front matter `hooks`                                | `decisions`, or `true` / `all` | Applies to every child of the profile whose task names no mode    |
+| Neither                                                     |                                | `off`                                                             |
+
+The coordinator is told to choose `decisions` when your hooks deny or ask about actions and the child will take such actions (writes, shell, network), and `all` only when the child must behave like the main session. To make a deny rule cover a role's delegated work every time, set `hooks: decisions` in that role's profile.
+
+What each answer does in the `decisions` mode:
+
+| Hook, and what it answers                                                                                      | `decisions`                                                                                                                                    | `all`   |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `PreToolUse` denies (exit 2, `decision: "block"`, `permissionDecision: "deny"`)                                | The call is refused with the hook's reason                                                                                                     | Same    |
+| `PreToolUse` asks (`permissionDecision: "ask"`)                                                                | The call needs an approval, answered like the subagent's other approvals: relayed to you through its parent, or refused when nobody can answer | Same    |
+| `PermissionRequest` denies an approval that is about to be asked                                               | The call is refused with the hook's reason (an `interrupt` is not applied)                                                                     | Same    |
+| `PermissionRequest` allows, rewrites the input or updates permissions                                          | Ignored: an allow grants nothing, and the approval goes on to the parent or is refused                                                         | Applies |
+| `PreToolUse` allows, adds context or rewrites the input; Claude `continue: false` halting the turn             | Ignored (`continue: false` still denies the call)                                                                                              | Applies |
+| A `PreToolUse` or `PermissionRequest` hook fails or times out                                                  | The call goes ahead as it would without the hook (hooks fail open) unless the hook sets `failClosed`                                           | Same    |
+| A hook with `async` or `asyncRewake`                                                                           | Not started: a background hook decides nothing                                                                                                 | Runs    |
+| Every other event (`Stop`, `SubagentStop`, `SessionStart`, `PostToolUse`, `Notification`, message hooks, etc.) | Does not run                                                                                                                                   | Runs    |
+
+A `PermissionRequest` hook runs only when a call needs an approval, as in the main session: a call the subagent's permission mode or its spawn approval already allows asks nothing, so use a `PreToolUse` hook for a rule that must hold on every call. The `off` and `decisions` modes add no `hooks` section to the subagent's prompt; a refusal names the hook's reason. `"disableAllHooks": true` and the `/configuration` switches turn these hooks off in subagents as they do in the main session.
+
 ### Child agents
 
-`SubagentStart` and `SubagentStop` run inside a subagent whose profile sets `hooks: true`; matchers use the profile name (such as `general`). `SubagentStart` runs once per subagent; its context is offered again only after a compaction removed it. Main-session SessionStart and Stop are not also sent for the child.
+`SubagentStart` and `SubagentStop` run inside a subagent whose hook mode is `all` (profile `hooks: true`, or the task's `hooks: all`); matchers use the profile name (such as `general`). `SubagentStart` runs once per subagent; its context is offered again only after a compaction removed it. Main-session SessionStart and Stop are not also sent for the child.
 
 - **Start.** Codex runs for a new or forked child before its first request, not on reopening a saved session; Claude also runs on later child prompts. Start context belongs to the child and cannot veto creation. Claude suppresses identical startup context while an earlier copy is still in context.
 - **Stop.** Runs at successful settlement; a block reason continues the child through its loop with `stop_hook_active` (eight-continuation cap, a tool call resets it). Cancellation and provider failure emit nothing. Claude can return `additionalContext` as feedback; Codex has no such field.

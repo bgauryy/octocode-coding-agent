@@ -45,15 +45,13 @@ async function run(task: string, scratch: string) {
 		return undefined;
 	};
 	const id = `a-${task.replace(/\W+/g, "-")}`;
-	const result = await runSubagent(
+	const result = await runSubagent({
 		task,
-		["--session-dir", tmp(), "--session-id", id],
-		tmp(),
-		undefined,
-		{ id, scratch },
-		undefined,
+		args: ["--session-dir", tmp(), "--session-id", id],
+		cwd: tmp(),
+		identity: { id, scratch },
 		onProgress,
-	).then(
+	}).then(
 		(outcome) => ({ outcome, error: undefined as Error | undefined }),
 		(error: Error) => ({ outcome: undefined, error }),
 	);

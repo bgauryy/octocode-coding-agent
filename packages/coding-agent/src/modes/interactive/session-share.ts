@@ -1,3 +1,4 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import { runtimeTempDir } from "../../storage/runtime-paths.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
@@ -96,7 +97,7 @@ export async function shareSession(context: SessionShareContext): Promise<void> 
 		try {
 			await getApplicationPort(context.session).invoke("exportToHtml", htmlFile, { themeName: theme.name });
 		} catch (error: unknown) {
-			context.showError(`Failed to export session: ${error instanceof Error ? error.message : "Unknown error"}`);
+			context.showError(`Failed to export session: ${errorMessage(error)}`);
 			return;
 		}
 		await shareViaGist(htmlFile, context);
@@ -154,7 +155,7 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 	} catch (error: unknown) {
 		if (!loader.signal.aborted) {
 			restoreEditor(loader, context);
-			context.showError(`Failed to create gist: ${error instanceof Error ? error.message : "Unknown error"}`);
+			context.showError(`Failed to create gist: ${errorMessage(error)}`);
 		}
 	}
 }

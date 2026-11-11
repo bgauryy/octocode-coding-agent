@@ -119,9 +119,9 @@ export function sessionBashDirs(): string[] {
  * owner process is gone. Killing an unrelated process is the worst outcome, so a job is stopped (SIGTERM, then
  * SIGKILL) only on proof: its shell is the recorded process (pid plus start time), or its shell is gone, its group
  * outlived it, every member started at or after the job, and no later record names the pid (it was not reused). A
- * record from another host is not ours to judge and stays. Each record is claimed by a rename first, so two Pis
- * starting at once never both act on it, and is removed after; a claim whose Octocode died is retried. Anything that cannot
- * be judged (no start time recorded, `ps` failing) is left alone and returned with `stopped: false`; a record that
+ * record from another host is not ours to judge and stays. Each record is claimed by a rename first, so two Octocode
+ * processes starting at once never both act on it, and is removed after; a claim whose Octocode died is retried. Anything
+ * that cannot be judged (no start time recorded, `ps` failing) is left alone and returned with `stopped: false`; a record that
  * `ps` could not judge is kept for a later start to retry.
  */
 export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob[]> {

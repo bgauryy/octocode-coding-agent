@@ -1,8 +1,9 @@
-import { createAbortError } from "../../utils/abort.ts";
+import { assertStreamCompleted, stripStreamScratch } from "../stream-finalize.ts";
+import { combineAbortSignals } from "../../utils/abort-signals.ts";
 import { assertImageRequestPayload } from "../../utils/image-input.ts";
 import { retryAfterMsFromError } from "../../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../../utils/assistant-message.ts";
-import type { GoogleGenAI, GenerateContentParameters } from "@google/genai";
+import type { GoogleGenAI, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 import { calculateCost } from "../../models/model-helpers.ts";
 import type {
 	AssistantMessage,
@@ -49,6 +50,8 @@ export function streamGoogle<T extends GoogleApiType>(
 
 	(async () => {
 		const output: AssistantMessage = createPendingAssistantMessage(model);
+		const releaseRequest = new AbortController();
+		let releaseSignal = () => {};
 
 		try {
 			if (options?.fetch && options.fetch !== globalThis.fetch) {
@@ -61,7 +64,11 @@ export function streamGoogle<T extends GoogleApiType>(
 				params = nextParams as GenerateContentParameters;
 			}
 			assertImageRequestPayload(model, params);
-			const googleStream = await retryGoogleRequest(() => client.models.generateContentStream(params), options);
+			// A private signal beside the request's own, so a failing response hook can release the response body.
+			const requestSignal = combineAbortSignals([params.config?.abortSignal, releaseRequest.signal]);
+			releaseSignal = requestSignal.cleanup;
+			const request = { ...params, config: { ...params.config, abortSignal: requestSignal.signal } };
+			const googleStream = await retryGoogleRequest(() => client.models.generateContentStream(request), options);
 
 			stream.push({ type: "start", partial: output });
 			let currentBlock: TextContent | ThinkingContent | null = null;
@@ -75,7 +82,12 @@ export function streamGoogle<T extends GoogleApiType>(
 						? { type: "text_end", contentIndex: blockIndex(), content: block.text, partial: output }
 						: { type: "thinking_end", contentIndex: blockIndex(), content: block.thinking, partial: output },
 				);
+			let responseReported = false;
 			for await (const chunk of googleStream) {
+				if (!responseReported) {
+					responseReported = true;
+					await reportGoogleResponse(chunk, model, options, releaseRequest);
+				}
 				await options?.onProviderStreamEvent?.(chunk, model);
 				// @google/genai documents GenerateContentResponse.responseId (the same type on Gemini and Vertex) as an
 				// output-only field identifying each response. Keep the first non-empty one from the stream.
@@ -210,39 +222,50 @@ export function streamGoogle<T extends GoogleApiType>(
 				endBlock(currentBlock);
 			}
 
-			if (options?.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error(`${adapter.streamName} stream ended without a finish reason`);
-			}
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				const errorMessage = promptBlock
-					? `The provider blocked the prompt: ${promptBlock}`
-					: output.rawStopReason
-						? `Provider stopped with: ${output.rawStopReason}`
-						: "An unknown error occurred";
-				throw new Error(errorMessage);
-			}
+			assertStreamCompleted(output, options?.signal, {
+				label: adapter.streamName,
+				missing: "finish reason",
+				failureMessage: ({ rawStopReason }) =>
+					promptBlock
+						? `The provider blocked the prompt: ${promptBlock}`
+						: rawStopReason
+							? `Provider stopped with: ${rawStopReason}`
+							: "An unknown error occurred",
+			});
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			// Remove internal index property used during streaming
-			for (const block of output.content) {
-				if ("index" in block) {
-					delete (block as { index?: number }).index;
-				}
-			}
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
+		} finally {
+			releaseSignal();
 		}
 	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
+}
+
+/**
+ * Calls `onResponse` with the response's status and headers. The SDK exposes only the headers, with each chunk
+ * (`sdkHttpResponse`), and yields chunks only from a 2xx response, which is reported as 200. When the hook fails, the
+ * request is aborted so the server stops generating.
+ */
+async function reportGoogleResponse(
+	chunk: GenerateContentResponse,
+	model: Model<GoogleApiType>,
+	options: StreamOptions | undefined,
+	releaseRequest: AbortController,
+): Promise<void> {
+	try {
+		await options?.onResponse?.({ status: 200, headers: { ...chunk.sdkHttpResponse?.headers } }, model);
+	} catch (error) {
+		releaseRequest.abort();
+		throw error;
+	}
 }

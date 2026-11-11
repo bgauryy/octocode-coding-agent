@@ -11,11 +11,18 @@ import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { DISPLAY_OUTPUT_MAX_BYTES, readOutputFile } from "../../utils/output-files.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
+import { rememberJsonLength } from "./json-length.ts";
 
 const string = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 /** Public display values must not retain references to provider objects mutated by later stream chunks. */
 export function cloneDisplay<T>(value: T): T {
 	return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
+}
+/** `cloneDisplay` that keeps the clone's serialized length, for a value later compared with a size limit. */
+export function cloneMeasured<T>(value: T): T {
+	if (value === undefined) return value;
+	const json = JSON.stringify(value);
+	return rememberJsonLength(JSON.parse(json) as T, json.length);
 }
 
 function preview(
@@ -296,15 +303,22 @@ export function normalizeToolData(
 	const data: Partial<ApplicationTool> = {
 		content: normalizeApplicationContent(source.content, id, assets, streaming),
 	};
+	// Each value is serialized once: the text that clones it also measures it and, when large, is the asset.
+	const structured: string[] = [];
 	for (const key of ["structuredContent", "details"] as const)
-		if (source[key] !== undefined) data[key] = cloneDisplay(source[key]);
-	if (source.usage && typeof source.usage === "object") data.usage = cloneDisplay(asRecord(source.usage));
+		if (source[key] !== undefined) {
+			const json = JSON.stringify(source[key]);
+			data[key] = rememberJsonLength(JSON.parse(json), json.length);
+			structured.push(`"${key}":${json}`);
+		}
+	if (source.usage && typeof source.usage === "object") data.usage = cloneMeasured(asRecord(source.usage));
 	if (typeof source.durationMs === "number") data.durationMs = source.durationMs;
 	const progress = toolProgress(source.progress);
 	if (progress) data.progress = progress;
-	if (JSON.stringify({ structuredContent: data.structuredContent, details: data.details }).length > 8000) {
+	const length = structured.reduce((sum, member) => sum + member.length, 2 + Math.max(0, structured.length - 1));
+	if (length > 8000) {
 		data.full = assets.put(
-			JSON.stringify({ structuredContent: data.structuredContent, details: data.details }),
+			`{${structured.join(",")}}`,
 			"application/json",
 			"utf8",
 			undefined,

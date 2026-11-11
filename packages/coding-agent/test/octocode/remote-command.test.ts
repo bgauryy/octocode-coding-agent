@@ -25,7 +25,7 @@ async function daemon() {
 }
 
 function host(
-	daemonOf: () => Promise<{ origin: string; token: string } | undefined>,
+	daemonOf: () => Promise<{ origin: string; token: string }>,
 	settings: RemoteHost["settings"] = () => ({}),
 ): RemoteHost {
 	return { daemon: daemonOf, settings };
@@ -59,21 +59,17 @@ describe("/remote", () => {
 		expect(ctx.ui.notes.at(-1)).toEqual({ message: "Usage: /remote [view|status|stop]", type: "warning" });
 	});
 
-	it("explains when the daemon feature is off or unreachable, and prints no QR without a UI", async () => {
-		const off = remoteCommand(host(async () => undefined));
+	it("explains when the daemon cannot start, and prints no QR without a UI", async () => {
 		const ctx = fakeCtx({ cwd: "/tmp" });
-		await off.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/OCTOCODE_WEB_DAEMON=1/);
-		expect(ctx.ui.notes.at(-1)!.type).toBe("error");
-		await off.handler("status", ctx);
-		expect(ctx.ui.notes.at(-1)!.type).toBe("warning");
 		const broken = remoteCommand(
 			host(async () => {
 				throw new Error("no daemon today");
 			}),
 		);
-		await broken.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("no daemon today");
+		for (const word of ["", "status", "stop"]) {
+			await broken.handler(word, ctx);
+			expect(ctx.ui.notes.at(-1)).toEqual({ message: expect.stringContaining("no daemon today"), type: "error" });
+		}
 		const { origin, token } = await daemon();
 		const headless = fakeCtx({ cwd: "/tmp", hasUI: false });
 		await remoteCommand(host(async () => ({ origin, token }))).handler("", headless);

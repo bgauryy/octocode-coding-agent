@@ -18,7 +18,7 @@ import {
 import { FileAuthStorageBackend } from "../../core/auth-storage.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
-import { type McpAuthBackend, type McpHostPorts, installMcpHost } from "../../../../mcp/src/host.ts";
+import { type McpAuthBackend, type McpHostPorts, installMcpHost } from "../../../../mcp/src/api.ts";
 import { tailNote } from "../shared/format.ts";
 import {
 	boundImagePart,

@@ -1,5 +1,11 @@
+import { Value } from "typebox/value";
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
-import type { BacklogCommand, BacklogMutation } from "@octocodeai/octocode-contracts/protocol";
+import {
+	BacklogCommandSchema,
+	BacklogMutationSchema,
+	type BacklogCommand,
+	type BacklogMutation,
+} from "@octocodeai/octocode-contracts/protocol";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { BacklogError, type Actor, type Item } from "./item.ts";
 import type { BacklogStore } from "./store.ts";
@@ -65,33 +71,51 @@ export function applyBacklogCommand(
 }
 
 /** Why a mutation cannot be applied before it reaches the store (an update or comment needs its item and version), or undefined. */
-export function mutationShapeError(input: BacklogMutation): string | undefined {
+function mutationShapeError(input: BacklogMutation): string | undefined {
 	return input.op !== "add" && (!input.id || input.version === undefined)
 		? "An item and its current version are required."
 		: undefined;
 }
 
 /**
- * Applies one add, update or comment from the web page as the user. `actor` is the caller's actor (a session's, or the
- * user alone for a repository with no session); it is recorded as a human on the web surface. `session` becomes the
- * source session of an added item. Refusals throw the store's `BacklogError`.
+ * Applies one add, update or comment from the web page as the user: a human on the web surface, under the id of the
+ * session whose page sent it (the user alone for a repository page with no session). `session` also becomes the source
+ * session of an added item. Refusals throw the store's `BacklogError`.
  */
-export function applyBacklogMutation(
+function applyBacklogMutation(
 	store: BacklogStore,
 	input: BacklogMutation,
-	context: { actor: Actor; session?: string },
+	session: string | undefined,
 ): { item: Item } {
-	const actor: Actor = { ...context.actor, kind: "human", surface: "web" };
+	const actor: Actor = { id: session ?? USER_AUTHOR, kind: "human", surface: "web" };
 	const { op, id, ...fields } = input;
 	const shapeError = mutationShapeError(input);
 	if (shapeError) throw new BacklogError(shapeError);
 	if (op === "add")
 		return {
-			item: store.add(
-				{ ...fields, title: fields.title ?? "", createdBy: USER_AUTHOR, sourceSession: context.session },
-				actor,
-			),
+			item: store.add({ ...fields, title: fields.title ?? "", createdBy: USER_AUTHOR, sourceSession: session }, actor),
 		};
 	if (op === "comment") return { item: store.comment(id!, fields.note ?? "", HUMAN, fields.version) };
 	return { item: store.update(id!, fields, actor) };
+}
+
+/** A board write's outcome: what it changed, or why its body was refused before the store saw it. */
+export type BoardWrite = { ok: true; result: BacklogCommandResult } | { ok: false; error: string };
+
+/**
+ * One `POST` on the board route, the same for every web server: a typed hierarchy command or an add/update/comment,
+ * applied as the user. `session` is the session whose page sent it; a repository page has none, so a task added there
+ * must name its item or session. Store refusals throw (`BacklogError`, `TaskError`) for the caller to answer.
+ */
+export function applyBoardWrite(store: BacklogStore, input: unknown, session: string | undefined): BoardWrite {
+	if (typeof input === "object" && input !== null && "command" in input) {
+		if (!Value.Check(BacklogCommandSchema, input)) return { ok: false, error: "Invalid backlog command" };
+		if (session === undefined && input.command === "task.add" && !input.item && !input.session)
+			return { ok: false, error: "Name the item or the session the task belongs to." };
+		return { ok: true, result: applyBacklogCommand(store, input, session ?? "") };
+	}
+	if (!Value.Check(BacklogMutationSchema, input)) return { ok: false, error: "Invalid backlog fields" };
+	const shapeError = mutationShapeError(input);
+	if (shapeError) return { ok: false, error: shapeError };
+	return { ok: true, result: applyBacklogMutation(store, input, session) };
 }

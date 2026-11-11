@@ -71,7 +71,8 @@ async function fixture(
 			);
 			return;
 		}
-		const content = requests.length === 1 ? "CHILD_FIRST_RESPONSE" : "CHILD_RETRIED_RESPONSE";
+		// Each answer leads with its outcome word, as the report contract asks: the child is not asked for one after it.
+		const content = requests.length === 1 ? "done: CHILD_FIRST_RESPONSE" : "done: CHILD_RETRIED_RESPONSE";
 		res.end(
 			`data: ${JSON.stringify({ id: `response-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 		);
@@ -210,18 +211,18 @@ async function fixture(
 		description: "Fixture reviewer",
 		prompt: "Respond briefly.",
 		tools: options.ordinary ? "bash" : "read",
-		...(options.hooks !== false ? { hooks: true as const } : {}),
+		...(options.hooks !== false ? { hooks: "all" as const } : {}),
 	};
 	const run = (signal?: AbortSignal) =>
-		runSubagent(
-			"Perform fixture review",
-			buildAgentArgs(profile, "fixture-local/fixture", childSession, []),
+		runSubagent({
+			task: "Perform fixture review",
+			args: buildAgentArgs(profile, "fixture-local/fixture", childSession, []),
 			cwd,
 			profile,
 			identity,
 			signal,
-			() => undefined,
-		);
+			onProgress: () => undefined,
+		});
 	return {
 		root,
 		nativeRecords: (): Wire[] =>

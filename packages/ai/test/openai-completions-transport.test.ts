@@ -4,6 +4,7 @@ import { stream } from "../src/api/openai-completions.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
+import { setProviderTextRedactor } from "../src/utils/error-body.ts";
 import { requestJsonEventStream } from "../src/utils/json-event-stream.ts";
 
 const model = { ...getBuiltinModel("openai", "gpt-4o-mini"), api: "openai-completions" } as Model<"openai-completions">;
@@ -225,5 +226,21 @@ describe("Vercel completion transport", () => {
 		expect(requestedUrl).toBe("https://gateway.example/v1/chat/completions?route=private");
 		expect(headers.has("authorization")).toBe(false);
 		expect(headers.get("x-gateway-key")).toBe("gateway-token");
+	});
+
+	it("names the API and quotes the redacted frame when a stream frame is not JSON", async () => {
+		setProviderTextRedactor((text) => text.replaceAll("sk-secret", "[redacted]"));
+		try {
+			const result = await stream(model, context, {
+				apiKey: "test",
+				fetch: async () => new Response('data: {"choices": [sk-secret\n\n'),
+			}).result();
+			expect(result.stopReason).toBe("error");
+			expect(result.errorMessage).toContain("Could not parse OpenAI Completions SSE event");
+			expect(result.errorMessage).toContain('data={"choices": [[redacted]');
+			expect(result.errorMessage).not.toContain("sk-secret");
+		} finally {
+			setProviderTextRedactor(undefined);
+		}
 	});
 });

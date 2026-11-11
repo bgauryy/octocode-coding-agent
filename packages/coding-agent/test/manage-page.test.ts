@@ -1,7 +1,7 @@
 import { setKeybindings, visibleWidth } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { ManagePageComponent } from "../src/modes/interactive/components/manage-page.ts";
+import { ManagePageComponent } from "../src/theme/manage-page.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 

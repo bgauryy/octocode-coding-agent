@@ -29,12 +29,11 @@ describe("late background reports", () => {
 		const [file] = fs.readdirSync(dir);
 		if (process.platform !== "win32") expect(fs.statSync(path.join(dir, file)).mode & 0o777).toBe(0o600);
 		const f = fakeHost();
-		registerAgentTool(
-			f.api,
-			() => new Map(),
-			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
-			fakePermission(),
-		);
+		registerAgentTool(f.api, {
+			profiles: () => new Map(),
+			team: new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			permission: fakePermission(),
+		});
 		const ctx = fakeCtx({ cwd: tmp() });
 		recordMessages(f, ctx);
 		const late = () => f.sent.filter((entry) => String(entry.message.content).includes("LATE REPORT"));
@@ -53,12 +52,11 @@ describe("late background reports", () => {
 
 	it("delivers a report saved after the session started (a stop slower than the reload's wait), without another restart", async () => {
 		const f = fakeHost();
-		registerAgentTool(
-			f.api,
-			() => new Map(),
-			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
-			fakePermission(),
-		);
+		registerAgentTool(f.api, {
+			profiles: () => new Map(),
+			team: new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			permission: fakePermission(),
+		});
 		const ctx = fakeCtx({ cwd: tmp() });
 		recordMessages(f, ctx);
 		await f.emit("session_start", {}, ctx);
@@ -98,12 +96,11 @@ describe("late background reports", () => {
 		});
 		const [saved] = fs.readdirSync(dir);
 		const f = fakeHost();
-		registerAgentTool(
-			f.api,
-			() => new Map(),
-			new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
-			fakePermission(),
-		);
+		registerAgentTool(f.api, {
+			profiles: () => new Map(),
+			team: new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+			permission: fakePermission(),
+		});
 		const ctx = fakeCtx({ cwd: tmp() });
 		recordMessages(f, ctx);
 		// Taken at the start: queued, claimed, not yet sent (the batch window is open).

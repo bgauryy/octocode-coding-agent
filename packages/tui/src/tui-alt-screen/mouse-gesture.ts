@@ -4,13 +4,13 @@ import { getLayoutNode } from "../layout-node.ts";
 import type { Terminal } from "../terminal.ts";
 import {
 	type Component,
-	Container,
 	dispatchMouseEvent,
 	retargetMouseEvent,
 	type TuiMouseDispatchResult,
 	type TuiMouseDispatchTarget,
 	type TuiMouseEvent,
-} from "../tui.ts";
+} from "../tui/component.ts";
+import { Container } from "../tui/container.ts";
 import { DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
 import { decodeMouseButton } from "./mouse-input.ts";
 import type { SgrMouseEvent } from "./types.ts";

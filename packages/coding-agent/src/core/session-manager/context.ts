@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "../messages.ts";
-import { pathFromRoot } from "./ancestors.ts";
+import { branchPath } from "./entry-index.ts";
 import type {
 	CompactionEntry,
 	ContextEditEntry,
@@ -43,7 +43,7 @@ function buildSessionPath(
 		leaf = index.get(leafId);
 	}
 	leaf ??= entries[entries.length - 1];
-	return pathFromRoot(leaf, (id) => index.get(id));
+	return branchPath(index, leaf);
 }
 
 function getSessionContextSettings(path: SessionEntry[]): Pick<SessionContext, "thinkingLevel" | "model"> {

@@ -28,7 +28,7 @@ it("observes final failures without continuing, running Stop, or observing succe
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(fake.api, {}, home);
+	registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		entries: [],

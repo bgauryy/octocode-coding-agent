@@ -235,12 +235,20 @@ const MEMORY_MAX_BYTES = 25 * 1024;
 
 /** Claude Code's notes for this project, labeled as such: read-only, and below AGENTS.md and Octocode's memories. */
 function claudeMemoryEntry(path: string): { path: string; content: string } {
-	const lines = stripBom(readFileSync(path, "utf-8")).split("\n").slice(0, MEMORY_MAX_LINES).join("\n");
+	const whole = stripBom(readFileSync(path, "utf-8"));
+	const lines = whole.split("\n").slice(0, MEMORY_MAX_LINES).join("\n");
 	const bytes = Buffer.from(lines, "utf8");
 	let end = Math.min(bytes.length, MEMORY_MAX_BYTES);
 	while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
 	const body = bytes.subarray(0, end).toString("utf8");
-	const header = renderInstruction("notices/claude-memory.md", { path, dir: dirname(path) }).trimEnd();
+	// The header says when lines were left out, and where they are: a silent cut reads as the whole file.
+	const header = renderInstruction("notices/claude-memory.md", {
+		path,
+		dir: dirname(path),
+		cut: body.trimEnd().length < whole.trimEnd().length,
+		lines: MEMORY_MAX_LINES,
+		kb: MEMORY_MAX_BYTES / 1024,
+	}).trimEnd();
 	return { path, content: `${header}\n\n${body}` };
 }
 

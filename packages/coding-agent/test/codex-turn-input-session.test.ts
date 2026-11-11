@@ -86,7 +86,7 @@ async function fixture() {
 				api.on("before_agent_start", (event) => {
 					if (event.messageType === "user") beforePrompts.push(event.prompt);
 				});
-				const hooks = registerHooks(api, {}, root);
+				const hooks = registerHooks(api, { env: {}, home: root });
 				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 				api.registerTool({
 					name: "wait",

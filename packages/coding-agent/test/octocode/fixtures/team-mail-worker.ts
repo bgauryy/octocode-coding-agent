@@ -4,7 +4,7 @@ import { Team } from "../../../src/octocode/team/session.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
 
 /**
- * A Octocode process of the team, for a test that sends it mail from another process: `child` (a subagent: id, parent and
+ * An Octocode process of the team, for a test that sends it mail from another process: `child` (a subagent: id, parent and
  * secret come from the environment, and its permission module takes the secret out of it as in a real child) or `peer`
  * (another session that joins on its own). Prints `ready <id>`, then each team message it hands to Octocode as one JSON line
  * `{"content":…}`, and `aborted` when an interrupt stops its run. Stdin commands: `busy` (its run is going again), `settle` (the

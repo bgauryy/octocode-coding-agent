@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
-import { isBusy, withBusyTimeout } from "./history.ts";
+import { isBusy, withBusyTimeout } from "../sqlite.ts";
 
 /** What a maintenance step did. A step that another connection blocks is `busy` (nothing failed, retry later). */
 export interface MaintenanceResult {
@@ -18,7 +18,8 @@ const size = (db: DatabaseSync): number => {
 /**
  * `PRAGMA wal_checkpoint(TRUNCATE)`: copies the WAL into the database file and truncates it. A reader or writer on
  * another connection can stop it; that comes back as `busy: true`, not as an error (the WAL stays valid and is
- * checkpointed by the next run). It waits at most `busyMs` for locks.
+ * checkpointed by the next run). It waits at most `busyMs` for locks; with `0` it never waits and, like a PASSIVE
+ * checkpoint, copies what it can without blocking anyone.
  */
 export function checkpoint(db: DatabaseSync, busyMs = 1000): MaintenanceResult {
 	const bytesBefore = size(db);

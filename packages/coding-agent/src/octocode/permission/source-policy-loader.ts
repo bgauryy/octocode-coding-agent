@@ -15,7 +15,11 @@ import {
 } from "../shared/permission-updates.ts";
 import { readPolicy, stageSettingsWrite, persistSettingsWrite } from "./source-policy-storage.ts";
 
-export function registerSourcePolicy(api: ExtensionAPI, home = os.homedir(), onChange?: () => void) {
+/** `home`: the user's home for user-level settings (the OS home by default); `onChange`: runs after each new policy. */
+export function registerSourcePolicy(
+	api: ExtensionAPI,
+	{ home = os.homedir(), onChange }: { home?: string; onChange?: () => void } = {},
+) {
 	let policy: SourcePolicy = { rules: [], errors: [] };
 	let basePolicy: SourcePolicy = { rules: [], errors: [] };
 	let last = "";

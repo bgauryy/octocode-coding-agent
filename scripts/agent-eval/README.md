@@ -154,6 +154,26 @@ node scripts/agent-eval/understand.mjs --live --max-usd <n> --provider <name>
 
 `--provider` names an entry of `--models-file` (default `~/.pi/agent/models.json`) with a `baseUrl` that answers `/v1/messages` in Anthropic's format and an `apiKey`. `--model` is a model of that provider (default `claude-haiku-5-5`), `--agents` a comma-separated subset and `--concurrency` the parallel requests (default 4). It stops starting questions at the limit. The report goes to `--out` (default `.octocode/tmp/prompt-understanding/`) as `report.md` and `results.json`. The exit code does not depend on how many answers were right.
 
+## What do stored sessions say?
+
+[session-baseline.mjs](session-baseline.mjs) reads the sessions already stored in the agent database and prints a Markdown baseline. It calls no model, opens the database read-only (no migration, no write) and writes only when `--out` names a file under `.octocode/tmp/`.
+
+```bash
+node scripts/agent-eval/session-baseline.mjs [--db <workspaces.db>] [--out .octocode/tmp/session-baseline.md] [--json]
+```
+
+| Section | Kind | Decides |
+| --- | --- | --- |
+| Cache read share per day and role, split into instructions and history, and of each session's first request | counts measured; the split is estimated from the first request's prompt size | whether the instruction blocks need another layout |
+| Request gaps past 5 minutes and 1 hour, cache write tokens and their tier, per role | measured | which cache tier a role's runs pay for |
+| Tool calls per tool per role, with a table of the Octocode GitHub tools | measured | which tools a profile keeps |
+| Main sessions that start no, one, or two or more children | measured | where the multi-child planning rules belong |
+| Output tokens spent on the `reason` argument | estimated: 4 characters per token plus the key | whether `reason` is worth a test of making it optional |
+| Child reports whose first word is not an outcome word, by model | measured | the cost of asking a child for its outcome |
+| First prompts replayed against stored memories | the hit is measured; "a near match and no hit" is a trigram proxy | whether recall needs an approximate fallback |
+
+Sessions on a scripted model or in a temporary directory are left out and counted. The report ends with what the database does not store. A role with zero sessions is no evidence about its tools.
+
 ## Develop
 
 ```sh

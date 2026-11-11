@@ -14,7 +14,7 @@ import { SettingsManager } from "../../core/settings-manager.ts";
 import { parseConfigDocument } from "../../utils/config-document.ts";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
-import type { McpHostPorts } from "../../../../mcp/src/host.ts";
+import type { McpHostPorts } from "../../../../mcp/src/api.ts";
 
 const isVendorId = (id: string): id is VendorId => (VENDOR_IDS as readonly string[]).includes(id);
 

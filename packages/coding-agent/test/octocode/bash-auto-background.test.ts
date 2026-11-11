@@ -6,7 +6,12 @@ import { SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
-import { BACKGROUND_AFTER_ENV, backgroundAfterSeconds, foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
+import {
+	BACKGROUND_AFTER_ENV,
+	backgroundAfterSeconds,
+	foregroundPlan,
+	timeLeft,
+} from "../../src/octocode/files/bash/auto.ts";
 import { sleepHint } from "../../src/octocode/files/bash/long-commands.ts";
 import type { ShellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -46,16 +51,31 @@ describe("the background threshold", () => {
 		expect(backgroundAfterSeconds(-4, {})).toBe(90);
 	});
 
-	it("applies unless the call waits on purpose, runs sleep, or sets a shorter deadline itself", () => {
+	it("applies unless the call names its own timeout or runs sleep", () => {
 		const plan = (params: Parameters<typeof foregroundPlan>[0], setting = 90) => foregroundPlan(params, setting, {});
 		expect(plan({ command: "./slow-task" })).toMatchObject({ timeout: 90, auto: true, movable: true });
-		expect(plan({ command: "./slow-task", timeout: 3000 })).toMatchObject({ timeout: 90, auto: true });
+		// An explicit timeout is a stop time (RFC core-tools B1): no move at the threshold, with or without `background: false`.
+		expect(plan({ command: "./slow-task", timeout: 300 })).toMatchObject({
+			timeout: 300,
+			auto: false,
+			deliberate: true,
+			stopAfterSeconds: 300,
+		});
+		// A stream follower never exits by itself: it is stopped at a short timeout, and moves (keeping the stop time) at a long one.
+		expect(plan({ command: "tail -f log", timeout: 5 })).toMatchObject({ timeout: 5, auto: false, deliberate: true });
+		expect(plan({ command: "tail -f log", timeout: 3000 })).toMatchObject({
+			timeout: 30,
+			auto: true,
+			deliberate: false,
+			stopAfterSeconds: 3000,
+		});
+		expect(plan({ command: "./slow-task" }).stopAfterSeconds).toBeUndefined();
 		expect(plan({ command: "./slow-task", timeout: 300, background: false })).toMatchObject({
 			timeout: 300,
 			auto: false,
 			deliberate: true,
 		});
-		expect(plan({ command: "./slow-task", timeout: 30 })).toMatchObject({ deliberate: false });
+		expect(plan({ command: "./slow-task", timeout: 30 })).toMatchObject({ deliberate: true });
 		expect(plan({ command: "./slow-task", background: false })).toMatchObject({ timeout: 90, auto: true });
 		expect(plan({ command: "./slow-task", timeout: 30 })).toMatchObject({ timeout: 30, auto: false });
 		expect(plan({ command: "sleep 200" })).toMatchObject({ timeout: 900, auto: false, movable: false });
@@ -106,13 +126,18 @@ describe("the background threshold", () => {
 	});
 });
 
-describe("a deliberate foreground wait (background: false with a timeout)", () => {
+describe("a foreground wait with its own timeout", () => {
 	const envs = { "a top-level session": {}, "a subagent": { [SUBAGENT_ENV]: "1" } };
 	it.each(Object.entries(envs))(
 		"in %s, waits at most 10 minutes and then moves; 10 minutes or less is unchanged",
 		(_, env) => {
 			const plan = (timeout: number) => foregroundPlan({ command: "./slow-task", timeout, background: false }, 90, env);
 			expect(plan(3600)).toMatchObject({ timeout: 600, auto: true, deliberate: false, capped: true });
+			expect(plan(3600).stopAfterSeconds).toBe(3600);
+			expect(foregroundPlan({ command: "./slow-task", timeout: 3000 }, 90, env)).toMatchObject({
+				timeout: 600,
+				capped: true,
+			});
 			expect(plan(600)).toMatchObject({ timeout: 600, auto: false, deliberate: true, capped: false });
 			expect(plan(300)).toMatchObject({ timeout: 300, auto: false, deliberate: true, capped: false });
 			expect(foregroundPlan({ command: "sleep 3000", timeout: 3600, background: false }, 90, env).capped).toBe(false);
@@ -142,6 +167,10 @@ describe("a deliberate foreground wait (background: false with a timeout)", () =
 				expect(result.content[0].text).toMatch(/Did not finish within (600s|10m); moved to the background as bash-1/);
 				expect(result.content[0].text).toContain("a foreground wait lasts at most 10 minutes");
 				expect(jobs.running()).toHaveLength(1);
+				// The call's timeout still stops the command: the job keeps what is left of it.
+				// (Only the timers are faked here, so the clock has not moved; `timeLeft` below covers the arithmetic.)
+				expect(jobs.running()[0].timeout).toBe(3600);
+				expect(result.content[0].text).toMatch(/the job is stopped after (3600s|60m|1h) more/);
 			} finally {
 				vi.useRealTimers();
 				vi.unstubAllEnvs();
@@ -149,6 +178,15 @@ describe("a deliberate foreground wait (background: false with a timeout)", () =
 			}
 		},
 	);
+});
+
+describe("what is left of a call's timeout when its command moves", () => {
+	it("counts from the command's start, is at least one second, and is absent without a timeout", () => {
+		expect(timeLeft(3600, 1_000_000, 1_000_000 + 600_000)).toBe(3000);
+		expect(timeLeft(120, 1_000_000, 1_000_000 + 1_500)).toBe(119);
+		expect(timeLeft(5, 1_000_000, 1_000_000 + 60_000)).toBe(1);
+		expect(timeLeft(undefined, 1_000_000)).toBeUndefined();
+	});
 });
 
 describe("the sleep hint", () => {
@@ -162,6 +200,23 @@ describe("the sleep hint", () => {
 	it.each(["sleep 1", "sleep 19", "echo sleep 60", "yarn test"])("is not given for %s", (command) =>
 		expect(sleepHint(command)).toBeUndefined(),
 	);
+
+	it("names the timer tool as well, only when the session declares it", () => {
+		expect(sleepHint("sleep 60", true)).toContain("or set a `timer` to be woken when outside state holds");
+		expect(sleepHint("sleep 60", true)).toContain("background: true");
+		expect(sleepHint("sleep 60")).not.toContain("timer");
+		expect(sleepHint("sleep 1", true)).toBeUndefined();
+	});
+
+	it.runIf(posix)("names the timer in the result of the real tool when timer is an active tool", async () => {
+		const { api, tools } = fakeHost();
+		api.getActiveTools = () => ["bash", "timer"];
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({ backgroundAfterSeconds: 0 }));
+		const result = await tools
+			.get("bash")
+			.execute("t", { command: "false && sleep 25; echo ran" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
+		expect(JSON.stringify(result.content)).toContain("or set a `timer` to be woken");
+	});
 
 	it.runIf(posix)(
 		"is appended to the result of a foreground command that still ran, only when it is a long wait",
@@ -190,7 +245,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		const job = jobs.jobs.get("bash-1")!;
 		expect(result.isError).toBeUndefined();
 		expect(result.content[0].text).toMatch(/^before\n\nDid not finish within 1s; moved to the background as bash-1/);
-		expect(result.content[0].text).toContain("background: false with a timeout");
+		expect(result.content[0].text).toContain("pass a timeout to wait in the foreground");
 		expect(result.details).toMatchObject({ job: "bash-1", log: job.log, moved: true });
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1);
@@ -220,6 +275,33 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		expect(message).toMatch(/^\[timed out after 1s · [\s\S]*f[\s\S]*a longer timeout, or with background: true/);
 		expect(jobs.jobs.size).toBe(0);
 		expect(sent).toHaveLength(0);
+	});
+
+	it("stops a command at its explicit timeout without background: false, and starts no job", async () => {
+		const { tool, jobs, sent, ctx } = setup({ backgroundAfterSeconds: 1 });
+		const started = Date.now();
+		const message = await tool
+			.execute("t1", { command: "echo f; sleep 30", timeout: 2 }, undefined, undefined, ctx)
+			.catch((error: Error) => error.message);
+		// Past the 1 s threshold, which no longer applies, and stopped at the 2 s the call named.
+		expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
+		expect(message).toMatch(/^\[timed out after 2s · [\s\S]*f[\s\S]*a longer timeout, or with background: true/);
+		expect(jobs.jobs.size).toBe(0);
+		expect(sent).toHaveLength(0);
+	});
+
+	it("keeps what is left of the timeout on a command a waiting message moved", async () => {
+		const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 0 });
+		ctx.hasPendingMessages = () => true;
+		try {
+			const result = await tool.execute("t1", { command: "echo f; sleep 30", timeout: 120 }, undefined, undefined, ctx);
+			expect(result.content[0].text).toMatch(/moved to the background as bash-1/);
+			const left = jobs.running()[0].timeout!;
+			expect(left).toBeGreaterThan(110);
+			expect(left).toBeLessThanOrEqual(120);
+		} finally {
+			await jobs.stopAll("session end");
+		}
 	});
 
 	it("follows OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS over the setting, in both directions", async () => {

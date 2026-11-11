@@ -1,4 +1,4 @@
-import { ManagePageComponent, type ManagePageOptions } from "../components/manage-page.ts";
+import { ManagePageComponent, type ManagePageOptions } from "../../../theme/manage-page.ts";
 import { confirmAction as confirmChoice, type PageChoice, successNotice } from "../../../octocode/shared/page.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 

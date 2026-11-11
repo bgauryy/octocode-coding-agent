@@ -56,7 +56,7 @@ describe("compaction summary", () => {
 		expect(transcript.slice(3)).toEqual([expect.stringMatching(/^- .*~\/s\/a\.jsonl/)]);
 		const backlog = transcriptNote(undefined, true).split("\n");
 		expect(backlog.slice(0, 3)).toEqual(["", "", "## Recovery"]);
-		expect(backlog.slice(3)).toEqual([expect.stringMatching(/^- .*`backlog`/)]);
+		expect(backlog.slice(3)).toEqual([expect.stringMatching(/^- .*`backlogPlan` `add`/)]);
 		expect(transcript.join("\n")).not.toContain("backlog");
 		expect(backlog.join("\n")).not.toContain("jsonl");
 	});
@@ -67,7 +67,7 @@ describe("compaction summary", () => {
 			"- archive is in /a",
 			"- 9-abc.md \u00b7 tldr",
 			expect.stringMatching(/^- .*\/s\/a\.jsonl/),
-			expect.stringMatching(/^- .*`backlog`/),
+			expect.stringMatching(/^- .*`backlogPlan` `add`/),
 		]);
 		expect(transcriptNote(undefined, false, ["only this"])).toBe("\n\n## Recovery\n- only this");
 		// A rewritten summary does not carry the section back: it is cut off by its bullet shape.

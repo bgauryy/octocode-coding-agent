@@ -65,7 +65,8 @@ export function registerTeamEvents(
 	api.on("tool_execution_end", async (event, ctx) => {
 		const command = commands.get(event.toolCallId);
 		commands.delete(event.toolCallId);
-		if (event.isError) return;
+		// A `file` batch in which a query failed is an error result; its outcomes still name the changes it applied.
+		if (event.isError && event.toolName !== "file") return;
 		let written: string[] = [];
 		if (command !== undefined) {
 			try {

@@ -1,5 +1,5 @@
 import { configuredSubagentModels } from "./configured-models.ts";
-import type { AgentEnd } from "../team/panel-state.ts";
+import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
@@ -10,7 +10,10 @@ import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
-import { childCachePreferences, type Identity } from "./process/env.ts";
+import { type CacheChoice, childCachePreferences, defaultTaskCache, type Identity } from "./process/env.ts";
+import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
+import { routeThinking } from "./thinking.ts";
+import { maxRequests } from "./budget.ts";
 import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
@@ -175,6 +178,11 @@ interface AgentParams {
 	model?: string;
 	headless?: boolean;
 	background?: boolean;
+	isolate?: boolean;
+	/** The task's hook mode, or the one an earlier run of a resumed child was started with. */
+	hooks?: HookMode;
+	/** The task's cache tier; absent: `defaultTaskCache`. */
+	cache?: CacheChoice;
 }
 
 /** A claimed subagent run: who it is, who started it, where it hands files back, and how it gives its slot back. */
@@ -292,7 +300,7 @@ export function planRun(
 export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
-	params: Pick<AgentParams, "goal" | "name" | "sessionId">,
+	params: Pick<AgentParams, "goal" | "name" | "sessionId" | "background" | "isolate" | "hooks" | "cache">,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
@@ -321,6 +329,8 @@ export function claimRun(
 		parentTranscript: ctx.sessionManager.getSessionFile(),
 		...(parentId ? { parentId } : {}),
 	};
+	// A profile's `hooks: false` forbids them; else the task's choice, the mode this child started with, the profile's.
+	identity.hooks = childHookMode(profile?.hooks, params.hooks, resumed?.hooks);
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
 	const childModel = ctx.modelRegistry
 		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)
@@ -329,9 +339,19 @@ export function claimRun(
 		const policy = ctx.modelRegistry.getCachePolicy(childModel, [
 			{ source: "parent settings", values: runs.api.getSettings() },
 		]);
-		// A resumed run, or one that stays reachable, may be asked again after the short history entry expired.
-		const lingers = resumed !== undefined || reachableSeconds(undefined, process.env, profile?.linger) > 0;
-		identity.cachePreferences = childCachePreferences(policy, lingers);
+		// The task's tier for its history, else the default for its shape; a retention the user configured wins over both.
+		const choice =
+			params.cache ??
+			defaultTaskCache({
+				lingers:
+					params.background === true &&
+					params.isolate !== true &&
+					reachableSeconds(undefined, process.env, profile?.linger) > 0,
+				resumed: resumed !== undefined || params.name !== undefined,
+				thinking: routeThinking(route.model) ?? route.thinking,
+				requests: maxRequests(profile),
+			});
+		identity.cachePreferences = childCachePreferences(policy, choice);
 		// How long the entry the child writes lives: the stagger keeps its prefix warm for that long.
 		identity.cacheTtlMs = getPromptCacheTtlMs(childModel, identity.cachePreferences);
 	}

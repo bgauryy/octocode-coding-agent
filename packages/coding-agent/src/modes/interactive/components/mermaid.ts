@@ -3,8 +3,36 @@ import { type MermaidArt, render, type Span } from "grok-mermaid";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import type { MermaidRenderingMode } from "../../../core/settings-manager.ts";
 import type { Theme } from "../../../theme/theme.ts";
+import { trustedMarkdownTransformer } from "./markdown-transform.ts";
 
 const markdownParser = new Marked();
+/**
+ * A fence line whose info string names Mermaid: a cheap superset of what `isMermaid` accepts, so text without one skips
+ * lexing. A streamed answer is transformed on every chunk, and lexing all of it each time grows with its length.
+ */
+const MERMAID_FENCE = /(?:`{3}|~{3})[^\n]*mermaid/i;
+/**
+ * Diagrams by source, least recently drawn first: a streamed answer renders the same finished diagram again on every
+ * chunk, while each chunk of an unfinished one is a new source that must not evict the finished ones.
+ */
+const renderedDiagrams = new Map<string, MermaidArt | undefined>();
+const MAX_RENDERED_DIAGRAMS = 32;
+
+function renderDiagram(source: string): MermaidArt | undefined {
+	if (renderedDiagrams.has(source)) {
+		const cached = renderedDiagrams.get(source);
+		renderedDiagrams.delete(source);
+		renderedDiagrams.set(source, cached);
+		return cached;
+	}
+	const art = render(source) ?? undefined;
+	if (renderedDiagrams.size >= MAX_RENDERED_DIAGRAMS) {
+		const oldest = renderedDiagrams.keys().next().value;
+		if (oldest !== undefined) renderedDiagrams.delete(oldest);
+	}
+	renderedDiagrams.set(source, art);
+	return art;
+}
 
 interface MermaidTransformerOptions {
 	getMode: () => MermaidRenderingMode;
@@ -56,14 +84,19 @@ function themedLines(art: MermaidArt, theme: Theme): string[] {
 	return art.styled.map((row) => row.map((span) => styleSpan(span, theme)).join(""));
 }
 
-/** Create a transformer that replaces top-level Mermaid code blocks with Unicode terminal diagrams. */
+/**
+ * Create a transformer that replaces top-level Mermaid code blocks with Unicode terminal diagrams. It is trusted: it runs
+ * after the final sanitize, since its output is the sanitized Markdown it is given plus diagrams drawn from that text and
+ * the theme's colours, which sanitizing would strip.
+ */
 export function createMermaidMarkdownTransformer(options: MermaidTransformerOptions): MarkdownTransformer {
-	return (markdown, context) => {
+	return trustedMarkdownTransformer((markdown, context) => {
 		const mode = options.getMode();
 		if (
 			mode === "off" ||
 			context.messageType === "assistant-thinking" ||
-			(context.isStreaming && mode !== "streaming")
+			(context.isStreaming && mode !== "streaming") ||
+			!MERMAID_FENCE.test(markdown)
 		) {
 			return markdown;
 		}
@@ -72,7 +105,7 @@ export function createMermaidMarkdownTransformer(options: MermaidTransformerOpti
 			.lexer(markdown)
 			.map((token) => {
 				if (!isMermaid(token)) return token.raw;
-				const art = render(token.text);
+				const art = renderDiagram(token.text);
 				if (!art || art.width > context.availableWidth) return token.raw;
 				if (!context.isStreaming && art.warnings.length > 0) {
 					const suffix = art.warnings.length > 1 ? ` (+${art.warnings.length - 1} more)` : "";
@@ -85,5 +118,5 @@ export function createMermaidMarkdownTransformer(options: MermaidTransformerOpti
 				return `${lines.map(codeSpan).join("  \n")}\n`;
 			})
 			.join("");
-	};
+	});
 }

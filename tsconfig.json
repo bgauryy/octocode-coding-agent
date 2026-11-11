@@ -7,8 +7,6 @@
 		"moduleResolution": "NodeNext",
 		"paths": {
 			"@octocodeai/octocode-telemetry": ["./packages/telemetry/src/index.ts"],
-			"@octocodeai/octocode-telemetry/testing": ["./packages/telemetry/src/testing/index.ts"],
-			"@octocodeai/octocode-telemetry/render": ["./packages/telemetry/src/render.ts"],
 			"@octocodeai/octocode-ai": ["./packages/ai/src/index.ts"],
 			"@octocodeai/octocode-ai/oauth": ["./packages/ai/src/oauth.ts"],
 			"@octocodeai/octocode-ai/*": ["./packages/ai/src/*.ts", "./packages/ai/src/providers/*.ts"],
@@ -34,9 +32,7 @@
 			"@octocodeai/octocode-mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],
 			"@octocodeai/octocode-mcp/host": ["./packages/mcp/src/index.ts"],
 			"@octocodeai/octocode-db": ["./packages/db/src/api.ts"],
-			"@octocodeai/octocode-common/*": ["./packages/common/src/*.ts"],
-			"@octocodeai/octocode-acp/server": ["./packages/acp/src/server/acp-mode.ts"],
-			"@octocodeai/octocode-acp/client": ["./packages/acp/src/client/client.ts"]
+			"@octocodeai/octocode-common/*": ["./packages/common/src/*.ts"]
 		}
 	},
 	"include": [

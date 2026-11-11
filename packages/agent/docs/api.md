@@ -22,6 +22,7 @@ All optional except `streamFn`.
 | `unknownToolMessage(name)`        | Error text for a call to an undeclared tool                                                                                                                                                                             |
 | `pendingToolNames()`              | Names of tools declared but not executable yet                                                                                                                                                                          |
 | `thinkingBudgets`                 | Token budgets for `minimal`, `low`, `medium`, `high` on token-based providers                                                                                                                                           |
+| `onListenerError(message, error)` | Receives a tool-update listener that threw; the tool keeps its result. Default: one line on `process.stderr` (`console.error` without one)                                                                              |
 
 Hook semantics: [Events](events.md#tool-execution-hooks).
 
@@ -57,14 +58,14 @@ await agent.prompt([
 
 ## Methods
 
-| Method                                         | Does                                                                                                                   |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `prompt(text \| message \| messages, images?)` | Start a run                                                                                                            |
-| `continue()`                                   | Continue from a non-assistant tail; with an assistant tail it uses one queued steering batch, then one follow-up batch |
-| `abort()` / `await waitForIdle()`              | Cancel / wait until settled                                                                                            |
-| `subscribe((event, signal) => …)`              | Returns an unsubscribe function; listeners are awaited in registration order                                           |
-| `reset()`                                      | Clear messages and queues, keeping the system prompt and tool baseline; throws while a run is active                   |
-| `peekQueuedMessages()`                         | Next queued messages, respecting queue modes; does not consume                                                         |
+| Method                                         | Does                                                                                                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prompt(text \| message \| messages, images?)` | Start a run                                                                                                                                            |
+| `continue()`                                   | Continue from a non-assistant tail; with an assistant tail it uses one queued steering batch, then one follow-up batch                                 |
+| `abort()` / `await waitForIdle()`              | Cancel / wait until settled                                                                                                                            |
+| `subscribe((event, signal) => …)`              | Returns an unsubscribe function; listeners are awaited in registration order. After an abort, see [Listeners and abort](events.md#listeners-and-abort) |
+| `reset()`                                      | Clear messages and queues, keeping the system prompt and tool baseline; throws while a run is active                                                   |
+| `peekQueuedMessages()`                         | Next queued messages, respecting queue modes; does not consume                                                                                         |
 
 ```typescript
 await agent.prompt("What's in this image?", [{ type: "image", data: base64Data, mimeType: "image/jpeg" }]);
@@ -134,35 +135,3 @@ agent.state.tools = [readFileTool];
 - **`terminate: true`** (from `execute`, a blocked `beforeToolCall` or `afterToolCall`) hints that the run should stop after the batch; it applies only when every finalized result in the batch sets it. It is runtime-only; transcript tool results stay standard.
 - **`structuredContent`** on a result is kept in the persisted `ToolResultMessage` for replay and interfaces; it is not sent to the model.
 - **MCP tools:** hosts adapt each MCP server tool to an `AgentTool` and run it through `runToolCall()`, which keeps both hooks.
-
-## Proxy
-
-`streamProxy` replaces `streamFn` for browser apps that go through a backend. The server strips `partial` from delta events and the client rebuilds it. Servers send `content_update` with `{ contentIndex, content }` (the complete normalized block, keeping attachments and annotations); a `text_end` frame may carry authoritative `text`, `annotations` and `contentSignature`.
-
-```typescript
-const agent = new Agent({
-	streamFn: (model, context, options) =>
-		streamProxy(model, context, { ...options, authToken: "...", proxyUrl: "https://your-server.com" }),
-});
-```
-
-## Low-level loop
-
-`agentLoop(messages, context, config, signal, streamFn)` and `agentLoopContinue(context, config, signal, streamFn)` return event streams without the `Agent` class.
-
-```typescript
-const context: AgentContext = {
-	messages: [{ role: "system", content: "You are helpful.", timestamp: Date.now() }],
-	tools: [],
-};
-const config: AgentLoopConfig = {
-	model: getBuiltinModel("openai", "gpt-4o"),
-	convertToLlm: (msgs) => msgs.filter((m) => ["user", "assistant", "toolResult"].includes(m.role)),
-	toolExecution: "parallel",
-};
-for await (const event of agentLoop([userMessage], context, config, undefined, models.streamSimple.bind(models))) {
-	console.log(event.type);
-}
-```
-
-These streams are observational: they keep event order but do not wait for your async handling. For message processing as a barrier before tool preflight, use `Agent`.

@@ -1,6 +1,6 @@
 # @octocodeai/octocode-agent-core
 
-The agent loop: a stateful `Agent` that streams a model response, runs tool calls, queues steering input and emits events. It builds on `@octocodeai/octocode-ai` and receives models, tools and policy from its host. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. Application files and settings: [CONFIGURATIONS.md](../coding-agent/docs/configuration.md).
+The agent loop: a stateful `Agent` that streams a model response, runs tool calls, queues steering input and emits events. It builds on `@octocodeai/octocode-ai` and receives models, tools and policy from its host. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. Application files and settings: [configuration](../coding-agent/docs/configuration.md).
 
 ## Quick start
 
@@ -48,22 +48,20 @@ flowchart LR
 
 ## Exports
 
-| Export                                                                   | Purpose                                                                                       |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `Agent`                                                                  | Stateful wrapper: state, `prompt()`, `continue()`, queues, `subscribe()`, `abort()`           |
-| `agentLoop`, `agentLoopContinue`, `runAgentLoop`, `runAgentLoopContinue` | Low-level loop without the `Agent` class                                                      |
-| `runToolCall`                                                            | Run one tool call through the hooks (hosts use it to adapt MCP tools)                         |
-| `streamProxy`                                                            | `streamFn` that goes through a backend proxy                                                  |
-| `setDefaultStreamFn`                                                     | Default `streamFn` for agents created without one                                             |
-| `createEventBus`                                                         | Channel-keyed event bus with no Node dependency                                               |
-| `AgentToolExecutionError`                                                | Error that keeps structured `details` on a failed tool                                        |
-| Types                                                                    | `AgentMessage`, `AgentTool`, `AgentState`, `AgentEvent`, `AgentContext`, `AgentLoopConfig`, … |
+| Export                    | Purpose                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Agent`                   | Stateful wrapper: state, `prompt()`, `continue()`, queues, `subscribe()`, `abort()`                                             |
+| `runToolCall`             | Run one tool call through the hooks (hosts use it to adapt MCP tools)                                                           |
+| `setDefaultStreamFn`      | Default `streamFn` for agents created without one                                                                               |
+| `createEventBus`          | Channel-keyed event bus; a failing handler goes to `onHandlerError` (default: `process.stderr`, or `console.error` without one) |
+| `AgentToolExecutionError` | Error that keeps structured `details` on a failed tool                                                                          |
+| Types                     | `AgentMessage`, `AgentTool`, `AgentState`, `AgentEvent`, `AgentContext`, `AgentLoopConfig`, …                                   |
 
 ## Pages
 
 | Page                     | Covers                                                                                         |
 | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| [API](docs/api.md)       | Options, state, methods, steering and follow-up, custom messages, tools, proxy, low-level loop |
+| [API](docs/api.md)       | Options, state, methods, steering and follow-up, custom messages, tools                        |
 | [Events](docs/events.md) | Event sequences, tool hooks, request preparation, turn finalization, `continue()`, event types |
 
 ## License

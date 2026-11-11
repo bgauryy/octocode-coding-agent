@@ -10,7 +10,11 @@ function writeChildScript(contents: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "octocode-rpc-client-exit-"));
 	tempDirs.push(dir);
 	const path = join(dir, "child.mjs");
-	writeFileSync(path, contents);
+	// Every agent process announces itself first; RpcClient.start() waits for it.
+	writeFileSync(
+		path,
+		`process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"test",sessionId:"test"}) + "\\n");\n${contents}`,
+	);
 	return path;
 }
 

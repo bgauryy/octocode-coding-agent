@@ -14,7 +14,7 @@ import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";
 import { HEARTBEAT_MS } from "../team/session/activity.ts";
 import { memberWorktree } from "../worktree-paths/member-worktree.ts";
-import { descendants } from "../team/panel-roster.ts";
+import { descendants } from "../team/panel/roster.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";

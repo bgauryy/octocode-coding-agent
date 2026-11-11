@@ -1,64 +1,25 @@
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
-import { stopTree } from "../../shared/process.ts";
-import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
-import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
-import { settleWithin } from "../../shared/util.ts";
-import {
-	type ChildEffect,
-	type ChildProgress,
-	newChildState,
-	parseEvent,
-	reduceEvent,
-	type WatchdogLimits,
-} from "../events.ts";
-import { RequestBudget } from "../budget.ts";
-import { heartbeatDue, SETTLED_EXIT_MS } from "../liveness.ts";
+import { prepareTree } from "../../../utils/process-tree.ts";
 import { requestBudgetHistory } from "../budget-history.ts";
-import type { AgentProfile } from "../profiles.ts";
-import { ChildRelay, type RelayHost } from "../relay.ts";
-import { ReportTracker } from "../report.ts";
-import { type Identity, subagentProcessEnv, writeNonceFile } from "./env.ts";
+import { writeNonceFile } from "./env.ts";
 import { prepareChildResourceFiles, removeChildResourceFiles, type ChildResourceFiles } from "./handoff-files.ts";
-import {
-	ABORT_SETTLE_MS,
-	EXIT_GRACE_MS,
-	MAX_EVENT_BYTES,
-	SUBAGENT_STOP_GRACE_MS,
-	type SubagentOutcome,
-	USER_STOP,
-	USER_STOP_GRACE_MS,
-	WATCHDOG,
-} from "./outcome.ts";
-import { concludeRun } from "./conclusion.ts";
-import { leftBehind } from "./left-behind.ts";
-import { startGate } from "../rate-gate.ts";
-import { reportDir } from "./session.ts";
-import { savedNotices, StderrTail } from "./stderr.ts";
-import { ChildWatchdog } from "./watchdog.ts";
+import type { SubagentOutcome } from "./outcome.ts";
+import type { ChildRun } from "./run-phase.ts";
+import { superviseChild } from "./supervise.ts";
 
-/** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
-const INTERRUPT_FOLLOW_UP_MS = 1_500;
-
-/** Runs one RPC child to its report; cancellation settles it before closing stdin and stopping its process tree. */
-export async function runChild(
-	task: string,
-	args: string[],
-	cwd: string,
-	profile: AgentProfile | undefined,
-	identity: Identity,
-	signal: AbortSignal | undefined,
-	onProgress: (progress: ChildProgress) => void,
-	onSpawn?: (pid: number) => void,
-	limits: WatchdogLimits = WATCHDOG,
-	host?: RelayHost,
-): Promise<SubagentOutcome> {
+/**
+ * Runs one RPC child to its report; cancellation settles it before closing stdin and stopping its process tree.
+ * The child boots at once; its task waits for `ready` (`stagger.ts`). The files the child reads at start (its role
+ * prompt, resources, the nonce) are written here and removed when the run ends; `superviseChild` runs the process.
+ */
+export async function runChild(run: ChildRun): Promise<SubagentOutcome> {
+	const { profile, identity, signal, host } = run;
 	if (signal?.aborted) throw new Error("Subagent cancelled");
-	const history = await requestBudgetHistory(args, profile, identity, signal);
+	const history = await requestBudgetHistory(run.args, profile, identity, signal);
 	if (history.exhausted) return history.exhausted;
 	const { command, prefix } = getCliInvocation();
 	// Windows: the helper that owns the child's job runs before the child, so no grandchild escapes the job.
@@ -80,303 +41,16 @@ export async function runChild(
 				identity.id,
 				"no secret file could be written for this subagent: its audit entries and permission headers are not accepted, and the user's messages to it are not signed",
 			);
-		return await new Promise<SubagentOutcome>((resolve, reject) => {
-			// Detached on POSIX so the child leads a process group: cancelling kills its whole tree (MCP servers, Chrome, bash).
-			const child = spawn(command, [...prefix, ...args], {
-				cwd,
-				env: subagentProcessEnv(
-					profile,
-					process.env,
-					identity,
-					nonceFile,
-					rolePromptFile,
-					resources.skillSnapshotFile,
-					resources.mcpServersFile,
-				),
-				stdio: ["pipe", "pipe", "pipe"],
-				detached: leadsProcessGroup(),
-			});
-			adoptTree(child.pid);
-			// The group dies with this process on a crash or an emergency exit (`killTrackedDetachedChildren`), until it exits.
-			const trackedPid = child.pid;
-			if (trackedPid) trackDetachedChildPid(trackedPid, { graceful: true });
-			const state = newChildState();
-			const outputDir = identity.scratch ?? reportDir(identity.id);
-			const report = new ReportTracker(outputDir, identity.resultContract);
-			const stderr = new StderrTail(outputDir);
-			let buffer = "";
-			let frameBytes = 0;
-			let streamFailure: Error | undefined;
-			// A write to a child that already exited fails with EPIPE; its exit settles the run.
-			child.stdin.on("error", () => undefined);
-			const send = (command: Record<string, unknown>): boolean => {
-				if (child.stdin.destroyed || child.stdin.writableEnded) return false;
-				child.stdin.write(`${JSON.stringify(command)}\n`);
-				return true;
-			};
-			/** Closing stdin is how an RPC child is told to shut down in order. */
-			const closeInput = () => {
-				if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
-			};
-			let onSettled: (() => void) | undefined;
-			const settledEvent = new Promise<void>((resolve) => {
-				onSettled = resolve;
-				return undefined;
-			});
-			let onExit: (() => void) | undefined;
-			const exitEvent = new Promise<void>((resolve) => {
-				onExit = resolve;
-				return undefined;
-			});
-			/**
-			 * A settled child told to leave exits within `SETTLED_EXIT_MS`, or its process tree is stopped and its report
-			 * delivered: its own busy deadline (25 minutes or more) is for a child that has not answered.
-			 */
-			let exitDeadline: NodeJS.Timeout | undefined;
-			let leftLate = false;
-			const leave = () => {
-				closeInput();
-				if (exitDeadline || !report.hasReport) return;
-				exitDeadline = setTimeout(() => {
-					if (finished) return;
-					leftLate = true;
-					stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS).catch(() => undefined);
-				}, SETTLED_EXIT_MS);
-				exitDeadline.unref();
-			};
-			const stop = async (graceMs: number): Promise<void> => {
-				if (state.running && send({ type: "abort" })) await settleWithin(settledEvent, ABORT_SETTLE_MS);
-				closeInput();
-				// A child that settled leaves on its own once its input is closed; one that did not gets the signals at once.
-				if (state.settledSeen) await settleWithin(exitEvent, graceMs);
-				await stopTree(child.pid, graceMs);
-			};
-			// One stop per run. The run settles only after it: the SIGKILL of a tree that ignored SIGTERM (and of detached
-			// helpers like a Chrome the child launched) then happens before the parent can exit, not on a timer lost with it.
-			let stopped: Promise<void> | undefined;
-			const abort = () => {
-				host?.budgets?.remove(identity.id, budget);
-				relay.cancelAll();
-				stopped ??= stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS).catch(
-					() => undefined,
-				);
-			};
-			signal?.addEventListener("abort", abort, { once: true });
-			// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then the same
-			// stop as above (0: off).
-			const steer = (message: string) => void send({ type: "steer", message });
-			const budget: RequestBudget = new RequestBudget(history.limit, steer, abort, history.requests, {
-				final: (message) => {
-					host?.budgets?.remove(identity.id, budget);
-					void send({ type: "steer", message, toolChoice: "none" });
-				},
-				// A foreground child's parent is inside this call, and one without the team has no parent to write to.
-				canAsk: Boolean(identity.parentId) && !identity.parentWaits,
-				resumeIsGrant: identity.peerResumed !== true,
-			});
-			host?.budgets?.add(identity.id, budget);
-			let cancelled = false;
-			/** Waits after an unrequested aborted settle for the run an interrupt's message starts. */
-			let followUp: NodeJS.Timeout | undefined;
-			// While the child waits for the user's answer it is not hung, however long the user takes.
-			let waitingSince = 0;
-			const relay = new ChildRelay(identity, host, {
-				// Without a file the child holds no secret: nothing it sends can carry one.
-				nonce: nonceFile ? nonce : "",
-				send: (response) => {
-					send({ type: "extension_ui_response", ...response });
-					return undefined;
-				},
-				onWaiting: (waiting) => {
-					const now = Date.now();
-					if (waiting) waitingSince = now;
-					else {
-						watchdog.waited(now - waitingSince, now);
-						stamp(now);
-					}
-					host?.awaitingApproval?.(identity.id, waiting);
-					progress({ usage: state.usage, waiting });
-				},
-			});
-			// The row's "last progress": a model or tool event, the end of a wait for the user, or a heartbeat inside declared long work. A stdout byte is none.
-			const stamp = (at: number) => host?.output?.(identity.id, at);
-			const watchdog = new ChildWatchdog(
-				state,
-				limits,
-				() => Boolean(streamFailure) || relay.open > 0,
-				abort,
-				(now, resumed) => {
-					if (resumed ? state.running : heartbeatDue(state, now, relay.open > 0)) stamp(now);
-				},
-			);
-			watchdog.start();
-			// Progress is display only: a failure there (a screenshot write, a stale render) must not throw out of the stream handler.
-			const progress: typeof onProgress = (update) => {
-				try {
-					onProgress(update);
-				} catch {
-					// Keep the run going; the final answer does not depend on it.
-				}
-			};
-			const handleLine = (line: string) => {
-				const event = parseEvent(line);
-				if (!event) return;
-				const before = state.progressAt;
-				for (const effect of reduceEvent(state, event, limits, Date.now())) perform(effect);
-				if (state.progressAt !== before) stamp(state.progressAt);
-			};
-			const perform = (effect: ChildEffect) => {
-				switch (effect.kind) {
-					case "progress":
-						return progress(effect.update);
-					case "ui":
-						return relay.handle(effect.event);
-					case "rejected":
-						streamFailure = new Error(effect.message);
-						return abort();
-					case "close":
-						return leave();
-					case "settled":
-						// Octocode can abort after a normal reply or between tools without an aborted assistant message.
-						// A watchdog stopping shutdown after an answer still preserves that completed report.
-						cancelled = effect.aborted && !watchdog.stalled;
-						clearTimeout(followUp);
-						// An abort nobody here asked for may be a team interrupt: the child's held message starts its next run right
-						// after this settle, and closed input would end that run. It leaves only if no run starts within the grace.
-						if (cancelled && !signal?.aborted && !streamFailure && budget.stopped === undefined) {
-							followUp = setTimeout(() => {
-								if (state.running) cancelled = false;
-								else {
-									onSettled?.();
-									leave();
-								}
-							}, INTERRUPT_FOLLOW_UP_MS);
-							return;
-						}
-						host?.budgets?.remove(identity.id, budget);
-						onSettled?.();
-						return leave();
-					case "incoming":
-						return report.incoming(effect.role, effect.job, effect.quiet);
-					case "answer":
-						return report.answer(effect.text, effect.stopReason, effect.errorMessage, effect.waiting, effect.reminder);
-					case "request":
-						return budget.onReply(effect.count, effect.continues);
-					case "responding":
-						return progress({ usage: state.usage, responding: true });
-				}
-			};
-			child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-				if (streamFailure) return;
-				watchdog.activeAt = Date.now();
-				let start = 0;
-				while (start < chunk.length) {
-					const newline = chunk.indexOf("\n", start);
-					const part = chunk.slice(start, newline < 0 ? undefined : newline);
-					frameBytes += Buffer.byteLength(part);
-					if (frameBytes > MAX_EVENT_BYTES) {
-						streamFailure = new Error(`Subagent JSON event exceeds ${MAX_EVENT_BYTES} bytes`);
-						buffer = "";
-						abort();
-						return;
-					}
-					buffer += part;
-					if (newline < 0) break;
-					handleLine(buffer);
-					buffer = "";
-					frameBytes = 0;
-					start = newline + 1;
-				}
-			});
-			child.stderr.setEncoding("utf8").on("data", (chunk: string) => stderr.write(chunk));
-			// The run settles once, from `close` (stdio drained) or, when a grandchild that left the process group keeps the
-			// pipes open, from `exit` plus a short grace: the tool call must return and its slot be freed either way.
-			let finished = false;
-			let exitGrace: NodeJS.Timeout | undefined;
-			const finish = (): boolean => {
-				if (finished) return false;
-				finished = true;
-				host?.budgets?.remove(identity.id, budget);
-				relay.cancelAll();
-				watchdog.stop();
-				clearTimeout(exitGrace);
-				clearTimeout(exitDeadline);
-				clearTimeout(followUp);
-				signal?.removeEventListener("abort", abort);
-				return true;
-			};
-			child.on("error", (error) => {
-				stderr.close();
-				if (finish()) reject(error);
-			});
-			child.on("exit", (code, exitSignal) => {
-				onExit?.();
-				// A dialog of a child that is gone has nobody to answer: close it in the parent's UI.
-				relay.cancelAll();
-				if (finished) return;
-				watchdog.stop();
-				// What the child left in its own process group (an MCP server, a dev server, a Chrome) dies with the run, and
-				// before the run settles: the caller removes the child's worktree next, and a holder must not outlive that.
-				if (leftBehind(child.pid)) stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS).catch(() => undefined);
-				exitGrace = setTimeout(() => settle(code, exitSignal), EXIT_GRACE_MS);
-			});
-			child.on("close", (code, exitSignal) => settle(code, exitSignal));
-			const settle = (code: number | null, exitSignal: NodeJS.Signals | null) => {
-				if (!finish()) return;
-				if (stopped) void stopped.then(() => conclude(code, exitSignal));
-				else conclude(code, exitSignal);
-			};
-			const conclude = (exitCode: number | null, exitSignal: NodeJS.Signals | null) => {
-				// A child stopped after it settled and delivered its report did not fail by leaving late.
-				const code = leftLate && report.hasReport ? 0 : exitCode;
-				// Until here the exit hook also reaches what the child left in its group.
-				if (trackedPid) untrackDetachedChildPid(trackedPid);
-				for (const stream of [child.stdout, child.stderr]) stream.destroy();
-				if (buffer.trim()) handleLine(buffer);
-				relay.end();
-				stderr.close();
-				const saved = savedNotices(state, outputDir);
-				if (saved) progress({ usage: state.usage, notices: saved });
-				const result = report.result();
-				startGate.noteFailure(result.error);
-				const end = concludeRun({
-					report: result,
-					code,
-					exitSignal,
-					streamFailure,
-					stalled: watchdog.stalled,
-					aborted: signal?.aborted === true,
-					cancelled,
-					budget,
-					identity,
-					state,
-					stderr,
-				});
-				if ("reject" in end) reject(end.reject);
-				else resolve(end.resolve);
-			};
-			// Install cleanup before invoking a callback that can fail (for example, recording worktree ownership).
-			try {
-				if (child.pid !== undefined) onSpawn?.(child.pid);
-			} catch (error) {
-				streamFailure = error instanceof Error ? error : new Error(String(error));
-				abort();
-			}
-			if (!streamFailure) {
-				stamp(Date.now());
-				send({ type: "prompt", message: budget.prompt(task) });
-			}
-		});
+		return await superviseChild(run, { command, prefix, history, nonce, nonceFile, rolePromptFile, resources });
 	} finally {
 		try {
 			vouched?.();
 		} catch {
 			process.stderr.write("Unable to release a subagent permission handoff\n");
 		}
-		for (const file of [nonceFile]) {
-			if (!file) continue;
+		if (nonceFile) {
 			try {
-				fs.rmSync(file, { force: true });
+				fs.rmSync(nonceFile, { force: true });
 			} catch {
 				process.stderr.write("Unable to remove a private subagent handoff file\n");
 			}

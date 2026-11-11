@@ -40,7 +40,7 @@ async function askWithPrompt(answer: string, hook: Record<string, unknown> = {})
 			return { result: async () => ({ stopReason: "stop", content: [{ type: "text", text: answer }] }) };
 		},
 	});
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const ask = () =>
 		hooks.permissionRequest(

@@ -148,6 +148,6 @@ If `export` colors are omitted, Octocode derives HTML page and panel backgrounds
 
 Place a project theme in `.octocode/themes/`. Project themes load only after project trust is granted.
 
-You can also load theme files and directories through the `themes` setting or distribute them in a Octocode package. See [configuration](configuration.md#where-each-configuration-belongs), [settings](settings.md) and [packages](packages.md).
+You can also load theme files and directories through the `themes` setting or distribute them in an Octocode package. See [configuration](configuration.md#where-each-configuration-belongs), [settings](settings.md) and [packages](packages.md).
 
 Each loaded theme must have a unique name. Octocode reports duplicate names as resource collisions.

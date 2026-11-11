@@ -158,7 +158,7 @@ export async function handleExportCommand(host: SessionCommandsHost, text: strin
 			host.showStatus(`Session exported to: ${filePath}`);
 		}
 	} catch (error: unknown) {
-		host.showError(`Failed to export session: ${error instanceof Error ? error.message : "Unknown error"}`);
+		host.showError(`Failed to export session: ${errorMessage(error)}`);
 	}
 }
 

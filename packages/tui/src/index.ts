@@ -217,7 +217,7 @@ export {
 	type TuiMouseEventType,
 	type TuiStopOptions,
 	type ViewportTUI,
-} from "./tui.ts";
+} from "./tui/exports.ts";
 export type { TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 export { TuiAltScreen } from "./tui-alt-screen.ts";
 export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";

@@ -17,7 +17,6 @@
 		"./config": "./src/config.ts"
 	},
 	"scripts": {
-		"generate:compact": "node scripts/generate-compact.ts",
 		"test": "vitest --run"
 	},
 	"dependencies": {

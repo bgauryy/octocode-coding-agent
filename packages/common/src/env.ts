@@ -17,11 +17,8 @@ export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
 /** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
 export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";
 
-/** Set by the parent in a subagent whose profile declares `hooks: true`: the child runs command hooks (other subagents do not). */
+/** Set by the parent in a subagent whose profile or task turned the user's hooks on: `decisions` (only a PreToolUse or PermissionRequest hook's deny or ask applies) or `all`; `1` also means `all`. Absent: the child runs no hook. */
 export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";
-
-/** `0` keeps the Octocode MCP server unregistered for this session and its children. */
-export const MCP_ENV = "OCTOCODE_MCP";
 
 /**
  * `0` keeps the built-in `browser` MCP server (chrome-devtools) unregistered for this process. The parent sets it for a
@@ -195,6 +192,9 @@ export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
 
 /** Comma-separated MCP tool roles (`readOnly`) whose open tools a child defers instead of declaring (`mcpDefer` in a profile; `mcp/src/deferral.ts`). */
 export const MCP_DEFER_ROLES_ENV = "OCTOCODE_MCP_DEFER_ROLES";
+
+/** JSON array of the MCP tools (`<server>/<tool>`) a child's coordinator counts as in use, so both defer the same tools (`mcpExposure: "recent"`; `mcp/src/deferral.ts`). */
+export const MCP_RECENT_TOOLS_ENV = "OCTOCODE_MCP_RECENT_TOOLS";
 
 /** Owner-only handoff of enabled, non-stopped extension MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
 export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

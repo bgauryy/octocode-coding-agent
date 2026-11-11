@@ -9,7 +9,8 @@ afterEach(() => {
 	setKeybindings(new KeybindingsManager());
 });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+// Past the @ autocomplete debounce (60 ms), so a request has started or settled.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
 
 describe("CustomEditor Escape with the @ picker", () => {
 	it("cancels a pending request without calling the interrupt handler", async () => {

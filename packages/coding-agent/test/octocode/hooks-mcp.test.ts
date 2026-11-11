@@ -228,7 +228,7 @@ it("counts a run whose MCP server is missing as failed in the hooks report", asy
 		}),
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	await hooks.preToolUse({ toolName: "bash", toolCallId: "m", input: { command: "true" } } as never, ctx);

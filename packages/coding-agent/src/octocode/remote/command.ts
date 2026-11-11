@@ -13,16 +13,13 @@ import type { RemoteSettings } from "../../core/settings-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { daemonRequest, type LaunchedDaemon } from "../web-daemon/launcher.ts";
-import { WEB_DAEMON_ENV } from "../web-daemon/paths.ts";
 import { describeLink, describeStatus } from "./links.ts";
 
 export interface RemoteHost {
-	/** The daemon with this session attached; undefined when the daemon feature is off. */
-	daemon(ctx: ExtensionContext): Promise<Pick<LaunchedDaemon, "origin" | "token"> | undefined>;
+	/** The daemon with this session attached, started when none runs; rejects when it cannot start or be reached. */
+	daemon(ctx: ExtensionContext): Promise<Pick<LaunchedDaemon, "origin" | "token">>;
 	settings(): RemoteSettings;
 }
-
-const OFF = `Remote links need the user-level web daemon: start Octocode with ${WEB_DAEMON_ENV}=1.`;
 
 async function answer<T>(
 	daemon: Pick<LaunchedDaemon, "origin" | "token">,
@@ -47,7 +44,6 @@ const isStatus = (value: unknown): value is RemoteStatus => Value.Check(RemoteSt
 /** Publishes one link with the configured transport. */
 async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: RemoteAccess): Promise<RemoteLink> {
 	const daemon = await host.daemon(ctx);
-	if (!daemon) throw new Error(OFF);
 	const settings = host.settings();
 	const request: RemotePublish = {
 		transport: settings.transport ?? "ssh",
@@ -84,10 +80,6 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 			try {
 				if (word === "status" || word === "stop") {
 					const daemon = await host.daemon(ctx);
-					if (!daemon) {
-						say(ctx, OFF, "warning");
-						return;
-					}
 					if (word === "status") say(ctx, describeStatus(await answer(daemon, {}, isStatus)));
 					else {
 						await answer(daemon, { method: "DELETE" }, (value): value is unknown => value !== undefined);

@@ -85,6 +85,6 @@ describe("subagent hooks in a real child process", () => {
 		const { start, stop, output } = await runChild();
 		expect(start).toBeUndefined();
 		expect(stop).toBeUndefined();
-		expect(output).not.toMatch(/hooks run only in subagents whose profile sets hooks: true/);
+		expect(output).not.toMatch(/hooks run only in subagents whose/);
 	});
 });

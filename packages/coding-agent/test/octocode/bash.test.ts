@@ -94,7 +94,12 @@ describe("bash tool", () => {
 		// When to background is stated once, in the tool description; the parameter says only what it does.
 		expect(tool.description).toContain("servers");
 		expect(tool.parameters.properties.background.description).toContain("return at once");
-		expect(tool.parameters.properties.background.description).toContain("false with a timeout");
+		// An explicit timeout is a stop time (RFC core-tools B1); `background: false` no longer changes what it means.
+		expect(tool.parameters.properties.timeout.description).toMatch(/^Seconds until the command is stopped/);
+		expect(tool.parameters.properties.timeout.description).toContain(
+			"omit to let a long command move to the background",
+		);
+		expect(tool.parameters.properties.background.description).not.toContain("false with a timeout");
 		expect(tool.parameters.properties.background.description).not.toContain("servers");
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
 		const [foreground, background] = tool.outputSchema.anyOf;
@@ -148,11 +153,11 @@ describe("bash tool", () => {
 		expect(sent[0].message.details.verification.output).toMatchObject({ complete: true, tailIncomplete: false });
 	});
 
-	it("keeps verification pending across a foreground timeout handoff and reports the later failure once", async () => {
-		const { tool, ctx, sent, jobs } = setup();
+	it("keeps verification pending across a foreground handoff and reports the later failure once", async () => {
+		const { tool, ctx, sent, jobs } = setup({ backgroundAfterSeconds: 1 });
 		const handoff = await tool.execute(
 			"check",
-			{ command: "echo started; sleep 1.3; exit 4", timeout: 1, verify: true },
+			{ command: "echo started; sleep 1.3; exit 4", verify: true },
 			undefined,
 			undefined,
 			ctx,
@@ -197,22 +202,16 @@ describe("bash tool", () => {
 		expect(jobs.jobs.size).toBe(0);
 	});
 
-	it("moves any other foreground command that reaches its deadline to the background and says so", async () => {
-		const { tool, ctx, jobs } = setup();
+	it("moves any other foreground command that reaches the threshold to the background and says so", async () => {
+		const { tool, ctx, jobs } = setup({ backgroundAfterSeconds: 1 });
 		try {
-			const result = await tool.execute(
-				"t1",
-				{ command: "echo before; sleep 30", timeout: 1 },
-				undefined,
-				undefined,
-				ctx,
-			);
+			const result = await tool.execute("t1", { command: "echo before; sleep 30" }, undefined, undefined, ctx);
 			const job = jobs.jobs.get("bash-1")!;
 			expect(processAlive(job.pid)).toBe(true);
 			expect(result.isError).toBeUndefined();
 			expect(result.content[0].text).toMatch(
 				new RegExp(
-					`^before\\n\\nDid not finish within 1s; moved to the background as bash-1 \\(pid ${job.pid}\\)[^\\n]*\\nLog: .*bash-1-\\d+\\.log\\nCheck: tail -n 40 .*\\nStop: kill -- -${job.pid}$`,
+					`^before\\n\\nDid not finish within 1s; moved to the background as bash-1 \\(pid ${job.pid}\\)[^\\n]*\\nLog: .*bash-1-\\d+\\.log\\nCheck: tail -n 40 .*\\nStop: kill -- -${job.pid}\\n\\n\\(foreground commands move to the background after the configured threshold; pass a timeout [^\\n]*\\)$`,
 				),
 			);
 			expect(result.details).toMatchObject({ job: "bash-1", pid: job.pid, log: job.log, moved: true });
@@ -288,15 +287,9 @@ describe("bash tool", () => {
 	});
 
 	it("names the moved spill file when a command that moved to the background had printed a lot", async () => {
-		const { tool, ctx, jobs } = setup();
+		const { tool, ctx, jobs } = setup({ backgroundAfterSeconds: 1 });
 		try {
-			const result = await tool.execute(
-				"t1",
-				{ command: "seq 1 5000; sleep 30", timeout: 1 },
-				undefined,
-				undefined,
-				ctx,
-			);
+			const result = await tool.execute("t1", { command: "seq 1 5000; sleep 30" }, undefined, undefined, ctx);
 			const spill = result.details.fullOutputPath as string;
 			expect(path.dirname(spill)).toBe(jobs.logDir());
 			expect(result.content[0].text).toContain(`Output so far, in full: ${spill}`);

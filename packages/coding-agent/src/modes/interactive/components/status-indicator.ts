@@ -15,8 +15,8 @@ import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { hintText, keyText, rawKeyHint } from "./keybinding-hints.ts";
-import { styledLine } from "./styled-line.ts";
+import { hintText, keyText, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
+import { styledLine } from "../../../../../common/src/sanitize.ts";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
 const SHIMMER_MAX_CHARS = 120;

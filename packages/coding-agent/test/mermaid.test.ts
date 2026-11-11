@@ -1,6 +1,8 @@
+import { Marked } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { MarkdownTransformContext } from "../src/core/features/types.ts";
 import type { MermaidRenderingMode } from "../src/core/settings-manager.ts";
+import { createMarkdownTransform } from "../src/modes/interactive/components/markdown-transform.ts";
 import { createMermaidMarkdownTransformer } from "../src/modes/interactive/components/mermaid.ts";
 import type { Theme } from "../src/theme/theme.ts";
 
@@ -11,6 +13,19 @@ interface TransformOptions {
 	mode?: MermaidRenderingMode;
 	theme?: Theme;
 }
+
+/** Real SGR colour codes per theme colour, so a sanitize in the pipeline would strip them. */
+const SGR: Record<string, string> = {
+	borderMuted: "\u001b[38;5;240m",
+	text: "\u001b[38;5;252m",
+	accent: "\u001b[38;5;39m",
+	muted: "\u001b[38;5;245m",
+	warning: "\u001b[38;5;214m",
+};
+const ansiTheme = {
+	fg: (color: string, text: string) => `${SGR[color] ?? ""}${text}\u001b[39m`,
+	bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+} as Theme;
 
 function transformMermaid(markdown: string, options: TransformOptions = {}): string {
 	const transformer = createMermaidMarkdownTransformer({
@@ -46,14 +61,10 @@ describe("Mermaid rendering", () => {
 	});
 
 	it("maps semantic spans through the Octocode theme", () => {
-		const theme = {
-			fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
-			bold: (text: string) => `<bold>${text}</bold>`,
-		} as Theme;
-		const rendered = transformMermaid("```mermaid\nflowchart LR\n  A --> B\n```", { theme });
+		const rendered = transformMermaid("```mermaid\nflowchart LR\n  A --> B\n```", { theme: ansiTheme });
 
-		expect(rendered).toContain("<borderMuted>");
-		expect(rendered).toContain("<accent>");
+		expect(rendered).toContain(SGR.borderMuted);
+		expect(rendered).toContain(SGR.accent);
 	});
 
 	it("renders incomplete Mermaid blocks during streaming", () => {
@@ -104,5 +115,88 @@ describe("Mermaid rendering", () => {
 		expect(transformMermaid(markdown, { mode: "final", isStreaming: true })).toBe(markdown);
 		expect(transformMermaid(markdown, { mode: "final" })).not.toContain("```mermaid");
 		expect(transformMermaid(markdown, { messageType: "assistant-thinking" })).toBe(markdown);
+	});
+
+	it("returns Markdown without a Mermaid fence as it came, as lexing it did", () => {
+		const lexed = (markdown: string) =>
+			new Marked()
+				.lexer(markdown)
+				.map((token) => token.raw)
+				.join("");
+		const samples = [
+			"",
+			"plain text",
+			"# Title\n\nA paragraph with `code` and **bold**.\n\n- one\n  - two\n1. three\n",
+			"```ts\nconst mermaid = 1;\n```\n\n~~~\nmermaid in the body\n~~~\n",
+			"> quote\nlazy\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n    indented\n---\ntext\n===\n",
+			"```\nunterminated",
+		];
+		for (const markdown of samples) {
+			expect(lexed(markdown)).toBe(markdown);
+			expect(transformMermaid(markdown, { isStreaming: true })).toBe(markdown);
+			expect(transformMermaid(markdown)).toBe(markdown);
+		}
+	});
+
+	it("renders every fence form that names Mermaid", () => {
+		for (const markdown of [
+			"~~~mermaid\nflowchart LR\n  A --> B\n~~~",
+			"   ```Mermaid title\nflowchart LR\n  A --> B\n```",
+			"text\n\n````MERMAID\nflowchart LR\n  A --> B\n````\n",
+		]) {
+			expect(transformMermaid(markdown)).toContain("───▶");
+		}
+	});
+
+	it("draws the same diagram the same way on every streamed chunk", () => {
+		const diagram = "```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n";
+		const first = transformMermaid(`${diagram}one`, { isStreaming: true });
+		const second = transformMermaid(`${diagram}one two`, { isStreaming: true });
+		expect(first).toContain("│ Start ├───▶│ Done │");
+		expect(second).toBe(`${first} two`);
+	});
+});
+
+describe("Markdown transform", () => {
+	it("sanitizes the text once when no transformer changes it", () => {
+		const transform = createMarkdownTransform("assistant", true, [(markdown) => markdown]);
+		expect(transform("plain \u001b]0;title\u0007text\r\nnext", 80)).toBe("plain text\nnext");
+	});
+
+	it("sanitizes what a transformer adds", () => {
+		const transform = createMarkdownTransform("assistant", false, [(markdown) => `${markdown}\u001b[31mred\u202e`]);
+		expect(transform("a\r\n", 80)).toBe("a\nred");
+	});
+
+	it("keeps the Mermaid colours and strips what an extension transformer injects", () => {
+		const mermaid = createMermaidMarkdownTransformer({ getMode: () => "streaming", theme: ansiTheme });
+		const seen: string[] = [];
+		const extension = (markdown: string) => {
+			seen.push(markdown);
+			return `${markdown}\n\u001b[31minjected\u001b[0m`;
+		};
+		const transform = createMarkdownTransform("assistant", false, [mermaid, extension]);
+		const rendered = transform(
+			"\u001b[32mintro\u001b[0m\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n",
+			100,
+		);
+
+		expect(rendered).toContain(SGR.borderMuted);
+		expect(rendered).toContain(SGR.accent);
+		expect(rendered).toContain("Start");
+		expect(rendered).toContain("injected");
+		expect(rendered).not.toContain("\u001b[31m");
+		expect(rendered).not.toContain("\u001b[32m");
+		expect(rendered).not.toContain("```mermaid");
+		// The extension runs before the diagram is drawn: it sees the sanitized fence, not the art.
+		expect(seen).toEqual(["intro\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n"]);
+	});
+
+	it("keeps the warning colour of a diagram that cannot be drawn", () => {
+		const mermaid = createMermaidMarkdownTransformer({ getMode: () => "final", theme: ansiTheme });
+		const transform = createMarkdownTransform("assistant", false, [mermaid]);
+		const rendered = transform("```mermaid\nflowchart LR\n  A[Foo] invalid\n```", 100);
+
+		expect(rendered).toContain(`${SGR.warning}Mermaid diagram not rendered`);
 	});
 });

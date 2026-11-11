@@ -1,4 +1,4 @@
-import { fixtureBacklog } from "./backlog-fixture.ts";
+import { backlogToolName, fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -66,7 +66,9 @@ function setup(options: { isSubagent?: boolean; agentId?: string; parentSession?
 	fs.mkdirSync(cwd, { recursive: true });
 	const tool = fake.tools.get("backlog");
 	const call = (params: Record<string, unknown>) =>
-		tool.execute("id", params, undefined, undefined, fakeCtx({ cwd })) as Promise<{
+		fake.tools
+			.get(backlogToolName(params.op))
+			.execute("id", params, undefined, undefined, fakeCtx({ cwd })) as Promise<{
 			content: Array<{ text: string }>;
 		}>;
 	const text = async (params: Record<string, unknown>) => (await call(params)).content[0].text;
@@ -114,9 +116,11 @@ describe("write rules live in the store", () => {
 			COMPLETION_GUIDANCE,
 		);
 		const t = setup();
-		// The guideline leaves the completion fields to the description ("done needs completion") and the schema's `required`.
+		// The guideline leaves the completion fields to the `done` operation, its field ("done: the result") and the schema's `required`.
 		expect(t.tool.promptGuidelines.join("\n")).not.toContain(COMPLETION_GUIDANCE);
-		expect(t.tool.description).toContain("done needs completion");
+		expect(t.tool.description).not.toMatch(/needs completion|needs why/);
+		expect(t.tool.parameters.properties.op.enum).toContain("done");
+		expect(t.tool.parameters.properties.completion.description).toBe("done: the result");
 		expect(t.tool.parameters.properties.completion.required).toEqual(["summary", "verification"]);
 		// A child's guideline names the one item it may update, sends follow-ups to its report and leaves the fields to the schema and the store error.
 		const child = setup({ isSubagent: true, parentSession: "p" }).tool;
@@ -133,8 +137,8 @@ describe("write rules live in the store", () => {
 		expect(doItPrompt(item, store)).toContain(COMPLETION_GUIDANCE);
 		expect(delegatePrompt(item, store)).toContain(COMPLETION_GUIDANCE);
 		// The tool's own error (its store is the cwd repository's) is the same text.
-		await t.text({ op: "add", ...READY, title: "tool task", state: "todo" });
-		await expect(t.call({ op: "update", id: "B1", state: "done" })).rejects.toThrow(COMPLETION_GUIDANCE);
+		await t.text({ op: "add", items: [{ ...READY, title: "tool task", state: "todo" }] });
+		await expect(t.call({ op: "done", id: "B1" })).rejects.toThrow(COMPLETION_GUIDANCE);
 	});
 
 	it("refuses a subagent whose parent session is unknown, naming the missing owner", async () => {
@@ -146,14 +150,14 @@ describe("write rules live in the store", () => {
 
 	it("binds the tool's actor to the item named in the environment", async () => {
 		const parent = setup();
-		await parent.text({ op: "add", ...READY, title: "one", state: "todo" });
-		await parent.text({ op: "add", ...READY, title: "two", state: "todo" });
+		await parent.text({ op: "add", items: [{ ...READY, title: "one", state: "todo" }] });
+		await parent.text({ op: "add", items: [{ ...READY, title: "two", state: "todo" }] });
 		const store = openBacklog(fakeCtx({ cwd: parent.cwd }), { isSubagent: false }).store;
 		store.update("B1", { state: "ongoing" }, { id: "parent-session" });
 		store.update("B2", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session", item: "B2" });
-		await expect(sub.call({ op: "update", id: "B1", note: "x" })).rejects.toThrow(/B1 is not your item/);
-		expect(await sub.text({ op: "update", id: "B2", note: "x" })).toBe("Updated B2 [ongoing p2] two (coordinator)");
+		await expect(sub.call({ op: "note", id: "B1", note: "x" })).rejects.toThrow(/B1 is not your item/);
+		expect(await sub.text({ op: "note", id: "B2", note: "x" })).toBe("Updated B2 [ongoing p2] two (coordinator)");
 	});
 });
 

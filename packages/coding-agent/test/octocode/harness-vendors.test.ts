@@ -84,7 +84,7 @@ describe("harness vendors", () => {
 		expect(on.config.PreToolUse.flatMap((group) => group.hooks)).toHaveLength(1);
 		expect(on.switchedOff).toBe(0);
 		const report = (switchedOff: number) =>
-			hooksReport(true, off.config, off.errors, w.cwd, w.home, undefined, switchedOff);
+			hooksReport("all", off.config, off.errors, w.cwd, w.home, undefined, switchedOff);
 		expect(report(off.switchedOff)).toContain("1 hook off: harness switched off, /harness to enable");
 		expect(report(0)).not.toContain("harness switched off");
 	});
@@ -97,10 +97,10 @@ describe("harness vendors", () => {
 		);
 		const loaded = loadHooks(w.cwd, true, w.home, { toggles: { "harness:claude": true } });
 		expect(loaded.errors).toEqual([]);
-		expect(hooksReport(true, loaded.config, loaded.errors, w.cwd, w.home)).toContain(
-			"  SubagentStart hooks run only in subagents whose profile sets hooks: true; other subagents skip them",
+		expect(hooksReport("all", loaded.config, loaded.errors, w.cwd, w.home)).toContain(
+			"  SubagentStart hooks run only in subagents whose hook mode is all (profile hooks: true, or the task's hooks field); other subagents skip them",
 		);
-		expect(hooksReport(true, loadHooks(w.cwd, true, w.home, { toggles: {} }).config, [], w.cwd, w.home)).not.toContain(
+		expect(hooksReport("all", loadHooks(w.cwd, true, w.home, { toggles: {} }).config, [], w.cwd, w.home)).not.toContain(
 			"run only in subagents",
 		);
 	});
@@ -157,6 +157,42 @@ describe("harness vendors", () => {
 		expect(entry.path).toBe(file);
 		expect(entry.content).toContain("Claude Code's auto memory");
 		expect(entry.content).toContain("remember this");
+		// The whole file fits: nothing says it was cut.
+		expect(entry.content).not.toContain("Cut:");
+	});
+
+	it("says in the memory header when MEMORY.md was cut, and names the file", () => {
+		const w = workspace();
+		const dir = claudeMemoryDir(w.input()).dir;
+		const load = () =>
+			loadProjectContextFiles({
+				cwd: w.cwd,
+				agentDir: w.agentDir,
+				contextRoot: w.cwd,
+				projectTrusted: true,
+				toggles: { "harness:claude:memory": true },
+				home: w.home,
+				env: {},
+			})[0];
+		const header = (content: string) => content.slice(0, content.indexOf("\n\n"));
+		// 300 lines: the first 200 are loaded, and the header names the file that holds the rest.
+		const lines = Array.from({ length: 300 }, (_, index) => `- note ${index + 1}`);
+		const file = write(path.join(dir, "MEMORY.md"), `${lines.join("\n")}\n`);
+		const long = load();
+		expect(header(long.content)).toContain(`Cut: only its first 200 lines or 25 KB follow; read ${file} for the rest.`);
+		expect(long.content).toContain("- note 200");
+		expect(long.content).not.toContain("- note 201");
+		// Exactly 200 lines, with or without a final newline, is whole.
+		for (const tail of ["\n", ""]) {
+			write(path.join(dir, "MEMORY.md"), `${lines.slice(0, 200).join("\n")}${tail}`);
+			expect(load().content).not.toContain("Cut:");
+			expect(load().content).toContain("- note 200");
+		}
+		// Few lines but more than 25 KB: cut by size, and said so.
+		write(path.join(dir, "MEMORY.md"), `${"é".repeat(20_000)}\nlast line\n`);
+		const wide = load();
+		expect(header(wide.content)).toContain(`read ${file} for the rest.`);
+		expect(wide.content).not.toContain("last line");
 	});
 
 	it("settles a skill name across harnesses: Octocode, then .agents, then Pi, then Claude Code", () => {

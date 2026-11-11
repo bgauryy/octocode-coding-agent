@@ -131,10 +131,11 @@ export async function applySweep(
 	}
 	const changed =
 		result.removed.length + result.forgotten.length + result.expired.transcripts + result.expired.events > 0;
-	// Release the space the deletes freed; a busy database is skipped (`busy`), not an error.
+	// Copy what the WAL holds into the database file and truncate it when nothing is in the way. It never waits: another
+	// connection's reader or writer leaves the rest for a later checkpoint (`busy`), instead of holding this thread.
 	if (changed) {
 		try {
-			maintenance.checkpoint(index.agent.db);
+			maintenance.checkpoint(index.agent.db, 0);
 		} catch (error) {
 			result.failed.push({ path: "agent database", error: errorMessage(error) });
 		}

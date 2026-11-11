@@ -1,9 +1,10 @@
 import { Key, type KeyId } from "@octocodeai/octocode-tui";
 import { type TSchemaOptions, Type } from "typebox";
+import { escapeRegExp } from "../../../common/src/regexp.ts";
 
 const modifiers = ["ctrl", "shift", "alt", "super"] as const;
 const baseKeyPattern = `(?:[a-z0-9]|${Object.values(Key)
-	.flatMap((value) => (typeof value === "string" ? [value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")] : []))
+	.flatMap((value) => (typeof value === "string" ? [escapeRegExp(value)] : []))
 	.join("|")})`;
 const duplicateModifierPattern = modifiers.map((modifier) => `${modifier}\\+.*${modifier}\\+`).join("|");
 

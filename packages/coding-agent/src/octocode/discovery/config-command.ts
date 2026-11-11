@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
+import { getMcpSessionStatus } from "../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { collectContextView } from "../../core/discovery/context-snapshot.ts";
 import { formatContextText } from "../../core/discovery/context-text.ts";

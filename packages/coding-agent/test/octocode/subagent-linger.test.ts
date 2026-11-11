@@ -44,7 +44,7 @@ function setup(
 	const f = fakeHost();
 	const team = new Team(f.api);
 	const permission = fakePermission(mode);
-	const control = registerAgentTool(f.api, () => profiles, team, permission);
+	const control = registerAgentTool(f.api, { profiles: () => profiles, team, permission });
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
@@ -179,6 +179,8 @@ describe("a profile's linger seconds", () => {
 			const id = await t.start("linger watched", { profile: "watcher" });
 			await t.control.settle();
 			expect(t.reports()[0]).toContain(`${id} stays reachable for 900 s`);
+			// The line names what the run used, so continuing it is weighed against that.
+			expect(t.reports()[0]).toMatch(/ends that\. This run made \d+ model requests? \(≈\$0\.\d\d\) so far\.$/m);
 			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
 			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your coordinator [\s\S]*linger follow-up/);

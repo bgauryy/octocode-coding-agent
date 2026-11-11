@@ -167,7 +167,14 @@ describe("skill tool", () => {
 		expect(result.details).toMatchObject({ location: path.join(f.alpha, "SKILL.md"), baseDir: f.alpha });
 		fs.unlinkSync(path.join(f.alpha, "SKILL.md"));
 		fs.symlinkSync(f.secret, path.join(f.alpha, "SKILL.md"));
-		await expect(call("alpha")).rejects.toThrow("Child skill canonical identity changed");
+		// The catalog's snapshot is validated once per loaded skill list; the file the tool reads is checked when read.
+		await expect(call("alpha")).rejects.toThrow(
+			'Skill "alpha" could not be read: its file now resolves to another path',
+		);
+		// A reload (a new skill list) validates every file again.
+		expect(() => captureSkillResourceSnapshot({ ...loaded, skills: [...loaded.skills] })).toThrow(
+			"Child skill canonical identity changed",
+		);
 	});
 
 	describe("rendering", () => {

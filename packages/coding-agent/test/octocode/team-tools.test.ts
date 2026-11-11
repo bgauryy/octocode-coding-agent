@@ -35,7 +35,7 @@ function member(dbFile: string, cwd: string) {
 	registerActivity(fake.api, { workingLine: false, onChange: (line) => team.setActivity(line) });
 	agentsCommand(
 		fake.api,
-		registerAgentTool(fake.api, () => new Map(), team, fakePermission()),
+		registerAgentTool(fake.api, { profiles: () => new Map(), team, permission: fakePermission() }),
 	);
 	const ctx = fakeCtx({ cwd });
 	// The reservation gate as index.ts runs it in the tool-call pipeline.
@@ -520,7 +520,7 @@ describe("team tools on a fake Octocode", () => {
 		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		agentsCommand(
 			fake.api,
-			registerAgentTool(fake.api, () => new Map(), team, fakePermission()),
+			registerAgentTool(fake.api, { profiles: () => new Map(), team, permission: fakePermission() }),
 		);
 		vi.spyOn(team, "snapshot").mockReturnValue({ members: [], traffic: [], error: "schema v99 is newer" });
 		const ctx = fakeCtx({ cwd: tmp() });

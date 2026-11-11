@@ -78,7 +78,7 @@ describe("orderToolNames", () => {
 
 	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
 		const invariant = ["bash", "file", "web", "mcp"];
-		const variant = ["backlog", "steps", "archive", "askUser", "agent", "skill", "models", "compact"];
+		const variant = ["backlog", "backlogPlan", "archive", "memory", "askUser", "agent", "skill", "models", "compact"];
 		const octocode = research;
 		const arrivals = [
 			[...variant, ...invariant, ...octocode, "mcp__a__x"],

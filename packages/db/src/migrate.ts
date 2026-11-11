@@ -3,13 +3,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { readableFromFor, type SchemaPlan } from "./migrations.ts";
 import * as schemaVersion from "./queries/schema-version.ts";
 import { AgentDbError, createSchema, schemaState } from "./schema.ts";
+import { isBusy } from "./sqlite.ts";
 
 type Transaction = <T>(fn: () => T) => T;
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-/** SQLITE_BUSY and its extended codes: another connection is in the way, so a later open can succeed. */
-const isBusy = (error: unknown) => ((error as { errcode?: number } | null)?.errcode ?? 0) % 256 === 5;
 
 /** The `user_version` in a database file's header (big-endian, at byte 60), read without opening a connection on it. */
 function fileVersion(file: string): number {

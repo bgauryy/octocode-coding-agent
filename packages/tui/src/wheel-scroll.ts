@@ -9,6 +9,12 @@ const GESTURE_GAP_MS = 200;
 // Average event gap that maps to one line per event. Faster events scale up proportionally.
 const REFERENCE_GAP_MS = 100;
 const MAX_AUTO_LINES = 6;
+// On a terminal that already sends one event per accelerated line, a hard flick still arrives as a long run of events
+// a few milliseconds apart, and at one line each the view trails the hand. A run this dense and this long moves two
+// lines per event, a longer one three. Slow and medium scrolling never reaches it and stays one line per event.
+const FLICK_GAP_MS = 8;
+const FLICK_RUN_FOR_TWO = 8;
+const FLICK_RUN_FOR_THREE = 24;
 
 /**
  * Local macOS terminals receive wheel and trackpad deltas that the OS has already accelerated,
@@ -39,6 +45,7 @@ export class WheelScrollAccelerator {
 	private lastDirection = 0;
 	private averageGap: number | undefined;
 	private carry = 0;
+	private flickRun = 0;
 
 	constructor(lines: WheelScrollLines = "auto", accelerate = !terminalAcceleratesWheel()) {
 		this.lines = lines;
@@ -53,7 +60,7 @@ export class WheelScrollAccelerator {
 	/** Return the positive line count for a wheel event in `direction` at time `now` (milliseconds). */
 	next(direction: -1 | 1, now: number): number {
 		if (this.lines !== "auto") return Number.isFinite(this.lines) ? Math.max(1, Math.floor(this.lines)) : 1;
-		if (!this.accelerate) return 1;
+		if (!this.accelerate) return this.flick(direction, now);
 
 		const gap = now - this.lastTime;
 		const sameGesture = direction === this.lastDirection && gap <= GESTURE_GAP_MS;
@@ -73,7 +80,18 @@ export class WheelScrollAccelerator {
 		return whole;
 	}
 
+	/** Lines for an event on a terminal that accelerates wheels itself: one, or more inside a long dense run. */
+	private flick(direction: -1 | 1, now: number): number {
+		const gap = now - this.lastTime;
+		const dense = direction === this.lastDirection && gap <= FLICK_GAP_MS;
+		this.lastTime = now;
+		this.lastDirection = direction;
+		this.flickRun = dense ? this.flickRun + 1 : 0;
+		return this.flickRun >= FLICK_RUN_FOR_THREE ? 3 : this.flickRun >= FLICK_RUN_FOR_TWO ? 2 : 1;
+	}
+
 	private reset(): void {
+		this.flickRun = 0;
 		this.lastTime = Number.NEGATIVE_INFINITY;
 		this.lastDirection = 0;
 		this.averageGap = undefined;

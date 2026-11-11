@@ -6,7 +6,7 @@
 import { effectivePlugins } from "../../core/extensibility/toggles.ts";
 import { loadConfiguredPluginMcp } from "../../core/plugin-mcp.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import type { McpHostPorts } from "../../../../mcp/src/host.ts";
+import type { McpHostPorts } from "../../../../mcp/src/api.ts";
 
 export const plugins: McpHostPorts["plugins"] = {
 	servers({ cwd, agentDir, projectTrusted }) {

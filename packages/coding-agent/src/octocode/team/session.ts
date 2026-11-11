@@ -97,7 +97,6 @@ export class Team extends TeamState {
 	/** Leave and let go of the database (session end; the process connection stays open for the next session). */
 	stop(): void {
 		try {
-			this.childLeases.stop();
 			this.leave();
 		} finally {
 			this.stopParentWatch?.();

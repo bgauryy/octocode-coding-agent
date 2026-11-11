@@ -18,7 +18,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-// #9490: identify legacy WSL launchers under the actual Windows directory.
+// Identify legacy WSL launchers under the actual Windows directory.
 describe("legacy WSL bash detection", () => {
 	it.each([
 		["D:\\WinNT\\", "d:/WINNT/System32/BASH.EXE", true],

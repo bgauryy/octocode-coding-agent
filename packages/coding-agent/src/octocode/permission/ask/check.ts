@@ -306,18 +306,24 @@ export async function checkPermission(
 						});
 					}
 				}
-				return completeAllowed({ allowed: true, via: "hook", lasts: "call" }, answer.updatedPermissions);
+				// The per-call tripwires (a provenance hit, a hook ask) need a person even when a permission hook allows: the
+				// dialog or refusal follows. A source ask is the hook's to answer.
+				const tripwire = forcingReasons(host.mode(), request).some(
+					(each) => each === "provenance" || each === "hook.ask",
+				);
+				if (!tripwire) return completeAllowed({ allowed: true, via: "hook", lasts: "call" }, answer.updatedPermissions);
+			} else {
+				const result = decided(
+					{
+						allowed: false,
+						via: "hook",
+						message: deniedMessage(request, host.mode(), answer.message),
+					},
+					answer.message,
+				);
+				if (answer.interrupt) ctx.abort?.("internal");
+				return result;
 			}
-			const result = decided(
-				{
-					allowed: false,
-					via: "hook",
-					message: deniedMessage(request, host.mode(), answer.message),
-				},
-				answer.message,
-			);
-			if (answer.interrupt) ctx.abort?.("internal");
-			return result;
 		}
 	}
 	const refused = remembered();

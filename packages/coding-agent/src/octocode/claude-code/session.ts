@@ -5,13 +5,13 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ExternalReply } from "@octocodeai/octocode-contracts/external";
 import type { AcpBackend, AcpTurnUpdate } from "../../../../acp/src/client/client.ts";
 import { authRequiredIn } from "../../../../acp/src/client/auth.ts";
-import type { CallToolResult } from "../../../../mcp/src/client/protocol/content.ts";
 import {
+	type CallToolResult,
 	type ServedCall,
 	type ServedTool,
 	serveTools,
 	type ToolServer,
-} from "../../../../mcp/src/server/tool-server.ts";
+} from "../../../../mcp/src/api.ts";
 import { VERSION } from "../../config.ts";
 import { adapterEnv, type ClaudeCodeLaunch, connectClaudeCode, sessionMeta } from "./launch.ts";
 import { CLAUDE_CODE_RUNNER, TOOL_SERVER } from "./models.ts";

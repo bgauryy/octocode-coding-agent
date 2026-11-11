@@ -1,6 +1,6 @@
 import { type Component, MouseRegion, Text, type TuiMouseEvent } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
 export const RESPONSE_FOLD_THRESHOLD = 120;
 export const RESPONSE_HEAD_LINES = 40;

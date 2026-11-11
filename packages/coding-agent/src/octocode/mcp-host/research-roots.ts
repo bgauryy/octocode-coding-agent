@@ -15,7 +15,7 @@ import { CONFIG_DIR_NAME, getAgentDir, getOctocodeHome } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { isUnderPath, normalizePath } from "../../../../common/src/paths.ts";
 import { stripBom } from "../../../../common/src/text.ts";
-import type { McpResearchRoots } from "../../../../mcp/src/host.ts";
+import type { McpResearchRoots } from "../../../../mcp/src/api.ts";
 
 /** Credential stores under the home folder: a root may not be, contain or lie inside one. */
 const CREDENTIAL_STORES = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".azure", ".kube", ".docker"];

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { registerReadDedupe } from "../../src/octocode/files/dedupe.ts";
 import { fencedBody } from "../../src/octocode/shared/fence.ts";
 import { requestMessages } from "../../src/octocode/compaction/thinking.ts";
-import { fenceUntrustedResults } from "../../src/octocode/shared/untrusted-results.ts";
+import { fenceUntrustedResults } from "../../src/octocode/compaction/untrusted-results.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY, useResearchRoles } from "./fake-research-roles.ts";
 

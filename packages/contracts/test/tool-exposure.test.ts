@@ -1,0 +1,73 @@
+import { Value } from "typebox/value";
+import { describe, expect, it } from "vitest";
+import { ToolExposureListSchema, ToolPinCommandSchema, type ToolExposureList } from "../src/config.ts";
+import { DAEMON_ROUTES } from "../src/protocol.ts";
+
+const list: ToolExposureList = {
+	setting: "recent",
+	live: true,
+	groups: [
+		{
+			kind: "native",
+			name: "native",
+			pinnable: true,
+			tools: [
+				{ name: "web", pin: "deferred", state: "deferred", decidedBy: "pin" },
+				{ name: "bash", state: "direct", decidedBy: "core" },
+			],
+		},
+		{
+			kind: "mcp",
+			name: "docs",
+			pinnable: true,
+			note: "Not connected in the running session, so only pinned tools are listed.",
+			tools: [{ name: "search", pin: "hidden", state: "hidden", decidedBy: "pin" }],
+		},
+	],
+	workspace: { trusted: true },
+};
+
+describe("tool exposure contract", () => {
+	it("accepts the read model and refuses a state, a reason or a field it does not know", () => {
+		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
+		const withRow = (row: unknown) => ({ ...list, groups: [{ ...list.groups[0], tools: [row] }] });
+		expect(Value.Check(ToolExposureListSchema, withRow({ name: "web", state: "full", decidedBy: "pin" }))).toBe(false);
+		expect(Value.Check(ToolExposureListSchema, withRow({ name: "web", state: "direct", decidedBy: "luck" }))).toBe(
+			false,
+		);
+		expect(Value.Check(ToolExposureListSchema, withRow({ name: "a\nb", state: "direct", decidedBy: "pin" }))).toBe(
+			false,
+		);
+		expect(Value.Check(ToolExposureListSchema, { ...list, schema: {} })).toBe(false);
+	});
+
+	it("accepts a pin and an unpin of one MCP tool or one deferrable native tool", () => {
+		for (const command of [
+			{ kind: "mcp", server: "docs", tool: "search", pin: "hidden", scope: "global" },
+			{ kind: "mcp", server: "docs", tool: "search", pin: null, scope: "workspace", repoId: "session" },
+			{ kind: "native", tool: "web", pin: "deferred", scope: "global" },
+			{ kind: "native", tool: "backlogPlan", pin: null, scope: "global" },
+		])
+			expect(Value.Check(ToolPinCommandSchema, command), JSON.stringify(command)).toBe(true);
+	});
+
+	it("refuses a pattern, a core native tool, hiding a native tool, a path and extra fields", () => {
+		for (const command of [
+			{ kind: "mcp", server: "docs", tool: "*", pin: "hidden", scope: "global" },
+			{ kind: "mcp", server: "docs", tool: "sea*", pin: "direct", scope: "global" },
+			{ kind: "mcp", server: "docs", tool: "a\nb", pin: "direct", scope: "global" },
+			{ kind: "mcp", tool: "search", pin: "direct", scope: "global" },
+			{ kind: "native", tool: "bash", pin: "deferred", scope: "global" },
+			{ kind: "native", tool: "web", pin: "hidden", scope: "global" },
+			{ kind: "native", tool: "web", pin: "direct", scope: "project" },
+			{ kind: "native", tool: "web", pin: "direct", scope: "workspace", repoId: "../etc" },
+			{ kind: "native", tool: "web", pin: "direct", scope: "global", path: "/tmp/settings.json" },
+			{ kind: "native", tool: "web", scope: "global" },
+		])
+			expect(Value.Check(ToolPinCommandSchema, command), JSON.stringify(command)).toBe(false);
+	});
+
+	it("keeps the route under the launch-only admin prefix", () => {
+		expect(DAEMON_ROUTES.configTools.startsWith("/api/admin/")).toBe(true);
+	});
+});

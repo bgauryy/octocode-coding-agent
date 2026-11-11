@@ -1,0 +1,1 @@
+The compaction was not committed because it would free nothing: its summary (about {{summary}} tokens) is not smaller than the earlier summary and messages it replaces (about {{replaced}} tokens). The context is mostly the recent messages a compaction keeps.

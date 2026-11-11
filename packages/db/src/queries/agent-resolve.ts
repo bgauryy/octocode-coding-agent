@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
-import { type AgentRun, decode, openForItems } from "./agent-runs.ts";
+import { type AgentRun, latest, openForItems } from "./agent-runs.ts";
 
 /** A backlog item as an agent is linked to it: where it lives, its number and how to write it from the caller's workspace. */
 export interface ItemLinkRef {
@@ -138,10 +138,7 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 	const agentId = liveName(db, wanted, item) ?? pastName(db, wanted, item);
 	if (!agentId) return undefined;
 	const live = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
-	const latest = db
-		.prepare("SELECT * FROM agent_runs WHERE agent_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1")
-		.get(agentId);
-	const run = latest ? decode(latest) : undefined;
+	const run = latest(db, agentId);
 	const session = text(live?.lifecycle_session_id) ?? text(live?.session_id) ?? run?.sessionId;
 	const backlog = run?.backlog ?? mainItem(db, run, session);
 	return {

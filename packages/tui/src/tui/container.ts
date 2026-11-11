@@ -2,13 +2,43 @@ import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type T
 import { activeLayoutRecorder } from "./layout-recorder.ts";
 import { renderIsolated } from "./render-isolation.ts";
 
+/** One painted frame of a container: its children, the array each returned, and their concatenation. */
+interface ContainerFrame {
+	width: number;
+	components: Component[];
+	arrays: string[][];
+	lines: string[];
+}
+
+/** Rows below which a row-by-row append beats an array copy; above it `concat` copies in bulk. */
+const BULK_ROWS = 1024;
+/** Arrays passed to one `concat` call, far below the engine's argument limit. */
+const CONCAT_BATCH = 4096;
+
+/** Append the rows of `arrays[from..]` (`rows` in total) to `head`, returning the result. */
+function appendRows(head: string[], arrays: string[][], from: number, rows: number): string[] {
+	if (rows < BULK_ROWS) {
+		for (let i = from; i < arrays.length; i++) {
+			const childLines = arrays[i];
+			for (let row = 0; row < childLines.length; row++) head.push(childLines[row]);
+		}
+		return head;
+	}
+	let lines = head;
+	for (let start = from; start < arrays.length; start += CONCAT_BATCH) {
+		lines = lines.concat(...arrays.slice(start, start + CONCAT_BATCH));
+	}
+	return lines;
+}
+
 /**
  * Container - a component that contains other components
  */
 export class Container implements Component {
 	children: Component[] = [];
-	private renderCache?: { width: number; components: Component[]; arrays: string[][]; lines: string[] };
-	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
+	private renderCache?: ContainerFrame;
+	/** The last painted frame; it outlives `invalidate` so a click lands where the rows were drawn. */
+	private mouseLayout?: ContainerFrame;
 
 	addChild(component: Component): void {
 		this.children.push(component);
@@ -34,12 +64,12 @@ export class Container implements Component {
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
 		if (event.y < 0 || event.y >= event.height) return undefined;
-		const mouseChildren =
-			this.mouseLayout?.width === event.width
-				? this.mouseLayout.children
-				: this.children.map((component) => ({ component, height: component.render(event.width).length }));
+		const painted = this.mouseLayout?.width === event.width ? this.mouseLayout : undefined;
+		const components = painted?.components ?? this.children;
 		let childY = 0;
-		for (const { component: child, height: childHeight } of mouseChildren) {
+		for (let i = 0; i < components.length; i++) {
+			const child = components[i];
+			const childHeight = painted ? painted.arrays[i].length : child.render(event.width).length;
 			if (event.y >= childY && event.y < childY + childHeight) {
 				// Keep the last painted positions until redraw, but never activate a detached child.
 				if (!this.children.includes(child)) return undefined;
@@ -59,17 +89,24 @@ export class Container implements Component {
 	/**
 	 * Concatenate the children's rows. When the width and every child's returned array are the same
 	 * references as last frame, the previous result is returned, so parents and the frame diff can
-	 * rely on identity. A child that returns a new array makes a new result.
+	 * rely on identity. A child that returns a new array makes a new result: the rows of the children
+	 * before the first changed one are copied from the previous result in one slice and the rest are
+	 * appended in bulk, so a changed tail costs array copies, not a row-by-row walk through every child.
+	 * Results are never mutated after they are returned.
 	 */
 	render(width: number): string[] {
-		const previous = this.renderCache;
+		const previous = this.renderCache?.width === width ? this.renderCache : undefined;
 		const children = this.children;
-		const arrays: string[][] = [];
-		let same = previous?.width === width && previous.components.length === children.length;
+		const count = children.length;
 		const layout = activeLayoutRecorder();
 		const base = layout?.base ?? 0;
+		// Allocated at the first child that differs from the previous frame; until then the arrays are the previous ones.
+		let arrays: string[][] | undefined = previous ? undefined : [];
+		let firstChanged = previous ? -1 : 0;
+		let keptRows = 0;
 		let offset = 0;
-		for (const [i, child] of children.entries()) {
+		for (let i = 0; i < count; i++) {
+			const child = children[i];
 			const leavesBefore = layout?.leaves.length ?? 0;
 			if (layout) layout.base = base + offset;
 			const childLines = renderIsolated(child, width);
@@ -79,20 +116,28 @@ export class Container implements Component {
 					layout.leaves.push({ component: child, start: base + offset, length: childLines.length });
 				layout.base = base;
 			}
+			if (arrays) arrays.push(childLines);
+			else if (previous && (previous.components[i] !== child || previous.arrays[i] !== childLines)) {
+				firstChanged = i;
+				keptRows = offset;
+				arrays = previous.arrays.slice(0, i);
+				arrays.push(childLines);
+			}
 			offset += childLines.length;
-			arrays.push(childLines);
-			if (same && (previous?.components[i] !== child || previous.arrays[i] !== childLines)) same = false;
 		}
-		if (same && previous) return previous.lines;
-		const lines: string[] = [];
-		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const [i, child] of children.entries()) {
-			const childLines = arrays[i] ?? [];
-			mouseChildren.push({ component: child, height: childLines.length });
-			for (const line of childLines) lines.push(line);
+		if (!arrays && previous) {
+			// Every child is unchanged; only children removed from the end can differ.
+			if (previous.components.length === count) return previous.lines;
+			firstChanged = count;
+			keptRows = offset;
+			arrays = previous.arrays.slice(0, count);
 		}
-		this.mouseLayout = { width, children: mouseChildren };
-		this.renderCache = { width, components: children.slice(), arrays, lines };
+		const kept = arrays ?? [];
+		const head = previous && keptRows > 0 ? previous.lines.slice(0, keptRows) : [];
+		const lines = appendRows(head, kept, Math.max(0, firstChanged), offset - keptRows);
+		const frame: ContainerFrame = { width, components: children.slice(), arrays: kept, lines };
+		this.renderCache = frame;
+		this.mouseLayout = frame;
 		return lines;
 	}
 }

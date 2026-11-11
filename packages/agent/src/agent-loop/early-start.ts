@@ -1,6 +1,7 @@
 import type { AssistantMessage, AssistantMessageEvent } from "@octocodeai/octocode-ai";
 import type { AgentContext, AgentLoopConfig, AgentToolCall, AgentToolResult, EarlyToolStart } from "../types.ts";
 import type { ToolUpdateSink } from "./events.ts";
+import { reportListenerErrorToStderr } from "../listener-errors.ts";
 import {
 	type DeferredToolCall,
 	type ExecutedToolCallOutcome,
@@ -89,8 +90,11 @@ export class EarlyToolCalls {
 		let forward: ((update: AgentToolResult<any>) => Promise<void>) | undefined;
 		const executed = preparation.then((prepared) =>
 			prepared.kind === "prepared"
-				? executePreparedToolCall(prepared, signal, (update) =>
-						forward ? forward(update) : void buffered.push(update),
+				? executePreparedToolCall(
+						prepared,
+						signal,
+						(update) => (forward ? forward(update) : void buffered.push(update)),
+						this.config.onListenerError,
 					)
 				: undefined,
 		);
@@ -106,7 +110,8 @@ export class EarlyToolCalls {
 					delivered = delivered
 						.then(() => sink(update))
 						.catch((error: unknown) => {
-							process.stderr.write(`Tool update listener error (${toolCall.name}): ${String(error)}\n`);
+							const report = this.config.onListenerError ?? reportListenerErrorToStderr;
+							report(`Tool update listener error (${toolCall.name}): ${String(error)}`, error);
 						});
 					return delivered;
 				};

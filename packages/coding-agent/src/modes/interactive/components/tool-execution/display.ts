@@ -1,4 +1,3 @@
-import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import {
 	knownToolDisplayBlock,
 	type Tone,
@@ -9,6 +8,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { buildToolDisplay } from "../../../../core/application/transcript-display.ts";
 import type { ToolDefinition, ToolRenderers } from "../../../../core/features/types.ts";
+import { displayText } from "../../../../octocode/render/display.ts";
 import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
 import { clip } from "../../../../octocode/shared/text.ts";
 import type { RenderContext } from "../../../../octocode/render/types.ts";
@@ -106,13 +106,11 @@ export function rowDisplay(input: {
 }): ToolDisplay {
 	if (input.live) return input.live;
 	const status = input.isPartial ? "running" : input.result?.isError ? "failed" : "completed";
-	const content = (input.result?.content ?? []) as AgentToolResult["content"];
-	const text = content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
 	return buildToolDisplay(input.definition?.display, {
 		toolName: input.toolName,
 		args: input.args,
 		result: input.result,
-		text,
+		text: displayText(input.result),
 		status,
 	});
 }

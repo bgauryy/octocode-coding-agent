@@ -83,7 +83,7 @@ export class SessionBoundaries {
 	/**
 	 * Persistently omit a failed attempt and its tool results from model context. The results are found in the
 	 * projected context, so the pair stays together whether the attempt comes from the current run or a resumed
-	 * session; an unpaired tool result fails the next request (#11227).
+	 * session; an unpaired tool result fails the next request.
 	 */
 	omitRecoveryAttempt(message: AssistantMessage): void {
 		const { session } = this.host;

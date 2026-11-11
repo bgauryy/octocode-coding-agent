@@ -56,7 +56,11 @@ export function concludeRun(end: Conclusion): { reject: Error } | { resolve: Sub
 		const last = finalText
 			? `\nLast progress: ${lastProgress.trim()}${pointer ? `\n${visibleControls(pointer)}` : ""}`
 			: "";
-		return { reject: new Error(`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${last}`) };
+		// The tool call it made last, so the parent can tell which work died: stderr is often only startup warnings.
+		const doing = state.lastActivity.startsWith("→")
+			? `\nLast tool call: ${visibleControls(redactSecrets(state.lastActivity))}${state.toolsRunning > 0 ? " (still running)" : ""}`
+			: "";
+		return { reject: new Error(`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${doing}${last}`) };
 	}
 	// A child that aborted itself (its compaction kept thrashing, say) says why in its last error notice. Error text from the
 	// child can quote a credential (a provider's 401 body), so it is redacted before it reaches the parent.

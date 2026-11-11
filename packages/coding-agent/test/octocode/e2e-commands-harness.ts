@@ -22,6 +22,8 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import "../../src/modes/interactive/mcp-ui-install.ts";
 import { createInteractiveModeHost } from "../../src/modes/interactive/interactive-mode/create-host.ts";
 import type { InteractiveModeHost } from "../../src/modes/interactive/interactive-mode/host.ts";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import { daemonRequest, findWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -288,6 +290,9 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		host.onInputCallback?.("");
 		host.stop();
 		await runtime.dispose();
+		// `/web` and `/remote` start the detached user-level daemon in this home: ask it to exit with the run.
+		const daemon = await findWebDaemon(process.env);
+		if (daemon) await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
 		for (const key of Object.keys(process.env)) delete process.env[key];
 		Object.assign(process.env, savedEnv);
 	};

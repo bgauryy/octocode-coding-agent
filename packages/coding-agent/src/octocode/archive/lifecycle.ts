@@ -25,9 +25,17 @@ export function registerArchiveLifecycle(
 	let unsubscribe: (() => void) | undefined;
 	let lastProblem: string | undefined;
 	let retry: ReturnType<typeof setTimeout> | undefined;
+	let queued: { timer: ReturnType<typeof setImmediate>; project: () => void } | undefined;
 	const stop = () => {
 		unsubscribe?.();
 		unsubscribe = undefined;
+		// A projection the last commits asked for runs now: the session is ending or being replaced.
+		const pending = queued;
+		queued = undefined;
+		if (pending) {
+			clearImmediate(pending.timer);
+			pending.project();
+		}
 		if (retry) clearTimeout(retry);
 		retry = undefined;
 	};
@@ -72,7 +80,17 @@ export function registerArchiveLifecycle(
 					report(ctx, error);
 				}
 			};
-			unsubscribe = agent.onCommit(project);
+			// The view is derived: a commit only asks for it. However many commits land in one turn of the event loop, one
+			// projection runs after it, off the committing caller's path, and skips when the newest event is already shown.
+			unsubscribe = agent.onCommit(() => {
+				queued ??= {
+					timer: setImmediate(() => {
+						queued = undefined;
+						project();
+					}),
+					project,
+				};
+			});
 			agent.transaction(() =>
 				agentEvents.append(agent.db, workspace.id, {
 					id,

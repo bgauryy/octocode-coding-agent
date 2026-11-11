@@ -4,7 +4,7 @@ import { canonicalizePath } from "../../../../common/src/paths.ts";
 import { HOOK_CATALOG, HOOK_EVENTS } from "../hooks/catalog.ts";
 import { hookFiles, hookLabel, loadHooks } from "../hooks/config.ts";
 import { hookSwitchedOn, hookToggleIds } from "../hooks/config/toggles.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import { clipText } from "../../../../common/src/clip.ts";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
@@ -80,7 +80,7 @@ function hookItems(
 		for (const group of config[event])
 			for (const hook of group.hooks) {
 				const host = hook.protocol ?? "octocode";
-				const source = tildePath(hook.source, home);
+				const source = homeTilde(hook.source, home);
 				const files =
 					byHost.get(host) ?? new Map<string, { project: boolean; label: string; hooks: InventoryItem[] }>();
 				byHost.set(host, files);
@@ -142,11 +142,11 @@ function hookItems(
 	const trusted = new Set(hookFiles(cwd, projectTrusted, home));
 	for (const file of hookFiles(cwd, true, home).filter((candidate) => !trusted.has(candidate)))
 		items.push({
-			id: `untrusted:${tildePath(file, home)}`,
+			id: `untrusted:${homeTilde(file, home)}`,
 			host: "octocode",
 			kind: "hook-file",
 			depth: 1,
-			label: tildePath(file, home),
+			label: homeTilde(file, home),
 			on: false,
 			detail: "project not trusted",
 			locked: "trust this project first (/trust)",
@@ -176,16 +176,16 @@ async function piSkillItems(input: DiscoverInput, cwd: string, home?: string): P
 		);
 		for (const skill of skills) {
 			const name = names.get(canonicalizePath(skill.path));
-			if (name === undefined || items.some((item) => item.id === `skill:${tildePath(skill.path, home)}`)) continue;
+			if (name === undefined || items.some((item) => item.id === `skill:${homeTilde(skill.path, home)}`)) continue;
 			items.push({
-				id: `skill:${tildePath(skill.path, home)}`,
+				id: `skill:${homeTilde(skill.path, home)}`,
 				name,
 				host: "skills",
 				kind: "skill",
 				depth: 0,
 				label: name,
 				on: skill.enabled,
-				detail: `Pi (global) · ${tildePath(skill.path, home)}`,
+				detail: `Pi (global) · ${homeTilde(skill.path, home)}`,
 				locked: "Pi's own settings decide this skill; switching the Pi harness (harness:pi) off drops every Pi skill.",
 			});
 		}
@@ -218,19 +218,19 @@ async function resourceItems(
 					subgroup.items.map((resource): InventoryItem =>
 						type === "skills"
 							? {
-									id: `skill:${tildePath(resource.path)}`,
+									id: `skill:${homeTilde(resource.path)}`,
 									name: resource.displayName,
 									host: "skills",
 									kind: "skill",
 									depth: 0,
 									label: resource.displayName,
 									on: resource.enabled,
-									detail: collectionSkillDetail(resource) ?? `${group.label} · ${tildePath(resource.path)}`,
+									detail: collectionSkillDetail(resource) ?? `${group.label} · ${homeTilde(resource.path)}`,
 									...(resource.metadata.scope === "project" ? { project: true as const } : {}),
 									resource,
 								}
 							: {
-									id: `extension:${tildePath(resource.path)}`,
+									id: `extension:${homeTilde(resource.path)}`,
 									host: group.origin === "package" ? "packages" : "octocode",
 									kind: "extension",
 									depth: 0,
@@ -282,7 +282,7 @@ function mcpItems(servers: readonly McpRowSource[], home?: string): InventoryIte
 			server.exposure,
 			server.scope === "default"
 				? "built in"
-				: `${server.scope === "extension" ? "plugin " : ""}${tildePath(server.source, home)}`,
+				: `${server.scope === "extension" ? "plugin " : ""}${homeTilde(server.source, home)}`,
 		]
 			.filter(Boolean)
 			.join(" · "),

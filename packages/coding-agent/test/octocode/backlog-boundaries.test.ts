@@ -1,4 +1,4 @@
-import { fixtureBacklog } from "./backlog-fixture.ts";
+import { backlogToolName, fixtureBacklog } from "./backlog-fixture.ts";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
@@ -9,6 +9,7 @@ import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
 
 afterEach(() => {
 	closeSharedAgentDb();
@@ -21,39 +22,48 @@ function setup() {
 	const fake = fakeHost();
 	const changed = vi.fn();
 	registerBacklogTool(fake.api, { isSubagent: false, env, changed });
+	registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed });
 	const tool = fake.tools.get("backlog");
 	const ctx = fakeCtx({ cwd });
 	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
-	const call = (params: Record<string, unknown>) => tool.execute("call", params, undefined, undefined, ctx);
-	return { tool, store, call, changed };
+	const call = (params: Record<string, unknown>) =>
+		fake.tools.get(backlogToolName(params.op)).execute("call", params, undefined, undefined, ctx);
+	return { tool, plan: fake.tools.get("backlogPlan"), store, call, changed };
 }
 
 describe("backlog input and retrieval boundaries", () => {
 	it("rejects misspelled fields in both the wire schema and direct execution", async () => {
-		const { tool, call, store, changed } = setup();
-		const params = { op: "add", title: "item", goal: "done", bogus: 1 };
-		expect(Value.Check(tool.parameters, params)).toBe(false);
-		await expect(call(params)).rejects.toThrow(/Unknown backlog fields: bogus/);
-		await expect(call({ op: "update", id: "B1", depends_on: ["B2"] })).rejects.toThrow(/depends_on/);
+		const { tool, plan, call, store, changed } = setup();
+		const params = { op: "add", items: [{ title: "item", goal: "done", bogus: 1 }] };
+		expect(Value.Check(plan.parameters, params)).toBe(false);
+		await expect(call(params)).rejects.toThrow(/Unknown items fields: bogus/);
+		await expect(call({ op: "add", bogus: 1, items: [{ title: "item", goal: "done" }] })).rejects.toThrow(
+			/Unknown backlogPlan fields: bogus/,
+		);
+		expect(Value.Check(tool.parameters, { op: "note", id: "B1", note: "n", bogus: 1 })).toBe(false);
+		await expect(call({ op: "note", id: "B1", note: "n", bogus: 1 })).rejects.toThrow(/Unknown backlog fields: bogus/);
+		await expect(call({ op: "edit", items: [{ id: "B1", depends_on: ["B2"] }] })).rejects.toThrow(/depends_on/);
 		expect(() => store.add({ title: "item", createdBy: "user", bogus: 1 } as never)).toThrow(/Invalid backlog entity/);
 		expect(changed).not.toHaveBeenCalled();
 	});
 
 	it("ships a close schema without TypeBox's internal optional marker", () => {
-		const { tool } = setup();
+		const { tool, plan } = setup();
 		expect(JSON.stringify(tool.parameters)).not.toContain("~optional");
-		expect(Value.Check(tool.parameters, { op: "update", id: "B1", close: { kind: "obsolete", text: "t" } })).toBe(true);
+		expect(JSON.stringify(plan.parameters)).not.toContain("~optional");
+		expect(Value.Check(tool.parameters, { op: "close", id: "B1", close: { kind: "obsolete", text: "t" } })).toBe(true);
 	});
 
 	it("refreshes only after successful mutations", async () => {
 		const { call, changed } = setup();
-		await expect(call({ op: "add" })).rejects.toThrow(/title/);
+		await expect(call({ op: "add" })).rejects.toThrow(/add needs items, one entry per item/);
+		await expect(call({ op: "add", items: [{ goal: "verified", why: "needed" }] })).rejects.toThrow(/title/);
 		await call({ op: "list" });
 		expect(changed).not.toHaveBeenCalled();
-		await call({ op: "add", title: "item", goal: "verified", why: "needed" });
+		await call({ op: "add", items: [{ title: "item", goal: "verified", why: "needed" }] });
 		expect(changed).toHaveBeenCalledTimes(1);
 		await call({ op: "get", id: "B1" });
-		await expect(call({ op: "update", id: "B99", note: "missing" })).rejects.toThrow();
+		await expect(call({ op: "note", id: "B99", note: "missing" })).rejects.toThrow();
 		expect(changed).toHaveBeenCalledTimes(1);
 	});
 

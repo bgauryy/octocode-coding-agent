@@ -11,6 +11,7 @@ import { registerAcpClientMcpServers } from "./acp-session-servers.ts";
 import { registerInheritedMcpServers } from "./session-servers.ts";
 import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
 import { createMcpToolRenderers } from "./tool-definition.ts";
+import { mcpToolStates, publishMcpToolStates } from "./tool-states.ts";
 
 export type { McpTransportFactory } from "./runtime.ts";
 export type { McpExtensionOptions } from "./state.ts";
@@ -41,5 +42,7 @@ export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptio
 	registerSessionEvents(state);
 	registerMcpManageTool(state);
 	registerMcpCommand(state);
+	// What a settings view shows of each tool; read on request, never on a session event.
+	publishMcpToolStates(() => mcpToolStates(state));
 	return state;
 }

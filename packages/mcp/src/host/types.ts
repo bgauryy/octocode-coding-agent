@@ -37,9 +37,11 @@ interface McpUiContext {
 	input(title: string, placeholder?: string, opts?: McpDialogOptions): Promise<string | undefined>;
 }
 
-/** The model a session runs; MCP reads only its input limits (images). */
+/** The model a session runs; MCP reads its input limits (images) and how its transport changes tools (`redeclare.ts`). */
 interface McpModel {
 	inputLimits?: ModelInputLimits;
+	api?: string;
+	compat?: unknown;
 }
 
 /** Resolves a provider's API key for MCP servers with `auth.provider`. */
@@ -57,6 +59,8 @@ export interface McpContext {
 	model: McpModel | undefined;
 	signal: AbortSignal | undefined;
 	isProjectTrusted(): boolean;
+	/** The session's transcript, read for the tools it declares (`declaredParameters`); absent in a host without one. */
+	sessionManager?: { buildSessionProjection(): { messages: readonly unknown[] } };
 }
 
 /** Context of a slash command: the same members; the host's view runner reaches its UI through it. */

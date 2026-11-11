@@ -1,5 +1,5 @@
 import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
-import { createWorkspaceStore, selectEvents } from "@octocodeai/octocode-webview/state";
+import { createWorkspaceStore, selectEvents } from "../src/state.ts";
 import { describe, expect, it } from "vitest";
 
 const snapshot = (types: string[]): WorkspaceSnapshot => ({

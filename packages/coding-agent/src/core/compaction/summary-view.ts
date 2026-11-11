@@ -1,4 +1,5 @@
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
+import { escapeRegExp } from "../../../../common/src/regexp.ts";
 
 /**
  * Reading a compaction summary back. Octocode's compaction writes the summary (`octocode/compaction/summary.ts`) as the
@@ -33,8 +34,6 @@ interface SplitSummary {
 
 /** Code appends the file lists after the summary from the compaction's details (see `carryFileLists`), never the model. */
 const FILE_LIST_BLOCKS = /\n\n<(read-files|modified-files)>\n[\s\S]*?\n<\/\1>/g;
-
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Splits a summary Octocode wrote; any other summary is all body. The body never keeps code-appended file lists. */
 export function splitSummary(summary: string): SplitSummary {

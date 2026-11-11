@@ -227,6 +227,20 @@ export interface StreamOptions extends ProviderRequestOptions {
 	 */
 	instructionCacheBoundary?: string;
 	/**
+	 * Name of the first section of the leading system message that changes during or between sessions (the working
+	 * directory, the date, MCP status). Adapters with explicit breakpoints send that section and every later one as a
+	 * trailing instruction block without a breakpoint, so a change there rewrites no cached instruction block. Other
+	 * adapters send the same text in the same order as one prompt. Absent or unknown section: no trailing block.
+	 */
+	instructionVolatileBoundary?: string;
+	/**
+	 * Name of the first tool that agents of different roles declare differently: every tool before it is a prefix they
+	 * share. Adapters with explicit breakpoints mark the tool before it with the instruction retention, so an agent of
+	 * one role reads the tool prefix another role wrote; on Anthropic that marker takes the base instruction block's (or
+	 * the last tool's) slot. Absent, unknown tool, or the first tool: no extra marker.
+	 */
+	toolCacheBoundary?: string;
+	/**
 	 * Optional session identifier for providers that support session-based caching.
 	 * Providers can use this to enable prompt caching, request routing, or other
 	 * session-aware features. Ignored by providers that don't support it.

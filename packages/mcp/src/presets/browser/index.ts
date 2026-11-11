@@ -1,7 +1,6 @@
 import { envFlag, MCP_BROWSER_ENV } from "../../../../common/src/env.ts";
 import type { McpServerPreset } from "../../preset.ts";
 import { browserLaunch } from "./launch.ts";
-import { browserCompactOverrides } from "./compact-overrides.ts";
 import { BROWSER_BIN, BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
 import { stopOwnedBrowsers } from "./owned.ts";
 import { browserGuard } from "./proxy.ts";
@@ -27,7 +26,6 @@ export function browserPreset(env: NodeJS.ProcessEnv = process.env): McpServerPr
 			description: "Isolated Chrome for pages that need JavaScript, interaction, screenshots or saved evidence.",
 		},
 		defineTool: defineBrowserTool,
-		compactOverrides: browserCompactOverrides,
 		dispose: async (cwd) => {
 			await browserGuard().dispose();
 			if (cwd) await stopOwnedBrowsers(cwd);

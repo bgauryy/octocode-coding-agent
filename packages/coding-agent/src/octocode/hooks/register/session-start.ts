@@ -4,6 +4,7 @@ import { say } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
 import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
+import { emptyHooks } from "../config/parse.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
 
@@ -15,6 +16,33 @@ const START_SOURCE: Record<string, string> = {
 	resume: "resume",
 	fork: "fork",
 };
+
+/**
+ * Loads the hook files into `session`, as every session start does. `decisionsOnly` keeps the PreToolUse and
+ * PermissionRequest hooks alone: a subagent in the `decisions` hook mode runs no other event.
+ */
+export function loadSessionHooks(
+	api: ExtensionAPI,
+	session: HookSession,
+	ctx: ExtensionContext,
+	home: string | undefined,
+	decisionsOnly = false,
+): void {
+	const settings = api.getSettings();
+	const loaded = loadHooks(ctx.cwd, ctx.isProjectTrusted(), home, {
+		plugins: effectivePlugins(settings, ctx.cwd),
+		// An empty map still applies the harness defaults (Claude Code and Codex hooks off until enabled).
+		toggles: settings.toggles ?? {},
+	});
+	session.config = decisionsOnly
+		? { ...emptyHooks(), PreToolUse: loaded.config.PreToolUse, PermissionRequest: loaded.config.PermissionRequest }
+		: loaded.config;
+	session.errors = loaded.errors;
+	session.switchedOff = loaded.switchedOff;
+	session.root = undefined;
+	// Without a UI (print, JSON, RPC) the warning goes to stderr: a malformed file can drop a `failClosed` gate.
+	if (loaded.errors.length > 0) say(ctx, `Hook configuration diagnostics: ${loaded.errors.join("; ")}`, "warning");
+}
 
 /**
  * SessionStart (also after a compaction, source `compact`): loads the hook config on each session start, runs the
@@ -75,19 +103,8 @@ export function registerSessionStartHooks(
 	};
 
 	api.on("session_start", async (event, ctx) => {
-		const settings = api.getSettings();
-		const loaded = loadHooks(ctx.cwd, ctx.isProjectTrusted(), home, {
-			plugins: effectivePlugins(settings, ctx.cwd),
-			// An empty map still applies the harness defaults (Claude Code and Codex hooks off until enabled).
-			toggles: settings.toggles ?? {},
-		});
-		session.config = loaded.config;
-		session.errors = loaded.errors;
-		session.switchedOff = loaded.switchedOff;
-		session.root = undefined;
+		loadSessionHooks(api, session, ctx, home);
 		pending = [];
-		// Without a UI (print, JSON, RPC) the warning goes to stderr: a malformed file can drop a `failClosed` gate.
-		if (loaded.errors.length > 0) say(ctx, `Hook configuration diagnostics: ${loaded.errors.join("; ")}`, "warning");
 		startHooks(ctx, START_SOURCE[event.reason] ?? "startup", true);
 	});
 	// Claude Code runs SessionStart again (source `compact`) after a compaction: its context comes with the next prompt.

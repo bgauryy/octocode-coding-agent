@@ -33,7 +33,7 @@ async function fixture(count = 1, event = "PreToolUse") {
 		}),
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	const notify = vi.fn();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 	ctx.ui.notify = notify;

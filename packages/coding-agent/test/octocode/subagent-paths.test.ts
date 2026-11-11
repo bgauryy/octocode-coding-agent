@@ -82,7 +82,7 @@ function setup(cwd = fs.realpathSync(tmp("octocode-paths-cwd-"))) {
 	const f = fakeHost();
 	const team = new Team(f.api);
 	teams.push(team);
-	const control = registerAgentTool(f.api, () => profiles, team, fakePermission());
+	const control = registerAgentTool(f.api, { profiles: () => profiles, team, permission: fakePermission() });
 	const ctx = fakeCtx({ cwd, hasUI: true });
 	Object.assign(ctx.ui, { confirm: async () => true });
 	const model = { provider: "faux", id: "model", reasoning: true };

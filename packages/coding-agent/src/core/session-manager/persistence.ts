@@ -1,7 +1,8 @@
-import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { APP_NAME } from "../../config.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { resolvePath } from "../../../../common/src/paths.ts";
+import { getFileStamp, resolvePath } from "../../../../common/src/paths.ts";
 import {
 	assertValidSessionId,
 	createSessionHeader,
@@ -9,9 +10,11 @@ import {
 	getSessionFilePath,
 	migrateToCurrentVersion,
 } from "./entries.ts";
-import { mirrorTranscript, recordFork } from "./mirror.ts";
+import { appendRecords } from "./append-records.ts";
+import { encodeSessionLines, SessionCodec } from "./codec.ts";
+import { mirrorOpened, mirrorReplaced, recordFork } from "./mirror.ts";
 import { backupSessionFile, repairSessionFile, type SessionRepair } from "./repair.ts";
-import { isSessionLockTimeout, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
+import { isSessionLockTimeout, lockSessionFile, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
 import { assertCompleteSessionTail, loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
@@ -68,15 +71,23 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		if ((header?.version ?? 1) < CURRENT_SESSION_VERSION) assertCompleteSessionTail(resolvedFile);
 		state.sessionFile = resolvedFile;
 		state.fileSize = sizeBeforeRead ?? statSync(resolvedFile).size;
+		state.codec = observedCodec(entries);
 		loadEntries(state, entries);
 		state.flushed = true;
-		mirrorTranscript(state, resolvedFile, "open");
+		mirrorOpened(state, resolvedFile);
 	} else {
 		const explicitPath = resolvedFile;
 		startNewSession(state);
 		state.sessionFile = explicitPath; // preserve explicit path from --session flag
 	}
 	clearWriteState(state);
+}
+
+/** A codec that has observed `entries`, the whole entries of a file just read, in file order. */
+function observedCodec(entries: readonly FileEntry[]): SessionCodec {
+	const codec = new SessionCodec();
+	for (const entry of entries) codec.observe(entry);
+	return codec;
 }
 
 /** Forget what a failed or held write left: the session's file or transcript was just replaced. */
@@ -113,6 +124,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	state.sessionId = options?.id ?? createSessionId();
 	const timestamp = new Date().toISOString();
 	state.fileEntries = [createSessionHeader(state.sessionId, timestamp, state.cwd, options?.parentSession)];
+	state.codec = new SessionCodec();
 	state.byId.clear();
 	state.labelsById.clear();
 	state.labelTimestampsById.clear();
@@ -153,28 +165,65 @@ function rebuildIndex(state: SessionState): void {
 	state.leafId = indexSessionEntries(state.fileEntries, state.byId, state.labelsById, state.labelTimestampsById);
 }
 
-/** Replace the file with this state's entries, after merging records another process appended since our last write. */
+/** Records another process appended were merged while a rewrite waited for its lock: its prepared content is stale. */
+class MergedWhileWriting extends Error {}
+
+/**
+ * Replace the file with this state's entries, after merging records another process appended since our last write.
+ * The content is serialized and written to a temporary file before the lock is taken; the lock covers only the merge
+ * check and the rename. When the merge brought in records, the content is serialized again (reusing the lines of
+ * entries it did not touch) and written under the lock, as before.
+ */
 export function rewriteSessionFile(state: SessionState): void {
 	const file = state.sessionFile;
 	if (!state.persist || !file) return;
-	withSessionFileLock(file, () => {
-		if (state.fileSize !== undefined && existsSync(file)) mergeForeignEntries(state, file, state.unwritten);
-		const content = state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
-		atomicWriteFileSync(file, content, { mode: 0o600 });
+	mkdirSync(dirname(file), { recursive: true });
+	// Each line is stored against the lines before it (`codec.ts`), so a merge that changes the entries encodes them all again.
+	let encoded = encodeSessionLines(state.fileEntries);
+	let lines = encoded.lines;
+	let content = `${lines.join("\n")}\n`;
+	let release: (() => void) | undefined;
+	try {
+		try {
+			atomicWriteFileSync(file, content, {
+				mode: 0o600,
+				beforeCommit: () => {
+					release = lockSessionFile(file);
+					if (state.fileSize === undefined || !existsSync(file)) return;
+					const count = state.fileEntries.length;
+					mergeForeignEntries(state, file, state.unwritten);
+					// Only a merge that brought records in reassigns held ids; otherwise the prepared lines are the file.
+					if (state.fileEntries.length !== count) throw new MergedWhileWriting();
+				},
+			});
+		} catch (error) {
+			if (!(error instanceof MergedWhileWriting)) throw error;
+			encoded = encodeSessionLines(state.fileEntries);
+			lines = encoded.lines;
+			content = `${lines.join("\n")}\n`;
+			atomicWriteFileSync(file, content, { mode: 0o600 });
+		}
 		state.fileSize = Buffer.byteLength(content);
+		state.codec = encoded.codec;
 		state.unwritten.length = 0;
-		mirrorTranscript(state, file, "replace");
-	});
+		const stamp = getFileStamp(file);
+		release?.();
+		release = undefined;
+		mirrorReplaced(state, file, stamp, lines);
+	} finally {
+		release?.();
+	}
 }
 
 /** Create the session file with every entry held so far; fails when the file already exists. */
 function flushNewSessionFile(state: SessionState, file: string): void {
 	withSessionFileLock(file, () => {
-		writeNewSessionFile(file, state.fileEntries);
+		const { lines, codec } = writeNewSessionFile(file, state.fileEntries);
 		state.fileSize = statSync(file).size;
+		state.codec = codec;
 		state.flushed = true;
 		state.unwritten.length = 0;
-		mirrorTranscript(state, file, "replace");
+		mirrorReplaced(state, file, getFileStamp(file), lines);
 	});
 }
 
@@ -196,49 +245,12 @@ export function materializeSession(state: SessionState): void {
  * A new session file is created only once the session contains a user or assistant message.
  * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
  * closing Octocode without chatting leaves no file behind. Starting at the user message (not the
- * first assistant reply) keeps the prompt on disk if the first turn never completes (#10000).
+ * first assistant reply) keeps the prompt on disk if the first turn never completes.
  */
 function hasConversation(state: SessionState): boolean {
 	return state.fileEntries.some(
 		(e) => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"),
 	);
-}
-
-/** The file's size, or undefined when even that cannot be read. */
-function fileSizeNow(file: string): number | undefined {
-	try {
-		return statSync(file).size;
-	} catch {
-		return undefined;
-	}
-}
-
-/** Append `pending` in order, each with its mirror update; a record leaves `unwritten` once it is written. */
-function appendRecords(state: SessionState, file: string, pending: readonly SessionEntry[]): void {
-	let tailChecked = false;
-	for (const entry of pending) {
-		const before = statSync(file, { bigint: true });
-		if (!tailChecked && assertCompleteSessionTail(file)) {
-			appendFileSync(file, "\n", { flush: true });
-			state.fileSize = (state.fileSize ?? 0) + 1;
-		}
-		tailChecked = true;
-		const line = `${JSON.stringify(entry)}\n`;
-		try {
-			appendFileSync(file, line, { flush: true });
-		} catch (error) {
-			state.failedWrite = { from: state.fileSize, after: fileSizeNow(file), line, entry };
-			throw error;
-		}
-		state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);
-		const held = state.unwritten.indexOf(entry);
-		if (held >= 0) state.unwritten.splice(held, 1);
-		mirrorTranscript(state, file, {
-			previousSize: Number(before.size),
-			previousMtime: String(before.mtimeNs),
-			entry,
-		});
-	}
 }
 
 /** Write the held entries, then `entry` when given. */
@@ -324,6 +336,7 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 	const header = createSessionHeader(newSessionId, timestamp, state.cwd, parentSession);
 
 	state.fileEntries = [header, ...entries];
+	state.codec = new SessionCodec();
 	state.sessionId = newSessionId;
 	clearWriteState(state);
 	if (state.persist) {

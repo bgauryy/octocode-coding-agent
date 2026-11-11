@@ -159,11 +159,6 @@ export function taskCounts(db: DatabaseSync, repo: string): TaskCountRow[] {
 	).map((row) => ({ ...row, n: num(row.n) }));
 }
 
-/** Deletes every task of an item; call it before deleting the item so each delete is audited under the item's number. */
-export function deleteItemTasks(db: DatabaseSync, itemId: number): void {
-	db.prepare("DELETE FROM backlog_tasks WHERE item_id = ?").run(itemId);
-}
-
 /** Hands a task to another owner, last in its list, bumping its version. */
 export function reparentTask(db: DatabaseSync, rowId: number, owner: TaskOwnerKey, at: number): void {
 	const [itemId, sessionId] = ownerArgs(owner);

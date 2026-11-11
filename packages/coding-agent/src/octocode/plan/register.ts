@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "..
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";
-import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
+import { getMcpSessionStatus } from "../../../../mcp/src/api.ts";
 import { planStartupRequested } from "./startup.ts";
 import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "../../core/plan-state.ts";
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";

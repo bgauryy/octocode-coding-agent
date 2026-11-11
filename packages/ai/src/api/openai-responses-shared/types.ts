@@ -1,6 +1,9 @@
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { StreamOptions, Usage } from "../../types.ts";
 
+/** OpenAI Responses rejects `max_output_tokens` below 16. */
+export const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
+
 export interface OpenAIResponsesStreamOptions {
 	onProviderStreamEvent?: StreamOptions["onProviderStreamEvent"];
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
@@ -17,6 +20,11 @@ export interface OpenAIResponsesStreamOptions {
 
 export interface ConvertResponsesMessagesOptions {
 	includeSystemPrompt?: boolean;
+	/**
+	 * Resolved `supportsDeveloperRole` of the calling adapter; the converter never reads `model.compat` itself. When
+	 * false, or for a model without reasoning, instructions go out under the `system` role. Default: true.
+	 */
+	supportsDeveloperRole?: boolean;
 	/** Explicit boundary on the leading instructions only; the calling adapter checks support. */
 	instructionCacheTtl?: "30m" | "12h";
 	/**
@@ -26,6 +34,8 @@ export interface ConvertResponsesMessagesOptions {
 	omitBreakpointTtl?: boolean;
 	/** First section of the leading prompt that starts a second explicit block; needs `instructionCacheTtl`. */
 	instructionCacheBoundary?: string;
+	/** First section of the leading prompt that starts the trailing block without a breakpoint; needs `instructionCacheTtl`. */
+	instructionVolatileBoundary?: string;
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
 	/** Whether later system messages are sent in place; otherwise they are folded into the leading prompt. */
 	supportsMidConvoSystemMessages?: boolean;

@@ -131,13 +131,13 @@ describe("defaultTools setting", () => {
 		}
 	});
 
-	it("does not treat `task` as an old name of `steps`: a selection that names it selects nothing", async () => {
+	it("does not treat `task` as the name of any tool: a selection that names it selects nothing", async () => {
 		const cases: Array<[string[], ToolOptions, string[]]> = [
 			[["file", "task"], {}, ["file"]],
 			[["file", "+task"], {}, ["file"]],
 			[["file"], { tools: ["file", "task"] }, ["file"]],
-			[["file", "steps"], { tools: ["-task"] }, ["file", "steps"]],
-			[["file", "steps"], { excludeTools: ["task"] }, ["file", "steps"]],
+			[["file", "backlog"], { tools: ["-task"] }, ["backlog", "file"]],
+			[["file", "backlog"], { excludeTools: ["task"] }, ["backlog", "file"]],
 		];
 		for (const [defaults, options, active] of cases) {
 			const session = await createSession(defaults, options, [], true);
@@ -470,7 +470,6 @@ describe("defaultTools setting", () => {
 			).session;
 		}
 
-		// #10245
 		it("activates only tools newly added to defaultTools", async () => {
 			const session = await createFileSession();
 			expect(session.getActiveToolNames()).toEqual(["bash"]);
@@ -522,7 +521,6 @@ describe("defaultTools setting", () => {
 		});
 	});
 
-	// #10785
 	describe("resume", () => {
 		const extensionTools: InlineExtension = (api) => {
 			api.registerTool({

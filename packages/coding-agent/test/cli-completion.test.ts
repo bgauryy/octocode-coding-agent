@@ -71,6 +71,30 @@ it("lists --plan in help and has no feature flag section", async () => {
 	}
 });
 
+it("shows unattended delegation and persistent RPC examples in help", async () => {
+	const { parseArgs, printHelp } = await import("../src/cli/args.ts");
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	try {
+		printHelp();
+		const text = log.mock.calls.map((call) => String(call[0])).join("\n");
+		const invocations = [
+			["-p", "--no-stdin", "--no-session", "--permission-mode", "workspace"],
+			["--mode", "json", "--no-stdin", "--permission-mode", "workspace"],
+			["--mode", "rpc", "--no-dialogs", "--permission-mode", "workspace"],
+		];
+		for (const args of invocations) {
+			expect(text).toContain(args.join(" "));
+			const parsed = parseArgs([...args, ...(args.includes("rpc") ? [] : ["Review this repository"])]);
+			expect(parsed.unknownFlags).toEqual([]);
+			expect(parsed.diagnostics).toEqual([]);
+		}
+		expect(text).toContain("Keep stdin open until completion");
+		expect(text).toContain("--trust records folder trust");
+	} finally {
+		log.mockRestore();
+	}
+});
+
 it("completes catalog providers and models without resolving credentials", () => {
 	expect(completeCli(["--provider", "openai"])).toContain("openai");
 	expect(completeCli(["--provider", "openai", "--model", ""])).not.toHaveLength(0);

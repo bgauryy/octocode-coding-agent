@@ -51,7 +51,6 @@ Editing a SKILL.md description later returns that skill to its source wording un
 5. **Apply.** `node scripts/apply.mjs <server> --overrides <file> --optimized-by <model>` stores the file and its metadata. Running sessions keep the file they froze; the next session or loadout rebuild reads the new one.
 6. **Assign.** Decide which agents get the server with the [assignment guide](references/assignment.md): every agent by default, or `"defaultActive": false` plus a tool selector for the agents that need it.
 7. **Verify.** Open the stored `.txt` under `mcp/` (`octocode context list` shows its folder): it is the file a session reads.
-8. **Preset.** For a server Octocode ships (a preset), `yarn workspace @octocodeai/octocode-mcp run generate:compact` lists the overrides a rebuilt server left stale; its flags are `--check`, `--drop-stale` and `--accept <tool.field>` (see AGENTS.md), then run `generate:prompts`.
 
 When a tool cannot be described without guessing, keep its source description: an accurate long description beats an invented short one.
 
@@ -70,7 +69,7 @@ When a tool cannot be described without guessing, keep its source description: a
 | ------------------------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Rewriting a skill description              | [skill-rules](references/skill-rules.md)           | What a listing entry must carry, budget, example                                              |
 | Rewriting any MCP description or trigger   | [rewrite-rules](references/rewrite-rules.md)       | What to keep, cut and fold; triggers; budget; worked example                                  |
-| Writing or debugging an MCP overrides file | [overrides-format](references/overrides-format.md) | JSON shape, field paths, check limits, stored and preset forms                                |
+| Writing or debugging an MCP overrides file | [overrides-format](references/overrides-format.md) | JSON shape, field paths, check limits, stored form                                            |
 | Choosing which agents get an MCP server    | [assignment](references/assignment.md)             | Selectors, `defaultActive`, cache effect                                                      |
 | Producing an MCP plain file and catalog    | [generate.mjs](scripts/generate.mjs)               | Saves the catalog and renders the plain file                                                  |
 | Validating MCP overrides                   | [check.mjs](scripts/check.mjs)                     | Fidelity check and size tables                                                                |

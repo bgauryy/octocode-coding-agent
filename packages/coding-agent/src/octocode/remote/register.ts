@@ -3,14 +3,17 @@ import type { Subcommands } from "../shared/commands.ts";
 import { registerSessionAttach } from "../web-daemon/attach-register.ts";
 import { setItemLinkHandler } from "../shared/item-ref.ts";
 import { attachedDaemon, daemonOpener } from "../web-daemon/open.ts";
+import type { NativeToolsLive } from "../web-daemon/tool-exposure.ts";
 import { webCommand } from "../workspace/command.ts";
 import type { WorkspaceRuntime } from "../workspace/runtime.ts";
 import { registerRemoteAutoStart, remoteCommand, type RemoteHost } from "./command.ts";
 
 /**
- * The commands that reach this session through the web daemon: `/web` opens the page (the daemon's with
- * `OCTOCODE_WEB_DAEMON=1`, else the per-session server) and `/remote` publishes the daemon for another device, with
- * `remote.autoStart` at session start. One attach endpoint serves both. Never registered for a subagent.
+ * The commands that reach this session through the user-level web daemon: `/web` opens the daemon's page (this
+ * session's own server when the daemon cannot start) and `/remote` publishes the daemon for another device, with
+ * `remote.autoStart` at session start. One attach endpoint serves both; it also answers the page's Tools panel with
+ * `nativeTools` and repaints the board counts with `boardChanged` after an edit on the page. Never registered for a
+ * subagent.
  */
 export function registerWebCommands(
 	api: ExtensionAPI,
@@ -18,11 +21,15 @@ export function registerWebCommands(
 		commands: Subcommands;
 		workspace: WorkspaceRuntime | undefined;
 		openWorkspace: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<string>;
+		nativeTools?: () => NativeToolsLive;
+		boardChanged?: (ctx: ExtensionContext) => void;
 	},
 ): void {
 	const attach = registerSessionAttach(api, {
 		isSubagent: options.workspace === undefined,
 		workspace: options.workspace,
+		...(options.nativeTools ? { nativeTools: options.nativeTools } : {}),
+		...(options.boardChanged ? { boardChanged: options.boardChanged } : {}),
 	});
 	const web = webCommand(
 		options.openWorkspace,

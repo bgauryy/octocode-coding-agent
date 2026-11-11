@@ -1,4 +1,3 @@
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,18 +26,15 @@ describe("memory retrieval and write boundaries", () => {
 		);
 		for (let i = 0; i < 105; i++) insert.run(store.repoKey, `retrieval item ${i}`);
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() }),
-		);
-		const tool = fake.tools.get("archive");
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
+		const tool = fake.tools.get("memory");
 		for (const op of ["list", "search"]) {
 			let cursor: string | undefined;
 			const ids: string[] = [];
 			do {
 				const result = await tool.execute(
 					"call",
-					{ goal: "Recall", reason: "saved facts", op, source: "memories", query: "retrieval", limit: 100_000, cursor },
+					{ goal: "Recall", reason: "saved facts", op, query: "retrieval", limit: 100_000, cursor },
 					undefined,
 					undefined,
 					fakeCtx({ cwd }),
@@ -102,10 +98,7 @@ describe("memory retrieval and write boundaries", () => {
 		fs.writeFileSync(broken, "not sqlite");
 		const env = { OCTOCODE_AGENT_DB: broken, OCTOCODE_MEMORY_AUTO: "1" };
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env }),
-		);
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env });
 		const ctx = fakeCtx({ cwd: root });
 		Object.assign(ctx.sessionManager, { getBranch: () => [] });
 		for (let i = 0; i < 2; i++) expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();
@@ -119,5 +112,44 @@ describe("memory retrieval and write boundaries", () => {
 		env.OCTOCODE_AGENT_DB = broken;
 		expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();
 		expect(ctx.ui.notes).toHaveLength(2);
+	});
+});
+
+describe("memory search over the whole scope", () => {
+	it("finds a regex match that is not among the newest memories, in the first call", async () => {
+		const cwd = tmp();
+		vi.stubEnv("OCTOCODE_AGENT_DB", path.join(tmp(), "agent.db"));
+		const store = memoryStore(cwd);
+		// 30 memories; in list order (newest first) the one that matches is the 25th.
+		for (let i = 0; i < 30; i++)
+			store.set(
+				{ title: i === 5 ? "Wrap the upload in a retry" : `alpha${i}x beta${i}y`, body: "note", author: "user" },
+				i + 1,
+			);
+		const newest = { id: Number.MAX_SAFE_INTEGER, pinned: 2, updated: Number.MAX_SAFE_INTEGER };
+		expect(store.scan("all", newest, 30)[24].title).toBe("Wrap the upload in a retry");
+		const fake = fakeHost();
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
+		const run = (params: object) =>
+			fake.tools.get("memory").execute("call", { reason: "recall", ...params }, undefined, undefined, fakeCtx({ cwd }));
+		const found = await run({ op: "search", query: "retry" });
+		expect(found.content[0].text).toContain("memories: 1 matches in 30 scanned records");
+		expect(found.content[0].text).toContain("Wrap the upload in a retry");
+		expect(found.details).toMatchObject({ mode: "search", hits: 1 });
+		expect(found.details.nextCursor).toBeUndefined();
+		// With keywords too, the filter keeps only matching memories and the cursor reaches the rest of them.
+		const both = { op: "search", keywords: "note upload", query: "retry|alpha1\\dx" };
+		const ranked = await run(both);
+		expect(ranked.content[0].text).toContain("memories: 10 matches");
+		expect(ranked.details.nextCursor).toBeDefined();
+		const rest = await run({ ...both, cursor: ranked.details.nextCursor });
+		expect(rest.content[0].text).toContain("memories: 1 matches");
+		expect(rest.details.nextCursor).toBeUndefined();
+		// A search counts what it returned as used; the others were only tested.
+		expect(store.list("all", 50).filter((memory) => memory.useCount > 0)).toHaveLength(11);
+		await expect(run({ op: "search", query: "(" })).rejects.toThrow(
+			/query is a regular expression, and this one is invalid/,
+		);
+		await expect(run({ op: "list", cursor: "not-a-cursor" })).rejects.toThrow("Invalid memory cursor");
 	});
 });

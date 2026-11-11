@@ -6,10 +6,11 @@
 | docs | base | drop | - | system/docs.md |
 | mcps | base | keep | - | sections/mcps.md, and the connected MCP servers' instructions, tools and schemas |
 | addendum | session | keep | - | the user's APPEND_SYSTEM.md |
-| cwd | session | keep | - | the working directory |
 | work | session | keep | policy | sections/work.md |
 | research | session | keep | policy | sections/research.md |
-| delegation | session | keep | policy | sections/delegation.md |
+| delegation | session | keep | policy | sections/delegation.md; the main session only |
+| children | session | keep | policy | sections/children.md; the main session, from its first `agent` call that starts a child or messages an agent |
+| coordinator | session | keep | policy | sections/coordinator.md; a subagent that may write |
 | safety | session | keep | policy | sections/safety.md |
 | communication | session | keep | policy | sections/communication.md |
 | lean | session | keep | lean | sections/lean.md |
@@ -18,6 +19,7 @@
 | hooks | session | keep | - | sections/hooks.md and the hooks configured for this session |
 | role | session | keep | - | roles/<profile>.md and its skills |
 | harnesses | session | keep | - | system/harnesses.md and system/harness.md, for the harnesses Octocode reads, on or off (`core/discovery/vendors/prompt.ts`); the main session only |
+| cwd | volatile | keep | - | the working directory |
 | environment | volatile | keep | - | system/environment.md |
 | planning | volatile | keep | - | workflows/planning.md |
 | mcp_status | volatile | keep | - | sections/mcp_status.md and the MCP servers that are not ready |

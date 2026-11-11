@@ -129,7 +129,7 @@ export async function mergeWorktreeBranch(
 	const open = ports.openItems?.(linked.path, sessions) ?? [];
 	if (open.length > 0)
 		return refuse(
-			`backlog work on ${branch} is not done: ${open.join(", ")}. Ask its session to finish it (backlog state done) or to drop it, then send the request again.`,
+			`backlog work on ${branch} is not done: ${open.join(", ")}. Ask its session to finish it (backlog done) or to drop it, then send the request again.`,
 		);
 	const held = await heldChanges(main, branch, ports.reservation);
 	if (held.length > 0)

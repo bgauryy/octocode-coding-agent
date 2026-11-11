@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { TUI } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { bindFooterState } from "../src/modes/interactive/state/bind-footer.ts";
+import { bindFooterState, bindFooterUntilStop } from "../src/modes/interactive/state/bind-footer.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const providers: FooterDataProvider[] = [];
@@ -46,5 +46,23 @@ describe("footer state binding", () => {
 		unbind();
 		footerDataProvider.setExtensionStatus("pr", "PR #1");
 		expect(requestRender).not.toHaveBeenCalled();
+	});
+
+	it("stop() ends the footer binding and still runs the host's own stop", () => {
+		const footerDataProvider = new FooterDataProvider(mkdtempSync(join(tmpdir(), "footer-store-")));
+		providers.push(footerDataProvider);
+		const requestRender = vi.fn();
+		const stop = vi.fn();
+		const host = createFakeHost({ footerDataProvider, ui: { requestRender } as unknown as TUI, stop });
+		bindFooterUntilStop(host);
+
+		footerDataProvider.setExtensionStatus("mcp", "2 servers");
+		expect(requestRender).toHaveBeenCalledTimes(1);
+
+		host.stop("exit-output" as never);
+		expect(stop).toHaveBeenCalledWith("exit-output");
+		// The fake stop leaves the provider alive, so only the ended binding keeps this change from drawing.
+		footerDataProvider.setExtensionStatus("mcp", "3 servers");
+		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 });

@@ -33,6 +33,11 @@ export interface SessionRunState {
 	 */
 	failedResponse: AssistantMessage | undefined;
 	overflowRecoveryAttempted: boolean;
+	/**
+	 * Why the latest automatic compaction could not fit anything it keeps into the model's window; a request over the
+	 * whole window is then not sent. Cleared when the next automatic compaction starts.
+	 */
+	windowUnfit: string | undefined;
 	/** Responses cut off at the output limit that the session recovered by compacting and retrying. */
 	lengthRecoveries: number;
 	lastAssistantMessage: AssistantMessage | undefined;
@@ -59,6 +64,7 @@ export function createRunState(): SessionRunState {
 		inputTerminated: false,
 		failedResponse: undefined,
 		overflowRecoveryAttempted: false,
+		windowUnfit: undefined,
 		lengthRecoveries: 0,
 		lastAssistantMessage: undefined,
 		outcome: createRunOutcome(),

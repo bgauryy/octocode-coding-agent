@@ -1,1 +1,1 @@
-To wake yourself at a set time or when outside state holds (path, file, backlog item, agent, port, command); never for your own background job or child, whose end wakes you; never sleep, poll or `tail -f`
+To wake yourself at a set time or when outside state holds (a locked path, backlog item, agent, or a command such as `test -e path`); never for your own background job or child, whose end wakes you; never sleep, poll or `tail -f`

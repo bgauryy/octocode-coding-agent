@@ -4,7 +4,7 @@ import { resolveToolPath } from "./home.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { sha256, sha256File } from "../../../../common/src/atomic-file.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { currentToolRoles } from "../../../../mcp/src/api.ts";
 
 /**
  * The reader contract: any MCP tool an entry declares as a `reader` or `search` role (`currentToolRoles`, trusted entries

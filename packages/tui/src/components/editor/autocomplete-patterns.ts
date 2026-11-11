@@ -6,7 +6,8 @@ export const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	maxPrimaryColumnWidth: 32,
 };
 
-export const ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS = 20;
+// Long enough that a typed word ranks once, not once per key; ranking yields to typed keys either way.
+export const ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS = 60;
 export const DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS = ["@", "#"];
 // Unquoted completions end at whitespace or CJK punctuation; quoted paths may contain either.
 const unquotedAutocompleteSuffixRegex = new RegExp(`(?:(?!${autocompleteSeparatorRegex.source}).)*`, "u");

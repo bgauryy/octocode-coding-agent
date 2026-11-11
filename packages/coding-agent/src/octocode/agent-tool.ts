@@ -5,6 +5,7 @@ import { Text } from "@octocodeai/octocode-tui";
 import { type TSchema, Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { envFlag, LEAN_ENV } from "../../../common/src/env.ts";
 import { TASKS_FIELD, batchCallText, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
 import { AGENT_FIELD_RENAMES, agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
@@ -119,7 +120,8 @@ export function agentModes() {
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
 				// The delegation rules wait with `timer` (never sleep or poll), so the loadout keeps it whenever agent is active.
-				companionTools: ["timer"],
+				// A lean child gets no such rules and only messages its parent: it has `timer` only when its profile lists it.
+				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["timer"] }),
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

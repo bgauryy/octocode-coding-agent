@@ -77,20 +77,29 @@ export const budgetsThrough = (agents: () => AgentControl | undefined) => ({
 	grant: (id: string, requests: number): BudgetStanding | string =>
 		agents()?.budgets.grant(id, requests) ?? "Agent controls are unavailable.",
 	usage: (id: string): BudgetStanding | undefined => agents()?.budgets.usage(id),
+	cost: (id: string): number | undefined => agents()?.budgets.cost(id),
 });
 
 /** How long shutdown waits for stopped background subagents: past the SIGTERM grace, after which they are killed. */
 const SHUTDOWN_WAIT_MS = SUBAGENT_STOP_GRACE_MS + 1_000;
 
-export function registerAgentTool(
-	api: ExtensionAPI,
-	getProfiles: () => Map<string, AgentProfile>,
-	team: Team,
-	permission: Permission,
-	getRefused?: () => ReadonlyMap<string, string>,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
-	runners?: Runners,
-): AgentControl {
+/** What the `agent` tool needs from the session that composes it. */
+interface AgentToolOptions {
+	/** The session's agent profiles, read at each call. */
+	profiles: () => Map<string, AgentProfile>;
+	team: Team;
+	permission: Permission;
+	/** Why each refused profile file was refused, by profile name, so an unknown profile's error names the cause. */
+	refused?: () => ReadonlyMap<string, string>;
+	/** Where the tool is declared (the `agent` tool's mode collector); `api.registerTool` by default. */
+	registerTool?: ExtensionAPI["registerTool"];
+	/** Vendor CLIs that run `agent` tasks over ACP. */
+	runners?: Runners;
+}
+
+export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions): AgentControl {
+	const { profiles: getProfiles, team, permission, refused: getRefused, runners } = options;
+	const registerTool = options.registerTool ?? ((tool) => api.registerTool(tool));
 	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
 	const panel = new AgentsView(team, runningWorkOf(api));
@@ -104,7 +113,8 @@ export function registerAgentTool(
 		background: new Map(),
 		foreground: new Map(),
 		live: new Map(),
-		reports: new ReportQueue(api),
+		// The batch of reports goes out as soon as no running background child is left to join it.
+		reports: new ReportQueue(api, undefined, () => runs.background.keys()),
 		read: new ReadReports(),
 		running: new Map(),
 		items: new Map(),
@@ -188,18 +198,16 @@ export function registerAgentTool(
 					run,
 					details,
 					session,
-					runSubagent(
-						message,
+					runSubagent({
+						task: message,
 						args,
-						ctx.cwd,
-						run.profile,
-						run.identity,
+						cwd: ctx.cwd,
+						profile: run.profile,
+						identity: run.identity,
 						signal,
-						track(undefined),
-						undefined,
-						undefined,
+						onProgress: track(undefined),
 						host,
-					),
+					}),
 				);
 			startBackground(
 				runs,
@@ -274,7 +282,7 @@ export function registerAgentTool(
 		lingering.close();
 		panel.stop(ctx);
 	});
-	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
+	// Worktrees left by an Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
 	api.on("session_start", async (event, ctx) => {
 		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
 		const tell = (content: string) =>

@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/featur
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
-import { say } from "../../shared/commands.ts";
+import { say, type Subcommand } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
@@ -45,8 +45,10 @@ export function detail(backlog: Backlog, item: Item, notes = 10): string {
 
 export interface CommandDeps extends BacklogOptions {
 	items(): Item[];
-	/** Opens the live board and resolves to its address. */
+	/** Opens this session's own live board and resolves to its address; used when `web` has no command. */
 	openView(ctx: ExtensionCommandContext, backlog: Backlog): Promise<string>;
+	/** The `/web` command, when registered: `/backlog web` runs `/web backlogs`. */
+	web?(): Subcommand | undefined;
 	/** Opens a file in the default application; replaceable so a test opens nothing. */
 	open?: (file: string) => Promise<void>;
 	/** Repaint the footer counts after a change. */

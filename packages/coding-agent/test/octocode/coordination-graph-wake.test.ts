@@ -14,8 +14,10 @@ import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { WAKE_INTERVAL_MS } from "../../src/octocode/team/wake-pace.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { backlogToolName } from "./backlog-fixture.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
 
 /**
  * USER DECISION 2 (2026-11-08): the coordination graph never stalls. However a prerequisite ends (done, closed, or its
@@ -82,10 +84,12 @@ function backlogTool(ctx: ReturnType<typeof fakeCtx>) {
 	const fake = fakeHost();
 	const env = { OCTOCODE_AGENT_DB: process.env.OCTOCODE_AGENT_DB };
 	registerBacklogTool(fake.api, { isSubagent: false, env, changed: () => undefined });
-	const tool = fake.tools.get("backlog");
+	registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed: () => undefined });
 	return async (params: Record<string, unknown>) =>
 		(
-			(await tool.execute("c", { reason: "test", ...params }, undefined, undefined, ctx)) as {
+			(await fake.tools
+				.get(backlogToolName(params.op))
+				.execute("c", { reason: "test", ...params }, undefined, undefined, ctx)) as {
 				content: Array<{ text: string }>;
 			}
 		).content[0].text;
@@ -96,13 +100,12 @@ function agentTool() {
 	const f = fakeHost();
 	const team = new Team(f.api);
 	const permission = fakePermission();
-	const control = registerAgentTool(
-		f.api,
-		() => new Map<string, AgentProfile>(),
+	const control = registerAgentTool(f.api, {
+		profiles: () => new Map<string, AgentProfile>(),
 		team,
 		permission,
-		() => new Map(),
-	);
+		refused: () => new Map(),
+	});
 	const cwd = fs.realpathSync(tmp("octocode-graph-wake-agent-"));
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx.ui, { confirm: async () => true });
@@ -110,6 +113,7 @@ function agentTool() {
 	Object.assign(ctx, {
 		model: models[0],
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => models,
 			find: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 			getCachePolicy: fakeCachePolicy,
@@ -135,10 +139,10 @@ describe("(a) a prerequisite the coordinator completes itself, with no child rep
 	it("names the items that are now ready in the backlog update result", async () => {
 		const { ctx } = mainBacklog();
 		const call = backlogTool(ctx);
-		await call({ op: "add", ...READY, title: "api", state: "todo" });
-		await call({ op: "add", ...READY, title: "ui", state: "todo", dependsOn: ["B1"] });
-		await call({ op: "update", id: "B1", state: "ongoing" });
-		const text = await call({ op: "update", id: "B1", state: "done", completion: passed("own-1") });
+		await call({ op: "add", items: [{ ...READY, title: "api", state: "todo" }] });
+		await call({ op: "add", items: [{ ...READY, title: "ui", state: "todo", dependsOn: ["B1"] }] });
+		await call({ op: "claim", id: "B1" });
+		const text = await call({ op: "done", id: "B1", completion: passed("own-1") });
 		expect(text).toContain("B2 is ready to start: B1 was its last open prerequisite.");
 	});
 });
@@ -147,11 +151,11 @@ describe("(b) a prerequisite closed as obsolete or wont_do", () => {
 	it("tells the coordinator which dependents are now ready and which still wait, when it closes it itself", async () => {
 		const { ctx } = mainBacklog();
 		const call = backlogTool(ctx);
-		await call({ op: "add", ...READY, title: "api", state: "todo" });
-		await call({ op: "add", ...READY, title: "other", state: "todo" });
-		await call({ op: "add", ...READY, title: "ui", state: "todo", dependsOn: ["B1"] });
-		await call({ op: "add", ...READY, title: "docs", state: "todo", dependsOn: ["B1", "B2"] });
-		const text = await call({ op: "update", id: "B1", close: { kind: "obsolete", text: "superseded" } });
+		await call({ op: "add", items: [{ ...READY, title: "api", state: "todo" }] });
+		await call({ op: "add", items: [{ ...READY, title: "other", state: "todo" }] });
+		await call({ op: "add", items: [{ ...READY, title: "ui", state: "todo", dependsOn: ["B1"] }] });
+		await call({ op: "add", items: [{ ...READY, title: "docs", state: "todo", dependsOn: ["B1", "B2"] }] });
+		const text = await call({ op: "close", id: "B1", close: { kind: "obsolete", text: "superseded" } });
 		expect(text).toContain("B1 is closed; B3 is now ready.");
 		expect(text).toContain("B4 still waits on B2.");
 	});
@@ -270,11 +274,13 @@ describe("reviewer: a dependsOn that parses as an item ref in a batch add", () =
 	it("links the existing item, never an earlier entry that happens to carry that title", async () => {
 		const { ctx } = mainBacklog();
 		const call = backlogTool(ctx);
-		await call({ op: "add", ...READY, title: "existing" });
+		await call({ op: "add", items: [{ ...READY, title: "existing" }] });
 		const text = await call({
 			op: "add",
-			...READY,
-			items: [{ title: "B1" }, { title: "ui", dependsOn: ["B1"] }],
+			items: [
+				{ ...READY, title: "B1" },
+				{ ...READY, title: "ui", dependsOn: ["B1"] },
+			],
 		});
 		expect(text).toMatch(/^Added 2 of 2\./);
 		const backlog = openBacklog(ctx, { isSubagent: false });

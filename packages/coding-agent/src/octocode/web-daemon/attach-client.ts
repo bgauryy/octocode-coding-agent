@@ -8,8 +8,10 @@ import {
 	AttachEventSchema,
 	AttachHelloResultSchema,
 	AttachResponseSchema,
+	AttachToolStatesSchema,
 	type AttachEvent,
 	type AttachRecord,
+	type AttachToolStates,
 } from "@octocodeai/octocode-contracts/daemon";
 import type {
 	ApplicationCommand,
@@ -343,6 +345,18 @@ export class AttachClient {
 			return () => this.profilerListeners.delete(listener);
 		},
 	};
+
+	/** What the session declares of each tool; rejects when it cannot say (an older session) or the answer is malformed. */
+	async tools(): Promise<AttachToolStates> {
+		const states = await this.request("session.tools");
+		if (!Value.Check(AttachToolStatesSchema, states)) throw new Error("The session's tool states are invalid.");
+		return states;
+	}
+
+	/** Tells the session the daemon changed its board, so it repaints its footer counts. */
+	boardChanged(): Promise<unknown> {
+		return this.request("backlog.changed");
+	}
 
 	readonly workspace = {
 		snapshot: () => this.request<WorkspaceSnapshot>("workspace.snapshot"),

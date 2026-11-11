@@ -1,6 +1,7 @@
 import { getInitialSystemMessage, type ProviderEnv, type StreamOptions } from "@octocodeai/octocode-ai";
 import { getProviderEnvValue } from "@octocodeai/octocode-ai/utils/provider-env";
-import { NON_BASE_SECTIONS } from "../system-prompt-spec.ts";
+import { NON_BASE_SECTIONS, VOLATILE_SECTIONS } from "../system-prompt-spec.ts";
+import { findToolCacheBoundary } from "../tool-roles.ts";
 
 /** Set to `off` to send the leading system prompt as one instruction cache block. */
 const INSTRUCTION_CACHE_SPLIT_ENV = "OCTOCODE_INSTRUCTION_CACHE_SPLIT";
@@ -18,15 +19,48 @@ export function findInstructionCacheBoundary(messages: readonly { role: string }
 }
 
 /**
- * The `instructionCacheBoundary` request option for a transcript. A caller-supplied value wins, and
- * `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends none.
+ * The first of the volatile sections that end the leading system message (`system-prompt-spec.ts`): where the trailing
+ * instruction block starts, which is sent without a cache breakpoint. A volatile section that a session section still
+ * follows does not count, so a session saved when `cwd` preceded the policy keeps its policy in a cached block.
+ * Undefined for a forced prompt and when the prompt does not end with a volatile section.
+ */
+export function findInstructionVolatileBoundary(messages: readonly { role: string }[]): string | undefined {
+	const sections = getInitialSystemMessage(messages)?.sections;
+	if (!sections) return undefined;
+	let boundary: string | undefined;
+	for (const [name, text] of Object.entries(sections).reverse()) {
+		if (text === null) continue;
+		if (!VOLATILE_SECTIONS.has(name)) break;
+		boundary = name;
+	}
+	return boundary;
+}
+
+type BoundaryOptions = Pick<
+	StreamOptions,
+	"instructionCacheBoundary" | "instructionVolatileBoundary" | "toolCacheBoundary"
+>;
+
+/**
+ * The `instructionCacheBoundary`, `instructionVolatileBoundary` and `toolCacheBoundary` request options for a
+ * transcript. A caller-supplied value wins, each on its own, and `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends none: the
+ * tool boundary is one more instruction breakpoint.
  */
 export function instructionCacheBoundaryOption(
 	messages: readonly { role: string }[],
-	options?: Pick<StreamOptions, "instructionCacheBoundary"> & { env?: ProviderEnv },
-): Pick<StreamOptions, "instructionCacheBoundary"> {
-	if (options?.instructionCacheBoundary !== undefined) return {};
+	options?: BoundaryOptions & { env?: ProviderEnv },
+): BoundaryOptions {
 	if (getProviderEnvValue(INSTRUCTION_CACHE_SPLIT_ENV, options?.env)?.trim().toLowerCase() === "off") return {};
-	const boundary = findInstructionCacheBoundary(messages);
-	return boundary ? { instructionCacheBoundary: boundary } : {};
+	const boundary = options?.instructionCacheBoundary === undefined ? findInstructionCacheBoundary(messages) : undefined;
+	const volatile =
+		options?.instructionVolatileBoundary === undefined ? findInstructionVolatileBoundary(messages) : undefined;
+	const tools =
+		options?.toolCacheBoundary === undefined
+			? findToolCacheBoundary((getInitialSystemMessage(messages)?.toolsAdded ?? []).map((tool) => tool.name))
+			: undefined;
+	return {
+		...(boundary ? { instructionCacheBoundary: boundary } : {}),
+		...(volatile ? { instructionVolatileBoundary: volatile } : {}),
+		...(tools ? { toolCacheBoundary: tools } : {}),
+	};
 }

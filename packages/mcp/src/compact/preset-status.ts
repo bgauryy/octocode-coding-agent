@@ -1,18 +1,16 @@
 /**
- * Which kept overrides no longer match the server they were written for, per override: the drift tests name a preset's,
- * `generate:compact` shows and re-points them, and `octocode mcp compact list` names a server's stored ones. Overrides
- * are checked against every catalog a server sends
- * (the Octocode server varies its tools by configuration): one is stale when it differs in any catalog that has its
- * text, or when no catalog has it.
+ * Which stored overrides no longer match the server they were written for, per override: `octocode mcp compact list`
+ * names them. Overrides are checked against every catalog given (a server can vary its tools by configuration): one is
+ * stale when it differs in any catalog that has its text, or when no catalog has it.
  */
 
 import { instructionsHash } from "./render.ts";
 import { hashList } from "./preset-overrides.ts";
 import { fieldUpstreamTexts, toolDescriptionTexts, upstreamHash } from "./upstream.ts";
-import type { CompactServerInput, PresetOverrides, PresetToolOverrides, UpstreamHashes } from "./types.ts";
+import type { CompactServerInput, PresetOverrides, UpstreamHashes } from "./types.ts";
 
-export interface StalePresetEntry {
-	/** `server`, `<tool>.description` (its trigger too) or `<tool>.<field path>`: what the drift tests name. */
+interface StalePresetEntry {
+	/** `server`, `<tool>.description` (its trigger too) or `<tool>.<field path>`. */
 	label: string;
 	kind: "server" | "description" | "field";
 	tool?: string;
@@ -94,84 +92,4 @@ export function presetStatus(preset: PresetOverrides, inputs: readonly CompactSe
 			stale.push({ ...probe.entry, reason: "changed", current: [...new Set(found.flat())].sort() });
 	}
 	return stale;
-}
-
-const hashesOf = (probe: Probe, inputs: readonly CompactServerInput[]): UpstreamHashes => {
-	const hashes = [...new Set(present(probe, inputs).map(probe.hash))].sort();
-	return hashes.length === 1 ? hashes[0] : hashes;
-};
-
-/**
- * `preset` with the hashes of the `accepted` stale entries re-pointed at the catalogs of `inputs`, for a maintainer who
- * has read what changed upstream and found the override still true; an entry nothing has any more is dropped.
- */
-export function acceptStale(
-	preset: PresetOverrides,
-	inputs: readonly CompactServerInput[],
-	accepted: readonly StalePresetEntry[],
-): PresetOverrides {
-	const labels = new Set(accepted.map((entry) => entry.label));
-	const byLabel = new Map(probes(preset).map((probe) => [probe.entry.label, probe]));
-	const tools: Record<string, PresetToolOverrides> = {};
-	for (const [name, tool] of Object.entries(preset.tools ?? {})) {
-		const next: PresetToolOverrides = { ...tool };
-		const description = byLabel.get(`${name}.description`);
-		if (description && labels.has(description.entry.label)) {
-			if (present(description, inputs).length) next.descriptionHash = hashesOf(description, inputs);
-			else {
-				delete next.descriptionHash;
-				delete next.description;
-				delete next.trigger;
-			}
-		}
-		const fields: Record<string, { upstream: UpstreamHashes; text: string }> = {};
-		for (const [path, field] of Object.entries(tool.fields ?? {})) {
-			const probe = byLabel.get(`${name}.${path}`);
-			if (!probe || !labels.has(probe.entry.label)) fields[path] = field;
-			else if (present(probe, inputs).length) fields[path] = { ...field, upstream: hashesOf(probe, inputs) };
-		}
-		if (Object.keys(fields).length) next.fields = fields;
-		else delete next.fields;
-		if (next.description !== undefined || next.trigger !== undefined || next.fields) tools[name] = next;
-	}
-	const server = byLabel.get("server");
-	return {
-		...(preset.server
-			? {
-					server:
-						server && labels.has("server")
-							? { ...preset.server, instructionsHash: instructionsHash(inputs[0]?.instructions) }
-							: preset.server,
-				}
-			: {}),
-		...(Object.keys(tools).length ? { tools } : {}),
-	};
-}
-
-/**
- * `preset` without the `stale` entries, so the server's own text applies there: the response to drift that rewrites
- * nothing. A stale description drops the tool's trigger with it (it is keyed on that description); a tool keeps its
- * still-valid fields.
- */
-export function dropStale(preset: PresetOverrides, stale: readonly StalePresetEntry[]): PresetOverrides {
-	const labels = new Set(stale.map((entry) => entry.label));
-	const tools: Record<string, PresetToolOverrides> = {};
-	for (const [name, tool] of Object.entries(preset.tools ?? {})) {
-		const next: PresetToolOverrides = { ...tool };
-		if (labels.has(`${name}.description`)) {
-			delete next.descriptionHash;
-			delete next.description;
-			delete next.trigger;
-		}
-		const fields = Object.fromEntries(
-			Object.entries(tool.fields ?? {}).filter(([path]) => !labels.has(`${name}.${path}`)),
-		);
-		if (Object.keys(fields).length) next.fields = fields;
-		else delete next.fields;
-		if (next.description !== undefined || next.trigger !== undefined || next.fields) tools[name] = next;
-	}
-	return {
-		...(preset.server && !labels.has("server") ? { server: preset.server } : {}),
-		...(Object.keys(tools).length ? { tools } : {}),
-	};
 }

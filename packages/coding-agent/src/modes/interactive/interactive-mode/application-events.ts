@@ -58,7 +58,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		host.ui.requestRender();
 	};
 	const contentOptions = () => ({
-		cwd: host.session.sessionManager.getCwd(),
+		cwd: host.sessionManager.getCwd(),
 		readAsset: (id: string) => port.readAsset(id),
 		showImages: host.settingsManager.getShowImages(),
 		imageWidthCells: host.settingsManager.getImageWidthCells(),

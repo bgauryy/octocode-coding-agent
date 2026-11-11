@@ -1,11 +1,14 @@
 import { makeItem } from "../../core/discovery/roots.ts";
 import type { ConfigItem, DiscoverInput } from "../../core/discovery/types.ts";
-import { listMcpFileEntries, loadMcpConfig } from "../../../../mcp/src/config.ts";
-import { mcpLaunchIdentity } from "../../../../mcp/src/launch-identity.ts";
-import { mcpConfigFiles } from "../../../../mcp/src/paths.ts";
-import { presetEntries } from "../../../../mcp/src/preset.ts";
-import { browserPreset } from "../../../../mcp/src/presets/browser/index.ts";
-import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
+import {
+	listMcpFileEntries,
+	loadMcpConfig,
+	mcpLaunchIdentity,
+	mcpConfigFiles,
+	presetEntries,
+	browserPreset,
+	recommendedPresets,
+} from "../../../../mcp/src/api.ts";
 
 const FOREIGN_VENDORS: ReadonlySet<string> = new Set(["claude", "codex", "cursor"]);
 

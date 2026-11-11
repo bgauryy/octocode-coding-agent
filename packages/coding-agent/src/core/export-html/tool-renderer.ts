@@ -6,6 +6,7 @@
  */
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
+import { resultPurposeData } from "@octocodeai/octocode-contracts";
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../features/types.ts";
@@ -156,9 +157,10 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				}
 				// An MCP call's purpose comes from its result, so it opens the result, right under the call. Without the
 				// arguments a native tool's reason row (drawn with its call) is not repeated here.
-				const purpose = reasonRow(toolName, undefined, structuredContent)?.render(width) ?? [];
+				const stated = resultPurposeData({ structuredContent, content: result });
+				const purpose = reasonRow(toolName, undefined, stated)?.render(width) ?? [];
 				// Under the result message, below its output, and not repeating the reason row above.
-				const returned = purposeRows(toolName, renderedArgs.get(toolCallId), structuredContent)?.render(width) ?? [];
+				const returned = purposeRows(toolName, renderedArgs.get(toolCallId), stated)?.render(width) ?? [];
 
 				// Build AgentToolResult from content array
 				// Cast content since session storage uses generic object types

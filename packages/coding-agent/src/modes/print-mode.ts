@@ -11,6 +11,7 @@ import type { AgentSessionEvent, RunOutcome } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, onRawStdoutFailure, writeRawStdout } from "../core/output-guard.ts";
 import { createEventOutput, waitForEventBackpressure } from "./event-output.ts";
+import { headlessCommandActions } from "./headless-actions.ts";
 import { toJsonEvent } from "./json-event.ts";
 import { handleTerminationSignals } from "./termination-signals.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -81,26 +82,14 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		await session.bindExtensions({
 			mode: mode === "json" ? "json" : "print",
 			commandContextActions: {
-				waitForIdle: () => session.waitForIdle(),
+				...headlessCommandActions(() => session),
 				newSession: async (newSessionOptions) => runtimeHost.newSession(newSessionOptions),
 				fork: async (entryId, forkOptions) => {
 					const result = await runtimeHost.fork(entryId, forkOptions);
 					return { cancelled: result.cancelled };
 				},
-				navigateTree: async (targetId, navigateOptions) => {
-					const result = await session.navigateTree(targetId, {
-						summarize: navigateOptions?.summarize,
-						customInstructions: navigateOptions?.customInstructions,
-						replaceInstructions: navigateOptions?.replaceInstructions,
-						label: navigateOptions?.label,
-					});
-					return { cancelled: result.cancelled };
-				},
 				switchSession: async (sessionPath, switchOptions) => {
 					return runtimeHost.switchSession(sessionPath, switchOptions);
-				},
-				reload: async () => {
-					await session.reload();
 				},
 			},
 			onError: (err) => {
@@ -123,8 +112,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 				console.error(`Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt} of ${maxAttempts}): ${why}`);
 			}
 		});
-		unsubscribeBackpressure =
-			mode === "json" ? session.agent.subscribe((event) => waitForEventBackpressure(event)) : undefined;
+		unsubscribeBackpressure = mode === "json" ? session.agent.subscribe(waitForEventBackpressure) : undefined;
 	};
 
 	try {

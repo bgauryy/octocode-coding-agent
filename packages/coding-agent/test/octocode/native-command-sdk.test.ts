@@ -43,7 +43,7 @@ it("loads one native command per canonical name through the real SDK", async () 
 		const commands = runner.getRegisteredCommands();
 		const inventory = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].map((command) => command.name));
 		const guide = fs.readFileSync(path.join(import.meta.dirname, "../../docs/commands.md"), "utf8");
-		expect(guide).toContain(`${inventory.size} slash commands`);
+		// The guide has a row for every command; it states no count, which would go stale.
 		for (const name of inventory) expect(guide).toMatch(new RegExp("^\\| `/" + name + "(?:[ `])", "m"));
 		for (const name of [
 			"agents",

@@ -2,7 +2,8 @@
 /**
  * Builds packages/coding-agent:
  * - `dist/bundle/octocode.js`: all the JavaScript in one Rolldown file, straight from the TypeScript sources, with a small
- *   launcher per command beside it;
+ *   launcher per command beside it, and `dist/bundle/db-writer-worker.js`: the database writer's worker on its own, so
+ *   each process's writer thread loads the database code instead of the whole bundle;
  * - the runtime assets the bundle reads by path (`dist/theme`, `dist/core/export-html`, `dist/octocode/...`, ...), the
  *   native terminal helpers (`dist/native`) and the licenses of everything compiled in (`dist/licenses`).
  * The private source workspaces (mcp, acp, common) compile in through their relative imports. Workspace libraries (ai,
@@ -110,7 +111,16 @@ async function bundle(input, output, unresolved) {
 	}
 }
 
-/** The one bundle file and its launchers, which turn on the compile cache before loading it. */
+/**
+ * The database writer's worker (`packages/db/src/writer/client.ts` starts it by this name beside the bundle). A separate
+ * file: started as the bundle, every writer thread would compile and hold all of it.
+ */
+const DB_WRITER_WORKER = {
+	name: "db-writer-worker",
+	entry: join(repoRoot, "packages", "db", "src", "writer", "worker-entry.ts"),
+};
+
+/** The one bundle file and its launchers, which turn on the compile cache before loading it, and the writer's worker. */
 async function buildBundle() {
 	const unresolved = new Set();
 	const chunks = await bundle(
@@ -119,6 +129,12 @@ async function buildBundle() {
 		unresolved,
 	);
 	if (chunks.length !== 1) throw new Error(`Expected one bundle file, got ${chunks.length}`);
+	const worker = await bundle(
+		{ [DB_WRITER_WORKER.name]: DB_WRITER_WORKER.entry },
+		{ dir: bundleDir, entryFileNames: "[name].js", codeSplitting: false },
+		unresolved,
+	);
+	if (worker.length !== 1) throw new Error(`Expected one database writer worker file, got ${worker.length}`);
 
 	const unexpected = [...unresolved].filter((path) => !isBuiltin(path) && !allowedExternalPackages.has(path));
 	if (unexpected.length > 0)
@@ -140,10 +156,11 @@ async function buildBundle() {
 	}
 
 	mkdirSync(join(dist, "licenses"), { recursive: true });
-	const notices = renderThirdPartyNotices(chunks[0].moduleIds);
+	const notices = renderThirdPartyNotices([...chunks[0].moduleIds, ...worker[0].moduleIds]);
 	writeFileSync(join(dist, "licenses", "THIRD_PARTY_NOTICES.md"), notices.text);
 	const size = (Buffer.byteLength(chunks[0].code) / (1024 * 1024)).toFixed(1);
-	return `${relative(repoRoot, join(bundleDir, chunks[0].fileName))} (${size} MiB, ${notices.count} third-party packages)`;
+	const workerSize = (Buffer.byteLength(worker[0].code) / 1024).toFixed(0);
+	return `${relative(repoRoot, join(bundleDir, chunks[0].fileName))} (${size} MiB, ${notices.count} third-party packages), ${worker[0].fileName} (${workerSize} KiB)`;
 }
 
 /** Files the bundle reads by path at run time, and the licenses of code compiled into it. */

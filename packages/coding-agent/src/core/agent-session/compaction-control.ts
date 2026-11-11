@@ -11,6 +11,7 @@ import type { CacheWarmer } from "../cache-warmer.ts";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
+	CompactionFitError,
 	compact,
 	explainNothingToCompact,
 	prepareCompaction,
@@ -261,9 +262,7 @@ export class SessionCompaction {
 		return compactionResult;
 	}
 
-	/**
-	 * Cancel in-progress compaction (manual or auto).
-	 */
+	/** Cancel in-progress compaction (manual or auto). */
 	abort(): void {
 		this._compactionAbortController?.abort();
 		this._autoCompactionAbortController?.abort();
@@ -310,6 +309,7 @@ export class SessionCompaction {
 		let abortController: AbortController | undefined;
 		let started = false;
 		const outcome = { fromExtension: false, cancelledByExtension: false };
+		this.host.run.windowUnfit = undefined;
 
 		try {
 			if (!model) {
@@ -362,6 +362,7 @@ export class SessionCompaction {
 			return session.agent.hasQueuedMessages();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "compaction failed";
+			if (error instanceof CompactionFitError) this.host.run.windowUnfit = message;
 			const aborted = abortController?.signal.aborted === true || outcome.cancelledByExtension;
 			if (!aborted && started) this._autoCompactionLimit.failed();
 			if (started) {

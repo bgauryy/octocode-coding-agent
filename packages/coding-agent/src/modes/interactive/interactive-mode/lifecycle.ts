@@ -75,7 +75,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		// skipped if a later terminal-restore write fails on a dead or stalled
 		// terminal. If the terminal is gone, the restore writes below emit EIO,
 		// which the stdout/stderr error handler turns into emergencyTerminalExit;
-		// the render loop is already idle, so this cannot hot-spin (see #4144).
+		// the render loop is already idle, so this cannot hot-spin.
 		await host.runtimeHost.dispose();
 		host.themeController.disableAutoSync();
 		await host.ui.terminal.drainInput(1000);
@@ -134,7 +134,7 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 			// SIGHUP no longer hard-exits: graceful shutdown emits session_shutdown
 			// first, then attempts terminal restore. A genuinely dead terminal
 			// surfaces as an EIO on the restore writes, which the stdout/stderr
-			// error handler converts into emergencyTerminalExit (see #4144, #5080).
+			// error handler converts into emergencyTerminalExit.
 			// Subagents are left to the graceful stop (report, worktree save); the exit hook kills any still running.
 			killTrackedDetachedChildren({ sparingGraceful: true });
 			void host.shutdown({ fromSignal: true });

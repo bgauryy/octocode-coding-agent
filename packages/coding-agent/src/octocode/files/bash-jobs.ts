@@ -12,6 +12,7 @@ import { shortPath } from "../../utils/display-path.ts";
 import { privateDir, sessionOutputDir } from "../shared/home.ts";
 import { groupAlive, killTree, processStartTime, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
+import { recordShellGroup } from "../shared/shell-groups.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
@@ -84,9 +85,10 @@ export class BashJobs {
 
 	/**
 	 * Takes over a foreground command that reached its deadline while still running: `output` (what it printed so far)
-	 * goes to the new log first, then whatever its pipes deliver. The caller has stopped reading the pipes. The job has
-	 * no timeout of its own (the foreground deadline is used up): it runs until it exits, is stopped, or the session
-	 * ends, and a headless run stops it (`settle`) like any untimed job. `startedAt` is when the command began.
+	 * goes to the new log first, then whatever its pipes deliver. The caller has stopped reading the pipes. With
+	 * `timeout` (seconds from now: what is left of the call's own timeout) the job is stopped then; without one it runs
+	 * until it exits, is stopped, or the session ends, and a headless run stops it (`settle`) like any untimed job.
+	 * `startedAt` is when the command began.
 	 */
 	adopt(
 		child: ChildProcess,
@@ -96,19 +98,21 @@ export class BashJobs {
 		{
 			output,
 			startedAt,
+			timeout: left,
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 			verification,
 			reason,
 		}: {
 			output: Buffer;
 			startedAt: number;
+			timeout?: number;
 			maxLogBytes?: number;
 			verification?: VerificationReceipt;
 			reason?: string;
 		},
 	): BashJob {
 		if (child.pid === undefined) throw new Error("The command has no process to move");
-		const options = { maxLogBytes, output, startedAt, verification, reason };
+		const options = { timeout: clampTimeoutSeconds(left), maxLogBytes, output, startedAt, verification, reason };
 		return this.register(child, child.pid, command, cwd, onExit, options);
 	}
 
@@ -158,6 +162,8 @@ export class BashJobs {
 		} catch {
 			// Without its record only this Octocode can stop the job.
 		}
+		// A subagent's parent stops the job if this child dies without doing so (`shared/shell-groups.ts`).
+		recordShellGroup(pid);
 		// The job, and its output pipes, must not keep a print run's process alive; session_shutdown stops it.
 		child.unref();
 		const pipes = [child.stdout, child.stderr].filter((pipe) => pipe !== null) as Socket[];

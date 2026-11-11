@@ -1,10 +1,10 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { FINISHED_MS } from "../../src/octocode/team/panel-compact.ts";
-import { FinishedTracker } from "../../src/octocode/team/panel-finished.ts";
+import { FINISHED_MS } from "../../src/octocode/team/panel/compact.ts";
+import { FinishedTracker } from "../../src/octocode/team/panel/finished.ts";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
-import { panelState } from "../../src/octocode/team/panel-state.ts";
+import { panelState } from "../../src/octocode/team/panel/state.ts";
 import { theme } from "./fake-host.ts";
 
 const NOW = 1_000_000;

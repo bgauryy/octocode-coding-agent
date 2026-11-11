@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { browserMcpEscalations, browserMcpUrls } from "../../../common/src/browser-mcp.ts";
+import { browserMcpUrls } from "../../../common/src/browser-mcp.ts";
+import { browserMcpEscalations } from "../../src/octocode/permission/browser-mcp-escalations.ts";
 import {
 	PERMISSION_ENV,
 	PERMISSION_GRANTS_ENV,

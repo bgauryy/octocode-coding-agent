@@ -38,6 +38,7 @@ import {
 	withoutModelSavedResults,
 } from "./saved-results.ts";
 import { sessionCachePreferences, sharedSummary, type SummaryApi } from "./shared-summary.ts";
+import { noGainReason } from "./summary-gain.ts";
 import { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText } from "./summary-text.ts";
 
 export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSAGES_CHARS, userMessagesSection };
@@ -154,7 +155,7 @@ function codeSections(
 	const skills = loadedSkills(summarized, carriedLoadedSkills(event.branchEntries));
 	const note = transcriptNote(
 		ctx.sessionManager.getSessionFile(),
-		api.getActiveTools().includes("backlog"),
+		api.getActiveTools().includes("backlogPlan"),
 		archivePointer(segment),
 		// The backlog and running work as the tools state them now, ahead of the skills line.
 		[...(liveState?.() ?? []), ...loadedSkillsLines(skills)],
@@ -223,6 +224,7 @@ export async function writeSummary(
 	const previous =
 		event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
 	const kept = carriedUserMessages(previous, event.branchEntries);
+	const automatic = event.reason === "threshold" || event.reason === "overflow";
 	try {
 		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
 		const recordUsage = api.createUsageRecorder("compaction_attempt");
@@ -248,6 +250,13 @@ export async function writeSummary(
 		const key = paidKey(model, event.preparation, event.customInstructions);
 		let paidSummary = paid.get(ctx.sessionManager);
 		if (paidSummary?.key !== key) {
+			// An automatic compaction whose appended sections alone (unsaved) are as large as what the summary replaces cannot
+			// free anything, so the model is not paid to write it.
+			if (automatic) {
+				const floor = codeSections(api, event, ctx, "", kept, segment, null, parentId, liveState);
+				const futile = noGainReason(event.preparation, `${floor.body}${floor.messages}${floor.note}`);
+				if (futile) return { cancel: true, failure: futile };
+			}
 			// On the session's own model the summary is asked for inside the session's request, which the prompt cache holds;
 			// on another (a downshift) or when that fails, as a standalone request over the serialized conversation. After an
 			// overflow the session's own request just failed for its size: sharing it would only fail again.
@@ -317,6 +326,10 @@ export async function writeSummary(
 			parentId,
 			liveState,
 		);
+		// An automatic compaction that frees nothing is not committed: the next one would only come sooner. A manual one
+		// is the user's (or the agent's `compact`) request, and commits.
+		const futile = automatic ? noGainReason(event.preparation, `${body}${messages}${note}`) : undefined;
+		if (futile) return { cancel: true, failure: futile };
 		const details = {
 			...asRecord(result.details),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),

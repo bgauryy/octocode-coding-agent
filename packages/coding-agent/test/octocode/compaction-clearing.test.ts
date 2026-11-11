@@ -159,20 +159,70 @@ const resultTexts = (messages: any[]) =>
 const cleared = (text: string) => text.startsWith("[Old tool result cleared");
 const savedPathOf = (text: string) => /Full output: (\S+) \(sha256/.exec(text)?.[1];
 
-describe("clearing old tool results once the prompt cache is cold", () => {
+describe("clearing old tool results when the cache is rewritten anyway or clearing pays", () => {
 	const idleMessages = (items: Array<{ messages: unknown[] }>) => [
 		{ role: "user", content: "go", timestamp: T0 },
 		...flat(items),
 		reply(T0 + 100),
 	];
 
-	it("does nothing while the cache is warm, however old and large the results", async () => {
-		const messages = idleMessages(reads(20));
+	it("while the cache is warm, clears nothing in a short session, however large its old results", async () => {
+		// Eight requests: three old results of 10,000 tokens each pass the 20,000-token bar, but re-sending them over about
+		// eight more requests costs less than writing the rest of the history to the cache again.
+		const messages = idleMessages(reads(8, 30_000));
 		const s = setup(messages);
 		await s.start(T0 + 100 + HOUR - 1_000);
 		expect(s.entries).toEqual([]);
-		expect(resultTexts(await s.context()).every((text) => text.length === BIG)).toBe(true);
+		expect(resultTexts(await s.context()).every((text) => text.length === 30_000)).toBe(true);
 		expect(s.guard.forget).not.toHaveBeenCalled();
+	});
+
+	describe("while the cache is warm, a long session", () => {
+		const warmAt = T0 + 100 + 60_000;
+		const perResult = BIG / CHARS_PER_TOKEN;
+		/**
+		 * The first session length (one result per request, plus the closing reply) at which the documented rule
+		 * `T_old × R × N > S_after × W` holds, with `T_old` the results older than the newest five, `N` the requests so far
+		 * and `S_after` about the five kept results (placeholders and short replies are a rounding error here).
+		 */
+		const predicted = (read: number, write: number) => {
+			for (let results = KEEP_RECENT_RESULTS + 1; results < 200; results++) {
+				const old = (results - KEEP_RECENT_RESULTS) * perResult;
+				if (old >= CLEAR_AT_LEAST_TOKENS && old * read * (results + 1) > KEEP_RECENT_RESULTS * perResult * write)
+					return results;
+			}
+			throw new Error("never pays");
+		};
+		const firstClearing = async (options: Parameters<typeof setup>[1] = {}) => {
+			for (let results = KEEP_RECENT_RESULTS + 1; results < 60; results++) {
+				const s = setup(idleMessages(reads(results)), options);
+				await s.start(warmAt);
+				if (s.entries.length > 0) {
+					const out = resultTexts(await s.context());
+					expect(out.slice(0, results - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
+					expect(out.slice(-KEEP_RECENT_RESULTS).every((text) => text.length === BIG)).toBe(true);
+					return results;
+				}
+			}
+			return undefined;
+		};
+
+		it("clears once re-sending its old results costs more than rewriting the cache once (no catalog prices: 0.1 read, 2 write for 1 hour)", async () => {
+			expect(predicted(0.1, 2)).toBe(13);
+			expect(await firstClearing()).toBe(predicted(0.1, 2));
+		});
+
+		it("prices by the model's catalog: a cheap read and no write premium clear sooner", async () => {
+			// Writes cost the input price (no premium) and reads a quarter of it.
+			const priced = {
+				...model,
+				contextWindow: 1_000_000,
+				cost: { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 0 },
+			};
+			const at = predicted(0.5, 2);
+			expect(at).toBeLessThan(predicted(0.1, 2));
+			expect(await firstClearing({ model: priced })).toBe(at);
+		});
 	});
 
 	it("after an idle gap past the cache lifetime keeps the newest five and clears older results to saved files", async () => {
@@ -188,13 +238,13 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		outcome.slice(0, 12 - KEEP_RECENT_RESULTS).forEach((text, index) => {
 			const file = savedPathOf(text)!;
 			expect(fs.readFileSync(path.resolve(file), "utf8")).toBe(String(index % 10).repeat(BIG));
-			expect(text).toMatch(/prompt cache expired/);
+			expect(text).toMatch(/to save context/);
 			expect(text).toMatch(/run the call again/);
 		});
 	});
 
-	describe("while the cache is warm and the context is past half its budget", () => {
-		// 200k working context: 40 reads of 10k characters are about 133k tokens, past half.
+	describe("while the cache is warm and the request rewrites it anyway", () => {
+		// Twelve reads: clearing alone would not pay yet (see the long session above), so only the rewrite clears them.
 		const head = { role: "system", content: "base prompt", timestamp: T0 - 1 };
 		const tool = { name: "extra", description: "d", parameters: { type: "object", properties: {} } };
 		const sectionUpdate = { role: "system", content: "", sections: { planning: "on" }, timestamp: T0 + 150 };
@@ -202,51 +252,50 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		const warmAt = T0 + 100 + 60_000;
 		const capable = { ...model, compat: { supportsMidConvoSystemMessages: true } };
 
-		const cleared40 = async (s: ReturnType<typeof setup>) => {
+		const cleared12 = async (s: ReturnType<typeof setup>) => {
 			await s.start(warmAt);
 			return (
 				s.entries.length === 1 &&
 				resultTexts(await s.context())
-					.slice(0, 40 - KEEP_RECENT_RESULTS)
+					.slice(0, 12 - KEEP_RECENT_RESULTS)
 					.every(cleared)
 			);
 		};
 
 		it("does not clear for a trailing update on a model that keeps system updates in the history", async () => {
 			for (const update of [sectionUpdate, toolUpdate]) {
-				const s = setup([head, ...idleMessages(reads(40)), update], { model: capable });
+				const s = setup([head, ...idleMessages(reads(12)), update], { model: capable });
 				await s.start(warmAt);
 				expect(s.entries).toEqual([]);
 			}
 		});
 
 		it("clears for a collapsing model whose leading prompt changes, not for one whose leading prompt stays", async () => {
-			expect(await cleared40(setup([head, ...idleMessages(reads(40)), toolUpdate]))).toBe(true);
+			expect(await cleared12(setup([head, ...idleMessages(reads(12)), toolUpdate]))).toBe(true);
 			// A section update becomes a user message after the head: the cached prefix is untouched.
-			const kept = setup([head, ...idleMessages(reads(40)), sectionUpdate]);
+			const kept = setup([head, ...idleMessages(reads(12)), sectionUpdate]);
 			await kept.start(warmAt);
 			expect(kept.entries).toEqual([]);
 		});
 
 		it("clears when a trailing system update folds into the leading prompt, though handlers never see system messages", async () => {
-			const s = setup([head, ...idleMessages(reads(40)), toolUpdate]);
+			const s = setup([head, ...idleMessages(reads(12)), toolUpdate]);
 			await s.start(warmAt);
 			expect(s.entries).toHaveLength(1);
 		});
 
 		it("clears for a model switch", async () => {
 			const switched = { ...reply(T0 + 100), provider: "other", model: "m" };
-			const messages = [{ role: "user", content: "go", timestamp: T0 }, ...flat(reads(40)), switched];
-			expect(await cleared40(setup(messages, { model: capable }))).toBe(true);
+			const messages = [{ role: "user", content: "go", timestamp: T0 }, ...flat(reads(12)), switched];
+			expect(await cleared12(setup(messages, { model: capable }))).toBe(true);
 		});
 
-		it("clears nothing without a rewrite ahead or under half the budget", async () => {
-			const warm = setup(idleMessages(reads(40)));
+		it("clears nothing without a rewrite ahead, and a rewrite clears however little of the window is used", async () => {
+			const warm = setup(idleMessages(reads(12)));
 			await warm.start(warmAt);
 			expect(warm.entries).toEqual([]);
-			const small = setup([head, ...idleMessages(reads(12)), toolUpdate]);
-			await small.start(warmAt);
-			expect(small.entries).toEqual([]);
+			// About 40,000 tokens of a 200,000-token window.
+			expect(await cleared12(setup([head, ...idleMessages(reads(12)), toolUpdate]))).toBe(true);
 		});
 	});
 
@@ -275,9 +324,9 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		expect(atLeast.entries).toHaveLength(1);
 	});
 
-	it("clears only re-fetchable read-only results: Octocode MCP, web, grep/find/ls and read; never bash, file, agent or custom messages", async () => {
+	it("clears only re-fetchable read-only results: Octocode MCP, web, grep/find/ls, read and read-only bash; never a writing bash command, file, agent or custom messages", async () => {
 		const keep = [
-			exchange("bash", { command: "ls" }, textOf(60_000)),
+			exchange("bash", { command: "npm install" }, textOf(60_000)),
 			exchange("file", { queries: [] }, textOf(60_000)),
 			exchange("agent", { task: "x" }, textOf(60_000)),
 		];
@@ -288,6 +337,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 			exchange("grep", { pattern: "a" }, textOf(20_000)),
 			exchange("find", { pattern: "a" }, textOf(20_000)),
 			exchange("ls", { path: "." }, textOf(20_000)),
+			exchange("bash", { command: "ls -la" }, textOf(20_000)),
 		];
 		const s = setup([custom, ...flat(keep), ...flat(old), ...flat(reads(KEEP_RECENT_RESULTS)), reply(T0 + 100)]);
 		await s.start(T0 + 100 + HOUR + 1_000);
@@ -457,7 +507,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 				spilled === undefined ? {} : { details: { fullOutputPath: spilled } },
 			);
 
-		it("clears an old read-only command to the file Octocode saved, and never one that writes, has no saved file, or whose file is gone", async () => {
+		it("clears an old read-only command to the file Octocode saved, or to a copy saved now when it has none or it is gone; never one that writes", async () => {
 			const spilled = Array.from({ length: 8 }, (_, index) => ({
 				item: bash(`cat src/a${index}.ts | head -50`, spill(`octocode-bash-${index}.log`)),
 				file: "",
@@ -476,13 +526,21 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 			expect(s.entries).toHaveLength(1);
 			const out = (await s.context()).filter((message) => message.role === "toolResult");
 			const byId = new Map(out.map((message) => [message.toolCallId, message.content[0].text as string]));
-			for (const kept of [writes, unsaved, gone]) expect(byId.get(kept.id)).toHaveLength(BIG);
+			expect(byId.get(writes.id)).toHaveLength(BIG);
+			// Without a spill file the result's own text is saved, whole, when it is cleared.
+			for (const copied of [unsaved, gone]) {
+				const text = byId.get(copied.id)!;
+				expect(cleared(text)).toBe(true);
+				expect(fs.readFileSync(path.resolve(savedPathOf(text)!), "utf8")).toBe("b".repeat(BIG));
+			}
 			spilled.forEach(({ item }) => {
 				const file = (item.messages[1] as any).details.fullOutputPath as string;
 				// The placeholder names Octocode's own spill file; no second copy is written.
 				expect(byId.get(item.id)).toContain(`Full output: ${shortPath(file)}.`);
 			});
-			const saved = (s.entries[0].data as { results: Array<{ saved: string }> }).results.map((result) => result.saved);
+			const saved = (s.entries[0].data as { results: Array<{ id: string; saved: string }> }).results
+				.filter((result) => spilled.some(({ item }) => item.id === result.id))
+				.map((result) => result.saved);
 			expect(saved).toEqual(spilled.map(({ item }) => shortPath((item.messages[1] as any).details.fullOutputPath)));
 		});
 

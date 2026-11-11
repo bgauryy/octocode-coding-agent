@@ -4,7 +4,7 @@
  */
 
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/host.ts";
+import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/api.ts";
 import { formatToolCallWithArgs, getTextOutput } from "../../core/tools/render-utils.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { resultBlock, resultText, toolHeader } from "../render/tool.ts";

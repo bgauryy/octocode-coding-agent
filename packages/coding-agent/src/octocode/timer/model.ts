@@ -1,14 +1,14 @@
 import type { NewTimer, TimerRow } from "../../../../db/src/api.ts";
 import {
-	conditionBaseline,
 	conditionTiming,
 	decodeCondition,
 	describeCondition,
 	encodeCondition,
 	parseUntil,
 } from "./conditions/index.ts";
+import { removedStored } from "./conditions/removed.ts";
 import { CHECK_CAPS } from "./judge.ts";
-import type { CheckOutcome, ConditionDeps, TimerCondition } from "./conditions/types.ts";
+import type { CheckOutcome, TimerCondition } from "./conditions/types.ts";
 
 export type { CheckOutcome, TimerCondition };
 
@@ -53,7 +53,6 @@ export function timerFields(
 	input: TimerSetInput,
 	now: number,
 	owner: { workspaceId: string; sessionId: string; agent?: string; toolCallId?: string; cwd: string },
-	deps?: ConditionDeps,
 ): NewTimer {
 	const note = input.note?.trim();
 	if (!note) throw new Error("set needs a note: what to do when the timer wakes you.");
@@ -81,12 +80,7 @@ export function timerFields(
 			kind: "until",
 			dueAt: now + (after ?? 0) * 1000,
 			intervalMs: interval * 1000,
-			condition: {
-				kind: condition.kind,
-				value: encodeCondition(condition),
-				cwd: owner.cwd,
-				...(deps ? withBaseline(conditionBaseline(condition, owner.cwd, deps)) : {}),
-			},
+			condition: { kind: condition.kind, value: encodeCondition(condition), cwd: owner.cwd },
 			deadlineAt: now + (deadline ?? DEFAULT_UNTIL_DEADLINE_SECONDS) * 1000,
 		};
 	}
@@ -108,12 +102,17 @@ export function timerFields(
 	return { ...base, kind: "once", dueAt: now + after * 1000 };
 }
 
-const withBaseline = (baseline: string | undefined) => (baseline === undefined ? {} : { baseline });
-
 /** The stored condition of an `until` row. */
 export function rowCondition(row: TimerRow): TimerCondition | undefined {
 	return row.condition_kind && row.condition ? decodeCondition(row.condition_kind, row.condition) : undefined;
 }
+
+/**
+ * Why an `until` row set by an earlier version can no longer be checked: its condition kind was removed. The note names
+ * the `command` to set it with again; the scheduler ends the row with it instead of leaving it to its deadline.
+ */
+export const rowRemoved = (row: TimerRow): string | undefined =>
+	row.kind === "until" ? removedStored(row.condition_kind, row.condition) : undefined;
 
 /** What a claimed fire does next: wake now (ending the timer with a status, or not), or stay silent until the next check. */
 export type FireDecision =

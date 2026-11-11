@@ -409,9 +409,11 @@ describe("collaboration prompt", () => {
 				registerMessageRenderer: () => undefined,
 				on: () => undefined,
 			} as never,
-			() => new Map(),
-			{ view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
-			fakePermission(),
+			{
+				profiles: () => new Map(),
+				team: { view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
+				permission: fakePermission(),
+			},
 		);
 		expect(tools[0].parameters.properties).not.toHaveProperty("collaborate");
 		// A child names its parent generically: its own id and parent arrive in its task.
@@ -493,7 +495,7 @@ describe("Team", () => {
 			const content = childLog[0].message.content;
 			expect(content).toContain(`from your coordinator ${parent.id}`);
 			expect(content).toContain("also check tests");
-			expect(content).toContain(`replyTo ${(asked as { id: number }).id}`);
+			expect(content).toContain(`\`replyTo\` ${(asked as { id: number }).id}`);
 			expect(childLog[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 			// Awaiting a reply once Octocode puts it in front of the child's model.
 			child.onContext([{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0].message.details }]);

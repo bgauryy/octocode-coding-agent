@@ -122,9 +122,13 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 			model: { id: "later-model" },
 		});
 		ctx.signal = AbortSignal.abort();
-		registerHooks(fake.api, {}, home, undefined, () => ({
-			permissionMode: "workspace",
-		}));
+		registerHooks(fake.api, {
+			env: {},
+			home,
+			metadata: () => ({
+				permissionMode: "workspace",
+			}),
+		});
 		try {
 			await fake.fire("session_start", { reason: "startup" }, { ...ctx, signal: undefined });
 			const results = await fake.emit(

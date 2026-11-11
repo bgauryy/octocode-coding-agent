@@ -1,7 +1,7 @@
 import { resolveRetention } from "../../storage/retention.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
-import type { ResolvedRoles } from "../../../../mcp/src/roles.ts";
+import { renderPolicySection, SYSTEM_PROMPT_SECTIONS } from "../../core/system-prompt-spec.ts";
+import type { ResolvedRoles } from "../../../../mcp/src/api.ts";
 
 /** The research server the policy routes code search to: its namespace prefix and full tool names, by role. */
 export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "prefix" | "reader" | "search">;
@@ -46,8 +46,13 @@ interface PromptInputs {
 	canAsk?: boolean;
 	/** Whether the current request exposes the web lookup tool. */
 	canWeb?: boolean;
-	/** Whether the `backlog` tool is declared (default true): delegation plans and waits on items only then. */
+	/** Whether the `backlog` and `backlogPlan` tools are declared (default true): delegation plans and waits on items only then. */
 	canBacklog?: boolean;
+	/**
+	 * Whether this session has started a child or messaged another agent (`turn.ts`): the `children` section, the rules
+	 * for running children and using their reports, is sent from then on and is absent before.
+	 */
+	childStarted?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
 	canMcp?: boolean;
 	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
@@ -89,6 +94,7 @@ function policyFlags(input: PromptInputs) {
 		browserControl: input.browserControl === true,
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
+		childStarted: input.childStarted === true,
 		externalAgent: input.canExternal === true,
 		// Combinations a template reads by name.
 		gitState: !main && shell,
@@ -103,10 +109,11 @@ const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
 /** A provider with how many of its models can run a task: `openai` (41). */
 export const providerCount = ({ id, count }: { id: string; count: number }): string => `${quote(id)} (${count})`;
 
+/** Throws `PolicyRenderError` when a section's template does not render: the caller must not go on without the policy. */
 export function octocodePromptSections(input: PromptInputs): Record<string, string> {
 	const routing = input.routing;
 	const values = {
-		...policyFlags(input),
+		...renderPolicySection("policy", () => policyFlags(input)),
 		browserProfiles: (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", "),
 		profiles: input.profiles
 			.map(
@@ -122,12 +129,14 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	return Object.fromEntries(
 		SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => [
 			name,
-			renderInstruction(`sections/${name}.md`, values),
+			renderPolicySection(name, () => renderInstruction(`sections/${name}.md`, values)),
 		]),
 	);
 }
 
-/** Complete policy text for SDK consumers and prompt inspection. */
+/** Complete policy text for SDK consumers and prompt inspection: every section, `children` included. */
 export function octocodePrompt(input: PromptInputs): string {
-	return Object.values(octocodePromptSections(input)).filter(Boolean).join("\n\n");
+	return Object.values(octocodePromptSections({ childStarted: true, ...input }))
+		.filter(Boolean)
+		.join("\n\n");
 }

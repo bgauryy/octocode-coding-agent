@@ -34,6 +34,15 @@ export function resolveSamplingParams(
 		: undefined;
 }
 
+/** The reasoning effort to send: the requested level clamped to what the model supports, or undefined for none or "off". */
+export function requestedReasoningEffort(
+	model: Model<Api>,
+	options: SimpleStreamOptions | undefined,
+): Exclude<ModelThinkingLevel, "off"> | undefined {
+	const clamped = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
+	return clamped === "off" ? undefined : clamped;
+}
+
 export function buildBaseOptions(
 	model: Model<Api>,
 	context: TranscriptContext,
@@ -54,6 +63,8 @@ export function buildBaseOptions(
 		instructionCacheRetention: options?.instructionCacheRetention,
 		keepInstructionCache: options?.keepInstructionCache,
 		instructionCacheBoundary: options?.instructionCacheBoundary,
+		instructionVolatileBoundary: options?.instructionVolatileBoundary,
+		toolCacheBoundary: options?.toolCacheBoundary,
 		sessionId: options?.sessionId,
 		promptCacheKey: options?.promptCacheKey,
 		headers: options?.headers,

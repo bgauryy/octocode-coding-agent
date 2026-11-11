@@ -35,7 +35,8 @@ export class RpcClient {
 	}
 
 	/**
-	 * Start the RPC agent process.
+	 * Start the RPC agent process. Resolves once the session announces itself with `rpc_ready`; rejects when the process
+	 * exits, fails to start or is stopped first.
 	 */
 	async start(): Promise<void> {
 		await this.connection.start();

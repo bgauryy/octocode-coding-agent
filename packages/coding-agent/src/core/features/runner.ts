@@ -195,6 +195,10 @@ export class ExtensionRunner {
 		return () => this.errorListeners.delete(listener);
 	}
 
+	hasErrorListeners(): boolean {
+		return this.errorListeners.size > 0;
+	}
+
 	emitError(error: Types.ExtensionError): void {
 		for (const listener of this.errorListeners) {
 			try {

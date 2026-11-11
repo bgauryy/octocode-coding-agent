@@ -18,7 +18,7 @@ function pathRefusal(path: string): string | undefined {
 /** Validates an input's entity fields (version, links, completions and their files) before anything is stored. */
 export function validateEntityInput(input: EntityInput): void {
 	if (input.version !== undefined && (!Number.isInteger(input.version) || input.version < 1))
-		throw new BacklogError("Invalid item version.");
+		throw new BacklogError("version must be a positive integer: the version get shows for the item.");
 	const fields = entityInput(input);
 	if (!Value.Check(EntityFieldsSchema, fields)) {
 		const first = Value.Errors(EntityFieldsSchema, fields)[0];
@@ -136,7 +136,8 @@ export function applyEntities(
 				: input.completion;
 		if (!c.summary.trim() || !c.verification.summary.trim())
 			throw new BacklogError("Completion needs a summary and verification explanation.");
-		if (actor.kind !== "human" && !["passed", "not_applicable"].includes(c.verification.status))
+		// `not_stated` is a result whose words name no status: recorded as that, never as passed.
+		if (actor.kind !== "human" && !["passed", "not_applicable", "not_stated"].includes(c.verification.status))
 			throw new BacklogError(
 				`An agent closes an item only with verification passed or not_applicable, not ${c.verification.status}: keep ${before.ref} ongoing, add a note saying what failed, and close it after a passing check.`,
 			);

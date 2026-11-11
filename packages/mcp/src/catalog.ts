@@ -48,3 +48,38 @@ export class McpCatalogCache {
 		this.instructions = undefined;
 	}
 }
+
+/**
+ * The catalog one connection publishes: what its server announced, reused while unchanged. `revision` moves on every
+ * change of client or catalog, so a `tools/list` answer that arrives after a newer change is dropped.
+ */
+export class ConnectionCatalog {
+	tools: Tool[] = [];
+	/** Server instructions from `initialize`, describing its tools as a group. */
+	instructions: string | undefined;
+	revision = 0;
+	private readonly cache = new McpCatalogCache();
+
+	/** Store what the server announced. True when the published tools or instructions changed. */
+	publish(identity: unknown, tools: Tool[], instructions: string | undefined): boolean {
+		const catalog = this.cache.update(identity, tools, instructions);
+		if (this.tools === catalog.tools && this.instructions === catalog.instructions) return false;
+		this.tools = catalog.tools;
+		this.instructions = catalog.instructions;
+		return true;
+	}
+
+	/** Remove the published catalog. True when there was one. */
+	withdraw(): boolean {
+		this.revision++;
+		if (this.tools.length === 0 && this.instructions === undefined) return false;
+		this.tools = [];
+		this.instructions = undefined;
+		return true;
+	}
+
+	/** Forget the cached definitions too, so a later connection starts fresh. */
+	clear(): void {
+		this.cache.clear();
+	}
+}

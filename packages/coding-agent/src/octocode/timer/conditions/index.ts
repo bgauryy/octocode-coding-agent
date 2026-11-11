@@ -1,13 +1,11 @@
 import { agentSpec } from "./agent.ts";
 import { checkSpec } from "./check.ts";
 import { commandSpec } from "./command.ts";
-import { fileSpec } from "./file.ts";
 import { itemSpec } from "./item.ts";
-import { portSpec } from "./port.ts";
+import { removedUntil } from "./removed.ts";
 import {
 	type BaseCondition,
 	type CheckOutcome,
-	type ConditionDeps,
 	type ConditionSpec,
 	type RunEnv,
 	type TimerCondition,
@@ -15,14 +13,7 @@ import {
 import { unlockedSpec } from "./unlocked.ts";
 
 /** The closed list of waits, in the order the tool documents them. `check` takes any of the others as its trigger. */
-const BASE = [
-	unlockedSpec,
-	fileSpec,
-	itemSpec,
-	agentSpec,
-	portSpec,
-	commandSpec,
-] as unknown as ConditionSpec<BaseCondition>[];
+const BASE = [unlockedSpec, itemSpec, agentSpec, commandSpec] as unknown as ConditionSpec<BaseCondition>[];
 const baseSpec = (kind: string) => BASE.find((spec) => spec.kind === kind);
 
 const UNTIL_KINDS = [...BASE.map((spec) => spec.kind), "check"] as const;
@@ -43,8 +34,6 @@ const base = {
 	watch: (condition: BaseCondition, env: RunEnv, poke: () => void, failed: () => void) =>
 		baseSpec(condition.kind)!.watch!(condition, env, poke, failed),
 	hasWatch: (condition: BaseCondition) => baseSpec(condition.kind)?.watch !== undefined,
-	baseline: (condition: BaseCondition, cwd: string, deps: ConditionDeps) =>
-		baseSpec(condition.kind)?.baseline?.(condition, cwd, deps),
 };
 const CHECK = checkSpec(base);
 const QUESTION_CAP = 500;
@@ -68,6 +57,8 @@ function oneKey(value: unknown, kinds: readonly string[]): { kind: string; value
 /** The condition an `until` argument names, or undefined without one; exactly one kind. */
 export function parseUntil(until: unknown): TimerCondition | undefined {
 	if (until === undefined) return undefined;
+	const removed = removedUntil(until);
+	if (removed) throw new Error(removed);
 	if (typeof until === "object" && until !== null && "check" in until && until.check !== undefined) {
 		// `check` is the question; the one other condition beside it is the trigger.
 		const { check: question, ...rest } = until as Record<string, unknown>;
@@ -75,9 +66,7 @@ export function parseUntil(until: unknown): TimerCondition | undefined {
 			throw new Error("until.check is the question to judge, a non-empty string.");
 		if (question.length > QUESTION_CAP) throw new Error(`until.check is at most ${QUESTION_CAP} characters.`);
 		if (Object.values(rest).every((each) => each === undefined))
-			throw new Error(
-				"until.check needs one trigger condition beside it: file, item, agent, port, unlocked or command.",
-			);
+			throw new Error("until.check needs one trigger condition beside it: item, agent, unlocked or command.");
 		return { kind: "check", question: question.trim(), on: base.parse(rest) };
 	}
 	const only = oneKey(until, UNTIL_KINDS);
@@ -96,8 +85,6 @@ export function decodeCondition(kind: string, stored: string): TimerCondition | 
 	}
 }
 export const describeCondition = (condition: TimerCondition) => specOf(condition.kind)!.describe(condition);
-export const conditionBaseline = (condition: TimerCondition, cwd: string, deps: ConditionDeps) =>
-	specOf(condition.kind)!.baseline?.(condition, cwd, deps);
 /** Whether the kind has an event source, and its poll intervals with and without one. */
 export function conditionTiming(condition: TimerCondition): { watched: boolean; safetyMs: number; pollMs: number } {
 	const spec = baseSpec(condition.kind === "check" ? condition.on.kind : condition.kind)!;

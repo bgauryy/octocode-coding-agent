@@ -1,6 +1,7 @@
 import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.ts";
 import { formatAgo } from "../shared/format.ts";
-import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
+import { readPaths, resolveToolPath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { isWorkspaceReader, readerLocations } from "../shared/local-reads.ts";
 import { secretProblem } from "../../../../common/src/sanitize.ts";
@@ -212,7 +213,7 @@ class Provenance {
 			const { files, unnamed } = readerLocations(input);
 			const named = files.map((file) => resolveToolPath(cwd, file));
 			const outside = named.find((file) => !this.inWorkspace(file, cwd));
-			if (outside !== undefined) return { kind: "private", label: `${toolName} ${tildePath(outside)}` };
+			if (outside !== undefined) return { kind: "private", label: `${toolName} ${homeTilde(outside)}` };
 			if (named.length > 0 && !unnamed) return undefined;
 		}
 		if (toolName === "archive" && readsSessionText(input)) return { kind: "untrusted", label: "archive" };
@@ -223,7 +224,7 @@ class Provenance {
 				// A command that reads a file outside the workspace is private, like the native read of it.
 				const shell = toolName === "powershell" || input.type === "powershell" ? "powershell" : "bash";
 				const outside = outsideShellRead(command, cwd, (file) => this.inWorkspace(file, cwd), shell);
-				return outside === undefined ? undefined : { kind: "private", label: `${toolName} ${tildePath(outside)}` };
+				return outside === undefined ? undefined : { kind: "private", label: `${toolName} ${homeTilde(outside)}` };
 			}
 			const name = commandNames(command).find((program) => NETWORK.has(program.toLowerCase()));
 			const url = command.match(URL_PATTERN)?.[0];
@@ -236,7 +237,7 @@ class Provenance {
 					? resolveToolPath(cwd, str(input.path) ?? ".")
 					: undefined;
 		if (!target) return undefined;
-		return this.inWorkspace(target, cwd) ? undefined : { kind: "private", label: `${toolName} ${tildePath(target)}` };
+		return this.inWorkspace(target, cwd) ? undefined : { kind: "private", label: `${toolName} ${homeTilde(target)}` };
 	}
 
 	private inWorkspace(target: string, cwd: string): boolean {
@@ -358,8 +359,8 @@ export function createProvenance(options: ProvenanceOptions = {}): Provenance {
 
 /**
  * An archive read whose results can hold another session's transcript text (sessions and compactions, which `all` and the
- * default include): that session read web pages and tool output of its own. Memories, agents and events are this
- * workspace's records; a memory id is `M<n>`.
+ * default include): that session read web pages and tool output of its own. Agents and events are this workspace's
+ * records. A recorded call that named a memory (`M<n>`, before `memory` became its own tool) is refused, so it is clean.
  */
 function readsSessionText(input: Record<string, unknown>): boolean {
 	if (!archiveRead(input)) return false;

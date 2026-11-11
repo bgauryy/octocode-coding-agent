@@ -23,6 +23,7 @@ const APPLICATION_OPERATIONS = [
 	"abortBranchSummary",
 	"compact",
 	"executeBash",
+	"runUserBash",
 	"recordBashResult",
 	"abortBash",
 	"setModel",

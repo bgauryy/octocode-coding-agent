@@ -257,6 +257,25 @@ describe("coordinate grant", () => {
 		});
 	});
 
+	it("names what the child has cost so far in the result, and nothing when no cost is counted", async () => {
+		const { budgets, budget, team } = setup();
+		budgets.add("a-1", budget, () => 0.4242);
+		budget.onReply(3, true);
+		expect(budgets.cost("a-1")).toBe(0.4242);
+		const result = await grantRequests(team, budgets, "a-1", 5);
+		expect(result.content[0]).toMatchObject({
+			text: "Granted 5 more requests to a-1 for this run: it has used 3 of 9 (≈$0.42 so far) and stops at 11. It reads this at its next step (message #7).",
+		});
+		// A run that ended is counted no longer.
+		budgets.remove("a-1", budget);
+		expect(budgets.cost("a-1")).toBeUndefined();
+		// A plan or an unpriced model reports no cost: the result names the requests alone.
+		budgets.add("a-1", budget, () => 0);
+		expect((await grantRequests(team, budgets, "a-1", 1)).content[0]).toMatchObject({
+			text: expect.stringContaining("it has used 3 of 10 and stops at 12."),
+		});
+	});
+
 	it("refuses anything but a positive whole number, an empty id and a subagent session, and raises nothing", async () => {
 		const { budgets, send, team } = setup();
 		for (const bad of [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, undefined])

@@ -37,7 +37,7 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project", trusted = 
 		execFileSync("git", ["add", "-f", ".claude/settings.local.json"], { cwd });
 	}
 	const fake = fakeHost();
-	const owner = registerSourcePolicy(fake.api, home);
+	const owner = registerSourcePolicy(fake.api, { home });
 	// An untrusted folder grants nothing, whatever git says about its files; a trusted one may allow from either file.
 	await owner.refresh({ ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => trusted });
 	return owner.evaluate(

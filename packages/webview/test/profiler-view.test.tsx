@@ -202,11 +202,11 @@ it("shows an error when the trace export fails", async () => {
 	setup(
 		"overview",
 		vi.fn(async () => {
-			throw new Error("Could not export the trace (HTTP 401)");
+			throw new Error("Could not export the trace");
 		}),
 	);
 	await user.click(await screen.findByRole("button", { name: "Export trace" }));
-	expect(await screen.findByText("Could not export the trace (HTTP 401)")).toBeTruthy();
+	expect(await screen.findByText("Could not export the trace")).toBeTruthy();
 	expect(create).not.toHaveBeenCalled();
 	expect(screen.getByRole("button", { name: "Export trace" })).toHaveProperty("disabled", false);
 	vi.unstubAllGlobals();

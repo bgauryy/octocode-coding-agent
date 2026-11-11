@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	acceptStale,
 	type CompactServerInput,
 	type CompactToolInput,
-	dropStale,
 	presetOverridesFor,
 	presetStatus,
 	toPresetOverrides,
@@ -117,37 +115,6 @@ describe("preset overrides keyed on the upstream text", () => {
 			"search.queries.limit",
 		]);
 		expect(noTools.every((entry) => entry.reason === "missing")).toBe(true);
-	});
-
-	it("re-point accepted overrides at the new text and drop those with nothing left", () => {
-		const rebuilt = catalog(search({ limit: { type: "number", description: "Rows per page, newest first." } }));
-		const stale = presetStatus(preset, [rebuilt]);
-		const accepted = acceptStale(preset, [rebuilt], stale);
-		expect(presetStatus(accepted, [rebuilt])).toEqual([]);
-		expect(presetOverridesFor(accepted, rebuilt)).toEqual(overrides);
-		expect(acceptStale(preset, [rebuilt], [])).toEqual(preset);
-		const gone = catalog({ ...search(), inputSchema: { type: "object", properties: { queries: { type: "array" } } } });
-		const dropped = acceptStale(preset, [gone], presetStatus(preset, [gone]));
-		expect(dropped.tools?.search?.fields).toBeUndefined();
-		expect(dropped.tools?.search?.description).toBe("Search.");
-	});
-
-	// Contract: dropping stale entries removes them (the description takes its trigger along), rewrites nothing, keeps the rest.
-	it("drop stale overrides without re-pointing or rewriting the valid ones", () => {
-		const rebuilt = catalog(
-			search({ limit: { type: "number", description: "Rows per page, newest first." } }, "Changed."),
-		);
-		const stale = presetStatus(preset, [rebuilt]);
-		const labels = stale.map((entry) => entry.label);
-		expect(labels).toEqual(["search.description", "search.queries.limit"]);
-		const dropped = dropStale(preset, stale);
-		expect(presetStatus(dropped, [rebuilt])).toEqual([]);
-		expect(dropped.tools?.search?.description).toBeUndefined();
-		expect(dropped.tools?.search?.trigger).toBeUndefined();
-		expect(dropped.tools?.search?.fields?.["queries.limit"]).toBeUndefined();
-		expect(dropStale(preset, [])).toEqual(preset);
-		const kept = presetStatus(preset, [catalog(search())]);
-		expect(dropStale(preset, kept)).toEqual(preset);
 	});
 
 	it("judge a field against every catalog a server sends", () => {

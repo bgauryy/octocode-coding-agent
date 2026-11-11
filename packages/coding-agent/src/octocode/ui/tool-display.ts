@@ -1,4 +1,4 @@
-import type { ToolDisplay } from "@octocodeai/octocode-contracts";
+import { resultPurposeData, type ToolDisplay } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { genericToolDisplay } from "../../core/application/transcript-display.ts";
 import type { ExtensionAPI, ToolDisplayFunction, ToolDisplayInput } from "../../core/features/types.ts";
@@ -14,7 +14,7 @@ export function octocodeToolDisplay(toolName: string, own?: ToolDisplayFunction)
 	return (input: ToolDisplayInput): ToolDisplay => {
 		const display =
 			own?.(input) ?? genericToolDisplay(toolName, toolHint(input.args), displayText(input.result), input.status);
-		const reason = display.reason ?? callReasonText(toolName, input.args, asRecord(input.result).structuredContent);
+		const reason = display.reason ?? callReasonText(toolName, input.args, resultPurposeData(asRecord(input.result)));
 		return reason ? { ...display, reason } : display;
 	};
 }

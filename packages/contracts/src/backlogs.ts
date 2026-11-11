@@ -115,7 +115,7 @@ export const CompletionSchema = Type.Object(
 		),
 		verification: Type.Object(
 			{
-				status: StringEnum(["passed", "failed", "not_run", "not_applicable"] as const),
+				status: StringEnum(["passed", "failed", "not_run", "not_applicable", "not_stated"] as const),
 				summary: Type.String(),
 			},
 			{ additionalProperties: false },

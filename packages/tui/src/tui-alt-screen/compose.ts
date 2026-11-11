@@ -3,7 +3,7 @@ import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollbarGeometry } from "../layout/scrollbar.ts";
 import { getScrollViewBox } from "../layout.ts";
 import { isImageLine } from "../terminal-image.ts";
-import { compositeTuiLine } from "../tui.ts";
+import { compositeTuiLine } from "../tui/composite.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import type { ScrollToEndIndicatorRect } from "./types.ts";

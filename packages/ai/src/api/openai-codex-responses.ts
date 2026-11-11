@@ -1,6 +1,5 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
@@ -44,8 +43,10 @@ import {
 } from "./openai-codex-responses/websocket-session.ts";
 import { processWebSocketStream } from "./openai-codex-responses/websocket-stream.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { assertStreamCompleted, stripStreamScratch } from "./stream-finalize.ts";
+import { buildBaseOptions, requestedReasoningEffort } from "./simple-options.ts";
 import { createAbortError, sleepUnlessAborted } from "../utils/abort.ts";
+import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { parseRetryAfterMs, RetryDelayExceededError, validateRetryDelayMs } from "../utils/retry.ts";
 
 export type { OpenAICodexResponsesOptions } from "./openai-codex-responses/types.ts";
@@ -57,17 +58,6 @@ export {
 } from "./openai-codex-responses/websocket-session.ts";
 
 registerSessionResourceCleanup(closeOpenAICodexWebSocketSessions);
-
-type SuccessfulAssistantMessage = AssistantMessage & { stopReason: "stop" | "length" | "toolUse" };
-
-function assertSuccessfulOutput(output: AssistantMessage): asserts output is SuccessfulAssistantMessage {
-	if (output.stopReason === "pending") {
-		throw new Error("Codex stream ended without a stop reason");
-	}
-	if (output.stopReason === "error" || output.stopReason === "aborted") {
-		throw new Error(output.errorMessage || "An unknown error occurred");
-	}
-}
 
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
 	model: Model<"openai-codex-responses">,
@@ -148,10 +138,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 							{ ...options, transport },
 						);
 
-						if (options?.signal?.aborted) {
-							throw createAbortError();
-						}
-						assertSuccessfulOutput(output);
+						assertStreamCompleted(output, options?.signal, "Codex");
 						stream.push({
 							type: "done",
 							reason: output.stopReason,
@@ -261,7 +248,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						statusText: response.statusText,
 					});
 					const info = await parseErrorResponse(fakeResponse);
-					throw new CodexHttpError(info.friendlyMessage || info.message, response.status);
+					throw new CodexHttpError(info.friendlyMessage || info.message, response.status, response.headers);
 				} catch (error) {
 					// Final HTTP errors and caller hook failures must not resubmit the request.
 					if (error instanceof CodexHttpError || error instanceof ProviderStreamEventCallbackError) throw error;
@@ -299,21 +286,15 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			}
 			await processStream(response, output, stream, model, grammarToolInputProperties, options);
 
-			if (options?.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			assertSuccessfulOutput(output);
+			assertStreamCompleted(output, options?.signal, "Codex");
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) {
-				// Streaming scratch buffers are only used during parsing; never persist them.
-				delete (block as { partialJson?: string }).partialJson;
-				delete (block as { customInput?: unknown }).customInput;
-			}
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -336,8 +317,7 @@ export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStream
 		...buildBaseOptions(model, context, options, apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies OpenAICodexResponsesOptions;
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	const reasoningEffort = requestedReasoningEffort(model, options);
 
 	return stream(model, context, {
 		...base,

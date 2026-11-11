@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PrefixStagger } from "../../src/octocode/subagents/stagger.ts";
+import { PrefixStagger, type StaggerTurn } from "../../src/octocode/subagents/stagger.ts";
 
-/** A child that starts when launched and whose first reply starts when the test says so. */
-function fakeChild(log: string[], name: string) {
+/**
+ * A child whose process starts when launched (`spawned`), whose first request goes out once its turn is ready
+ * (`log`: "start <name>"), and whose first reply starts when the test says so.
+ */
+function fakeChild(log: string[], name: string, spawned: string[] = []) {
 	let warm: () => void = () => undefined;
 	let finish: (outcome: string) => void = () => undefined;
 	let fail: (error: Error) => void = () => undefined;
@@ -11,9 +14,10 @@ function fakeChild(log: string[], name: string) {
 		fail = reject;
 	});
 	return {
-		start: (w: () => void) => {
-			log.push(`start ${name}`);
-			warm = w;
+		start: (turn: StaggerTurn) => {
+			spawned.push(name);
+			warm = turn.warm;
+			turn.ready().then(() => log.push(`start ${name}`), fail);
 			return done;
 		},
 		reply: () => warm(),
@@ -26,13 +30,16 @@ describe("PrefixStagger", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
-	it("starts the first child at once and the siblings after its first reply starts", async () => {
+	it("boots every child at once; the siblings send after the first child's first reply starts", async () => {
 		const stagger = new PrefixStagger();
 		const log: string[] = [];
-		const [a, b, c] = ["a", "b", "c"].map((name) => fakeChild(log, name));
+		const spawned: string[] = [];
+		const [a, b, c] = ["a", "b", "c"].map((name) => fakeChild(log, name, spawned));
 		void stagger.run("researcher|m", undefined, a.start);
 		void stagger.run("researcher|m", undefined, b.start);
 		void stagger.run("researcher|m", undefined, c.start);
+		// The processes boot together: only the first request waits.
+		expect(spawned).toEqual(["a", "b", "c"]);
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(log).toEqual(["start a"]);
 		a.reply();
@@ -127,7 +134,7 @@ describe("PrefixStagger", () => {
 		expect(log).toEqual(["start a", "start b"]);
 	});
 
-	it("cancels a waiting child on abort without starting it, leaving the others to go on", async () => {
+	it("cancels a waiting child on abort without sending its request, leaving the others to go on", async () => {
 		const stagger = new PrefixStagger();
 		const log: string[] = [];
 		const [a, b, c] = ["a", "b", "c"].map((name) => fakeChild(log, name));
@@ -144,10 +151,12 @@ describe("PrefixStagger", () => {
 		await expect(survivor).resolves.toBe("ok");
 	});
 
-	it("rejects at once for a signal that is already aborted", async () => {
+	it("rejects at once for a signal that is already aborted, starting nothing", async () => {
 		const stagger = new PrefixStagger();
 		const stop = new AbortController();
 		stop.abort();
-		await expect(stagger.run("k", stop.signal, () => Promise.resolve("never"))).rejects.toThrow("Subagent cancelled");
+		const start = vi.fn(() => Promise.resolve("never"));
+		await expect(stagger.run("k", stop.signal, start)).rejects.toThrow("Subagent cancelled");
+		expect(start).not.toHaveBeenCalled();
 	});
 });

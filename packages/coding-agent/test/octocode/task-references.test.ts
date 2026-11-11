@@ -9,7 +9,7 @@ import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
@@ -59,11 +59,12 @@ function setup(entries: unknown[] = [], messages: Record<number, Omit<Referenced
 		unansweredPeerAsks: () => 0,
 	});
 	const permission = fakePermission("full");
-	const control = registerAgentTool(f.api, () => profiles, team, permission);
+	const control = registerAgentTool(f.api, { profiles: () => profiles, team, permission });
 	const ctx = fakeCtx({ cwd: tmp() });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => [],
 			find: () => undefined,
 			getCachePolicy: (_model: unknown, settings: readonly CachePreferenceLayer[] = []) =>
@@ -114,7 +115,7 @@ describe("references in an agent task", () => {
 			await first.finish();
 		}
 		const id = reported.details.id as string;
-		expect(reported.content[0].text.split("\n")[0]).toBe(`Subagent ${id} finished · cite as report:${id}:`);
+		expect(reported.content[0].text.split("\n")[0]).toBe(`Subagent ${id} reported done · cite as report:${id}:`);
 
 		const parent = setup(recorded(input, reported), { 4: { from: "peer-a", text: "use the v2 schema" } });
 		try {

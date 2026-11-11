@@ -46,15 +46,13 @@ async function run(task: string, scratch: string) {
 		return undefined;
 	};
 	const id = `a-${task.replace(/\W+/g, "-")}`;
-	const result = await runSubagent(
+	const result = await runSubagent({
 		task,
-		["--session-dir", tmp(), "--session-id", id],
-		tmp(),
-		undefined,
-		{ id, scratch },
-		undefined,
+		args: ["--session-dir", tmp(), "--session-id", id],
+		cwd: tmp(),
+		identity: { id, scratch },
 		onProgress,
-	).then(
+	}).then(
 		(outcome) => ({ outcome, error: undefined as Error | undefined }),
 		(error: Error) => ({ outcome: undefined, error }),
 	);
@@ -171,15 +169,14 @@ describe("a child that exits before its first model turn", () => {
 		const controller = new AbortController();
 		const id = "a-startup-stop";
 		const started = Date.now();
-		const pending = runSubagent(
-			"startup crash",
-			["--session-dir", tmp(), "--session-id", id],
-			tmp(),
-			undefined,
-			{ id, scratch },
-			controller.signal,
-			() => undefined,
-		);
+		const pending = runSubagent({
+			task: "startup crash",
+			args: ["--session-dir", tmp(), "--session-id", id],
+			cwd: tmp(),
+			identity: { id, scratch },
+			signal: controller.signal,
+			onProgress: () => undefined,
+		});
 		const failed = pending.then(
 			() => new Error("finished"),
 			(error: Error) => error,

@@ -32,6 +32,17 @@ sequenceDiagram
 
 `Agent` treats assistant `message_end` handling as a barrier before tool preflight, so `beforeToolCall` sees state that already includes the assistant message.
 
+### Listeners and abort
+
+Listeners run one at a time in subscription order, and each event waits for every listener before the run moves on. The `signal` passed to a listener is the run's abort signal.
+
+| Event after `abort()`                                       | Agent waits for a listener still running?                                                            |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `message_update`, `tool_execution_update`                   | No. The run moves on; the listener may still finish, and an error it throws later is discarded       |
+| Every other event (`message_end`, `turn_end`, `agent_end`…) | Yes, as before the abort: a listener that saves or changes a message finishes before the run settles |
+
+A delta listener that settles before the agent stops waiting keeps its result, and its error still fails the run. Its `message_end` or `tool_execution_end` carries the final state, so a listener abandoned this way loses no data. A listener that must not hold cancellation on other events should return when its `signal` aborts.
+
 ## Tool execution hooks
 
 | Setting                               | Behavior                                                                                                                                                                                                                                                           |

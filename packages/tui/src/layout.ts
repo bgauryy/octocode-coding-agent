@@ -2,44 +2,16 @@ import type { ScrollView } from "./components/scroll-view.ts";
 import { allocateStackSizes, visibleStackEntries } from "./components/stack.ts";
 import { getLayoutNode } from "./layout-node.ts";
 import { paintScrollbar } from "./layout/scrollbar.ts";
+import { intersect, type LayoutContext, renderCached } from "./layout/context.ts";
 import type { LayoutBox, LayoutFrame, LayoutRect } from "./layout/types.ts";
+import { layoutScroll } from "./layout/virtual-scroll.ts";
 import { cropKittyImageLine, getKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
 import { isImageLine } from "./terminal-image.ts";
-import { type Component, CURSOR_MARKER, compositeTuiLine } from "./tui.ts";
-import { renderIsolated } from "./tui/render-isolation.ts";
+import { OSC133_ZONE_PREFIX } from "./terminal/sequences.ts";
+import type { Component } from "./tui/component.ts";
+import { compositeTuiLine } from "./tui/composite.ts";
+import { CURSOR_MARKER } from "./tui/cursor.ts";
 import { visibleWidth } from "./utils/width.ts";
-
-const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
-
-interface LayoutContext {
-	viewport: { width: number; height: number };
-	renderCache: Map<Component, Map<number, string[]>>;
-	requestRender: () => void;
-	primaryScrollView: ScrollView | undefined;
-}
-
-function intersect(a: LayoutRect, b: LayoutRect): LayoutRect {
-	const x = Math.max(a.x, b.x);
-	const y = Math.max(a.y, b.y);
-	const right = Math.min(a.x + a.width, b.x + b.width);
-	const bottom = Math.min(a.y + a.height, b.y + b.height);
-	return { x, y, width: Math.max(0, right - x), height: Math.max(0, bottom - y) };
-}
-
-function renderCached(context: LayoutContext, component: Component, width: number): string[] {
-	const safeWidth = Math.max(1, Math.floor(width));
-	let widths = context.renderCache.get(component);
-	if (!widths) {
-		widths = new Map<number, string[]>();
-		context.renderCache.set(component, widths);
-	}
-	let lines = widths.get(safeWidth);
-	if (!lines) {
-		lines = renderIsolated(component, safeWidth);
-		widths.set(safeWidth, lines);
-	}
-	return lines;
-}
 
 function measureHeight(context: LayoutContext, component: Component, width: number): number {
 	return renderCached(context, component, width).length;
@@ -52,16 +24,6 @@ function measureWidth(context: LayoutContext, component: Component, width: numbe
 function withParent(box: LayoutBox, parent: LayoutBox): LayoutBox {
 	box.parent = parent;
 	return box;
-}
-
-function translateBox(box: LayoutBox, deltaY: number): void {
-	box.rect.y += deltaY;
-	for (const child of box.children) translateBox(child, deltaY);
-}
-
-function updateClips(box: LayoutBox, parentClip: LayoutRect): void {
-	box.clip = intersect(parentClip, box.rect);
-	for (const child of box.children) updateClips(child, box.clip);
 }
 
 function layoutComponent(
@@ -95,29 +57,10 @@ function layoutComponent(
 	}
 
 	if (node.type === "scroll") {
-		const previousScrollTop = node.state.scrollTop;
-		const contentWidth = node.state.getContentWidth(safeWidth);
-		const childBox = layoutComponent(context, node.component, x, y - previousScrollTop, contentWidth, undefined, clip);
-		const contentHeight = childBox.rect.height;
-		const viewportHeight = height === undefined ? contentHeight : Math.max(0, Math.floor(height));
-		node.state.updateLayout(contentHeight, viewportHeight, context.requestRender);
-		translateBox(childBox, previousScrollTop - node.state.scrollTop);
-		const scrollView = node.state as ScrollView;
-		if (node.state.primary || !context.primaryScrollView) context.primaryScrollView = scrollView;
-		const rect = { x, y, width: safeWidth, height: viewportHeight };
-		const childClip = intersect(clip, rect);
-		const box: LayoutBox = {
-			component,
-			rect,
-			clip: childClip,
-			children: [childBox],
-			scrollView,
-			scrollContentLines: renderCached(context, node.component, contentWidth),
-			layer: 0,
-		};
-		childBox.parent = box;
-		updateClips(childBox, childClip);
-		return box;
+		const frame = { x, y, width: safeWidth, height, clip };
+		return layoutScroll(context, node, component, frame, (child, childX, childY, childWidth, childClip) =>
+			layoutComponent(context, child, childX, childY, childWidth, undefined, childClip),
+		);
 	}
 
 	const entries = visibleStackEntries(node.entries, context.viewport);
@@ -228,9 +171,9 @@ function paintBox(box: LayoutBox, screen: string[], totalWidth: number): void {
 	}
 	for (const child of box.children) paintBox(child, screen, totalWidth);
 
-	if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
+	if (box.scrollView && box.scrollContentRow && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
 		for (let imageRow = box.scrollView.scrollTop - 1; imageRow >= 0; imageRow--) {
-			const imageLine = box.scrollContentLines[imageRow] ?? "";
+			const imageLine = box.scrollContentRow?.(imageRow) ?? "";
 			const metadata = getKittyImageMetadata(imageLine);
 			if (metadata) {
 				const hiddenRows = box.scrollView.scrollTop - imageRow;

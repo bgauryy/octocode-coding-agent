@@ -5,7 +5,9 @@
  * result, so loading never changes the cached prefix.
  *
  * The `mcpExposure` setting decides tools the configuration leaves open (no `exposure`, no matching `toolExposure`):
- * `direct` (default), `deferred`, or `auto:<bytes>`, where servers stay direct, in name order, while the text of the
+ * `recent` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where a tool the workspace called in the last 24 hours is
+ * direct and any other is deferred (the set is fixed when the session starts, `McpExtensionState.recentTools`),
+ * `direct`, `deferred`, or `auto:<bytes>`, where servers stay direct, in name order, while the text of the
  * direct blocks fits within that many bytes and are deferred past it (`McpPresentation.describe`). The budget is in
  * bytes, not a share of the context window, so switching models never re-decides it and rewrites the prefix.
  */
@@ -33,9 +35,21 @@ export function deferRolesFromEnv(env: NodeJS.ProcessEnv): McpDeferRole[] {
 
 const AUTO = /^auto:(\d+)$/;
 
+/**
+ * The `mcpExposure` setting when none is configured: every MCP tool is deferred until the working directory calls it,
+ * and one unused for 24 hours is deferred again. The coding agent's settings defaults name the same value.
+ */
+export const DEFAULT_MCP_EXPOSURE_SETTING = "recent";
+
+/** Whether the setting defers by recent use, so the caller knows to supply the in-use set. */
+export const defersByRecentUse = (setting: unknown): boolean => setting === "recent";
+
+/** A tool's key in the in-use set: the configured server name and the server's own tool name. */
+export const recentToolKey = (server: string, tool: string): string => `${server}/${tool}`;
+
 /** The auto budget in bytes, or the fixed default of open tools; an unknown value reads as `direct`. */
-function parseSetting(value: unknown): { budget: number } | "direct" | "deferred" {
-	if (value === "deferred") return "deferred";
+function parseSetting(value: unknown): { budget: number } | "direct" | "deferred" | "recent" {
+	if (value === "deferred" || value === "recent") return value;
 	const auto = typeof value === "string" ? AUTO.exec(value) : null;
 	return auto ? { budget: Number(auto[1]) } : "direct";
 }
@@ -50,6 +64,8 @@ export function deferralOf(
 	setting: unknown,
 	activeTools: readonly string[],
 	deferRoles: readonly McpDeferRole[] = [],
+	/** `recent`: the tools in use (`recentToolKey`); an open tool outside it is deferred. */
+	recent: ReadonlySet<string> = new Set(),
 ): McpDeferral {
 	if (!activeTools.includes(MCP_MANAGE_TOOL_NAME)) return { deferred: new Set() };
 	const fallback = parseSetting(setting);
@@ -62,7 +78,8 @@ export function deferralOf(
 	for (const tool of tools) {
 		const configured = configuredMcpToolExposure(entry.config, tool);
 		const roleDeferred = byRole.has(tool) && configuredMcpToolExposure(serverWide, tool) === undefined;
-		if (configured === "deferred" || roleDeferred || (configured === undefined && fallback === "deferred"))
+		const unused = fallback === "recent" && !recent.has(recentToolKey(entry.name, tool));
+		if (configured === "deferred" || roleDeferred || (configured === undefined && (fallback === "deferred" || unused)))
 			deferred.add(tool);
 		else if (configured === undefined) open.add(tool);
 	}

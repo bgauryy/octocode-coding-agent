@@ -52,7 +52,7 @@ it("adds completed async context to the next model request without creating an e
 		],
 		extensionFactories: [
 			(api) => {
-				registerHooks(api, {}, home);
+				registerHooks(api, { env: {}, home });
 			},
 		],
 	});
@@ -104,7 +104,7 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 		tools: [],
 		extensionFactories: [
 			(api) => {
-				registerHooks(api, {}, home);
+				registerHooks(api, { env: {}, home });
 			},
 		],
 	});

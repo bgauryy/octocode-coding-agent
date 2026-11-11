@@ -1,13 +1,7 @@
 import type { AutocompleteProvider } from "../autocomplete/types.ts";
-import {
-	type Component,
-	CURSOR_MARKER,
-	type Focusable,
-	renderFakeCursor,
-	type TUI,
-	type TuiMouseEvent,
-	type TuiMouseEventResult,
-} from "../tui.ts";
+import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui/component.ts";
+import { CURSOR_MARKER, renderFakeCursor } from "../tui/cursor.ts";
+import type { TUI } from "../tui/types.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { insertTextAtCursorInternal } from "./editor/editing.ts";

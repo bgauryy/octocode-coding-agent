@@ -94,6 +94,25 @@ describe("OpenAI Responses instruction cache boundary", () => {
 		expect(JSON.stringify(payload.input.slice(1))).not.toContain("prompt_cache_breakpoint");
 	});
 
+	it("sends the volatile sections as a third block without a breakpoint", async () => {
+		const boundaries = { instructionCacheBoundary: "project_context", instructionVolatileBoundary: "skills" };
+		const { payload } = await capture(model, context(), { ...layered, ...boundaries });
+		const blocks = payload.input[0].content as Block[];
+		expect(blocks).toEqual([
+			{
+				type: "input_text",
+				text: "You are a coding agent.\n\nDocs.\n\nAddendum.\n\n",
+				prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
+			},
+			{ type: "input_text", text: "Project.\n\n", prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" } },
+			{ type: "input_text", text: "Skills." },
+		]);
+		expect(blocks.map((block) => block.text).join("")).toBe(getSystemMessageText(head));
+		// Without explicit breakpoints the instructions are one string: the same text in the same order.
+		const implicit = await capture({ ...model, compat: {} }, context(), { ...layered, ...boundaries });
+		expect(implicit.payload.input[0].content).toBe(getSystemMessageText(head));
+	});
+
 	it("uses the short instruction TTL on both blocks", async () => {
 		const { payload } = await capture(model, context(), {
 			cacheRetention: "short",

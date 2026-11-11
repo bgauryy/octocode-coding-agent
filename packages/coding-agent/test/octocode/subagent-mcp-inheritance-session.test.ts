@@ -35,7 +35,7 @@ async function fixture(registered = false, configured = false) {
 		requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
 		res.writeHead(200, { "content-type": "text/event-stream" });
 		res.end(
-			`data: ${JSON.stringify({ id: "child", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "CHILD_COMPLETE" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
+			`data: ${JSON.stringify({ id: "child", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "done: CHILD_COMPLETE" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 		);
 	});
 	await new Promise<void>((resolve, reject) => {

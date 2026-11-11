@@ -34,7 +34,7 @@ function fixture() {
 	const write = (permissions: unknown) => fs.writeFileSync(file, JSON.stringify({ permissions }));
 	const fake = fakeHost();
 	nativeHost(fake.api).setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(fake.api, home);
+	const owner = registerSourcePolicy(fake.api, { home });
 	return { owner, write, ctx: fakeCtx({ cwd: root, hasUI: false }), fake };
 }
 const call = {

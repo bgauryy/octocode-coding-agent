@@ -194,11 +194,28 @@ describe("skills in /harness", () => {
 		expect((await skillRows(f)).rows.some((item) => item.label === "run-test")).toBe(false);
 	});
 
+	it.skipIf(!fs.existsSync(path.join(getOctocodeSkillsDir() ?? "", "octocode-debugging", "SKILL.md")))(
+		"say the core skill wins over the Octocode collection's copy of the same name",
+		async () => {
+			const f = fixture();
+			const { rows } = await skillRows(f);
+			const copies = rows.filter((item) => item.label === "octocode-debugging");
+			expect(copies).toHaveLength(2);
+			const collectionCopy = copies.find((item) => item.detail.includes("Octocode (collection)"));
+			expect(collectionCopy).toMatchObject({
+				on: true,
+				detail: expect.stringMatching(/^not loaded: Octocode \(core\) wins · Octocode \(collection\)/),
+			});
+			expect(copies.find((item) => item !== collectionCopy)?.detail).toMatch(/^Octocode \(core\)/);
+		},
+	);
+
 	it("say which copy wins when a switched-on skill shares its name with another", async () => {
 		const f = fixture();
-		writeSkill(path.join(f.home, ".pi", "agent", "skills"), "octocode-debugging");
+		// A core skill the Octocode collection has no copy of, so the Pi copy is the only other one.
+		writeSkill(path.join(f.home, ".pi", "agent", "skills"), "resume-external-harness");
 		const { rows } = await skillRows(f);
-		const copies = rows.filter((item) => item.label === "octocode-debugging");
+		const copies = rows.filter((item) => item.label === "resume-external-harness");
 		expect(copies).toHaveLength(2);
 		const loser = copies.find((item) => item.detail.includes("Pi (global)"));
 		expect(loser).toMatchObject({

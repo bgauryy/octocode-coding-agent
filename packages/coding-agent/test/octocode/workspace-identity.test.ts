@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sameBinding, transcripts, workspaces } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
@@ -230,5 +230,56 @@ describe("private workspace data in Git operations", () => {
 		} finally {
 			repo.cleanup();
 		}
+	});
+});
+
+describe("repeated workspace lookups", () => {
+	it("answers from the last lookup until the ID, the root or a folder passed changes", () => {
+		const root = fs.realpathSync(tmp());
+		const sub = path.join(root, "one", "two");
+		fs.mkdirSync(sub, { recursive: true });
+		const first = workspaceIdentity(root);
+		expect(readWorkspaceIdentity(sub)).toEqual(first);
+		const lstat = vi.spyOn(fs, "lstatSync");
+		const open = vi.spyOn(fs, "openSync");
+		try {
+			expect(readWorkspaceIdentity(sub)).toEqual(first);
+			// One lstat of the ID file; no walk and no read of it.
+			expect(lstat).toHaveBeenCalledTimes(1);
+			expect(open).not.toHaveBeenCalled();
+		} finally {
+			lstat.mockRestore();
+			open.mockRestore();
+		}
+		// A declaration made in a folder passed on the way up moves the workspace there.
+		const nested = path.join(root, "one");
+		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
+		const declared = workspaceIdentity(nested);
+		expect(declared.root).toBe(nested);
+		expect(readWorkspaceIdentity(sub)).toEqual(declared);
+		// A replaced ID file is read again.
+		const idFile = path.join(nested, ".octocode", "code", "workspace", "id");
+		const replacement = "6f1c1d3e-8a1b-4c2d-9e3f-0a1b2c3d4e5f";
+		fs.rmSync(idFile);
+		fs.writeFileSync(idFile, `${replacement}\n`, { mode: 0o600 });
+		expect(readWorkspaceIdentity(sub)?.id).toBe(replacement);
+		// A removed declaration is not answered from memory.
+		fs.rmSync(path.join(nested, ".octocode"), { recursive: true });
+		expect(readWorkspaceIdentity(sub)).toEqual(first);
+		fs.rmSync(path.join(root, ".octocode"), { recursive: true });
+		expect(readWorkspaceIdentity(sub)).toBeUndefined();
+	});
+
+	it("does not answer for a root replaced by another folder of the same name", () => {
+		const parent = fs.realpathSync(tmp());
+		const root = path.join(parent, "checkout");
+		fs.mkdirSync(root);
+		const first = workspaceIdentity(root);
+		expect(readWorkspaceIdentity(root)).toEqual(first);
+		fs.renameSync(root, path.join(parent, "moved"));
+		fs.mkdirSync(root);
+		expect(readWorkspaceIdentity(root)).toBeUndefined();
+		fs.cpSync(path.join(parent, "moved", ".octocode"), path.join(root, ".octocode"), { recursive: true });
+		expect(readWorkspaceIdentity(root)?.binding).not.toBe(first.binding);
 	});
 });

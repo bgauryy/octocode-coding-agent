@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionContext, ToolCallEvent } from "../../src/core/features/index.ts";
 import {
-	decide,
+	runPermissionSteps,
 	GATE_STEPS,
 	judge,
 	type Gate,
@@ -51,6 +51,7 @@ const audit = () => {
 describe("permission step tables", () => {
 	it("pins the tool_call pipeline order by step name", () => {
 		expect(GATE_STEPS.map((step) => step.name)).toEqual([
+			"loop",
 			"plan-mode",
 			"git-state",
 			"reservation",
@@ -68,6 +69,7 @@ describe("permission step tables", () => {
 			"permission",
 		]);
 		expect(GATE_STEPS.filter((step) => step.audited).map((step) => step.name)).toEqual([
+			"loop",
 			"plan-mode",
 			"git-state",
 			"reservation",
@@ -100,8 +102,17 @@ describe("permission step tables", () => {
 		const { audited, options } = audit();
 		const { ran, bodies } = recording({ reservation: { block: true, reason: "reserved" } });
 		expect(await judge("tool", bodies, event, ctx, options)).toEqual({ block: true, reason: "reserved" });
-		expect(ran).toEqual(["plan-mode", "git-state", "reservation"]);
+		expect(ran).toEqual(["loop", "plan-mode", "git-state", "reservation"]);
 		expect(audited).toEqual(["reserved"]);
+	});
+
+	it("audits the loop guard's refusal, keeps its terminate, and runs no later step", async () => {
+		const { audited, options } = audit();
+		const refusal = { block: true, terminate: true, reason: "Loop guard: refused" };
+		const { ran, bodies } = recording({ loop: refusal });
+		expect(await judge("tool", bodies, event, ctx, options)).toEqual(refusal);
+		expect(ran).toEqual(["loop"]);
+		expect(audited).toEqual(["Loop guard: refused"]);
 	});
 
 	it("does not audit the plan recheck or the permission step, which audits its own", async () => {
@@ -116,7 +127,7 @@ describe("permission step tables", () => {
 	it("skips git-state when no body is supplied", async () => {
 		const { ran, bodies } = recording();
 		await judge("tool", { ...bodies, "git-state": undefined }, event, ctx, audit().options);
-		expect(ran).toEqual(["plan-mode", "reservation", "metadata", "pre-tool-use", "plan-recheck", "permission"]);
+		expect(ran).toEqual(["loop", "plan-mode", "reservation", "metadata", "pre-tool-use", "plan-recheck", "permission"]);
 	});
 
 	it("runs only metadata, the plan recheck and the permission step for a hook's call", async () => {
@@ -138,7 +149,7 @@ describe("permission step tables", () => {
 			block: true,
 			reason: "invariant",
 		});
-		expect(second.ran).toEqual(["plan-mode", "git-state", "reservation", "metadata", "pre-tool-use"]);
+		expect(second.ran).toEqual(["loop", "plan-mode", "git-state", "reservation", "metadata", "pre-tool-use"]);
 		expect(rewritten.audited).toEqual(["invariant"]);
 	});
 
@@ -153,7 +164,7 @@ describe("permission step tables", () => {
 				},
 			]),
 		) as unknown as PermissionStepBodies<object>;
-		expect(await decide(bodies, {})).toBeUndefined();
+		expect(await runPermissionSteps(bodies, {})).toBeUndefined();
 		expect(ran).toEqual(["source-projection", "role", "classify", "landing", "provenance", "reasons", "no-effect"]);
 	});
 
@@ -161,6 +172,6 @@ describe("permission step tables", () => {
 		const bodies = Object.fromEntries(
 			PERMISSION_STEPS.map((name) => [name, () => undefined]),
 		) as unknown as PermissionStepBodies<object>;
-		await expect(decide(bodies, {})).rejects.toThrow("No permission step decided the call");
+		await expect(runPermissionSteps(bodies, {})).rejects.toThrow("No permission step decided the call");
 	});
 });

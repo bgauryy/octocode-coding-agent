@@ -20,6 +20,10 @@ import { selectExplicitSkills } from "../skill-mentions.ts";
 import { explicitSkillIdentity } from "../skills.ts";
 import type { SessionInternals } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { mapConcurrent } from "../../../../common/src/map-concurrent.ts";
+
+/** Images prepared at once: each holds a decoded copy in a worker, so the bound caps peak memory. */
+const IMAGE_PREPARATION_CONCURRENCY = 3;
 
 // Skill Block Parsing
 // ============================================================================
@@ -110,13 +114,17 @@ export async function normalizePromptImages(
 ): Promise<{ images: ImageContent[]; hints: string[] }> {
 	if (!images) return { images: [], hints: [] };
 
+	const options = {
+		autoResizeImages: settingsManager.getImageAutoResize(),
+		resizeOptions: limitsModel?.inputLimits?.images?.resize,
+	};
+	// Each image resizes in its own worker thread, so independent images overlap; results keep prompt order.
+	const results = await mapConcurrent(images, IMAGE_PREPARATION_CONCURRENCY, (image) =>
+		processImage(Buffer.from(image.data, "base64"), image.mimeType, options),
+	);
 	const normalizedImages: ImageContent[] = [];
 	const hints: string[] = [];
-	for (const image of images) {
-		const processed = await processImage(Buffer.from(image.data, "base64"), image.mimeType, {
-			autoResizeImages: settingsManager.getImageAutoResize(),
-			resizeOptions: limitsModel?.inputLimits?.images?.resize,
-		});
+	for (const processed of results) {
 		if (!processed.ok) {
 			hints.push(processed.message);
 			continue;

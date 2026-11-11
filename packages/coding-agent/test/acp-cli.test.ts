@@ -92,7 +92,7 @@ describe("ACP CLI", () => {
 					sessionId,
 					mcpServers: [],
 				}),
-			).resolves.toEqual({});
+			).resolves.toEqual({ configOptions: [expect.objectContaining({ id: "model" })] });
 			for (const text of ["allow the call", "deny the call"]) {
 				await expect(current.prompt(sessionId, text), current.diagnostics()).resolves.toMatchObject({
 					stopReason: "end_turn",

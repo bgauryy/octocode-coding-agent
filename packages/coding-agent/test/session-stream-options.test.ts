@@ -203,18 +203,20 @@ describe("session stream options", () => {
 		it("passes the first section after docs to model requests", async () => {
 			const options = await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context());
 			expect(options?.instructionCacheBoundary).toBe("project_context");
+			expect(options?.instructionVolatileBoundary).toBe("cwd");
 		});
 
 		it("reaches the provider from a real session prompt", async () => {
 			const options = await captureStreamOptions("openai-responses", {}, {}, undefined, { type: "done" });
-			expect(options?.instructionCacheBoundary).toMatch(/^(addendum|project_context|skills|cwd)$/);
+			// `cwd` left the session tier, so the second block starts at the addendum or the first policy section.
+			expect(options?.instructionCacheBoundary).toMatch(/^(addendum|work|lean|project_context|skills)$/);
+			expect(options?.instructionVolatileBoundary).toBe("cwd");
 		});
 
 		it("omits it for a forced prompt, a prompt without project sections, and the off switch", async () => {
-			expect(
-				(await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context(null)))
-					?.instructionCacheBoundary,
-			).toBeUndefined();
+			const forced = await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context(null));
+			expect(forced?.instructionCacheBoundary).toBeUndefined();
+			expect(forced?.instructionVolatileBoundary).toBeUndefined();
 			expect(
 				(
 					await captureStreamOptions(
@@ -228,10 +230,9 @@ describe("session stream options", () => {
 				)?.instructionCacheBoundary,
 			).toBeUndefined();
 			vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_SPLIT", "off");
-			expect(
-				(await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context()))
-					?.instructionCacheBoundary,
-			).toBeUndefined();
+			const off = await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context());
+			expect(off?.instructionCacheBoundary).toBeUndefined();
+			expect(off?.instructionVolatileBoundary).toBeUndefined();
 		});
 	});
 

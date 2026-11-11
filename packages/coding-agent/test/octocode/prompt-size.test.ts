@@ -22,7 +22,7 @@ let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
 	saved = { ...process.env };
 	process.env.OCTOCODE_HOME = tmp();
-	// Hermetic: a run inside a Octocode subagent inherits its identity, which changes the tools and the prompt.
+	// Hermetic: a run inside an Octocode subagent inherits its identity, which changes the tools and the prompt.
 	for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_BROWSER_VISIBLE", "OCTOCODE_READ_ONLY"]) delete process.env[key];
 });
 afterEach(() => {
@@ -72,7 +72,8 @@ async function promptSize(options: {
 	if (options.item) process.env[BACKLOG_ITEM_ENV] = options.item;
 	if (options.subagent) process.env.OCTOCODE_SUBAGENT = "1";
 	if (options.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
-	const fake = fakeHost();
+	// Every tool declared in full, as once used in this folder: the deferred declaration (`mcpExposure: "recent"`) is smaller.
+	const fake = fakeHost({ mcpExposure: "direct" });
 	Object.assign(fake.api, { getSessionName: () => undefined });
 	await octocode(fake.api);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: !options.subagent });
@@ -97,10 +98,14 @@ async function promptSize(options: {
 			parameters: unknown;
 			promptGuidelines?: string[];
 		};
-		if (tool.name === "backlog") {
-			const full = parameters as { properties: Record<string, unknown> };
-			const oldFields = Object.fromEntries(Object.entries(full.properties).filter(([key]) => !(key in EntityFields)));
-			backlogEntities = JSON.stringify(parameters).length - JSON.stringify({ ...full, properties: oldFields }).length;
+		// The entity fields live in two tools since the split: `completion` in `backlog`, and `type`, `parentId` and
+		// `dependsOn` inside an `items` entry of `backlogPlan`.
+		if (tool.name === "backlog" || tool.name === "backlogPlan") {
+			type Shape = { properties: Record<string, unknown> };
+			const full = parameters as Shape & { properties: { items?: { items: Shape } } };
+			const holder = tool.name === "backlog" ? full : full.properties.items!.items;
+			const without = Object.fromEntries(Object.entries(holder.properties).filter(([key]) => !(key in EntityFields)));
+			backlogEntities += JSON.stringify(holder).length - JSON.stringify({ ...holder, properties: without }).length;
 		}
 		perTool[tool.name] =
 			description.length + JSON.stringify(parameters).length + (promptGuidelines ?? []).join("").length;
@@ -123,12 +128,18 @@ async function promptSize(options: {
  * Each ceiling sits just above the latest measurement. When the prompt shrinks, lower it to match; raise one only for an
  * intended change, with a reason a reviewer can weigh against paying these characters on every request.
  */
-/** Schema characters of the backlog's typed entity fields (links, completion, hierarchy): measured 2_176 main, 2_104 child. */
-const BACKLOG_ENTITIES_CEILING = 2_250;
-/** The main session's policy sections and tool surfaces without the entity fields: measured 39_429. */
-const MAIN_CEILING = 39_455;
-/** A specialist with the shared file and communication tools, without the entity fields: measured 24_839. */
-const SPECIALIST_CEILING = 24_864;
+/**
+ * Schema characters of the backlog tools' typed entity fields (completion in `backlog`; type, parent, dependencies and
+ * links in a `backlogPlan` entry): measured 1_532 main. One tool carried them all at 2_176 before the split.
+ */
+const BACKLOG_ENTITIES_CEILING = 1_560;
+/** The main session's policy sections and tool surfaces without the entity fields: measured 37_917. */
+const MAIN_CEILING = 37_950;
+/**
+ * A specialist with the shared file and communication tools, without the entity fields: measured 21_523. It declares
+ * `backlog` alone (five work operations), never `backlogPlan`.
+ */
+const SPECIALIST_CEILING = 21_550;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -170,9 +181,15 @@ describe("prompt size", () => {
 		const named = await promptSize({ subagent: true, exclude: ["browser"], item: "B1" });
 		expect(without.perTool.backlog).toBeUndefined();
 		expect(named.perTool.backlog).toBeGreaterThan(0);
-		expect(named.total - without.total).toBeGreaterThan(3_000);
+		// What the item adds is the work tool alone (measured 1_722); planning stays with the coordinator.
+		expect(named.total - without.total).toBeGreaterThan(1_500);
+		expect(named.total - without.total).toBeLessThan(1_900);
+		expect(named.perTool.backlogPlan).toBeUndefined();
+		expect(without.perTool.backlogPlan).toBeUndefined();
 		// The main session declares it whatever the environment says.
-		expect((await promptSize({ subagent: false })).perTool.backlog).toBeGreaterThan(0);
+		const main = await promptSize({ subagent: false });
+		expect(main.perTool.backlog).toBeGreaterThan(0);
+		expect(main.perTool.backlogPlan).toBeGreaterThan(0);
 	});
 
 	it.each(["implementer", "reviewer"])("%s keeps its working tools", async (name) => {
@@ -180,7 +197,8 @@ describe("prompt size", () => {
 		const exclude = profileExcludes(profile.excludeTools);
 		const scoped = await promptSize({ subagent: true, readOnly: profile.readOnly, exclude });
 		console.log(`${name}: ${scoped.total} chars`);
-		for (const tool of ["file", "bash", "agent", "archive", "skill"]) expect(scoped.perTool[tool]).toBeGreaterThan(0);
+		for (const tool of ["file", "bash", "agent", "archive", "memory", "skill"])
+			expect(scoped.perTool[tool]).toBeGreaterThan(0);
 	});
 
 	it("states the report contract in the child's task only, never in the policy sections", async () => {

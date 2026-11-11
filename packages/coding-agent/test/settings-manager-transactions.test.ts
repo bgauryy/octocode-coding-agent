@@ -79,6 +79,32 @@ describe("settings file transactions", () => {
 		expect(existsSync(agentDir)).toBe(false);
 	});
 
+	it("reads without waiting for a writer's lock: writes are atomic renames", () => {
+		const { agentDir, projectDir } = paths();
+		mkdirSync(agentDir);
+		const settingsPath = join(agentDir, "settings.json");
+		writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
+		const release = lockfile.lockSync(settingsPath, { realpath: false });
+		try {
+			let read: string | undefined;
+			const started = Date.now();
+			new FileSettingsStorage(projectDir, agentDir).withLock(
+				"global",
+				(current) => {
+					read = current;
+					return undefined;
+				},
+				{ readOnly: true },
+			);
+			expect(JSON.parse(read ?? "{}")).toEqual({ theme: "dark" });
+			// A held lock would have meant retries (and ELOCKED after them), not an immediate read.
+			expect(Date.now() - started).toBeLessThan(100);
+			expect(SettingsManager.create(projectDir, agentDir).getGlobalSettings()).toMatchObject({ theme: "dark" });
+		} finally {
+			release();
+		}
+	});
+
 	it("does not create configuration directories for a read-only startup load", () => {
 		const { agentDir, projectDir } = paths();
 		SettingsManager.create(projectDir, agentDir, { projectTrusted: true });

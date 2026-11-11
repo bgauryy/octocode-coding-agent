@@ -3,7 +3,7 @@ import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";
 import { stamp } from "../model/format.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hashFor } from "../model/route.ts";
 import { Field } from "../ui/fields.tsx";
 import { CheckIcon, CommentIcon, EditIcon, PlusIcon } from "../ui/icons.tsx";
@@ -13,7 +13,6 @@ import { Popover } from "../features/Popover.tsx";
 import { CloseItem } from "./CloseItem.tsx";
 import { CommandButton, MessageForm, StatusLine } from "./controls.tsx";
 import { ItemImplementation } from "./ItemImplementation.tsx";
-import { record } from "./model.ts";
 import { useAnswerNote } from "./NeedsYou.tsx";
 import { useLive } from "./session.tsx";
 
@@ -234,8 +233,8 @@ export function AuditRows({ events }: { events: readonly BacklogAudit[] }) {
 	return (
 		<div className="audit-rows">
 			{[...events].reverse().map((event) => {
-				const before = record(event.before);
-				const after = record(event.after);
+				const before = asRecord(event.before);
+				const after = asRecord(event.after);
 				const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
 					(key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
 				);

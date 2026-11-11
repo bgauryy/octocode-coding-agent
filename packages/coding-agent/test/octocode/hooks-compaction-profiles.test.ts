@@ -39,7 +39,7 @@ describe("compaction source semantics", () => {
 				}),
 			);
 			const f = fakeHost(HOOK_SETTINGS);
-			registerHooks(f.api, {}, home);
+			registerHooks(f.api, { env: {}, home });
 			const ctx = fakeCtx({ cwd: tmp() });
 			ctx.abort = vi.fn();
 			await f.fire("session_start", { reason: "startup" }, ctx);

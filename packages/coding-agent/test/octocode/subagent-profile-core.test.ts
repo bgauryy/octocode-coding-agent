@@ -76,6 +76,7 @@ describe("core tools of a subagent profile", () => {
 			"agent",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
@@ -88,6 +89,7 @@ describe("core tools of a subagent profile", () => {
 			"agent",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
@@ -101,11 +103,12 @@ describe("core tools of a subagent profile", () => {
 			"agent",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "timer", "archive"]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "timer", "archive", "memory"]);
 		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
@@ -118,6 +121,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
@@ -131,6 +135,7 @@ describe("core tools of a subagent profile", () => {
 			"agent",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
@@ -145,11 +150,6 @@ describe("core tools of a subagent profile", () => {
 				(name) => `+${name}`,
 			),
 		);
-	});
-
-	it("gives a profile that lists steps the steps tool, and no other profile", () => {
-		expect(allowed(profile("tools: edit,steps").tools)).toContain("steps");
-		expect(allowed(profile("tools: edit").tools)).not.toContain("steps");
 	});
 
 	it("lets a profile drop the skill tool, unlike the core tools", () => {
@@ -203,6 +203,7 @@ describe("core tools of a subagent profile", () => {
 			"agent",
 			"timer",
 			"archive",
+			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",

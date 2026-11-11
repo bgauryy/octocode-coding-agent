@@ -3,7 +3,6 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { webCommand } from "../../src/octocode/workspace/command.ts";
 import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
-import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +15,6 @@ import { type Snapshot, STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { openFile } from "../../src/octocode/browser/open.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 
 const SECRET = `ghp_${"a1B2c3D4e5".repeat(4)}`;
@@ -253,62 +251,17 @@ describe("backlog html page", () => {
 	});
 });
 
-/** A fake ChildProcess that reports `spawn` or `error` on the next tick. */
-function fakeSpawn(outcome: "spawn" | Error) {
-	const calls: Array<{ command: string; args: string[]; options: Record<string, unknown> }> = [];
-	const unref = vi.fn();
-	const spawn = ((command: string, args: string[], options: Record<string, unknown>) => {
-		calls.push({ command, args, options });
-		const child = Object.assign(new EventEmitter(), { unref });
-		process.nextTick(() => (outcome === "spawn" ? child.emit("spawn") : child.emit("error", outcome)));
-		return child;
-	}) as never;
-	return { spawn, calls, unref };
-}
-
-describe("openFile", () => {
-	it("uses the default opener of each platform, detached and without a console window", async () => {
-		const run = async (platform: NodeJS.Platform) => {
-			const fake = fakeSpawn("spawn");
-			await openFile("/tmp/my repo/backlog.html", { platform, spawn: fake.spawn });
-			expect(fake.unref).toHaveBeenCalled();
-			return fake.calls[0];
-		};
-		expect(await run("darwin")).toMatchObject({
-			command: "open",
-			args: ["/tmp/my repo/backlog.html"],
-			options: { detached: true, stdio: "ignore", windowsHide: true },
-		});
-		expect(await run("linux")).toMatchObject({
-			command: "xdg-open",
-			args: ["/tmp/my repo/backlog.html"],
-			options: { detached: true, windowsHide: true },
-		});
-		const win = await run("win32");
-		expect(win.command).toMatch(/System32\\cmd\.exe$/);
-		expect(win.args).toEqual(["/d", "/c", 'start "" "/tmp/my repo/backlog.html"']);
-		expect(win.options).toMatchObject({ detached: true, windowsHide: true, windowsVerbatimArguments: true });
-	});
-
-	it("rejects with the spawn error, such as a missing xdg-open", async () => {
-		const fake = fakeSpawn(Object.assign(new Error("spawn xdg-open ENOENT"), { code: "ENOENT" }));
-		await expect(openFile("/tmp/x.html", { platform: "linux", spawn: fake.spawn })).rejects.toThrow(
-			"spawn xdg-open ENOENT",
-		);
-	});
-});
-
 describe("/backlog html", () => {
 	function setup(open: (file: string) => Promise<void>) {
 		const fake = fakeHost();
 		const commands = new Subcommands();
-		const openWorkspace = registerBacklog(fake.api, {
+		const backlogWeb = registerBacklog(fake.api, {
 			commands,
 			isSubagent: false,
 			open,
 			openWeb: (_ctx, backlog, changed) => startWorkspaceWeb(backlog, changed),
 		});
-		commands.add("web", webCommand(openWorkspace));
+		commands.add("web", webCommand(backlogWeb.open));
 		const cwd = path.join(tmp, "repo");
 		fs.mkdirSync(cwd, { recursive: true });
 		return {
@@ -329,7 +282,9 @@ describe("/backlog html", () => {
 		expect(url.hostname).toBe("127.0.0.1");
 		expect(url.hash).toMatch(/^#access=/);
 		expect((await fetch(url.origin)).status).toBe(200);
-		expect(ctx.ui.notes.at(-1)?.message).toContain("live backlog");
+		// `/backlog` runs `/web backlogs`: the same page and the same words.
+		expect(new URLSearchParams(url.hash.slice(1)).get("view")).toBe("board");
+		expect(ctx.ui.notes.at(-1)?.message).toContain("Opened the web workspace at");
 		await t.fire("session_shutdown", {}, ctx);
 		await expect(fetch(url.origin)).rejects.toThrow();
 	});

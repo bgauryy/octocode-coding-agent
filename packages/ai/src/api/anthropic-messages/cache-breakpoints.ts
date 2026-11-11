@@ -8,7 +8,7 @@ type MessageParam = MessageCreateParamsStreaming["messages"][number];
 type CacheableBlock = ContentBlockParam & { cache_control?: CacheControlEphemeral | null };
 
 /** Anthropic accepts at most four explicit cache breakpoints per request. */
-const MAX_CACHE_BREAKPOINTS = 4;
+export const MAX_CACHE_BREAKPOINTS = 4;
 
 const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_result", "tool_addition", "tool_removal"]);
 
@@ -38,6 +38,46 @@ function lastBlock(message: MessageParam): ContentBlockParam | undefined {
 	return Array.isArray(message.content) ? message.content[message.content.length - 1] : undefined;
 }
 
+/** A message in Anthropic or Anthropic-compatible chat format: only its role and content are read. */
+interface HistoryMessage {
+	role: string;
+	content?: unknown;
+}
+
+function lastContentPart(message: HistoryMessage): unknown {
+	return Array.isArray(message.content) ? message.content[message.content.length - 1] : undefined;
+}
+
+/**
+ * Index of the previous request's tail: the last non-empty message before the final assistant turn, where the final
+ * assistant turn is the one before the last message whose last content part carries a cache marker. Returns -1 when
+ * no message carries a marker or the tail is itself an assistant message. The caller decides whether the tail can
+ * carry a marker.
+ */
+export function findPreviousTailIndex(messages: readonly HistoryMessage[]): number {
+	let finalIndex = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (countCacheBreakpoints(lastContentPart(messages[i])) > 0) {
+			finalIndex = i;
+			break;
+		}
+	}
+	if (finalIndex < 0) return -1;
+	let assistantIndex = -1;
+	for (let i = finalIndex - 1; i >= 0; i--) {
+		if (messages[i].role === "assistant") {
+			assistantIndex = i;
+			break;
+		}
+	}
+	for (let i = assistantIndex - 1; i >= 0; i--) {
+		const message = messages[i];
+		if (Array.isArray(message.content) && message.content.length === 0) continue;
+		return message.role === "assistant" ? -1 : i;
+	}
+	return -1;
+}
+
 /**
  * Adds a second history breakpoint on the previous request's tail, the user or tool-result message that
  * precedes the final assistant turn. Anthropic only looks back 20 blocks from a breakpoint for an earlier
@@ -51,35 +91,17 @@ export function addHistoryLookbackBreakpoint(
 	usedBreakpoints: number,
 ): void {
 	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return;
-	let finalIndex = -1;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (countCacheBreakpoints(lastBlock(messages[i])) > 0) {
-			finalIndex = i;
-			break;
-		}
-	}
-	if (finalIndex < 0) return;
-	let assistantIndex = -1;
-	for (let i = finalIndex - 1; i >= 0; i--) {
-		if (messages[i].role === "assistant") {
-			assistantIndex = i;
-			break;
-		}
-	}
-	for (let i = assistantIndex - 1; i >= 0; i--) {
-		const message = messages[i];
-		if (Array.isArray(message.content) && message.content.length === 0) continue;
-		if (message.role === "assistant") return;
-		if (typeof message.content === "string") {
-			if (message.content.trim().length > 0) {
-				message.content = [{ type: "text", text: message.content, cache_control: cacheControl }];
-			}
-			return;
-		}
-		const block = lastBlock(message);
-		if (isCacheableBlock(block) && !block.cache_control) {
-			block.cache_control = cacheControl;
+	const tailIndex = findPreviousTailIndex(messages);
+	if (tailIndex < 0) return;
+	const message = messages[tailIndex];
+	if (typeof message.content === "string") {
+		if (message.content.trim().length > 0) {
+			message.content = [{ type: "text", text: message.content, cache_control: cacheControl }];
 		}
 		return;
+	}
+	const block = lastBlock(message);
+	if (isCacheableBlock(block) && !block.cache_control) {
+		block.cache_control = cacheControl;
 	}
 }

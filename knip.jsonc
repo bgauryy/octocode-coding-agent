@@ -6,7 +6,7 @@
 			"ignoreDependencies": ["mermaid"],
 			// Build inputs and developer commands invoked by path rather than static imports.
 			"entry": [
-				"scripts/agent-eval/{run,compare,understand}.mjs",
+				"scripts/agent-eval/{run,compare,understand,session-baseline}.mjs",
 				"scripts/agent-eval/fixtures/checks/*.mjs",
 				"scripts/agent-treeshake-smoke-entry.ts",
 				"scripts/browser-smoke-entry.ts",
@@ -22,14 +22,13 @@
 			// Tool search, transcript loading and system updates share one current model list,
 			// but their independently consumed capability contracts must remain separate.
 			"ignoreIssues": { "scripts/generate-models/constants.ts": ["duplicates"] },
-			// The `bin` and the named (non-wildcard) `exports` subpaths, which Knip cannot map from `dist`. The wildcard
+			// The named (non-wildcard) `exports` subpaths, which Knip cannot map from `dist`. The wildcard
 			// subpaths (`./providers/*`, `./api/*`, `./utils/*`) are deliberately not entries: a module there counts as
 			// used only when this repository imports it, so an export nothing consumes is reported instead of hidden.
 			// `providers/compat-schema.ts` is imported by name from coding-agent's `scripts/generate-references.ts`, which
 			// Knip does not resolve to ai sources.
 			"entry": [
 				"src/index.ts",
-				"src/cli.ts",
 				"src/{models,compat,oauth,bedrock-provider,bun-oauth}.ts",
 				"src/providers/compat-schema.ts",
 			],
@@ -79,6 +78,8 @@
 			"ignore": ["src/core/export-html/vendor/**", "src/core/export-html/script/**"],
 		},
 		"packages/db": {
+			// The database writer's worker file is started by URL from source (`src/writer/client.ts`).
+			"entry": ["src/writer/worker-entry.ts"],
 			// Common sources are bundled into the same host and imported by relative source path.
 			"ignoreDependencies": ["@octocodeai/octocode-common"],
 		},

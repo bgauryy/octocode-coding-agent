@@ -16,9 +16,13 @@ if (typeof process !== "undefined" && (process.versions?.node || process.version
 
 import { DEFAULT_CODEX_ORIGINATOR } from "../../api/openai-codex-responses/types.ts";
 import { OPENAI_CODEX_LEGACY_PLAN } from "../../providers/plans.ts";
-import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { LoginOptions, OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { startOAuthCallbackServer, waitForCallbackOrManualInput, parseAuthorizationInput } from "./callback-server.ts";
+import {
+	getOAuthCallbackHost,
+	parseAuthorizationInput,
+	startOAuthCallbackServer,
+	waitForCallbackOrManualInput,
+} from "./callback-server.ts";
 import { loginOpenAICodexDeviceCode } from "./openai-codex/device-auth.ts";
 import {
 	AUTH_BASE_URL,
@@ -45,10 +49,6 @@ function loginOriginator(options?: LoginOptions): string {
 /** Keeps the login's originator on the credential, so requests and refreshes name the same client. */
 function withOriginator(credential: OAuthCredential, originator: unknown): OAuthCredential {
 	return typeof originator === "string" && originator ? { ...credential, originator } : credential;
-}
-
-function getCallbackHost(): string {
-	return getProviderEnvValue("OCTOCODE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 }
 
 function createState(): string {
@@ -85,7 +85,7 @@ async function loginOpenAICodex(
 	// Port 1455 is shared with the Codex CLI; when it is taken, fall back to the pasted redirect URL.
 	const callback = await startOAuthCallbackServer({
 		providerName: "OpenAI",
-		host: getCallbackHost(),
+		host: getOAuthCallbackHost(),
 		port: 1455,
 		path: "/auth/callback",
 		state,

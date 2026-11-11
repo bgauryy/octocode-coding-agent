@@ -1,9 +1,10 @@
 /** The tool definition registry a session builds from built-in, SDK and extension tools. */
 
-import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import type { RegisteredTool, ToolDefinition } from "../features/index.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo } from "../source-info.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
+import { ROLE_INVARIANT_TOOLS, ROLE_VARIANT_TOOLS } from "../tool-roles.ts";
 
 function normalizePromptSnippet(text: string | undefined): string | undefined {
 	if (!text) return undefined;
@@ -100,15 +101,6 @@ export function buildToolDefinitionRegistry(
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Tools every role is given in the same form, declared first and in this order. */
-const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "mcp"];
-
-/**
- * Tools whose presence or declaration depends on the role (a child may lack askUser or skill), declared last and in this
- * order.
- */
-const ROLE_VARIANT_TOOLS = ["backlog", "steps", "archive", "askUser", "agent", "skill", "models", "compact"];
-
 const rankIn = (list: readonly string[], name: string) => {
 	const index = list.indexOf(name);
 	return index < 0 ? undefined : index;
@@ -120,9 +112,8 @@ const rankIn = (list: readonly string[], name: string) => {
  * order, then MCP tools (namespace `mcp__<server>`) sorted by namespace and name, with servers whose entry gives tools
  * roles first (every agent that has MCP tools gets those), then role-variant tools. MCP registration and activation
  * order follows connection timing, which would otherwise change the declared tools, and so the cached prefix, between
- * sessions of one configuration. The benefit is stability across sessions and reuse between siblings of one profile;
- * a parent and a child do not share a cached run, because their system text differs early and no breakpoint ends the
- * shared tool bytes.
+ * sessions of one configuration. The benefit is stability across sessions and reuse between siblings of one profile,
+ * and, through the breakpoint at `findToolCacheBoundary` (`tool-roles.ts`), between a parent and its children and between roles.
  */
 export function orderToolNames(names: Iterable<string>, namespaceOf: (name: string) => string | undefined): string[] {
 	const first: Array<{ name: string; rank: number }> = [];

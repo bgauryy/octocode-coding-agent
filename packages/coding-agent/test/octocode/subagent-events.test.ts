@@ -58,6 +58,17 @@ describe("reduceEvent: verification", () => {
 		expect(flags(reduce(state, end("file", {}, true)))).toEqual([]);
 	});
 
+	it("notes an edit from a file batch in which another query failed: an error result that still applied one", () => {
+		const outcomes = [
+			{ type: "edit", path: "a.ts", ok: true },
+			{ type: "edit", path: "b.ts", ok: false },
+		];
+		const state = newChildState();
+		reduce(state, verified());
+		expect(flags(reduce(state, end("file", { outcomes: [outcomes[1]] }, true)))).toEqual([]);
+		expect(flags(reduce(state, end("file", { outcomes }, true)))).toEqual([true]);
+	});
+
 	it("counts a passing background job", () => {
 		const state = newChildState();
 		reduce(state, {

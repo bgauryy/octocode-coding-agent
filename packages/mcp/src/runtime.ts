@@ -8,7 +8,7 @@ import {
 } from "./client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import type { OAuthChallenge } from "./client/oauth/index.ts";
-import { McpCatalogCache } from "./catalog.ts";
+import { ConnectionCatalog } from "./catalog.ts";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
 import type { McpAuthProvider, McpOAuthCredentialStore, McpOAuthSettings } from "./oauth.ts";
@@ -65,13 +65,9 @@ export class McpServerConnection implements McpToolCaller {
 	retriedAfterTimeout = false;
 	clientError: string | undefined;
 	serverWarning: string | undefined;
-	tools: McpTool[] = [];
-	/** Server instructions from `initialize`, describing its tools as a group. */
-	instructions: string | undefined;
 	/** Last OAuth challenge from the server; sign-in uses its resource metadata URL and scope. */
 	challenge: OAuthChallenge | undefined;
-	private readonly catalog = new McpCatalogCache();
-	private listRevision = 0;
+	private readonly catalog = new ConnectionCatalog();
 	private client: McpClient | undefined;
 	private opening: Promise<McpClient> | undefined;
 	/** Unlike permanent shutdown, stopping an opening can be followed by a fresh reconnect. */
@@ -112,6 +108,15 @@ export class McpServerConnection implements McpToolCaller {
 				this.challenge = challenge;
 			},
 		});
+	}
+
+	get tools(): McpTool[] {
+		return this.catalog.tools;
+	}
+
+	/** Server instructions from `initialize`, describing its tools as a group. */
+	get instructions(): string | undefined {
+		return this.catalog.instructions;
 	}
 
 	get name(): string {
@@ -162,7 +167,7 @@ export class McpServerConnection implements McpToolCaller {
 		expireSession: (client) => {
 			if (this.client === client) {
 				this.client = undefined;
-				this.listRevision++;
+				this.catalog.revision++;
 			}
 		},
 		requireSignIn: async (client, error) => {
@@ -243,7 +248,7 @@ export class McpServerConnection implements McpToolCaller {
 	private async dropClient(client: McpClient): Promise<void> {
 		if (this.client === client) {
 			this.client = undefined;
-			this.listRevision++;
+			this.catalog.revision++;
 		}
 		await client.close().catch(() => undefined);
 	}
@@ -327,7 +332,7 @@ export class McpServerConnection implements McpToolCaller {
 			this.markNeedsAuth();
 			return new Error(signInRequiredMessage(this.entry));
 		}
-		this.listRevision++;
+		this.catalog.revision++;
 		if (!this.closed) this.backoff.failed();
 		this.state = this.closed ? "closed" : "failed";
 		this.error = this.stderrTail ? `${errorMessage(error)}\n${this.stderrTail}` : errorMessage(error);
@@ -339,7 +344,7 @@ export class McpServerConnection implements McpToolCaller {
 	private handleClientClose(client: McpClient, stdio: StdioTransport | undefined): void {
 		if (this.client !== client || this.closed) return;
 		this.client = undefined;
-		this.listRevision++;
+		this.catalog.revision++;
 		this.state = "disconnected";
 		const stderr = stderrTail(stdio);
 		this.error = stderr ? `Connection closed\n${stderr}` : "Connection closed";
@@ -347,31 +352,23 @@ export class McpServerConnection implements McpToolCaller {
 	}
 
 	private publishCatalog(client: McpClient, tools: McpTool[]): void {
-		const catalog = this.catalog.update(client.serverInfo, tools, client.instructions?.trim() || undefined);
-		if (this.tools === catalog.tools && this.instructions === catalog.instructions) return;
-		this.tools = catalog.tools;
-		this.instructions = catalog.instructions;
-		this.onTools(this);
+		if (this.catalog.publish(client.serverInfo, tools, client.instructions?.trim() || undefined)) this.onTools(this);
 	}
 
 	/** Remove the catalog: the server is stopped, signed out or shut down, or its catalog could not be verified. A drop or a failed reconnect keeps it. */
 	private withdrawCatalog(): void {
-		this.listRevision++;
-		if (this.tools.length === 0 && this.instructions === undefined) return;
-		this.tools = [];
-		this.instructions = undefined;
-		this.onTools(this);
+		if (this.catalog.withdraw()) this.onTools(this);
 	}
 
 	private async refreshTools(client: McpClient): Promise<void> {
-		const revision = ++this.listRevision;
+		const revision = ++this.catalog.revision;
 		try {
 			const tools = client.serverCapabilities?.tools ? await client.listTools() : [];
-			if (this.client !== client || this.closed || revision !== this.listRevision) return;
+			if (this.client !== client || this.closed || revision !== this.catalog.revision) return;
 			this.publishCatalog(client, tools);
 			this.error = undefined;
 		} catch (error) {
-			if (this.client !== client || this.closed || revision !== this.listRevision) return;
+			if (this.client !== client || this.closed || revision !== this.catalog.revision) return;
 			// Unlike a drop, the connection is up but its catalog is unverified, so its tools are withdrawn.
 			this.withdrawCatalog();
 			this.error = `Failed to refresh tools: ${errorMessage(error)}`;

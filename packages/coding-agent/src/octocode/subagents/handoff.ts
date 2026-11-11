@@ -18,7 +18,10 @@ import { shortPath } from "../../utils/display-path.ts";
 /** Custom message type of the short mid-turn notice that a background report is on its way (never the report). */
 export const NOTICE_TYPE = "octocode-agent-notice";
 
-/** Background reports finishing within this window reach the parent together, as one wake. */
+/**
+ * Background reports finishing within this window reach the parent together, as one wake. The window ends early once
+ * every background child still running has a report waiting: nobody else is about to join the batch.
+ */
 const REPORT_BATCH_MS = 1_500;
 
 /** Rejected sends are retried 3 times quickly (1 s, 2 s, 4 s), then 3 times slowly, so a long outage heals without a restart. */
@@ -58,9 +61,23 @@ export class ReportQueue {
 
 	private readonly api: ExtensionAPI;
 	private readonly windowMs: number;
-	constructor(api: ExtensionAPI, windowMs = REPORT_BATCH_MS) {
+	private readonly running: (() => Iterable<string>) | undefined;
+	/**
+	 * `running`: the ids of this parent's background children that have not ended (a child that is reporting counts
+	 * until it has). Without it every report waits out the window.
+	 */
+	constructor(api: ExtensionAPI, windowMs = REPORT_BATCH_MS, running?: () => Iterable<string>) {
 		this.api = api;
 		this.windowMs = windowMs;
+		this.running = running;
+	}
+
+	/** Whether every background child still running has a report in the batch, so waiting gathers nothing more. */
+	private complete(): boolean {
+		if (!this.running) return false;
+		const reported = new Set(this.queued.map((report) => report.details.id));
+		for (const id of this.running()) if (!reported.has(id)) return false;
+		return true;
 	}
 
 	start(
@@ -128,8 +145,11 @@ export class ReportQueue {
 		}
 		this.queued.push(report);
 		this.stopClock ??= onSecond(() => this.recorded());
-		if (this.timer) return;
-		this.timer = setTimeout(() => this.flush(), this.windowMs);
+		// The rest of this tick still joins the batch: reports added in one loop (recovered ones) remain one wake.
+		const complete = this.complete();
+		if (this.timer && !complete) return;
+		clearTimeout(this.timer);
+		this.timer = setTimeout(() => this.flush(), complete ? 0 : this.windowMs);
 		this.timer.unref?.();
 	}
 

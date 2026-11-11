@@ -31,8 +31,7 @@ import {
 	pageScroll,
 } from "./movement.ts";
 
-export function handleEditorInput(editor: EditorModel, received: string): void {
-	let data = received;
+export function handleEditorInput(editor: EditorModel, data: string): void {
 	const kb = getKeybindings();
 
 	// Handle character jump mode (awaiting next character to jump to)
@@ -56,28 +55,11 @@ export function handleEditorInput(editor: EditorModel, received: string): void {
 		editor.jumpMode = null;
 	}
 
-	if (data.includes("\x1b[200~")) {
-		editor.isInPaste = true;
-		editor.pasteBuffer = "";
-		data = data.replace("\x1b[200~", "");
-	}
-
-	if (editor.isInPaste) {
-		editor.pasteBuffer += data;
-		const endIndex = editor.pasteBuffer.indexOf("\x1b[201~");
-		if (endIndex !== -1) {
-			const pasteContent = editor.pasteBuffer.substring(0, endIndex);
-			if (pasteContent.length > 0) {
-				handlePaste(editor, pasteContent);
-			}
-			editor.isInPaste = false;
-			const remaining = editor.pasteBuffer.substring(endIndex + 6);
-			editor.pasteBuffer = "";
-			if (remaining.length > 0) {
-				editor.host.handleInput(remaining);
-			}
-			return;
-		}
+	const paste = editor.bracketedPaste.take(data);
+	if (paste) {
+		// Until the end marker arrives there is no content; input after it is handled as ordinary input.
+		if (paste.content) handlePaste(editor, paste.content);
+		if (paste.remaining) editor.host.handleInput(paste.remaining);
 		return;
 	}
 

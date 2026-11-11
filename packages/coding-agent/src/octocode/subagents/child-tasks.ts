@@ -52,7 +52,7 @@ export async function finishChildNotes(
 }
 
 /**
- * Hands the open session tasks a finished child tracked (its `steps` calls key them to its agent id) to this session, so
+ * Hands the open session tasks a finished child still has (keyed to its agent id; the user adds them on the board, the removed `steps` tool did) to this session, so
  * the resume brief shows them and nothing is orphaned. Returns the footer line for the parent (empty when the child left
  * none); never throws: the child's report still arrives.
  */

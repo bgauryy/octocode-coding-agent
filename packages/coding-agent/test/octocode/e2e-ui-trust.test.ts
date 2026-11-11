@@ -115,7 +115,8 @@ describe.skipIf(!tmuxAvailable)("folder trust prompt", () => {
 		const term = terminal(box);
 		await term.until((s) => s.includes("Do you trust this folder?"), "trust prompt");
 		const screen = term.screen();
-		expect(screen).toContain(box.project);
+		// The folder is shown whole: a path wider than the terminal wraps onto the next indented row.
+		expect(screen.replace(/\n +/g, "")).toContain(box.project);
 		expect(screen).toContain("Found here:");
 		expect(screen).toContain("AGENTS.md");
 		expect(screen).toContain("Trust this folder");

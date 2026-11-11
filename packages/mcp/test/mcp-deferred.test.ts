@@ -155,7 +155,7 @@ describe("deferred MCP exposure", () => {
 	});
 
 	it("defers a single tool by toolExposure and keeps the rest of the server direct", async () => {
-		const h = host([entry("docs", { toolExposure: { pick: "deferred" } })]);
+		const h = host([entry("docs", { toolExposure: { pick: "deferred" } })], { exposure: "direct" });
 		await h.start();
 		const block = blockOf((await h.prompt()).mcps, "docs");
 		expect(block).toContain("Echo test server.");
@@ -196,9 +196,17 @@ describe("mcpExposure auto threshold", () => {
 		h.api.getSettings = () => ({ mcpExposure: "auto:200" });
 		await h.start();
 		expect(blockOf((await h.prompt()).mcps, "docs")).not.toContain("function shout(");
-		const plain = host([entry("docs")]);
+		const direct = host([entry("docs")]);
+		direct.api.getSettings = () => ({ mcpExposure: "direct" });
+		await direct.start();
+		expect(blockOf((await direct.prompt()).mcps, "docs")).toContain("function shout(");
+		// Without a setting, `recent`: a tool this working directory used in the last 24 hours is direct, the rest deferred.
+		const plain = host([entry("docs")], { recentTools: new Set(["docs/shout"]) });
 		await plain.start();
-		expect(blockOf((await plain.prompt()).mcps, "docs")).toContain("function shout(");
+		const block = blockOf((await plain.prompt()).mcps, "docs");
+		expect(block).toContain("function shout(");
+		expect(block).not.toContain("function pick(");
+		expect(block).toContain("\n- pick: Echo union queries back (stand-in for Octocode operation branches)\n");
 	});
 });
 

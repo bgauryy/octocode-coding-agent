@@ -1,4 +1,8 @@
-/** `pending`, unless `signal` aborts first: then it rejects with "Cancelled" and `pending`'s own failure is ignored. */
+/**
+ * `pending`, unless `signal` aborts first: then it rejects with "Cancelled" and `pending`'s own failure is ignored.
+ * Common's `untilAborted` rejects with the signal's reason instead; the ACP server answers its client with this fixed
+ * text whatever aborted the request.
+ */
 export async function withAbort<T>(signal: AbortSignal, pending: Promise<T>): Promise<T> {
 	if (signal.aborted) {
 		void pending.catch(() => {});

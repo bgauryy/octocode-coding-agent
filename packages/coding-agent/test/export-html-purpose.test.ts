@@ -37,6 +37,17 @@ describe("the purpose block in an exported tool result", () => {
 		expect(text.split("find the loader")).toHaveLength(2);
 	});
 
+	it("reads the rows from a result that is one JSON text, with no structured content", () => {
+		const rows = { results: [{ index: 0, mainGoal: "find the loader", reasoning: "where it starts" }] };
+		const content = [{ type: "text", text: JSON.stringify(rows) }];
+		const expanded = html().renderResult("c", "mcp__other__search", content, undefined, false)?.expanded ?? "";
+		const text = expanded.replace(/<[^>]+>/g, "|");
+		expect(text).toContain("↳ find the loader");
+		expect(text).toContain("where it starts");
+		const prose = [{ type: "text", text: "mainGoal: find the loader" }];
+		expect(html().renderResult("c", "mcp__other__search", prose, undefined, false)?.expanded).not.toContain("↳");
+	});
+
 	it("has no block for a result that states no purpose, and never reads the call's arguments", () => {
 		const renderer = html();
 		renderer.renderCall("c", "mcp__other__search", { queries: [{ mainGoal: "from the input" }] });

@@ -6,6 +6,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { backlogToolName, planEntryFields } from "./backlog-fixture.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -30,11 +31,14 @@ async function setup() {
 	fs.mkdirSync(cwd, { recursive: true });
 	const tool = fake.tools.get("backlog");
 	const text = async (params: Record<string, unknown>) =>
-		((await tool.execute("id", params, undefined, undefined, fakeCtx({ cwd }))) as { content: Array<{ text: string }> })
-			.content[0].text;
+		(
+			(await fake.tools
+				.get(backlogToolName(params.op))
+				.execute("id", params, undefined, undefined, fakeCtx({ cwd }))) as { content: Array<{ text: string }> }
+		).content[0].text;
 	for (const title of ["first", "second", "third"])
-		await text({ op: "add", title, goal: `${title} done`, why: `${title} needed`, state: "todo" });
-	return { text, tool };
+		await text({ op: "add", items: [{ title, goal: `${title} done`, why: `${title} needed`, state: "todo" }] });
+	return { text, tool, plan: fake.tools.get("backlogPlan") };
 }
 
 const done = () => ({
@@ -45,9 +49,9 @@ const done = () => ({
 
 describe("backlog schema", () => {
 	it("tells the model an epic follows its items", async () => {
-		const { tool } = await setup();
-		const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
-		expect(props.state?.description).toMatch(/epic follows its items.*claim those, then set it done/);
+		const { plan } = await setup();
+		const props = planEntryFields(plan);
+		expect(props.state?.description).toMatch(/an epic follows its items/);
 	});
 
 	it("accepts type, parent and note on each items entry, as a single add does", async () => {
@@ -64,33 +68,39 @@ describe("backlog schema", () => {
 		expect(out).toMatch(/^Added 2 of 2\./);
 		expect(out).not.toMatch(/Unknown items fields/);
 		expect(await text({ op: "get", id: "B4" })).toMatch(/epic/i);
-		await expect(text({ op: "update", id: "B4", state: "todo" })).rejects.toThrow(
-			/B4 is an epic with items: its state follows them \(1 of its 1 items are not done\) \(open: B5\).*list parentId B4/,
+		await expect(text({ op: "edit", items: [{ id: "B4", state: "todo" }] })).rejects.toThrow(
+			/B4 is an epic with items: its state follows them \(1 of its 1 items are not done\) \(open: B5\).*backlogPlan list underEpic B4/,
 		);
 	});
 
-	it("adds finished work in one batch: an entry added as done carries its completion", async () => {
+	it("adds no finished work: an entry added as done or with a completion is refused with the backlog operation to use", async () => {
 		const { text } = await setup();
-		const out = await text({
+		const add = text({
 			op: "add",
 			why: "record finished work",
-			state: "done",
 			items: [
 				{ title: "Finished", goal: "finished done", completion: done() },
-				{ title: "Missing result", goal: "missing done" },
+				{ title: "Missing result", goal: "missing done", state: "done" },
 			],
 		});
-		expect(out).toMatch(/^Added 1 of 2; 1 refused\./);
-		expect(out).not.toMatch(/Unknown items fields/);
-		expect(out).toMatch(/Missing result.*Done needs completion/);
-		expect(await text({ op: "get", id: "B4" })).toMatch(/done/);
+		await expect(add).rejects.toThrow(/^Added 0 of 2; 2 refused\./);
+		await expect(add).rejects.toThrow(
+			/"Finished": refused - backlogPlan does not take completion: use backlog with op done\./,
+		);
+		await expect(add).rejects.toThrow(
+			/"Missing result": refused - backlogPlan does not finish an item: use backlog with op done and its completion\./,
+		);
+		await expect(add).rejects.not.toThrow(/Unknown items fields/);
+		// Added, then finished: the store still asks every done for its completion.
+		await text({ op: "add", items: [{ why: "record finished work", title: "Finished", goal: "finished done" }] });
+		await expect(text({ op: "done", id: "B4" })).rejects.toThrow(/Done needs completion/);
+		expect(await text({ op: "done", id: "B4", completion: done() })).toMatch(/^Updated B4 \[done/);
 	});
 
 	it("says add needs why, and refuses an add without it", async () => {
-		const { text, tool } = await setup();
-		const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
-		expect(props.why?.description).toMatch(/required for add/);
-		await expect(text({ op: "add", title: "x", goal: "g" })).rejects.toThrow(/add needs why/);
+		const { text, plan } = await setup();
+		expect(planEntryFields(plan).why?.description).toMatch(/add needs it/);
+		await expect(text({ op: "add", items: [{ title: "x", goal: "g" }] })).rejects.toThrow(/add needs why/);
 	});
 });
 
@@ -113,7 +123,7 @@ describe("backlog batch get", () => {
 		expect(out).toMatch(/B99: refused - No backlog item B99\./);
 		expect(out).not.toContain("second");
 		expect(await text({ op: "get", ids: ["B2"] })).toContain("second");
-		await expect(text({ op: "get", ids: [] })).rejects.toThrow(/get needs an id.*or ids/);
+		await expect(text({ op: "get", ids: [] })).rejects.toThrow(/get needs an id.*or several/);
 	});
 
 	it("lists the items ids names, in any state", async () => {
@@ -131,12 +141,12 @@ describe("backlog batch get", () => {
 	});
 });
 
-describe("backlog batch update", () => {
+describe("backlogPlan batch edit", () => {
 	it("applies the entries it can and reports the stale one with its reason", async () => {
 		const { text } = await setup();
 		const out = await text({
-			op: "update",
-			updates: [
+			op: "edit",
+			items: [
 				{ id: "B1", note: "progress on first" },
 				{ id: "B2", version: 999, note: "stale" },
 				{ id: "B3", state: "ongoing" },
@@ -151,10 +161,10 @@ describe("backlog batch update", () => {
 
 	it("enforces why and goal on a batch claim", async () => {
 		const { text } = await setup();
-		await text({ op: "add", title: "bare", why: "w", goal: "g" });
+		await text({ op: "add", items: [{ title: "bare", why: "w", goal: "g" }] });
 		const out = await text({
-			op: "update",
-			updates: [
+			op: "edit",
+			items: [
 				{ id: "B4", state: "ongoing", goal: " " },
 				{ id: "B1", state: "ongoing" },
 			],
@@ -163,45 +173,48 @@ describe("backlog batch update", () => {
 		expect(out).toMatch(/B4: refused - .*goal/);
 	});
 
-	it("keeps done needing a completion for each entry", async () => {
+	it("finishes no item in a batch: done is one backlog call per item, each with its completion", async () => {
 		const { text } = await setup();
-		const out = await text({
-			op: "update",
-			updates: [
+		const edit = text({
+			op: "edit",
+			items: [
 				{ id: "B1", state: "done" },
-				{ id: "B2", state: "done", completion: done() },
+				{ id: "B2", completion: done() },
 			],
 		});
-		expect(out.split("\n")[0]).toBe("Updated 1 of 2; 1 refused.");
-		expect(out).toMatch(/B1: refused - .*completion/i);
+		await expect(edit).rejects.toThrow(/^Updated 0 of 2; 2 refused\./);
+		await expect(edit).rejects.toThrow(/B1: refused - backlogPlan does not finish an item: use backlog with op done/);
+		await expect(edit).rejects.toThrow(/B2: refused - backlogPlan does not take completion: use backlog with op done/);
+		await expect(text({ op: "done", id: "B1" })).rejects.toThrow(/completion/i);
+		expect(await text({ op: "done", id: "B2", completion: done() })).toMatch(/^Updated B2 \[done/);
 	});
 
 	it("refuses unknown entry fields per entry and mixing with a top-level id", async () => {
 		const { text } = await setup();
 		const out = await text({
-			op: "update",
-			updates: [
+			op: "edit",
+			items: [
 				{ id: "B1", bogus: 1 },
 				{ id: "B2", note: "ok" },
 			],
 		});
-		expect(out).toMatch(/B1: refused - Unknown update fields: bogus/);
+		expect(out).toMatch(/B1: refused - Unknown items fields: bogus/);
 		expect(out.split("\n")[0]).toBe("Updated 1 of 2; 1 refused.");
-		await expect(text({ op: "update", id: "B1", updates: [{ id: "B2", note: "x" }] })).rejects.toThrow(
-			/updates goes with/,
+		await expect(text({ op: "edit", id: "B1", items: [{ id: "B2", note: "x" }] })).rejects.toThrow(
+			/edit with items takes no id beside them/,
 		);
 	});
 
-	it("takes a single update's item fields in an entry", async () => {
+	it("takes a single edit's item fields in an entry", async () => {
 		const { text } = await setup();
-		const out = await text({ op: "update", updates: [{ id: "B2", priority: "p1", dependsOn: ["B1"] }] });
+		const out = await text({ op: "edit", items: [{ id: "B2", priority: "p1", dependsOn: ["B1"] }] });
 		expect(out).not.toContain("refused");
 		expect(await text({ op: "get", id: "B2" })).toMatch(/p1/);
 	});
 
-	it("keeps the single update unchanged", async () => {
+	it("keeps the single note and edit unchanged", async () => {
 		const { text } = await setup();
-		expect(await text({ op: "update", id: "B1", note: "single" })).toMatch(/^Updated B1/);
-		await expect(text({ op: "update", id: "B1" })).rejects.toThrow(/update needs something to change/);
+		expect(await text({ op: "note", id: "B1", note: "single" })).toMatch(/^Updated B1/);
+		await expect(text({ op: "edit", items: [{ id: "B1" }] })).rejects.toThrow(/edit needs something to change/);
 	});
 });

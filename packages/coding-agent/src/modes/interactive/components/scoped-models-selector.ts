@@ -14,7 +14,7 @@ import {
 import { getModelSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import {
 	clearAll,
 	enableAll,

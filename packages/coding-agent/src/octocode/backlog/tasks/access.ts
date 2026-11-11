@@ -13,7 +13,7 @@ export function itemAccess(db: Db, item: Item, actor: Actor): void {
 	if (actor.owners) {
 		if (!(item.assignee && actor.owners.has(item.assignee)))
 			throw new BacklogError(
-				`${item.ref} is not claimed by your coordinator: a subagent touches only the tasks of items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or add session steps without an item.`,
+				`${item.ref} is not claimed by your coordinator: a subagent touches only the tasks of items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or put the finding in your report.`,
 			);
 		if (actor.item !== undefined && parseRef(actor.item) !== item.seq)
 			throw new BacklogError(

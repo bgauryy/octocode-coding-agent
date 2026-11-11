@@ -1,9 +1,5 @@
 import { type ContextView, PI_CODE_HINT, activeEntries, problemSummary } from "./context-view.ts";
-
-/** `~/.pi/agent/AGENTS.md` for a path under `home`. */
-function tilde(path: string, home: string): string {
-	return home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
-}
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 
 /** `…/deep/folder/SKILL.md`: the end of a path, cut from the left to fit `room` cells. */
 function fitPath(path: string, room: number): string {
@@ -26,7 +22,7 @@ export function formatContextText(view: ContextView, home: string, width?: numbe
 		const problems = problemSummary(group);
 		const lines = group.entries.flatMap((entry) => {
 			const note = entry.note ? ` (${entry.note})` : "";
-			const path = tilde(entry.path, home);
+			const path = homeTilde(entry.path, home);
 			return [
 				`  ${entry.source}: ${entry.name}${note}`,
 				`${indent}${width ? fitPath(path, width - indent.length) : path}`,

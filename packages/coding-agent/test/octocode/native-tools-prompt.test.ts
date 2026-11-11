@@ -50,13 +50,17 @@ describe("native tools and the system prompt", () => {
 	it("names the tool in rules that would otherwise lose it, so saving a memory is findable from the rules", async () => {
 		const tools = (await nativeTools()) as Array<Registered & { promptGuidelines?: string[] }>;
 		const of = (name: string) => tools.find((tool) => tool.name === name);
-		expect(of("archive")?.promptGuidelines?.[0]).toMatch(/^Save a memory \(`archive`\) when/);
+		expect(of("memory")?.promptGuidelines?.[0]).toMatch(/^Save a memory \(`memory`\) when/);
+		// History has no rule of its own: `archive` no longer carries the memory guidance.
+		expect(of("archive")?.promptGuidelines ?? []).toEqual([]);
 		expect(of("backlog")?.promptGuidelines?.[0]).toMatch(/^Claim the `backlog` item/);
 	});
 
 	it("asks for handoff notes before a handoff, not before a compaction the agent cannot time", () => {
 		const policy = readFileSync(new URL("../../src/octocode/instructions/policy/work.md", import.meta.url), "utf8");
-		expect(policy).toContain("Before a handoff, write what the receiver needs");
+		expect(policy).toMatch(
+			/Preserve the goal, open decisions, stopping point and exact identifiers[^\n]*in a handoff message/,
+		);
 		expect(policy).not.toMatch(/before a[^.\n]*compaction/i);
 	});
 

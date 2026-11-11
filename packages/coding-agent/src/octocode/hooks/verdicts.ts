@@ -31,3 +31,16 @@ export function conflictingRewrites(verdicts: readonly HookVerdict[]): boolean {
 	const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [JSON.stringify(verdict.updatedInput)] : []));
 	return rewrites.some((rewrite) => rewrite !== rewrites[0]);
 }
+
+/**
+ * What a hook's answer may do in a subagent in the `decisions` hook mode: refuse the call or ask about it. Everything
+ * else it returned is dropped: context, a rewritten input, messages, a turn halt, and an allow (a PreToolUse or
+ * PermissionRequest hook's `allow` grants nothing there). `error` stays so a failed hook is still reported and still
+ * fails open.
+ */
+export const decisionOnly = (verdict: HookVerdict): HookVerdict => ({
+	...(verdict.error ? { error: verdict.error } : {}),
+	...(verdict.block ? { block: verdict.block } : {}),
+	...(verdict.ask ? { ask: verdict.ask } : {}),
+	...(verdict.permissionDecision === "deny" ? { permissionDecision: "deny" as const } : {}),
+});

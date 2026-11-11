@@ -10,8 +10,8 @@ import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-c
  * A command without a case below fails the coverage check, so a new command needs an observable assertion here.
  */
 const opened = vi.hoisted(() => [] as string[]);
-vi.mock("../../src/octocode/browser/open.ts", () => ({
-	openFile: async (file: string) => {
+vi.mock("../../../common/src/open-target.ts", () => ({
+	openTarget: async (file: string) => {
 		opened.push(file);
 	},
 }));
@@ -118,20 +118,26 @@ const CASES: Record<string, Case> = {
 	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
 	purge: { check: says(/Usage: \/purge workspace\|all/) },
 	worktree: { check: says(/worktree/i) },
-	// `/remote` publishes the user-level daemon; without OCTOCODE_WEB_DAEMON=1 it refuses and starts nothing.
-	remote: { check: says(/Could not publish a remote link:[\s\S]*OCTOCODE_WEB_DAEMON=1/) },
+	// `/remote` starts the user-level daemon (or reuses the one `/web` started) and publishes an ssh link; the harness
+	// drains the daemon when it stops.
+	remote: { check: says(/Then open: http:\/\/127\.0\.0\.1:\d+\/#access=[\s\S]*Stop with \/remote stop/) },
 	// The research CLI (`cli/command.ts`): its output is the command result.
 	octocode: { args: "--version", check: says(/octocode \d+\.\d+\.\d+/) },
+	// `/web` opens the user-level daemon's page on this session with a one-time code, never the token.
 	web: {
 		check: (run) => {
 			expect(run.opened).toEqual([
-				expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#access=[0-9a-f]{64}&view=activity$/),
+				expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/open\/[^?#]+\?s=[^&]+&view=activity$/),
 			]);
-			expect(run.text).toMatch(/Opened the web workspace at\s+http:\/\/127\.0\.0\.1:\d+/);
+			expect(run.text).toMatch(/Opened the web workspace\. It keeps running after this session closes\./);
 		},
 	},
+	// Bare `/backlog` runs `/web backlogs`.
 	backlog: {
-		check: (run) => expect(run.opened).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#access=/)]),
+		check: (run) =>
+			expect(run.opened).toEqual([
+				expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/open\/[^?#]+\?s=[^&]+&view=board$/),
+			]),
 	},
 	// Terminal commands that open a picker or menu.
 	help: { check: asks(/\/btw\s+Ask a side question without tools/) },

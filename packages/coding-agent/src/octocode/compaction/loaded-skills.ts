@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { contentText } from "../shared/util.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { carriedRecords } from "./saved-results.ts";
@@ -66,6 +66,6 @@ export function carriedLoadedSkills(branch: readonly SessionEntry[]): LoadedSkil
 /** The Recovery line naming `skills`, or none. */
 export function loadedSkillsLines(skills: readonly LoadedSkill[]): string[] {
 	if (skills.length === 0) return [];
-	const named = skills.map((skill) => `${skill.name} (${tildePath(skill.location)})`).join(", ");
+	const named = skills.map((skill) => `${skill.name} (${homeTilde(skill.location)})`).join(", ");
 	return [renderInstruction("notices/recovery/loaded-skills.md", { skills: named })];
 }

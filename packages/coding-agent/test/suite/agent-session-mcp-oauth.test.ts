@@ -143,7 +143,6 @@ describe("AgentSession MCP OAuth", () => {
 		return Date.now() - start;
 	}
 
-	// #10565
 	for (const path of ["/.well-known/oauth-authorization-server", "/token"]) {
 		it(`cancels a sign-in waiting on ${path} when the session shuts down`, async () => {
 			const { harness, server, notifications } = await setup("follow");
@@ -160,7 +159,6 @@ describe("AgentSession MCP OAuth", () => {
 		});
 	}
 
-	// #10565
 	it("closes the session without refreshing an expiring token", async () => {
 		const { harness, server, notifications, backend } = await setup("follow");
 		await harness.session.prompt("/mcp login issues");
@@ -198,7 +196,6 @@ describe("AgentSession MCP OAuth", () => {
 		expect(getMessageText(await callWhoami(harness))).toBe("token access-1");
 	});
 
-	// #10226
 	it("registers with the configured client name", async () => {
 		const { harness, server, notifications } = await setup("follow", { clientName: "Claude Code" });
 		await harness.session.prompt("/mcp login issues");
@@ -208,7 +205,7 @@ describe("AgentSession MCP OAuth", () => {
 		const fallback = await setup("follow");
 		await fallback.harness.session.prompt("/mcp login issues");
 		expect(fallback.server.registrations.map((metadata) => metadata.client_name)).toEqual(["octocode"]);
-		// OpenID Connect servers reject the loopback redirect URI of a `web` client (#10493).
+		// OpenID Connect servers reject the loopback redirect URI of a `web` client.
 		expect(fallback.server.registrations.map((metadata) => metadata.application_type)).toEqual(["native"]);
 	});
 
@@ -248,7 +245,6 @@ describe("AgentSession MCP OAuth", () => {
 		expect(unapproved.exitCode).toBe(1);
 		expect(unapproved.output.at(-1)).toContain("was cancelled or not completed within");
 
-		// #10565
 		server.stall.add("/.well-known/oauth-authorization-server");
 		const stalled = await login();
 		expect(stalled.exitCode).toBe(1);

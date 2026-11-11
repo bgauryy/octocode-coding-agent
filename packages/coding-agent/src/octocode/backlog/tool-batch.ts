@@ -2,7 +2,6 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { parseRef } from "./item.ts";
-import { ITEM_ENTRY_FIELDS, UPDATE_ENTRY_KEYS } from "./tool-schema.ts";
 
 type Result = { content: unknown; details?: unknown };
 type Batch = ReturnType<typeof textResult>;
@@ -31,21 +30,33 @@ export function batchGet(ids: readonly string[], one: (id: string) => Result): B
 	return textResult(rows.map((row) => row.text).join("\n\n---\n"));
 }
 
+/** Refuses an entry that carries a field its operation does not take, naming the fields it does (`shown`, else `allowed`). */
+export function refuseUnknown(
+	entry: Record<string, unknown>,
+	allowed: readonly string[],
+	name: string,
+	shown: readonly string[] = allowed,
+): void {
+	const unknown = Object.keys(entry).filter((key) => !allowed.includes(key));
+	if (unknown.length)
+		throw new Error(`Unknown ${name} fields: ${unknown.join(", ")}. An entry takes ${shown.join(", ")}.`);
+}
+
 /**
- * `update` with `updates`: each entry is a full single update (`one`), applied in order with every store check. A
- * refused entry is reported on its own line and the rest still apply.
+ * `edit` with several `items`: each entry is a full single edit (`one`), applied in order with every store check. A
+ * refused entry is reported on its own line, labelled by its id, and the rest still apply.
  */
 export function batchUpdate(
-	updates: readonly Record<string, unknown>[],
+	entries: readonly Record<string, unknown>[],
+	allowed: readonly string[],
+	name: string,
 	one: (entry: Record<string, unknown>) => Result,
+	shown?: readonly string[],
 ): Batch {
-	const rows = updates.map((entry, index) => {
-		const label = typeof entry.id === "string" && entry.id.trim() ? entry.id : `updates[${index}]`;
+	const rows = entries.map((entry, index) => {
+		const label = typeof entry.id === "string" && entry.id.trim() ? entry.id : `${name}[${index}]`;
 		return attempt(label, () => {
-			const unknown = Object.keys(entry).filter(
-				(key) => !UPDATE_ENTRY_KEYS.includes(key) && !ITEM_ENTRY_FIELDS.includes(key),
-			);
-			if (unknown.length) throw new Error(`Unknown update fields: ${unknown.join(", ")}.`);
+			refuseUnknown(entry, allowed, name, shown);
 			return one(entry);
 		});
 	});
@@ -56,16 +67,17 @@ export function batchUpdate(
 type EarlierTitles = <T extends { dependsOn?: readonly unknown[] }>(params: T) => T;
 
 /**
- * `add` with `items`: each entry is a full single add (`one`), applied in order with every store check. A refused entry
- * is reported on its own line, labelled by its title, and the rest still apply. A later entry's `dependsOn` may name an
- * earlier added entry by its exact title (`one` applies `earlier`), so one add can carry a whole graph: the refs are
- * given on insert and cannot be named in advance.
+ * `add` with several `items`: each entry is a full single add (`one`), applied in order with every store check. A
+ * refused entry is reported on its own line, labelled by its title, and the rest still apply. A later entry's
+ * `dependsOn` may name an earlier added entry by its exact title (`one` applies `earlier`), so one add can carry a
+ * whole graph: the refs are given on insert and cannot be named in advance.
  */
 export function batchAdd(
 	entries: readonly Record<string, unknown>[],
 	allowed: readonly string[],
 	name: string,
 	one: (entry: Record<string, unknown>, earlier: EarlierTitles) => Result,
+	shown?: readonly string[],
 ): Batch {
 	const added = new Map<string, string>();
 	// A value that reads as an item id (`B2`, `#2`, `2`) names that item, even when an earlier entry is titled so.
@@ -76,8 +88,7 @@ export function batchAdd(
 	const rows = entries.map((entry, index) => {
 		const named = [entry.title, entry.goal].find((v): v is string => typeof v === "string" && v.trim() !== "");
 		return attempt(named ? `"${named.trim().slice(0, 60)}"` : `${name}[${index}]`, () => {
-			const unknown = Object.keys(entry).filter((key) => !allowed.includes(key));
-			if (unknown.length) throw new Error(`Unknown ${name} fields: ${unknown.join(", ")}.`);
+			refuseUnknown(entry, allowed, name, shown);
 			const result = one(entry, earlier);
 			const item = (result.details as { item?: { ref?: unknown; title?: unknown } } | undefined)?.item;
 			if (typeof item?.ref === "string" && typeof item.title === "string" && !added.has(item.title.trim()))

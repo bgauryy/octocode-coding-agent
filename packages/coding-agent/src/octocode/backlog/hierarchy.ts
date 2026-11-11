@@ -48,15 +48,18 @@ export function checkEpicState(db: Db, repo: string, item: Item, input: { state?
 		? ` (open: ${names.slice(0, 5).join(", ")}${names.length > 5 ? `, +${names.length - 5} more` : ""})`
 		: "";
 	throw new BacklogError(
-		`${item.ref} is an epic with items: its state follows them (${items})${named}. Claim or update its items (list parentId ${item.ref}); once they are done, set the epic to done.`,
+		`${item.ref} is an epic with items: its state follows them (${items})${named}. Claim or edit its items (backlogPlan list underEpic ${item.ref}); once they are done, finish the epic with backlog done.`,
 	);
 }
 
-/** The refusal for closing an item that still has open tasks, naming them on one line; undefined when none is open. */
+/**
+ * The refusal for closing an item that still has open tasks, naming them on one line; undefined when none is open. Tasks
+ * are the user's checklist (`/backlog` and the web board write them; no tool does), so the refusal names where they end.
+ */
 export function openTasksRefusal(db: Db, repo: string, item: Item): string | undefined {
 	const open = tasks.listTasks(db, { repo, itemId: item.rowId, states: ["todo", "ongoing"] });
 	if (!open.length) return undefined;
 	const names = open.slice(0, 5).map((task) => `T${task.seq}`);
 	const more = open.length > names.length ? ` and ${open.length - names.length} more` : "";
-	return `${item.ref} has open tasks: ${names.join(", ")}${more}: finish or drop them first.`;
+	return `${item.ref} has open tasks: ${names.join(", ")}${more}: the user finishes or drops them on the backlog board (/backlog) first.`;
 }

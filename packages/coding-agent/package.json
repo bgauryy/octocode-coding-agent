@@ -50,7 +50,7 @@
 		"build:binary": "yarn run --top-level build && bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv ./src/bun/cli.ts ./src/utils/image-resize-worker.ts --outfile dist/binary/octocode && node ../../scripts/stage-binary.mjs dist/binary",
 		"test": "vitest --run && vitest --run --config vitest.octocode.config.ts && yarn run test:e2e",
 		"test:e2e": "vitest --run --config vitest.e2e.config.ts",
-		"test:coverage": "vitest --run --config vitest.octocode.config.ts --coverage",
+		"test:coverage": "vitest --run --config vitest.core.config.ts --coverage && vitest --run --config vitest.octocode.config.ts --coverage",
 		"test:tmux": "vitest --run --config vitest.octocode.config.ts test/octocode/notify.test.ts test/octocode/terminal-launch-tmux.test.ts test/octocode/fork-launch.test.ts test/octocode/tmux-startup-check.test.ts",
 		"test:architecture": "vitest --run --config vitest.octocode.config.ts test/octocode/architecture.test.ts",
 		"generate:schemas": "node --import ./scripts/source-resolver.ts scripts/generate-schemas.ts",

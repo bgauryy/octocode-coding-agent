@@ -243,7 +243,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 
 	// #10607
 	describe("program status (OSC 7501)", () => {
-		const working = "\x1b]7501;state=working:app=pi\x1b\\";
+		const working = "\x1b]7501;state=working:app=octocode\x1b\\";
 		const clear = "\x1b]7501;state=clear\x1b\\";
 
 		function withOverride(value: string | undefined, fn: () => void): void {
@@ -262,7 +262,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 			withOverride(undefined, () => {
 				const harness = setupNegotiation();
 				try {
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.includes(working), false);
 
 					harness.send("\x1b]7501;?\x1b\\");
@@ -284,7 +284,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 				try {
 					harness.send("\x1b[?62;4;52c");
 					harness.send("\x1b]7501;?\x07");
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 
 					assert.equal(harness.getInput(), undefined);
 					assert.equal(
@@ -302,7 +302,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 				const harness = setupNegotiation();
 				try {
 					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[c");
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.at(-1), working);
 				} finally {
 					harness.cleanup();
@@ -312,7 +312,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 				const harness = setupNegotiation();
 				try {
 					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[c");
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.includes(working), false);
 				} finally {
 					harness.cleanup();
@@ -324,7 +324,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 			withOverride(undefined, () => {
 				const harness = setupNegotiation();
 				try {
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					harness.terminal.stop();
 					(harness.terminal as unknown as { queryAndEnableKittyProtocol(): void }).queryAndEnableKittyProtocol();
 
@@ -344,14 +344,14 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 			withOverride(undefined, () => {
 				const harness = setupNegotiation();
 				try {
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					harness.send("\x1b]7501;?\x1b\\");
 					harness.terminal.stop();
 					assert.ok(harness.writes.includes(clear));
 
 					// Stopped: nothing is written until the restarted terminal confirms support again.
 					const writesBeforeRestart = harness.writes.length;
-					harness.terminal.setProgramStatus({ state: "working", app: "pi" });
+					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.length, writesBeforeRestart);
 
 					(harness.terminal as unknown as { queryAndEnableKittyProtocol(): void }).queryAndEnableKittyProtocol();

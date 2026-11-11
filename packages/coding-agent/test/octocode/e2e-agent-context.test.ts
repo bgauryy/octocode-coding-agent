@@ -57,6 +57,7 @@ describe.each(AGENTS)("$name context", (agent) => {
 		expect(names, "text outside every section").not.toContain("(system text outside a section)");
 		if (agent.kind === "main") {
 			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "skills", "docs"]));
+			expect(names).not.toContain("coordinator");
 			expect(names).not.toContain("role");
 			expect(systemText(context())).not.toContain("You are a subagent");
 			return;
@@ -69,13 +70,18 @@ describe.each(AGENTS)("$name context", (agent) => {
 			expect(names).toContain("lean");
 			for (const policy of POLICY) expect(names, `the full policy ${policy} in a lean child`).not.toContain(policy);
 		} else if (["researcher", "reviewer", "browser"].includes(agent.role ?? "")) {
-			// A read-only child's compact core (`policy/readonly.md`) replaces the work, delegation and safety sections.
+			// A read-only child's compact core (`policy/readonly.md`) replaces the work, coordinator and safety sections.
 			const core = POLICY.filter((name) => name !== "delegation" && name !== "safety");
 			expect(names).toEqual(expect.arrayContaining(core));
 			expect(names).not.toContain("delegation");
+			expect(names).not.toContain("coordinator");
 			expect(names).not.toContain("safety");
 		} else {
-			expect(names).toEqual(expect.arrayContaining(POLICY));
+			// A child that may write: its subagent policy is `<coordinator>`; `<delegation>` is the main session's.
+			expect(names).toEqual(
+				expect.arrayContaining(POLICY.map((name) => (name === "delegation" ? "coordinator" : name))),
+			);
+			expect(names).not.toContain("delegation");
 			expect(names).not.toContain("lean");
 		}
 	});
@@ -167,31 +173,44 @@ describe("the real assembled prefix of a main session", () => {
 	// numbers rules (+241 in system) and the rebuilt sibling server's tool text (+598 in tools). Slack stays 86.
 	// 119_938 (119,196 + 656): the user-requested rule for messaging an outside CLI session through a one-shot proxy
 	// of its own CLI (+656 in system). Slack stays 86.
-	const REAL_PREFIX_CEILING = 119_938;
+	// 119_938 was the last ceiling over the whole prefix, server text included.
+	// From here the ceiling caps only the text Octocode owns: the system prompt without its `mcps` section (each server's
+	// instructions, verbatim), the native tool declarations and AGENTS.md. MCP server text (the `mcps` section and every
+	// `mcp__*` declaration) is the server's own, never rewritten (M14), and changed whenever the sibling server was rebuilt,
+	// which broke this check on text we cannot trim. It is reported in the message, not capped; our own wording around it
+	// keeps its itemized caps in `e2e.test.ts` and `prompt-size.test.ts`.
+	// 57_603 (measured 57,517: system without `mcps` 24,868, native tools 24,794, AGENTS.md 7,855; server text then 4,214
+	// instructions and 61,570 declared). Slack stays 86.
+	// 57_952 (57,603 + 349): AGENTS.md's owner table names the session codec, `composedLater`, the `@` file index, mcp's
+	// `api.ts`, the telemetry recorder and the theme UI kit, and the MCP boundary check (requested by the user). Slack stays 86.
+	// 58_019 (57,952 + 67): AGENTS.md names the web daemon as `/web` and the per-session server as its fallback only.
+	const OWN_PREFIX_CEILING = 58_019;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");
+		const declared = (tool: (typeof main.tools)[number]) =>
+			Buffer.byteLength(tool.name) +
+			Buffer.byteLength(tool.description) +
+			Buffer.byteLength(JSON.stringify(tool.parameters));
+		const mcpsSection = Buffer.byteLength(main.sections.find((section) => section.name === "mcps")?.text ?? "");
 		const parts = {
-			system: Buffer.byteLength(systemText(main)),
-			tools: main.tools.reduce(
-				(sum, tool) =>
-					sum +
-					Buffer.byteLength(tool.name) +
-					Buffer.byteLength(tool.description) +
-					Buffer.byteLength(JSON.stringify(tool.parameters)),
-				0,
-			),
+			system: Buffer.byteLength(systemText(main)) - mcpsSection,
+			tools: main.tools.filter((tool) => !isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0),
 			agents: fs.statSync(fileURLToPath(new URL("../../../../AGENTS.md", import.meta.url))).size,
 		};
-		const total = parts.system + parts.tools + parts.agents;
-		// Not vacuous: a capture that lost its `mcps` block or its tools would pass any ceiling.
-		// The MCP tools' descriptions and schemas are in the declarations (`tools`), not the system prompt's `mcps` block.
+		const server = {
+			instructions: mcpsSection,
+			tools: main.tools.filter((tool) => isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0),
+		};
+		const own = parts.system + parts.tools + parts.agents;
+		// Not vacuous: a capture that lost its sections, its native tools or its MCP servers would pass any ceiling.
 		expect(parts.system).toBeGreaterThan(15_000);
-		expect(parts.system + parts.tools).toBeGreaterThan(60_000);
 		expect(parts.tools).toBeGreaterThan(15_000);
+		expect(server.instructions).toBeGreaterThan(0);
+		expect(server.tools).toBeGreaterThan(0);
 		expect(
-			total,
-			`first-request prefix grew to ${total} bytes (${JSON.stringify(parts)}); if the growth is worth paying on every request, raise REAL_PREFIX_CEILING and say why`,
-		).toBeLessThanOrEqual(REAL_PREFIX_CEILING);
+			own,
+			`first-request prefix text Octocode owns grew to ${own} bytes (${JSON.stringify(parts)}; MCP server text, not capped: ${JSON.stringify(server)}); if the growth is worth paying on every request, raise OWN_PREFIX_CEILING and say why`,
+		).toBeLessThanOrEqual(OWN_PREFIX_CEILING);
 	});
 });

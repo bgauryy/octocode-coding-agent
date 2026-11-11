@@ -101,7 +101,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 	);
 	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("file", "file", {
 		queries: [
@@ -184,7 +184,7 @@ it.each([false, true])("keeps invalid Codex effects neutral unless failClosed=%s
 	);
 	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	expect(
 		await hooks.permissionRequest(
@@ -248,7 +248,7 @@ it("retains interruption from a later denied file constituent", async () => {
 	);
 	const fake = fakeHost(HOOK_SETTINGS),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("one", "file", {
 		queries: [

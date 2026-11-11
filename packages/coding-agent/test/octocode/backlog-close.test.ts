@@ -12,6 +12,7 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { applyBacklogCommand } from "../../src/octocode/backlog/web-commands.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { backlogToolName } from "./backlog-fixture.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -36,57 +37,61 @@ async function setup() {
 	fs.mkdirSync(cwd, { recursive: true });
 	const tool = fake.tools.get("backlog");
 	const text = async (params: Record<string, unknown>) =>
-		((await tool.execute("id", params, undefined, undefined, fakeCtx({ cwd }))) as { content: Array<{ text: string }> })
-			.content[0].text;
+		(
+			(await fake.tools
+				.get(backlogToolName(params.op))
+				.execute("id", params, undefined, undefined, fakeCtx({ cwd }))) as { content: Array<{ text: string }> }
+		).content[0].text;
 	for (const title of ["first", "second", "third"])
-		await text({ op: "add", title, goal: `${title} done`, why: `${title} needed`, state: "todo" });
+		await text({ op: "add", items: [{ title, goal: `${title} done`, why: `${title} needed`, state: "todo" }] });
 	const agent = sharedAgentDb();
 	const store = new BacklogStore(() => agent, registeredWorkspace(cwd, agent).id);
-	return { text, tool, store };
+	return { text, tool, plan: fake.tools.get("backlogPlan"), store };
 }
 
 describe("closing a backlog item", () => {
 	it("needs a kind and a reason, and a duplicate names another item", async () => {
 		const { text } = await setup();
-		await expect(text({ op: "update", id: "B1", close: { kind: "obsolete", text: " " } })).rejects.toThrow(
+		await expect(text({ op: "close", id: "B1", close: { kind: "obsolete", text: " " } })).rejects.toThrow(
 			/needs a reason/,
 		);
-		await expect(text({ op: "update", id: "B1", close: { kind: "duplicate", text: "same" } })).rejects.toThrow(
+		await expect(text({ op: "close", id: "B1", close: { kind: "duplicate", text: "same" } })).rejects.toThrow(
 			/names the item/,
 		);
-		await expect(
-			text({ op: "update", id: "B1", close: { kind: "duplicate", text: "same", of: "B1" } }),
-		).rejects.toThrow(/itself/);
-		expect(await text({ op: "update", id: "B1", close: { kind: "duplicate", text: "same work", of: "B2" } })).toMatch(
+		await expect(text({ op: "close", id: "B1", close: { kind: "duplicate", text: "same", of: "B1" } })).rejects.toThrow(
+			/itself/,
+		);
+		expect(await text({ op: "close", id: "B1", close: { kind: "duplicate", text: "same work", of: "B2" } })).toMatch(
 			/^Updated B1/,
 		);
 	});
 
 	it("hides closed items by default, lists them with states closed, and reopens with a note", async () => {
 		const { text } = await setup();
-		await text({ op: "update", id: "B1", close: { kind: "obsolete", text: "no longer needed" } });
+		await text({ op: "close", id: "B1", close: { kind: "obsolete", text: "no longer needed" } });
 		expect(await text({ op: "list" })).not.toContain("first");
 		expect(await text({ op: "list", states: ["closed"] })).toContain("first");
-		await expect(text({ op: "update", id: "B1", state: "todo" })).rejects.toThrow(/Reopening needs a note/);
-		await expect(text({ op: "update", id: "B1", state: "done" })).rejects.toThrow(/closed/);
-		await text({ op: "update", id: "B1", state: "todo", note: "needed after all" });
+		await expect(text({ op: "edit", items: [{ id: "B1", state: "todo" }] })).rejects.toThrow(/Reopening needs a note/);
+		await expect(text({ op: "done", id: "B1" })).rejects.toThrow(/closed/);
+		await text({ op: "edit", items: [{ id: "B1", state: "todo", note: "needed after all" }] });
 		expect(await text({ op: "list" })).toContain("first");
 		expect(await text({ op: "list", states: ["closed"] })).not.toContain("first");
 	});
 
 	it("keeps no delete op: remove is not a tool operation and the store has no remove", async () => {
-		const { tool, store } = await setup();
-		const ops = (tool.parameters as { properties: { op: { enum: string[] } } }).properties.op.enum;
-		expect(ops).toEqual(["list", "get", "add", "update"]);
+		const { tool, plan, store } = await setup();
+		const ops = (declared: unknown) => (declared as { properties: { op: { enum: string[] } } }).properties.op.enum;
+		expect(ops(tool.parameters)).toEqual(["get", "claim", "note", "done", "close"]);
+		expect(ops(plan.parameters)).toEqual(["add", "edit", "list"]);
 		expect((store as unknown as Record<string, unknown>).remove).toBeUndefined();
 	});
 
 	it("audits each change type with the actor and the surface, and shows the trail in get", async () => {
 		const { text, store } = await setup();
-		await text({ op: "update", id: "B1", note: "a note" });
-		await text({ op: "update", id: "B1", title: "renamed", links: [{ relation: "related", target: "B2" }] });
-		await text({ op: "update", id: "B1", close: { kind: "wont_do", text: "not doing it" } });
-		await text({ op: "update", id: "B1", state: "todo", note: "back" });
+		await text({ op: "note", id: "B1", note: "a note" });
+		await text({ op: "edit", items: [{ id: "B1", title: "renamed", links: [{ relation: "related", target: "B2" }] }] });
+		await text({ op: "close", id: "B1", close: { kind: "wont_do", text: "not doing it" } });
+		await text({ op: "edit", items: [{ id: "B1", state: "todo", note: "back" }] });
 		const events = store.audit("B1");
 		const has = (entity: string, action: string) => events.some((e) => e.entity === entity && e.action === action);
 		expect(has("backlog", "insert")).toBe(true);
@@ -136,9 +141,9 @@ describe("closed is not done", () => {
 
 	it("lists done and closed apart", async () => {
 		const { text } = await setup();
-		await text({ op: "update", id: "B1", close: { kind: "obsolete", text: "gone" } });
-		await text({ op: "update", id: "B2", state: "ongoing" });
-		await text({ op: "update", id: "B2", state: "done", completion, note: "ok" });
+		await text({ op: "close", id: "B1", close: { kind: "obsolete", text: "gone" } });
+		await text({ op: "claim", id: "B2" });
+		await text({ op: "done", id: "B2", completion, note: "ok" });
 		const only = (state: string) => text({ op: "list", states: [state] });
 		expect(await only("done")).toContain("second");
 		expect(await only("done")).not.toContain("first");
@@ -151,9 +156,9 @@ describe("closed is not done", () => {
 
 	it("counts closed apart from done, and the board and headless text hide it", async () => {
 		const { text, store } = await setup();
-		await text({ op: "update", id: "B1", close: { kind: "wont_do", text: "no" } });
-		await text({ op: "update", id: "B2", state: "ongoing" });
-		await text({ op: "update", id: "B2", state: "done", completion, note: "ok" });
+		await text({ op: "close", id: "B1", close: { kind: "wont_do", text: "no" } });
+		await text({ op: "claim", id: "B2" });
+		await text({ op: "done", id: "B2", completion, note: "ok" });
 		const counts = store.counts();
 		expect(counts.items).toMatchObject({ todo: 1, done: 1 });
 		expect(counts.closed).toBe(1);
@@ -171,9 +176,9 @@ describe("closed is not done", () => {
 		const { text, store } = await setup();
 		store.update("B2", { dependsOn: ["B1"] }, { id: "agent" });
 		expect(store.marks(store.list().items, "s").get("B2")?.blockedBy).toEqual(["B1"]);
-		await text({ op: "update", id: "B1", close: { kind: "obsolete", text: "gone" } });
+		await text({ op: "close", id: "B1", close: { kind: "obsolete", text: "gone" } });
 		expect(store.marks(store.list().items, "s").get("B2")?.blockedBy).toBeUndefined();
-		await text({ op: "add", type: "epic", title: "epic", goal: "all done", why: "group" });
+		await text({ op: "add", items: [{ type: "epic", title: "epic", goal: "all done", why: "group" }] });
 		store.update("B1", { parentId: "B4" }, { id: "agent" });
 		expect(store.epicState(store.get("B4")!)).toBe("done");
 	});

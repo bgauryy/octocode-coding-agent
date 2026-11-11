@@ -6,7 +6,7 @@ import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TU
 import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 
 interface ExtensionInputOptions {
 	tui?: TUI;

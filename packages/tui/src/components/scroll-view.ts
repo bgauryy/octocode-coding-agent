@@ -1,5 +1,6 @@
 import { LAYOUT_NODE, type ScrollLayoutNode } from "../layout-node.ts";
-import { type Component, Container } from "../tui.ts";
+import type { Component } from "../tui/component.ts";
+import { Container } from "../tui/container.ts";
 
 export type ScrollViewScrollbar = "hidden" | "auto" | "always";
 
@@ -12,6 +13,11 @@ export interface ScrollViewOptions {
 	scrollbarTrackStyle?: (text: string) => string;
 	scrollbarThumbStyle?: (text: string) => string;
 	scrollbarHideDelayMs?: number;
+	/**
+	 * While following the end, lay out only the rows in view after a width change or the first frame, and measure the
+	 * rest over the next frames. Search, selection and scrolling see the whole content as before. Off by default.
+	 */
+	virtualize?: boolean;
 }
 
 export interface ScrollViewScrollToOptions {
@@ -23,6 +29,7 @@ export class ScrollView extends Container {
 	private readonly child: Component;
 	readonly followEnd: boolean;
 	readonly primary: boolean;
+	readonly virtualize: boolean;
 	readonly overscroll: "chain" | "contain";
 	readonly scrollbarTrackStyle: (text: string) => string;
 	readonly scrollbarThumbStyle: (text: string) => string;
@@ -38,6 +45,8 @@ export class ScrollView extends Container {
 	private transientScrollbarVisible = false;
 	private scrollbarActive = false;
 	private scrollbarHideTimer: NodeJS.Timeout | undefined;
+	/** Measures the rest of a virtualized frame's content, so a scroll starts from exact positions. */
+	private contentSettler: (() => void) | undefined;
 
 	constructor(component: Component, options: ScrollViewOptions = {}) {
 		super();
@@ -49,6 +58,7 @@ export class ScrollView extends Container {
 		this.followEnd = (options.follow ?? "none") === "end";
 		this.followingEnd = this.followEnd;
 		this.primary = options.primary ?? false;
+		this.virtualize = options.virtualize ?? false;
 		this.overscroll = options.overscroll ?? "chain";
 		this.currentScrollbar = options.scrollbar ?? "hidden";
 		// The host picks scrollbar colors from its theme. Without them the track is faint and the thumb plain: the glyph
@@ -135,7 +145,20 @@ export class ScrollView extends Container {
 		this.requestRenderCallback = undefined;
 	}
 
+	/** Set by layout for a frame that left rows unmeasured; scrolling measures them first. */
+	setContentSettler(settle: (() => void) | undefined): void {
+		this.contentSettler = settle;
+	}
+
+	/** Measure what the last frame left unmeasured, so `scrollTop` and the content height are exact. */
+	settleContent(): void {
+		const settle = this.contentSettler;
+		this.contentSettler = undefined;
+		settle?.();
+	}
+
 	scrollTo(scrollTop: number, options: ScrollViewScrollToOptions = {}): void {
+		this.settleContent();
 		const requested = Number.isFinite(scrollTop) ? Math.trunc(scrollTop) : this.currentScrollTop;
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const next = Math.max(0, Math.min(maxScrollTop, requested));
@@ -159,6 +182,7 @@ export class ScrollView extends Container {
 	scrollBy(lines: number): number {
 		const requested = Number.isFinite(lines) ? Math.trunc(lines) : 0;
 		if (requested === 0) return 0;
+		this.settleContent();
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const start = this.followingEnd ? maxScrollTop : this.currentScrollTop;
 		const next = Math.max(0, Math.min(maxScrollTop, start + requested));
@@ -173,6 +197,7 @@ export class ScrollView extends Container {
 	}
 
 	scrollToStart(): void {
+		this.settleContent();
 		const changed =
 			this.currentScrollTop !== 0 ||
 			this.followingEnd !== (this.followEnd && this.contentHeight <= this.currentViewportHeight);
@@ -186,6 +211,7 @@ export class ScrollView extends Container {
 	}
 
 	scrollToEnd(): void {
+		this.settleContent();
 		const next = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
 		this.currentScrollTop = next;
@@ -203,6 +229,13 @@ export class ScrollView extends Container {
 	 */
 	keepRowsInView(): void {
 		this.keepRowsAtNextLayout = true;
+	}
+
+	shiftContent(rows: number): void {
+		const shift = Math.trunc(rows);
+		if (shift === 0) return;
+		this.contentHeight = Math.max(0, this.contentHeight + shift);
+		this.currentScrollTop = Math.max(0, this.currentScrollTop + shift);
 	}
 
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {

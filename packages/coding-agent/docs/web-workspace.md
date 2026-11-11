@@ -1,6 +1,6 @@
 # Web workspace
 
-`/web` opens a browser page for the running session: follow the agent, send messages, answer approvals and questions, and manage the backlog board. The page runs on your machine only (loopback, with a per-launch token).
+`/web` opens a browser page for the running session: follow the agent, send messages, answer approvals and questions, and manage the backlog board. One user-level web daemon serves the page for every session; it runs on your machine only (loopback; `/web` opens it with a one-time code). `/backlog` (and `/backlog web`) opens the same page as `/web backlogs`.
 
 | Command         | Opens                                            |
 | --------------- | ------------------------------------------------ |
@@ -10,9 +10,9 @@
 
 ```mermaid
 flowchart LR
-  T[Terminal session] -->|/web| S{OCTOCODE_WEB_DAEMON=1?}
-  S -->|no| P[Per-session local server]
+  T[Terminal session] -->|/web| S{Daemon starts and the session attaches?}
   S -->|yes| D[Web daemon: all sessions, all repositories]
+  S -->|no: warning with the reason| P[This session's own server]
   P --> W[App window or browser]
   D --> W
   D -->|/remote| R[Another device]
@@ -30,21 +30,23 @@ Run `/web` again to reopen a disconnected workspace. Over SSH, or on Linux with 
 
 ## Web daemon
 
-With `OCTOCODE_WEB_DAEMON=1`, `/web` opens a page served by one detached, user-level daemon instead of a per-session server.
+`/web` starts one detached, user-level daemon, or reuses the one running, and opens its page on the current session. Every top-level session accepts the daemon when it starts (an owner-only local endpoint), so the page lists them all; subagents are never listed. The daemon keeps running after the session that started it closes and exits after ten idle minutes with no tab and no session (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
 
-| Per-session server (default)                  | Web daemon                                                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| One server per session; closes with it        | One daemon for every session; keeps running after the launching session closes                                                  |
-| Shows that session and its repository's board | Lists live sessions (blocked ones first), opens the current one, shows every repository's board and reports                     |
-| Board edits from the launch page              | Board edits from the launch page and control links, never view links                                                            |
-| Settings view for this repository             | Settings view with a workspace choice for every repository                                                                      |
-| (not available)                               | [`/remote`](remote.md) publishes it to another device. If the daemon cannot start, `/web` falls back to the per-session server. |
+If the daemon cannot start or this session cannot reach it, `/web` warns with the reason and opens the session's own server instead. That fallback page closes with its session.
 
-The daemon exits after ten idle minutes (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
+| Web daemon (default)                                                                            | Session's own server (fallback)                |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| One daemon for every session; keeps running after the launching session closes                  | One server per session; closes with it         |
+| Lists live sessions (blocked ones first), opens the current one, every repository's board and reports | That session and its repository's board        |
+| Board edits from the launch page and control links, never view links                            | Board edits from the launch page               |
+| Settings on the session's page and a Settings tab for every repository                          | Settings view for this repository              |
+| [`/remote`](remote.md) publishes it to another device                                           | Not available                                  |
+
+A board edit on either page is recorded the same way (you, on the web, under the session whose page sent it) and repaints the backlog counts in that session's footer; an edit on the daemon page repaints every attached session of that repository.
 
 ### Settings page
 
-Both the per-session page and the daemon page have a Settings view. The per-session page offers only its own repository; the daemon page lists every repository. Choose a workspace at the bottom to see its trust and its own settings. Writes work from the page `/web` opened, not from a [published link](remote.md).
+A session's page has a Settings view for that session and its repository, on the daemon and on the fallback server alike. The daemon's own Settings tab (no session) lists every repository. Choose a workspace at the bottom to see its trust and its own settings. Writes work from the page `/web` opened, not from a [published link](remote.md).
 
 | Panel                | Shows                                                                                  | Change it here                                     |
 | -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -52,8 +54,17 @@ Both the per-session page and the daemon page have a Settings view. The per-sess
 | Provider credentials | Where each provider's key comes from, never its value                                  | Set or clear a key, sign in, turn a provider off   |
 | Settings             | Default provider and model, with the file that sets them                               | Global or workspace value                          |
 | Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions | Turn each on or off, globally or for the workspace |
+| Tools                | How much of each native and MCP tool a session sends to the model, and what decided it | Pin a tool, globally or for the workspace          |
 
 The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
+
+The Tools panel has one table for the native tools and one per enabled MCP server. Each row shows the tool's state, what decided it, and its pin ([what the states mean](configuration.md#tool-exposure)).
+
+- **State.** On a session's page the state is what that running session declared, and core native tools are listed as always direct; the daemon asks the session for it. On the daemon's own Settings tab no session answers: native tools show what a new session would declare, and a server lists only its pinned tools. A session from an older Octocode cannot answer either, so its page shows the same.
+- **Pin.** Choose `Direct`, `Deferred` or, for an MCP tool, `Hidden`; `No pin` removes it. An MCP pin is saved as that tool's `toolExposure` entry in `mcp.json`, a native pin under `nativeToolExposure` in `settings.json`, in the global files or the trusted workspace's. Another tool's file (Claude Code, Codex, Cursor) is never changed: the pin is saved as an override in Octocode's own file.
+- **When it applies.** A pin applies from the next session. A running session keeps what it declared, because the declared tools are part of its cached prompt; the row then shows both, for example `Direct` with `Deferred from the next session`.
+
+Like the Harness panel, only the page opened from the terminal reads or changes the Tools panel.
 
 ## Activity
 

@@ -1,3 +1,4 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ViewProps } from "../extension.ts";
 import { movedProfilerPanel } from "../model/route.ts";
@@ -27,7 +28,6 @@ function panelOf(value: string | undefined): PanelName {
 	const name = movedProfilerPanel(value) ?? value;
 	return PANELS.find((panel) => panel.name === name)?.name ?? "overview";
 }
-const message = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 const DRAWER_DEFAULT = 380;
 const TAB_KEYS = ["ArrowRight", "ArrowLeft", "Home", "End"];
 
@@ -57,7 +57,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 		const controller = new AbortController();
 		const { signal } = controller;
 		const fail = (reason: unknown) => {
-			if (!signal.aborted) setError(message(reason));
+			if (!signal.aborted) setError(errorMessage(reason));
 		};
 		api
 			.profilerAgents(signal)
@@ -102,7 +102,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 			.profilerRequests(nextId, after, controller.signal)
 			.then((value) => dispatch({ type: "requests", value }))
 			.catch((reason: unknown) => {
-				if (!controller.signal.aborted) setError(message(reason));
+				if (!controller.signal.aborted) setError(errorMessage(reason));
 			});
 		return () => controller.abort();
 	}, [api, nextId, nextCount, nextMore]);

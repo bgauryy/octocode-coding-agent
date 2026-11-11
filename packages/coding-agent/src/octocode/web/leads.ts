@@ -1,4 +1,4 @@
-import { currentToolRoles } from "../../../../mcp/src/roles.ts";
+import { currentToolRoles } from "../../../../mcp/src/api.ts";
 
 /** The research server's tools this session has that can work on a saved page: its search tools and its file reader. */
 type SavedPageTools = { search: string[]; reader?: string };

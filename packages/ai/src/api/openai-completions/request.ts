@@ -19,7 +19,7 @@ export async function requestCompletionsStream(
 				new URL(client.url),
 				params,
 				providerHeadersToRecord({ "Content-Type": "application/json" }, client.headers) ?? {},
-				{ ...options, fetch: client.fetch, timeoutScope: "headers" },
+				{ ...options, fetch: client.fetch, timeoutScope: "headers", label: "OpenAI Completions" },
 			),
 		options,
 	);

@@ -2,7 +2,7 @@
 
 import { contentText } from "@octocodeai/octocode-ai";
 import { getThemeByName, theme } from "../../theme/theme.ts";
-import type { ToolRowView } from "../export-html/tool-renderer.ts";
+import { loadExportToolRows } from "../export-html/tool-rows.ts";
 import type { ToolHtmlRenderer } from "../export-html/index.ts";
 import type { ToolDefinition } from "../features/index.ts";
 import type { SessionManager } from "../session-manager.ts";
@@ -35,7 +35,6 @@ export async function exportToHtml(
 	getToolDefinition: (name: string) => ToolDefinition | undefined,
 	outputPath: string | undefined,
 	options: { themeName?: string },
-	loadToolRows: () => Promise<{ reasonRow: ToolRowView; purposeRows: ToolRowView }>,
 ): Promise<string> {
 	const themeName = [options.themeName, session.settingsManager.getTheme()].find(
 		(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
@@ -44,7 +43,7 @@ export async function exportToHtml(
 	const [{ exportSessionToHtml }, { createToolHtmlRenderer }, { reasonRow, purposeRows }] = await Promise.all([
 		import("../export-html/index.ts"),
 		import("../export-html/tool-renderer.ts"),
-		loadToolRows(),
+		loadExportToolRows(),
 	]);
 	// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
 	const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({

@@ -130,7 +130,7 @@ export class MemoryStore {
 		return memories.list(this.db, this.context, scope, limit, options).map(toMemory);
 	}
 
-	/** Bounded retrieval for Archive; the cursor visits every visible note. */
+	/** Bounded retrieval for the `memory` tool; the cursor visits every visible note. */
 	scan(scope: ScopeFilter, before: memories.MemoryCursor, limit: number): Memory[] {
 		return memories.scan(this.db, this.context, scope, before, limit).map(toMemory);
 	}
@@ -174,7 +174,7 @@ export class MemoryStore {
 			.slice(0, limit);
 	}
 
-	/** Archive pages ranked matches from the existing full-text index; absent FTS uses its bounded scan. */
+	/** The `memory` tool pages ranked matches from the existing full-text index; absent FTS uses its bounded scan. */
 	searchPage(query: string, scope: ScopeFilter, offset: number, limit: number): MemoryHit[] | undefined {
 		if (!this.agentDb.fts) return undefined;
 		const match = ftsQuery(query);
@@ -349,7 +349,7 @@ export const memoryTags = (memory: Memory, now?: number): string =>
 	].join(", ");
 
 /** The call that reads memory `id` whole: where every model-facing line with a cut body ends. */
-export const memoryGetCall = (id: number): string => `archive op=get source=memories id=${memoryLabel(id)}`;
+export const memoryGetCall = (id: number): string => `memory op=get id=${memoryLabel(id)}`;
 
 /**
  * `M3 (project, decision, pinned) Title — body`, one line; the body whole unless `bodyChars` clips it (a one-line view for

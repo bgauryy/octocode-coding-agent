@@ -1,4 +1,4 @@
-import { OUTCOME_LABEL, reportOutcome } from "./report.ts";
+import { OUTCOME_LABEL, reportOutcome } from "./report-outcome.ts";
 
 /** Where `ReportTracker` joins the reports a child gave one after another (a follow-up message, a failed later turn). */
 const SEPARATOR = "\n\n---\n\n";

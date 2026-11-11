@@ -1,1 +1,1 @@
-Use the backlog tool to record progress on {{ref}} and follow-ups (from: {{ref}}). Mark it done only after verifying {{#if goal}}its goal{{else}}the result{{/if}}. {{guidance}} If blocked, record what is blocked, why, and what you need from whom instead.
+Record progress on {{ref}} with the backlog tool, and follow-ups with backlogPlan (from: {{ref}}). Mark it done only after verifying {{#if goal}}its goal{{else}}the result{{/if}}. {{guidance}} If blocked, record what is blocked, why, and what you need from whom instead.

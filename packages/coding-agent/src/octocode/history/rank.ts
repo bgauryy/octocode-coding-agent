@@ -17,6 +17,8 @@ import { plural } from "../shared/text.ts";
  * matching passages are kept, so no size cap applies; a `query` filter runs first, in the archive-search worker, in
  * bounded scans that resume until every file is read. A file whose own label (its TL;DR) or header (its TL;DR and topics
  * lines) has query terms ranks its passages higher, since a segment about the topic is likelier to hold the answer.
+ * The last few rankings are kept in memory with the size and time of every file they read, so the next page of the same
+ * search reads nothing again while those files are unchanged.
  */
 
 const K1 = 1.2;
@@ -118,6 +120,21 @@ function count(line: string, wanted: ReadonlySet<string>, tf?: Map<string, numbe
 	return words;
 }
 
+/** Rankings kept for their next pages, most recent last. */
+const KEPT_RANKINGS = 4;
+const rankings = new Map<string, { pages: string[]; total: number; hits: number; files: number }>();
+
+/** What a ranking depends on: the words, the filter, and each file with its size and modification time. */
+async function rankingKey(files: readonly HistoryFile[], keywords: string, filter?: RegExp): Promise<string> {
+	const stamps = await Promise.all(
+		files.map(async ({ file, label }) => {
+			const stat = await fs.stat(file).catch(() => undefined);
+			return [file, label, stat ? `${stat.size}:${stat.mtimeMs}` : ""];
+		}),
+	);
+	return JSON.stringify([keywords, filter?.source ?? null, filter?.flags ?? null, stamps]);
+}
+
 /** Matching lines one filter scan collects before it resumes (a scan ends sooner at its time budget). */
 const FILTER_SCAN_MATCHES = 200_000;
 
@@ -170,6 +187,19 @@ export async function rankHistory(
 ): Promise<RankResult> {
 	const query = parseKeywords(keywords);
 	if (query.terms.length === 0) throw new Error("keywords needs at least one word or identifier.");
+	// The next page of the same search over unchanged files is the ranking already made.
+	const key = await rankingKey(files, keywords, filter);
+	const known = rankings.get(key);
+	if (known) {
+		const index = Math.min(Math.max(page, 1), known.pages.length);
+		return {
+			text: known.pages[index - 1] ?? "",
+			page: index,
+			pages: known.total,
+			hits: known.hits,
+			files: known.files,
+		};
+	}
 	const wanted = new Set(query.terms);
 	const df = new Map<string, number>(query.terms.map((term) => [term, 0]));
 	const passages: Passage[] = [];
@@ -274,11 +304,14 @@ export async function rankHistory(
 	});
 	const pages = paginate([{ lines: [...head, ""] }, ...blocks]);
 	const index = Math.min(Math.max(page, 1), pages.length);
-	return {
-		text: pages[index - 1] ?? "",
-		page: index,
-		pages: passages.length === 0 ? 0 : pages.length,
+	const ranking = {
+		pages,
+		total: passages.length === 0 ? 0 : pages.length,
 		hits: passages.length,
 		files: new Set(passages.map((p) => p.file)).size,
 	};
+	rankings.delete(key);
+	rankings.set(key, ranking);
+	for (const old of rankings.keys()) if (rankings.size > KEPT_RANKINGS) rankings.delete(old);
+	return { text: pages[index - 1] ?? "", page: index, pages: ranking.total, hits: ranking.hits, files: ranking.files };
 }

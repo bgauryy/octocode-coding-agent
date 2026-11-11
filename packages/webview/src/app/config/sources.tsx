@@ -3,6 +3,7 @@ import type {
 	CredentialSourceStatus,
 	ProviderCredentialStatus,
 } from "@octocodeai/octocode-contracts/config";
+import { safeWebLink } from "../../link.ts";
 import { stamp } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";
@@ -83,14 +84,15 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 		apiKey ? "API key" : undefined,
 	].filter((name): name is string => !!name);
 	if (names.length === 0) return null;
+	const keyPage = apiKey?.keyPage ? safeWebLink(apiKey.keyPage) : null;
 	return (
 		<p className="config-methods muted">
 			Sign in with: {names.join(" · ")}
-			{apiKey?.keyPage && (
+			{keyPage && (
 				<>
 					{" "}
 					<a
-						href={apiKey.keyPage}
+						href={keyPage}
 						target="_blank"
 						rel="noopener noreferrer"
 						aria-label={`Get key for ${row.name ?? row.provider}`}

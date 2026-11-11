@@ -382,7 +382,8 @@ describe("automatic compaction (threshold, mid-run): input that arrives while th
 describe("automatic compaction before a prompt is sent: input that arrives while the summary is running", () => {
 	it.each(ENDINGS)("delivers queued input once behind the prompt that waited (%s)", async (ending) => {
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
+			// The big prompt with the system prompt fits the window after compaction; one that cannot is summarized instead.
+			models: [{ id: "faux-1", contextWindow: 4200, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 100 },
 		});
 		harnesses.push(harness);

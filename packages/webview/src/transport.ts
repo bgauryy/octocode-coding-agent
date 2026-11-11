@@ -8,6 +8,7 @@ import {
 	WORKSPACE_ROUTES,
 	type WorkspaceSnapshot,
 } from "@octocodeai/octocode-contracts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { bearer } from "./access.ts";
 import { isProfileUpdate } from "./profiler-guards.ts";
 import { ApplicationStream } from "./application-stream.ts";
@@ -20,9 +21,6 @@ interface Observer {
 	profiler(update: ProfileUpdate): void;
 	backlogs(snapshot: Snapshot): void;
 	status(message: string): void;
-}
-function record(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 /**
@@ -88,9 +86,9 @@ export class BrowserConnection {
 				retire(1008);
 				return;
 			}
-			if (!record(message)) return;
+			if (!isRecord(message)) return;
 			if (message.type === "daemon") {
-				if (record(message.data) && message.data.draining === true)
+				if (isRecord(message.data) && message.data.draining === true)
 					this.observer.status("A newer Octocode is taking over. Reopen /web when this page stops updating.");
 			} else if (message.type === "application") {
 				const result = this.stream.accept(message.data);
@@ -109,7 +107,7 @@ export class BrowserConnection {
 				}
 			} else if (
 				message.type === "workspace" &&
-				record(message.data) &&
+				isRecord(message.data) &&
 				typeof message.data.sessionId === "string" &&
 				Array.isArray(message.data.events) &&
 				Array.isArray(message.data.agents) &&
@@ -123,7 +121,7 @@ export class BrowserConnection {
 				this.observer.profiler(message.data);
 			} else if (
 				message.type === "snapshot" &&
-				record(message.data) &&
+				isRecord(message.data) &&
 				Array.isArray(message.data.items) &&
 				typeof message.data.generatedAt === "number"
 			) {
@@ -167,8 +165,8 @@ export class BrowserConnection {
 		if (this.closed || this.stream.snapshot?.sessionId !== command.sessionId || this.stream.cursor?.epoch !== epoch)
 			throw new Error("Session changed while the request was pending. Check its original session for the outcome.");
 		if (
-			!record(result) ||
-			!record(result.receipt) ||
+			!isRecord(result) ||
+			!isRecord(result.receipt) ||
 			result.receipt.id !== command.id ||
 			!["accepted", "completed", "failed"].includes(String(result.receipt.status)) ||
 			(result.receipt.message !== undefined && typeof result.receipt.message !== "string")

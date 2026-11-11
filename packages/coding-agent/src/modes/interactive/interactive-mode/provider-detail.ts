@@ -1,8 +1,8 @@
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ModelConfig } from "../../../core/model-config.ts";
-import { keyText } from "../components/keybinding-hints.ts";
-import type { PageRow } from "../components/manage-page.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import type { PageRow } from "../../../theme/manage-page.ts";
 import {
 	isProviderDisabled,
 	providerStatus,

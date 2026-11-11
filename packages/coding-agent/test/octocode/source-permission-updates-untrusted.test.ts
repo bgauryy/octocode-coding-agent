@@ -25,7 +25,7 @@ async function fixture(trusted: boolean) {
 	fs.mkdirSync(home, { recursive: true });
 	fs.mkdirSync(cwd);
 	vi.stubEnv("CLAUDE_CONFIG_DIR", home);
-	const owner = registerSourcePolicy(fakeHost().api, home);
+	const owner = registerSourcePolicy(fakeHost().api, { home });
 	const ctx = { ...fakeCtx({ cwd, hasUI: false }), isProjectTrusted: () => trusted };
 	await owner.refresh(ctx);
 	const decision = () =>

@@ -1,5 +1,4 @@
 import { builtinEffect, SWITCHABLE_BUILTIN_IDS } from "../../core/features/builtin-ids.ts";
-import { homedir } from "node:os";
 import { getOctocodeSkillsDir } from "../../config.ts";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import { ResourceSettings } from "../../core/package-manager/resource-settings.ts";
@@ -9,18 +8,16 @@ import type { InventoryItem } from "../../core/extensibility/inventory-types.ts"
 import { blockedReason, switchItem } from "../../core/extensibility/switch.ts";
 import { applied, closestIds, kindOf, nameOf, refused } from "../result.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult } from "../types.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import path from "node:path";
+import { skillPathPrecedence } from "../../core/resource-loader/skill-precedence.ts";
+import { chooseSkillWinner } from "../../core/skills.ts";
 
 const KIND_OF_TYPE: Record<ResourceType, string> = {
 	skills: "skill",
 	extensions: "extension",
 	prompts: "prompt",
 	themes: "theme",
-};
-
-/** A path with the home folder written `~`, the form `/harness` shows. */
-const tildePath = (path: string): string => {
-	const home = homedir();
-	return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 };
 
 /** What loads a resource for one run only. */
@@ -36,6 +33,8 @@ interface Row {
 	item: ResourceItem;
 	/** A core skill: switched by `switchItem` (global skills pattern), not by the package settings. */
 	core?: InventoryItem;
+	/** A switched-on skill the session does not load: the row that owns its name loads instead. */
+	shadowedBy?: Row;
 }
 
 /** Every resource the loaders resolve, the Octocode skill collection included. `skip`: listing never installs a missing package. */
@@ -56,15 +55,43 @@ async function resourceRows(ctx: ConfigContext): Promise<Row[]> {
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
 	// A name two resources share is told apart by its path.
-	const rows = items.map((item) => {
+	const rows: Row[] = items.map((item) => {
 		const named = `${KIND_OF_TYPE[item.resourceType]}:${item.displayName}`;
-		return { item, id: counts.get(named)! > 1 ? `${KIND_OF_TYPE[item.resourceType]}:${tildePath(item.path)}` : named };
+		return { item, id: counts.get(named)! > 1 ? `${KIND_OF_TYPE[item.resourceType]}:${homeTilde(item.path)}` : named };
 	});
 	// The skills that ship with Octocode are in no package: their rows come from the same source `/harness` lists.
-	const known = new Set(rows.map((row) => row.id));
-	for (const core of coreSkillItems(ctx.settings))
-		if (core.resource && !known.has(core.id)) rows.push({ id: core.id, item: core.resource, core } as Row);
+	for (const core of coreSkillItems(ctx.settings)) {
+		if (!core.resource) continue;
+		const row: Row = { id: core.id, item: core.resource, core };
+		const named = rows.filter((other) => other.item.resourceType === "skills" && other.item.displayName === core.name);
+		if (named.length > 0) shadowing(row, named, ctx.agentDir);
+		rows.push(row);
+	}
 	return rows;
+}
+
+/**
+ * A core skill and the package skills that share its name (the Octocode collection ships a copy of some). The session
+ * loads one of them (`chooseSkillWinner`, the loader's rule: a deliberate copy beats the bundled collection, and the core
+ * skill is deliberate): that row owns `skill:<name>`, so `disable skill:<name>` switches what loads, and every other
+ * switched-on copy is marked shadowed under its path id. The rows are updated in place.
+ */
+function shadowing(core: Row, named: Row[], agentDir: string): void {
+	const rank = (row: Row) =>
+		skillPathPrecedence(row.item.path, {
+			metadataByPath: new Map([[path.resolve(row.item.path), row.item.metadata]]),
+			extensionPaths: new Set(),
+			agentDir,
+		});
+	const pathId = (row: Row) => `${KIND_OF_TYPE[row.item.resourceType]}:${homeTilde(row.item.path)}`;
+	// Package skills load before the core folder, which the session adds through `resources_discover`.
+	const all = [...named, core];
+	const on = all.filter((row) => row.item.enabled).map((row) => ({ row, rank: rank(row) }));
+	const winner = on.length > 0 ? chooseSkillWinner(on).row : core;
+	for (const row of all) {
+		row.id = row === winner ? core.id : pathId(row);
+		if (row !== winner && row.item.enabled) row.shadowedBy = winner;
+	}
 }
 
 function toEntry(row: Row): ConfigEntry {
@@ -80,14 +107,16 @@ function toEntry(row: Row): ConfigEntry {
 		scopes: { [scope]: item.enabled },
 		setBy: item.metadata.scope === "temporary" ? "run" : scope,
 		appliesWhen: "reload",
-		detail: tildePath(item.path),
+		detail: row.shadowedBy
+			? `shadowed: ${row.shadowedBy.id} loads instead · ${homeTilde(item.path)}`
+			: homeTilde(item.path),
 	};
 }
 
 function find(rows: readonly Row[], id: string): Row | undefined {
 	return (
 		rows.find((row) => row.id === id) ??
-		rows.find((row) => `${KIND_OF_TYPE[row.item.resourceType]}:${tildePath(row.item.path)}` === id)
+		rows.find((row) => `${KIND_OF_TYPE[row.item.resourceType]}:${homeTilde(row.item.path)}` === id)
 	);
 }
 

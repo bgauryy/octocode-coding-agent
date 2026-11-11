@@ -44,6 +44,21 @@ const REFUSED = [
 	'sort -n"$X" in',
 	'rg x ""$X',
 ];
+/**
+ * The entries of `REFUSED` the gate now lets run (RFC 2026-11-11 core tools, step B4): a line made only of readers with
+ * no write form (`files/bash/reservation-readers.ts`). Plan mode still reads them as not read-only.
+ */
+const ALLOWED_READERS = new Set([
+	'rg "$PAT" src',
+	'rg "$PAT" src/*.ts',
+	'git log "$REF"',
+	'git diff "$BASE"...HEAD',
+	"git show $BASE:src/a.ts",
+	"rg x src/$X",
+	'rg x "$X"/y',
+	'rg x ""$X',
+]);
+const GATE_REFUSED = REFUSED.filter((command) => !ALLOWED_READERS.has(command));
 const RUNS = [
 	'rg -n "needle" src/*.ts',
 	'rg -e "$PAT" src/*.ts',
@@ -106,7 +121,8 @@ describe("team reservation gate: computed words given to readers with a writing 
 
 	it("refuses a computed word that may become a writing option, and names the word and the respelling", async () => {
 		const { owner, peer } = await peerOfHolder();
-		for (const command of REFUSED)
+		expect(GATE_REFUSED).toHaveLength(REFUSED.length - ALLOWED_READERS.size);
+		for (const command of GATE_REFUSED)
 			expect(await peer.gate(command), command).toMatchObject({
 				block: true,
 				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
@@ -119,6 +135,11 @@ describe("team reservation gate: computed words given to readers with a writing 
 	it("runs everyday reads whose computed words cannot become an option", async () => {
 		const { peer } = await peerOfHolder();
 		for (const command of RUNS) expect(await peer.gate(command), command).toBeUndefined();
+	});
+
+	it("runs a line of allowed readers even with a computed word", async () => {
+		const { peer } = await peerOfHolder();
+		for (const command of ALLOWED_READERS) expect(await peer.gate(command), command).toBeUndefined();
 	});
 
 	it("runs every one of them when no peer holds a reservation", async () => {

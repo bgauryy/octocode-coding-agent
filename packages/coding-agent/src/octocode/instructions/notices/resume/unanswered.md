@@ -1,1 +1,1 @@
-No result was recorded for {{calls}}. Each may have run: check the current state before repeating it.
+No result was recorded for {{calls}}. Each may have run: check the current state before repeating it.{{#if children}} The subagents that call started stopped with the earlier process: {{children}}.{{/if}}

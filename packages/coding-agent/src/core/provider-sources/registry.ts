@@ -2,9 +2,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { COPILOT_ENV_VAR } from "./copilot-env.ts";
-import { displayPath, nodeProviderSourceFs } from "./detect.ts";
+import { nodeProviderSourceFs } from "./detect.ts";
 import { isSourceEnabled, normalizeProviderSources, SOURCE_DEFAULTS } from "./gate.ts";
 import type { ProviderSource, ProviderSourceEnvironment, ProviderSourceOverrides } from "./types.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 
 /**
  * The provider sources with their current state, for `/providers`. `overrides` is the `providerSources` setting.
@@ -35,7 +36,7 @@ export function describeProviderSources(overrides: unknown, options: ProviderSou
 			id: "octocode",
 			label: "Octocode",
 			provides: ["credentials", "models"],
-			paths: [...ownPaths.map((path) => displayPath(path, home)), "keychain"],
+			paths: [...ownPaths.map((path) => homeTilde(path, home)), "keychain"],
 			defaultEnabled: true,
 			toggleable: false,
 			state: state(
@@ -47,7 +48,7 @@ export function describeProviderSources(overrides: unknown, options: ProviderSou
 			id: "pi",
 			label: "Pi",
 			provides: ["credentials", "models"],
-			paths: piPaths.map((path) => displayPath(path, home)),
+			paths: piPaths.map((path) => homeTilde(path, home)),
 			defaultEnabled: SOURCE_DEFAULTS.pi,
 			toggleable: true,
 			state: state(

@@ -158,9 +158,7 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 				ctx,
 			)?.why,
 		).toMatch(/^contains text from mcp__gh__get_issue/);
-		expect(
-			provenance.check(call("archive", { op: "set", source: "memories", title: "t", body: SPAN }), ctx),
-		).toMatchObject({
+		expect(provenance.check(call("memory", { op: "set", title: "t", body: SPAN }), ctx)).toMatchObject({
 			why: expect.stringMatching(/^contains text from mcp__gh__get_issue/),
 		});
 		expect(provenance.check(call("mcp__gh__create_issue", { body: SPAN }), ctx)).toMatchObject({

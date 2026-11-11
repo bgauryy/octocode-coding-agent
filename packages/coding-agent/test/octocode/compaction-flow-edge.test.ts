@@ -230,7 +230,8 @@ describe("a model switch right before compaction", () => {
 			preparation: {
 				firstKeptEntryId: "r",
 				tokensBefore: 60_000,
-				messagesToSummarize: [user("go")],
+				// A summarized stretch larger than its summary: an automatic compaction that frees nothing is not committed.
+				messagesToSummarize: [user("go"), assistant("worked ".repeat(5_000))],
 				turnPrefixMessages: [],
 				isSplitTurn: false,
 				fileOps: { read: new Set(), written: new Set(), edited: new Set() },

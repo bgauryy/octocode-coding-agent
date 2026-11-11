@@ -7,6 +7,7 @@ import type { Compactions } from "./events.ts";
 import type { ChildNotices } from "./notices.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
 import type { ReportArtifact } from "../child-sessions/report-artifact.ts";
+import type { OutcomeSource } from "./report-outcome.ts";
 
 /**
  * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/sessions/<id>`),
@@ -77,8 +78,11 @@ export interface RunDetails {
 	refusedBy?: string;
 	/** The latest completed report's outcome; absent while running or when that report names none. */
 	outcome?: ReportStatus;
-	/** Where that report named it: its first word (the contract's form) or a labelled last line; `/agents stats` counts both. */
-	outcomeSource?: "first" | "last";
+	/**
+	 * Where that report named it: its first word (the contract's form) or a labelled last line; `asked`: it named none and
+	 * the child was asked once (`partial` when its answer named none). `/agents stats` counts the first two.
+	 */
+	outcomeSource?: OutcomeSource;
 	/** Host-validated final JSON result, if the caller requested a result contract. */
 	structured?: StructuredResultV1;
 	/** The exact saved report version; absent in legacy session entries. */
@@ -108,7 +112,7 @@ export interface ResultDetails {
 	/** The latest completed report's outcome (`failed` for a failed run); absent when it names none. */
 	outcome?: ReportStatus;
 	/** As in `RunDetails`. */
-	outcomeSource?: "first" | "last";
+	outcomeSource?: OutcomeSource;
 	/** Immutable contract hash and host validation verdict; valid data is available to the caller. */
 	structured?: StructuredResultV1;
 	reportArtifact?: ReportArtifact;

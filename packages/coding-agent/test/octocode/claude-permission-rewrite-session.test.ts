@@ -369,21 +369,19 @@ function replaceHookOutput(f: Awaited<ReturnType<typeof fixture>>, output: unkno
 	);
 }
 
-it("Claude foreground deadline adopts a non-sleep replacement while its turn remains active", async () => {
+it("Claude foreground threshold adopts a non-sleep replacement while its turn remains active", async () => {
+	// A replacement that names a timeout is stopped then (RFC core-tools B1); one that names none moves at the threshold.
+	vi.stubEnv("OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS", "1");
 	const f = await fixture("claude");
 	const post = await holdPostHook(f);
 	try {
 		const code =
-			"const fs=require('node:fs');fs.writeFileSync('child.pid',String(process.pid));setTimeout(()=>fs.writeFileSync('replacement.txt','LATE'),500)";
+			"const fs=require('node:fs');fs.writeFileSync('child.pid',String(process.pid));setTimeout(()=>fs.writeFileSync('replacement.txt','LATE'),1500)";
 		replaceHookOutput(
 			f,
 			decision({
 				behavior: "allow",
-				updatedInput: {
-					command: `${shellQuote(process.execPath)} -e ${shellQuote(code)}`,
-					// A timeout alone is adopted at its deadline; with `run_in_background: false` it would stop the command.
-					timeout: 100,
-				},
+				updatedInput: { command: `${shellQuote(process.execPath)} -e ${shellQuote(code)}` },
 			}),
 		);
 		const running = f.run("bash", { command: original });

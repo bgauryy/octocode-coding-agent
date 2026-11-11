@@ -1,7 +1,6 @@
-import { homedir } from "node:os";
-import { sep } from "node:path";
 import type { AgentSessionRuntimeDiagnostic } from "./agent-session-services.ts";
 import type { SettingsManager } from "./settings-manager.ts";
+import { homeTilde } from "../../../common/src/home-tilde.ts";
 
 export function collectSettingsDiagnostics(settingsManager: SettingsManager): AgentSessionRuntimeDiagnostic[] {
 	const errors = settingsManager.drainErrors().map(({ scope, path, error }) => ({
@@ -10,15 +9,9 @@ export function collectSettingsDiagnostics(settingsManager: SettingsManager): Ag
 	}));
 	const warnings = settingsManager.drainWarnings().map(({ scope, path, message }) => ({
 		type: "warning" as const,
-		message: path ? `${homePath(path)}: ${message}` : `${scope} settings: ${message}`,
+		message: path ? `${homeTilde(path)}: ${message}` : `${scope} settings: ${message}`,
 	}));
 	return [...errors, ...warnings];
-}
-
-/** `~/.octocode/octocodecode/settings.json`: a warning line names the file the way the user types it. */
-function homePath(path: string): string {
-	const home = homedir();
-	return path.startsWith(home + sep) ? `~${path.slice(home.length)}` : path;
 }
 
 /**

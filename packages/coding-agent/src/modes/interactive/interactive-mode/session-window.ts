@@ -6,7 +6,7 @@
 import type { Component, Container } from "@octocodeai/octocode-tui";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
-import { keyHint } from "../components/keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

@@ -2,7 +2,7 @@ import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@oct
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
 /** What a summary message shows. Every string is untrusted text: it is sanitized where drawn. */
 export interface SummaryMessageText {

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { adoptSkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
-import { serializeMcpSessionServers } from "../../../../../mcp/src/session-servers.ts";
+import { serializeMcpSessionServers } from "../../../../../mcp/src/api.ts";
 import { outputDir, privateDir, sessionOutputDir } from "../../shared/home.ts";
 import type { Identity } from "./env.ts";
 import { childSession, reportDir } from "./session.ts";

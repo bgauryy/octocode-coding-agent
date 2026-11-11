@@ -377,7 +377,7 @@ describe("prompt", () => {
 			"Ask with askUser only when tools cannot resolve an unknown involving irreversibility, money or scope",
 		);
 		expect(child).toContain(
-			"Raise it under `<delegation>` only when tools cannot resolve an unknown involving irreversibility, money or scope",
+			"Raise it under `<coordinator>` only when tools cannot resolve an unknown involving irreversibility, money or scope",
 		);
 	});
 

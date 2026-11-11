@@ -178,13 +178,24 @@ export class RequestBudget {
  */
 export class RunningBudgets {
 	private readonly running = new Map<string, RequestBudget>();
+	/** What each running child has cost so far, in dollars, read when asked. */
+	private readonly costs = new Map<string, () => number>();
 
-	add(id: string, budget: RequestBudget): void {
+	add(id: string, budget: RequestBudget, cost?: () => number): void {
 		this.running.set(id, budget);
+		if (cost) this.costs.set(id, cost);
+		else this.costs.delete(id);
 	}
 
 	remove(id: string, budget: RequestBudget): void {
-		if (this.running.get(id) === budget) this.running.delete(id);
+		if (this.running.get(id) !== budget) return;
+		this.running.delete(id);
+		this.costs.delete(id);
+	}
+
+	/** What running child `id` has cost so far in this run; undefined when it is not running or nothing counts it. */
+	cost(id: string): number | undefined {
+		return this.running.has(id) ? this.costs.get(id)?.() : undefined;
 	}
 
 	usage(id: string): BudgetStanding | undefined {

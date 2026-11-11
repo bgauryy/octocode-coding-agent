@@ -56,6 +56,7 @@ flowchart LR
 | [Web workspace](web-workspace.md)      | Use `/web`: activity, backlog board, profiler, docs |
 | [Remote access](remote.md)             | Reach a session from another device with `/remote`  |
 | [Terminal UI](tui.md), [tmux](tmux.md) | Use the terminal interface and tmux panes           |
+| [External agents](external-agents.md)  | Delegate through the CLI, JSON Lines or RPC         |
 | [RPC mode](rpc.md)                     | Drive a headless session over stdin and stdout      |
 | [ACP](acp.md)                          | Connect Octocode to editors and other agents        |
 | [Session API](session-api.md)          | Send messages to running agents                     |

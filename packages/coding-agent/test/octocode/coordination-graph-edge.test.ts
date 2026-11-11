@@ -5,7 +5,6 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import type * as NativeConfig from "../../src/config.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { checkDelegable } from "../../src/octocode/backlog/delegation.ts";
-import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
 import { itemLink } from "../../src/octocode/subagents/item-link.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
@@ -15,8 +14,9 @@ import { conditionChecker } from "../../src/octocode/timer/condition.ts";
 import { parseUntil } from "../../src/octocode/timer/conditions/index.ts";
 import { timerFields } from "../../src/octocode/timer/model.ts";
 import type { ConditionDeps } from "../../src/octocode/timer/conditions/types.ts";
-import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
 
 /**
  * The mechanisms under the coordinator's planning graph (`instructions/policy/delegation.md`): one item per part with an
@@ -89,13 +89,12 @@ function agentTool() {
 		asked.push(request.action);
 		return check(ctx, request);
 	});
-	const control = registerAgentTool(
-		f.api,
-		() => new Map<string, AgentProfile>(),
+	const control = registerAgentTool(f.api, {
+		profiles: () => new Map<string, AgentProfile>(),
 		team,
 		permission,
-		() => new Map(),
-	);
+		refused: () => new Map(),
+	});
 	const cwd = fs.realpathSync(tmp("octocode-graph-agent-"));
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx.ui, { confirm: async () => true });
@@ -103,6 +102,7 @@ function agentTool() {
 	Object.assign(ctx, {
 		model: models[0],
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => models,
 			find: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 			getCachePolicy: fakeCachePolicy,
@@ -206,19 +206,24 @@ describe("a graph planned in one backlog add", () => {
 		const { ctx } = mainBacklog();
 		const env = { OCTOCODE_AGENT_DB: process.env.OCTOCODE_AGENT_DB };
 		const fake = fakeHost();
-		registerBacklogTool(fake.api, { isSubagent: false, env, changed: () => undefined });
-		const tool = fake.tools.get("backlog");
+		registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed: () => undefined });
+		const tool = fake.tools.get("backlogPlan");
 		// Earlier work holds B1: the new items' numbers are assigned on insert, so the plan cannot name them in advance.
-		await tool.execute("c0", { op: "add", reason: "earlier", ...READY, title: "old" }, undefined, undefined, ctx);
+		await tool.execute(
+			"c0",
+			{ op: "add", reason: "earlier", items: [{ ...READY, title: "old" }] },
+			undefined,
+			undefined,
+			ctx,
+		);
 		const result = (await tool.execute(
 			"c1",
 			{
 				op: "add",
 				reason: "plan the graph",
-				...READY,
 				items: [
-					{ title: "api types", paths: ["src/api.ts"] },
-					{ title: "ui", paths: ["src/ui.ts"], dependsOn: ["api types"] },
+					{ ...READY, title: "api types", paths: ["src/api.ts"] },
+					{ ...READY, title: "ui", paths: ["src/ui.ts"], dependsOn: ["api types"] },
 				],
 			},
 			undefined,
@@ -236,14 +241,16 @@ describe("a graph planned in one backlog add", () => {
 		const { ctx } = mainBacklog();
 		const env = { OCTOCODE_AGENT_DB: process.env.OCTOCODE_AGENT_DB };
 		const fake = fakeHost();
-		registerBacklogTool(fake.api, { isSubagent: false, env, changed: () => undefined });
-		const result = (await fake.tools.get("backlog").execute(
+		registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed: () => undefined });
+		const result = (await fake.tools.get("backlogPlan").execute(
 			"c1",
 			{
 				op: "add",
 				reason: "plan",
-				...READY,
-				items: [{ title: "ui", dependsOn: ["api types"] }, { title: "api types" }],
+				items: [
+					{ ...READY, title: "ui", dependsOn: ["api types"] },
+					{ ...READY, title: "api types" },
+				],
 			},
 			undefined,
 			undefined,
@@ -263,7 +270,6 @@ describe("a timer waiting until an item is done", () => {
 		blockers: () => [],
 		agentEnd: () => undefined,
 		watchDatabase: () => () => undefined,
-		roots: () => [],
 		judge: async () => ({ verdict: "skipped", reason: "none" }),
 	});
 	const input = { cwd: "/", baseline: undefined } as never;

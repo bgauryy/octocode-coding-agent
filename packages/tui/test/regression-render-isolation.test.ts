@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { Box } from "../src/components/box.ts";
+import { ScrollView } from "../src/components/scroll-view.ts";
 import { VStack } from "../src/components/v-stack.ts";
 import { type Component, Container } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
@@ -161,6 +162,41 @@ describe("render isolation", () => {
 			assert.match(screen, /top\n⚠ Throwing failed to render: leaf broke\nbottom/);
 		} finally {
 			// Leaving the alternate screen renders the document once more, outside the frame loop.
+			tui.stop();
+		}
+	});
+
+	it("isolates a row a scroll key measures after a virtualized frame left it unmeasured", async () => {
+		const terminal = new VirtualTerminal(40, 6);
+		const tui = new TuiAltScreen(terminal);
+		const reports: Array<{ error: unknown; component: Component }> = [];
+		tui.onRenderError = (error, component) => reports.push({ error, component });
+		const throwing = new Throwing("estimated row broke");
+		const transcript = new Container();
+		transcript.addChild(throwing);
+		for (let row = 1; row <= 30; row++) transcript.addChild(new Healthy(`row ${row}`));
+		const scroll = new ScrollView(transcript, { follow: "end", primary: true, virtualize: true });
+		tui.setLayoutRoot(new VStack([{ component: scroll, basis: 0, grow: 1, shrink: 1, minSize: 1 }]));
+		tui.start();
+		try {
+			tui.renderNow();
+			// The first frame at a width lays out from the end and only estimates the rows above the viewport.
+			assert.strictEqual(throwing.renders, 0);
+			const followingTop = tui.viewportTop;
+
+			terminal.sendInput("\x1b[5~"); // Page Up: the scroll measures every row first
+			assert.ok(throwing.renders > 0);
+			// Reported once, like a failure inside a frame.
+			assert.strictEqual(reports.length, 1);
+			assert.strictEqual(reports[0]?.component, throwing);
+			assert.match(String(reports[0]?.error), /estimated row broke/);
+			assert.strictEqual(tui.viewportTop, followingTop - 2);
+			assert.strictEqual(tui.isFollowingOutput, false);
+
+			tui.renderNow();
+			const screen = plain(await terminal.flushAndGetViewport());
+			assert.deepStrictEqual(screen, ["row 23", "row 24", "row 25", "row 26", "row 27", "row 28"]);
+		} finally {
 			tui.stop();
 		}
 	});

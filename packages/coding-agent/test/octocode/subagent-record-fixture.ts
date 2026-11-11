@@ -8,7 +8,7 @@ import { tmp } from "./helpers.ts";
 export function setup(cwd = tmp("octocode-agent-cwd-")) {
 	const f = fakeHost();
 	const team = new Team(f.api);
-	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission());
+	const control = registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
 	const ctx = fakeCtx({ cwd, hasUI: true });

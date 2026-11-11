@@ -27,6 +27,8 @@ export class RpcConnection {
 	private closeListeners = new Set<(error: Error) => void>();
 	private stopping?: Promise<void>;
 	private starting = false;
+	/** Settles `start()`: resolved by `rpc_ready`, rejected when the process closes first. */
+	private readyWaiter?: { resolve: () => void; reject: (error: Error) => void };
 	private generation = 0;
 	private options: RpcClientOptions;
 
@@ -35,7 +37,8 @@ export class RpcConnection {
 	}
 
 	/**
-	 * Start the RPC agent process.
+	 * Start the RPC agent process. Resolves once the session announces itself with `rpc_ready`; rejects when the process
+	 * exits, fails to start or is stopped first.
 	 */
 	async start(): Promise<void> {
 		if (this.process || this.starting) {
@@ -72,6 +75,9 @@ export class RpcConnection {
 
 		if (this.options.ownProcessTree) await prepareTree();
 		if (generation !== this.generation) throw new Error("Agent process stopped");
+		const ready = new Promise<void>((resolve, reject) => {
+			this.readyWaiter = { resolve, reject };
+		});
 		const childProcess = spawn(invocation.command, [...invocation.args, ...args], {
 			cwd: this.options.cwd,
 			env: { ...process.env, ...this.options.env },
@@ -109,15 +115,11 @@ export class RpcConnection {
 			this.handleLine(line);
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 100));
-
-		// The exit handlers set `exitError` during the wait; control-flow analysis only sees the reset above.
-		const exited = this.exitError as Error | null;
-		if (exited) throw exited;
-		if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
-			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
-			this.closed(error);
-			throw error;
+		// Started means the session announced itself (`rpc_ready`); a process that exits or fails first rejects instead.
+		try {
+			await ready;
+		} finally {
+			this.readyWaiter = undefined;
 		}
 	}
 
@@ -176,6 +178,7 @@ export class RpcConnection {
 	private closed(error: Error): void {
 		if (this.exitError) return;
 		this.exitError = error;
+		this.readyWaiter?.reject(error);
 		this.rejectPendingRequests(error);
 		for (const listener of Array.from(this.closeListeners)) {
 			try {
@@ -261,6 +264,7 @@ export class RpcConnection {
 
 	private dispatch(data: { type: string; id?: string; [key: string]: any }): void {
 		if (data.type === "rpc_ready") {
+			this.readyWaiter?.resolve();
 			this.options.onReady?.(data as RpcReady);
 			return;
 		}

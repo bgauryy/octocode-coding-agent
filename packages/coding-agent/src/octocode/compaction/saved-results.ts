@@ -7,14 +7,17 @@ import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../../utils/display-path.ts";
-import { sessionTempRoot, tildePath } from "../shared/home.ts";
+import { sessionTempRoot } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { SAVED_RESULTS_LIST_LABEL } from "../shared/saved-files.ts";
 import { saveFullOutput } from "../shared/spill.ts";
-import { contentText, escapeRegExp } from "../shared/util.ts";
+import { contentText } from "../shared/util.ts";
+import { escapeRegExp } from "../../../../common/src/regexp.ts";
 
 /**
  * The files Octocode saved from the part of the conversation a summary replaces. A result bounded when written
  * (`capOutputToFile`: "Output trimmed … Full output: <path>"), a screenshot or image original, a fetched page, a bash log
- * and a result cleared after the prompt cache went cold (`clearing.ts`) each hold their whole text in the session's
+ * and an old result cleared to save context (`clearing.ts`) each hold their whole text in the session's
  * `output/` or `bash/` folder and name that file only in the result itself. Compaction drops the result, so without
  * this the model would be told, in a result it no longer sees, that evidence was saved and never learn where.
  *
@@ -50,7 +53,7 @@ export function withoutModelSavedResults(summary: string): string {
  * (`shortPath`), then the folders `<session>/output|bash/<name>`.
  */
 function savedPathPattern(root: string): RegExp {
-	const prefixes = [...new Set([root, shortPath(root), tildePath(root)])].sort((a, b) => b.length - a.length);
+	const prefixes = [...new Set([root, shortPath(root), homeTilde(root)])].sort((a, b) => b.length - a.length);
 	const separator = "[\\\\/]";
 	return new RegExp(
 		`(?<![\\w.~/\\\\-])(?:${prefixes.map(escapeRegExp).join("|")})${separator}[\\w.-]+${separator}(?:output|bash)${separator}[\\w.-]*\\w`,
@@ -142,7 +145,7 @@ export function carriedSavedResults(branch: readonly SessionEntry[]): string[] {
 
 /**
  * Each file saved from the summarized `messages`, once: those `carried` from the earlier summary that are still on disk
- * (the session sweep removes old ones), then a subagent run's saved conversation and the paths a tool result or job report
+ * (the session sweep removes aged ones the latest summary no longer names), then a subagent run's saved conversation and the paths a tool result or job report
  * names, then the file `cleared` (tool call id → saved copy, `clearedResults`) holds for a result that was cleared.
  */
 export function savedResultPaths(
@@ -174,7 +177,8 @@ export function savedResultsBlock(files: readonly string[]): string {
 	if (files.length === 0) return "";
 	const lines = files.map((file) => shortPath(file));
 	const list = lines.join("\n");
-	const spilled = list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, "saved-results") : undefined;
+	const spilled =
+		list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, SAVED_RESULTS_LIST_LABEL) : undefined;
 	if (spilled === undefined)
 		return `\n\n${OPEN}\n${renderInstruction("notices/recovery/saved-results.md", { listed: "" })}\n${list}\n${CLOSE}`;
 	const listed = renderInstruction("notices/recovery/file-list.md", { count: files.length, file: shortPath(spilled) });

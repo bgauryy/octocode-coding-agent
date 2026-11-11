@@ -50,9 +50,14 @@ function archiveOver(entries: unknown[]) {
 			db.db,
 			id,
 			transcript,
-			{ type: "session", id, cwd },
+			JSON.stringify({ type: "session", id, cwd }),
 			getFileStamp(transcript),
-			entries as Parameters<typeof transcripts.save>[5],
+			(entries as { id: string; parentId?: string; type: string }[]).map((entry) => ({
+				id: entry.id,
+				parentId: entry.parentId ?? null,
+				type: entry.type,
+				json: JSON.stringify(entry),
+			})),
 			0,
 		);
 	});

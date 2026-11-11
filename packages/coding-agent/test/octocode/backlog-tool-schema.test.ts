@@ -1,12 +1,16 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
-import { entityFields, legacyEntityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
+import { entryAccepted, planAccepted, planParameters } from "../../src/octocode/backlog/plan-schema.ts";
+import { completionField, legacyEntityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
 
-const parameters = Type.Object(entityFields(false), { additionalProperties: false });
-const subagentParameters = Type.Object(entityFields(true), { additionalProperties: false });
-// What a call may carry: the declaration plus the fields older callers still send.
-const validation = Type.Object({ ...entityFields(false), ...legacyEntityFields }, { additionalProperties: false });
+// `backlog` declares the completion (its `done`); `backlogPlan` declares the item fields and no completion.
+const declared = { completion: completionField("done: the result") };
+const parameters = Type.Object(declared, { additionalProperties: false });
+const plan = planParameters("ops");
+// What a call may carry: the declaration plus the older forms (a stored-shape completion, a version, link objects).
+const validation = Type.Object({ ...declared, ...legacyEntityFields }, { additionalProperties: false });
+const planValidation = planAccepted(plan);
 const completion = {
 	summary: "Done",
 	files: ["src/a.ts"],
@@ -14,12 +18,27 @@ const completion = {
 };
 
 describe("backlog entity schema", () => {
-	it("declares the light completion and no links, for every role", () => {
-		for (const declared of [parameters, subagentParameters]) {
-			expect(Object.keys(declared.properties)).not.toContain("links");
-			expect(Value.Check(declared, { completion })).toBe(true);
-			expect(Value.Check(declared, { completion: { ...completion, lesson: "Reuse X", replaces: 3 } })).toBe(true);
-		}
+	it("declares the light completion on backlog only, and links only in a backlogPlan entry", () => {
+		expect(Object.keys(parameters.properties)).not.toContain("links");
+		// G2: what a call may carry is declared. An entry names its links; a completion names its retry key.
+		const entry = (plan.properties.items as unknown as { items: { properties: Record<string, object> } }).items;
+		expect(entry.properties.links).toMatchObject({
+			type: "array",
+			items: {
+				required: ["relation"],
+				additionalProperties: false,
+				properties: {
+					relation: { enum: ["related", "derived_from", "evidence", "output"] },
+					target: { type: "string" },
+					resource: { type: "object", required: ["resource", "namespace", "id"], additionalProperties: false },
+				},
+			},
+		});
+		expect(Value.Check(parameters, { completion: { ...completion, operationKey: "retry-1" } })).toBe(true);
+		expect(Value.Check(parameters, { completion })).toBe(true);
+		expect(Value.Check(parameters, { completion: { ...completion, lesson: "Reuse X", replaces: 3 } })).toBe(true);
+		for (const field of ["links", "completion", "close", "version"])
+			expect(Object.keys(plan.properties)).not.toContain(field);
 	});
 
 	it.each([
@@ -47,6 +66,19 @@ describe("backlog entity schema", () => {
 		expect(Value.Check(validation, link({ target: { resource: "files", path: "src/a.ts" } }))).toBe(true);
 		expect(Value.Check(validation, link({ target: null, resource }))).toBe(true);
 		expect(Value.Check(parameters, link({ target: "src/a.ts" }))).toBe(false);
+		// A `backlogPlan` entry takes the same links in every form, and a version it does not declare.
+		expect(Value.Check(entryAccepted, { title: "t", ...link({ target: "src/a.ts" }) })).toBe(true);
+		expect(Value.Check(entryAccepted, { id: "B1", version: 3, ...link({ resource }) })).toBe(true);
+		expect(Value.Check(entryAccepted, { id: "B1", bogus: 1 })).toBe(false);
+		const call = (entry: object) => ({ op: "edit", items: [entry] });
+		expect(Value.Check(plan, call({ id: "B1", priority: "p1" }))).toBe(true);
+		// The declared forms of a link pass the declaration; the older ones only the looser validation.
+		expect(Value.Check(plan, call({ id: "B1", ...link({ target: "src/a.ts" }) }))).toBe(true);
+		expect(Value.Check(plan, call({ id: "B1", ...link({ resource }) }))).toBe(true);
+		expect(Value.Check(plan, call({ id: "B1", ...link({ target: { resource: "files", path: "a" } }) }))).toBe(false);
+		expect(Value.Check(plan, call({ id: "B1", ...link({ target: null, resource }) }))).toBe(false);
+		// A call is validated loosely and each entry on its own, so one bad entry is refused on its row.
+		expect(Value.Check(planValidation, call({ id: "B1", bogus: 1 }))).toBe(true);
 	});
 
 	describe("linkInput", () => {

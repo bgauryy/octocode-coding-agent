@@ -36,6 +36,8 @@ function host(server: McpServerEntry, options: Parameters<typeof mcpHost>[0] = {
 			config: { ...launched.config, command: process.execPath, args: [echo] },
 		}),
 		presentation: "compact",
+		// Roles defer from a direct baseline; the default (`recent`) would defer every unused tool.
+		exposure: "direct",
 		...options,
 	});
 	h.api.getActiveTools = () =>

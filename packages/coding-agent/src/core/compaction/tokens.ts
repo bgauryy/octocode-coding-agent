@@ -84,6 +84,39 @@ export function estimateTokens(message: AgentMessage): number {
 	return 0;
 }
 
+type DeclaredTool = {
+	name: string;
+	description?: string;
+	parameters?: unknown;
+	constrainedSampling?: Tool["constrainedSampling"];
+};
+const serializedTools = new WeakMap<object, { source: DeclaredTool; text: string }>();
+
+/**
+ * A tool's declaration as text, kept per tool object while its four declared fields are the same objects: this runs
+ * for every declared and every current tool twice before each request, and the schemas are tens of kilobytes.
+ */
+function serializedTool(tool: DeclaredTool): string {
+	const known = serializedTools.get(tool);
+	if (
+		known &&
+		known.source.name === tool.name &&
+		known.source.description === tool.description &&
+		known.source.parameters === tool.parameters &&
+		known.source.constrainedSampling === tool.constrainedSampling
+	)
+		return known.text;
+	const source = {
+		name: tool.name,
+		description: tool.description,
+		parameters: tool.parameters,
+		constrainedSampling: tool.constrainedSampling,
+	};
+	const text = JSON.stringify(source);
+	serializedTools.set(tool, { source, text });
+	return text;
+}
+
 /**
  * Tokens of new or changed declarations of `tools` that the transcript's system messages do not declare yet. The loop declares a
  * loadout change in the request that carries it, after the pre-request estimate, and a provider's usage counts only the
@@ -99,13 +132,7 @@ export function estimateUndeclaredToolTokens(
 	}>,
 	hidden: ReadonlySet<string> = new Set(),
 ): number {
-	const serialize = (tool: (typeof tools)[number]): string =>
-		JSON.stringify({
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters,
-			constrainedSampling: tool.constrainedSampling,
-		});
+	const serialize = serializedTool;
 	const declared = new Map(getCurrentTools(messages).map((tool) => [tool.name, serialize(tool)]));
 	let chars = 0;
 	for (const tool of tools) {

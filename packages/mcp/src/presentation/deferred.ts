@@ -5,7 +5,10 @@ import type { McpDeferral } from "../deferral.ts";
 import { firstSentence } from "./declaration.ts";
 import { jsonContract } from "./json-block.ts";
 
-/** A thin declaration's and an index line's trigger: the preset's, else the first sentence of its rewritten description. */
+/**
+ * A thin declaration's and an index line's trigger from the overrides the user stored for the server: the trigger, else
+ * the first sentence of the stored description. Undefined without stored overrides: the server's own text applies.
+ */
 export function authoredTrigger(overrides: DescriptionOverrides | undefined, tool: string): string | undefined {
 	const trigger = overrides?.triggers?.[tool]?.trim();
 	if (trigger) return trigger;
@@ -15,7 +18,7 @@ export function authoredTrigger(overrides: DescriptionOverrides | undefined, too
 
 /**
  * The head of a block with no tool: the generated file up to its `declare namespace` line (the call-name note and the
- * instructions, with the preset's wording), or in plain form the header and the instructions.
+ * instructions, with the stored wording), or in plain form the header and the instructions.
  */
 export function instructionsHead(
 	generated: { callName: string; text: string },

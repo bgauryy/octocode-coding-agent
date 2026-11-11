@@ -15,6 +15,22 @@ Left beats right: a run flag beats the project, the project beats global, global
 
 `externalEditor` is shared by Ctrl+G prompt editing, file-reference activation and optional editor diffs. When unset, `VISUAL` wins over `EDITOR`, followed by Notepad on Windows or Nano elsewhere. Configure the editor in the environment running Octocode, including SSH or WSL; no terminal brand is required. See [editor workflows](tui.md#editor-and-vs-code-workflows).
 
+## Headless and external-agent runs
+
+Text, JSON and RPC runs use the same configuration precedence as terminal sessions. Start the worker in the target project so it finds that project's settings and instructions. Headless startup refuses an untrusted folder; `--trust` explicitly records trust, including permission to load project hooks and MCP configuration.
+
+| Automation choice             | Configure it with                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Model                         | `--model <provider/model-id>`; pick an available model whose plan permits unattended use                                                  |
+| Credentials                   | Provider environment variables or preconfigured global sign-in; never committed workspace secrets                                         |
+| Permission policy             | `--permission-mode workspace` for routine work with asks refused when nobody can answer; `full` is the broader default, not a sandbox     |
+| Per-run settings              | `--set <key>=<value>`, `--enable <id>`, `--disable <id>`; these do not save settings                                                      |
+| Tool restrictions             | `--tools`, `--exclude-tools`, `--no-mcp`; check subagent inheritance in [tool selection](native-features.md#tool-selection-and-migration) |
+| Conversation storage          | `--no-session` for an in-memory conversation, or a distinct `--session-id` for recoverable work; neither isolates tool side effects       |
+| Separate worker configuration | `OCTOCODE_HOME` and, when needed, `OCTOCODE_CODING_AGENT_DIR`; provision credentials and trust for that environment too                   |
+
+Do not change global defaults for every delegated task. Prefer run flags, and keep caller deadlines and output limits in the launching program. The [external-agent guide](external-agents.md) has working invocation patterns and RPC lifecycle requirements; [providers](providers.md) covers authentication.
+
 ## Agent directory
 
 Global configuration and runtime state live in `~/.octocode/octocodecode/` ("global" below). Project configuration lives in `.octocode/` of the workspace. MCP definitions are the exception: `~/.octocode/mcp.json` and `.octocode/mcp.json`.
@@ -115,10 +131,46 @@ Switch one with `/configuration enable|disable harness:<id> [--local]` (writes `
 - A project key reaches only that harness's project items, so a committed file cannot enable your global Claude Code content.
 - MCP servers connect or disconnect at once, also in running subagents; skills, hooks and prompts apply after `/reload`.
 - A plugin listed in `plugins` is your explicit choice and loads whatever its harness switch says.
-- `harness:claude:memory` (off, global only, trusted folders only) adds Claude Code's auto memory for this repository (`~/.claude/projects/<repository>/memory/MEMORY.md`, first 200 lines or 25 KB) as notes; `AGENTS.md` and Octocode memories win; the file is never written.
+- `harness:claude:memory` (off, global only, trusted folders only) adds Claude Code's auto memory for this repository (`~/.claude/projects/<repository>/memory/MEMORY.md`, first 200 lines or 25 KB; when the file is longer, the note says so and names the file) as notes; `AGENTS.md` and Octocode memories win; the file is never written.
 - Project instructions come only from `AGENTS.override.md` and `AGENTS.md`; `CLAUDE.md` is not read.
 
 The startup screen and read-only `/harness config` show each kind with its count and sources (`octocode global`, `pi project`, `plugin <name>`, `builtin`, `command line`, `settings path`), shadowed copies with their winner, project items in an untrusted folder as "folder not trusted", and Pi code that is not run as "Not loaded". `ctrl+o` expands paths. The view refreshes on `/reload` or a new session; items of a switched-off harness are neither counted nor warned about.
+
+### Tool exposure
+
+A session declares each tool to the model in one of three states. The state is fixed when the session starts, so the cached prompt does not change while it runs.
+
+| State      | The model gets                                                                                             |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `direct`   | The tool's full description and parameter schema                                                           |
+| `deferred` | The description and top-level field names; the tool stays callable, and a rejected call returns the schema |
+| `hidden`   | Nothing: the tool cannot be called (MCP tools only)                                                        |
+
+What decides the state, first match wins:
+
+| Tools                                     | Decided by                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| An MCP tool                               | Its `toolExposure` entry in `mcp.json` (a pin), then its server's `exposure`, then the `mcpExposure` setting |
+| `web`, `archive`, `models`, `backlogPlan` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
+| Every other native tool                   | Always `direct`                                                                                              |
+
+`mcpExposure` is `"recent"` by default: a tool without a pin is `direct` while this working directory called it in the last 24 hours and `deferred` otherwise, so a tool unused for a day is deferred again. A pin beats that rule. `"direct"` declares every tool without a pin in full, as earlier versions did.
+
+| `mcpExposure`    | A tool without a pin is                                                              |
+| ---------------- | ------------------------------------------------------------------------------------ |
+| `"recent"`       | `direct` if this working directory called it in the last 24 hours, else `deferred`   |
+| `"direct"`       | `direct`                                                                             |
+| `"deferred"`     | `deferred`, and an MCP server's block lists only each tool's name and trigger        |
+| `"auto:<bytes>"` | MCP servers `direct` in name order while their text fits the budget, then `deferred` |
+
+```json
+{
+	"mcpExposure": "direct",
+	"nativeToolExposure": { "web": "direct", "models": "deferred" }
+}
+```
+
+See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/mcp exposure <server> <direct|deferred|hidden>` sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
 ## Trust
 
@@ -171,7 +223,7 @@ For providers only, the Octocode Pi extension's folders come first: `models.json
 | Credentials             | A provider with no Octocode credential and no `apiKey` in Octocode's `models.json` uses Pi's `auth.json` entry, read only. Secret-command keys, entries Octocode does not recognize and account sign-ins Octocode cannot use (Pi's Claude Pro/Max) are skipped; an unreadable file or entry is a startup warning naming the file. Login, logout and refresh write Octocode's file only. `/providers pi` copies a credential after confirmation ([providers](providers.md#use-pi-configuration)). Sessions, trust decisions, device identity and telemetry consent are never imported |
 | Skills, prompts, themes | Pi directories are read like Octocode's, under the `pi` harness switch; missing Pi packages are not installed                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Instruction files       | Pi's global `AGENTS.md` loads only when the Octocode directory has none; `SYSTEM.md` and `APPEND_SYSTEM.md` apply when no Octocode file does; project `AGENTS.md` is shared. In a trusted folder `.pi/skills`, `.pi/prompts`, `.pi/themes`, `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md` are read; nothing in `.pi/` is read in an untrusted folder                                                                                                                                                                                                                                       |
-| Pi code                 | Never runs. TypeScript in Pi's `extensions/` and `hooks/` folders and Pi extension packages are listed as "Pi extension, not loaded" with a hint to use `hooks.json` or a plugin. A package's `package.json` may declare `octocode` or legacy `pi` resources; `octocode` wins                                                                                                                                                                                                                                                                                                        |
+| Pi code                 | Never runs. TypeScript in Pi's `extensions/` and `hooks/` folders and Pi extension packages are listed as "Pi extension, not loaded" with a hint to use `hooks.json` or a plugin. A package's `package.json` declares its resources under `octocode`; Pi's `pi` key is not read                                                                                                                                                                                                                                                                                                      |
 | Switch                  | Pi skills, prompts, themes and MCP follow `harness:pi`; models, settings and keybindings load regardless                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Same name in both products:
@@ -241,7 +293,7 @@ flowchart LR
 
 ## Runtime storage
 
-Session writers keep JSONL transcripts and mirror the header and ordered entries to the agent database, which also holds workspace identities, session metadata, backlogs, history, memories, team coordination and command receipts. Settings and credentials stay in files. One connection is shared per database path. The separate agents-communication database (`~/.octocode/agents-communication/`) is read-only to Octocode.
+Session writers keep JSONL transcripts and mirror the header and ordered entries to the agent database, which also holds workspace identities, session metadata, backlogs, history, memories, team coordination and command receipts. Settings and credentials stay in files. One connection is shared per database path; the session mirror is written by one background database thread per path, after the transcript, so a busy database never pauses input. The separate agents-communication database (`~/.octocode/agents-communication/`) is read-only to Octocode.
 
 Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a subdirectory uses the nearest declaration, a new Git worktree gets its own, names are display labels that may repeat, a same-filesystem rename keeps the id, and copying a marker cannot claim another database's records.
 
@@ -254,6 +306,7 @@ Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a
 | `.octocode/code/agents.txt`, `backlog.md`, `backlog.html` | Generated activity and exported backlog snapshots                            |
 | `<octocode home>/child-credentials/`, `agent/job-owners/` | Child credentials, background process ownership; job output stays in scratch |
 | `<octocode home>/archive/`                                | Gzip JSONL history archives (below)                                          |
+| `<octocode home>/web/`                                    | Web daemon: its record, and one owner-only attach record per running session ([web workspace](web-workspace.md#web-daemon)) |
 
 Sessions written before the move live in `<octocode home>/sessions/--<working directory>--/`; `/resume`, `--continue` and `--session <id>` still list those whose header names the current directory (`/resume all` lists every such folder), and opening one keeps writing beside it. `octocode --fork <full-session-id>` recreates a session in the current workspace from stored entries when its file is gone. Team coordination and project-scoped memories span linked worktrees; backlogs and workspace memories belong to one workspace. The catalog keeps entries after a checkout is removed.
 
@@ -317,7 +370,7 @@ Automatic compaction is always on; `/compact` runs the same flow by hand. No set
 | Failures           | Automatic compaction stops after three in a row; a successful manual one resets the count; cancelling is not a failure                                                                                                                                    |
 | Summary cache      | Reuses the session transcript and cache preferences when the summary model is the session's and it is not an overflow. A cold cache, a physical-model switch since the last reply or an instruction or tool update sends it with `cacheRetention: "none"` |
 | Standalone summary | After a downshift, overflow or failed cache-sharing: no cache markers or routing id (OpenCode keeps its required `x-opencode-session` header)                                                                                                             |
-| Old tool results   | Cleared only after the known cache lifetime expires, only when enough space is recovered, and only after saving a readable copy                                                                                                                           |
+| Old tool results   | Cleared when the cache is rewritten anyway or when re-sending them costs more than one cache rewrite, only when enough space is recovered, and only after saving a readable copy ([rule](native-features.md#clearing-old-tool-results))                   |
 | Transcript         | Every original entry stays on disk; compaction also saves searchable Markdown archives for the `archive` tool                                                                                                                                             |
 
 ## Prompt cache warming

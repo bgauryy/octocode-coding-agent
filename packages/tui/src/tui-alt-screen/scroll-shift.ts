@@ -11,21 +11,35 @@ export interface ScrollShift {
 
 const MIN_SAVED_ROWS = 3;
 
+/** One screen's last planned rows and their trimmed forms: most rows of its next frame's two screens are these same rows. */
+export class TrimmedRowsMemo {
+	rows: readonly string[] = [];
+	trimmed: readonly string[] = [];
+}
+
+/** `trimTrailingBlanks` of each row, reused for a row equal to the one at the same index in `knownRows`. */
+function trimRows(rows: readonly string[], knownRows: readonly string[], knownTrimmed: readonly string[]): string[] {
+	return rows.map((row, index) => (row === knownRows[index] ? knownTrimmed[index] : trimTrailingBlanks(row)));
+}
+
 /**
  * Find the row shift that lets the terminal scroll a region of the previous screen into place, so only
  * the rows the shift does not explain are rewritten. Rows compare by what they paint after an erase.
  * Returns undefined when it would not save rows or when images are involved (their placements do not
- * scroll with text).
+ * scroll with text). `memo` only saves trimming work; each screen passes its own.
  */
 export function planScrollShift(
 	screenRows: readonly string[],
 	previousRows: readonly string[],
+	memo = new TrimmedRowsMemo(),
 ): ScrollShift | undefined {
 	const height = screenRows.length;
 	if (height < 6 || previousRows.length !== height) return undefined;
 	if (screenRows.some(isImageLine) || previousRows.some(isImageLine)) return undefined;
-	const screen = screenRows.map(trimTrailingBlanks);
-	const previous = previousRows.map(trimTrailingBlanks);
+	const previous = trimRows(previousRows, memo.rows, memo.trimmed);
+	const screen = trimRows(screenRows, previousRows, previous);
+	memo.rows = screenRows.slice();
+	memo.trimmed = screen;
 	let baseline = 0;
 	for (let row = 0; row < height; row++) if (screen[row] !== previous[row]) baseline++;
 	if (baseline < MIN_SAVED_ROWS + 1) return undefined;

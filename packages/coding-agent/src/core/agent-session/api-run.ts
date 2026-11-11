@@ -3,6 +3,7 @@ import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { BashResult } from "../bash-executor.ts";
+import type { UserBashOptions } from "./user-bash.ts";
 import type { CompactionResult } from "../compaction/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { BashOperations } from "../tools/bash.ts";
@@ -210,6 +211,13 @@ export interface AgentSessionRecoveryApi {
 			operations?: BashOperations;
 		},
 	): Promise<BashResult>;
+
+	/**
+	 * Run a user `!`/`!!` command as every mode does: `user_bash` handlers may run it or supply its operations, else it
+	 * runs here. Fails closed: a failing handler is reported as an extension error, nothing runs, and the promise rejects
+	 * with a `UserBashHookError`. `onStart` fires just before the command runs here, not for a handler's result.
+	 */
+	runUserBash(command: string, options?: UserBashOptions): Promise<BashResult>;
 
 	/**
 	 * Record a bash execution result in session history.

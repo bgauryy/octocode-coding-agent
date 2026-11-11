@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { listHistory } from "../history/list.ts";
 import path from "node:path";
 import { Type } from "typebox";
 import { archiveFolder, ownArchives } from "../history/archive.ts";
@@ -8,12 +9,10 @@ import {
 	type HistorySearch,
 	historyFiles,
 	historyScope,
-	listHistory,
 	readableHistory,
 	readHistory,
 	searchHistory,
 } from "../history/transcripts.ts";
-import { isScanCursor } from "../history/search.ts";
 import { findErrors, renderErrors, sinceTime } from "../history/errors.ts";
 import { rankHistory } from "../history/rank.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
@@ -31,7 +30,8 @@ import { contentText, textResult } from "../shared/util.ts";
  * is used can be measured; the former `goal` field of recorded calls is ignored. Without `query` it lists the sessions in scope; with one it
  * searches them; `file` narrows a search, or alone reads a file from `line`. With `errors` it finds and groups the tool
  * errors of those sessions' full transcripts by a script (`history/errors.ts`), not by reading them, optionally
- * `since` a time. Every result says how it continues.
+ * `since` a time. A result with more pages gives its page count in `details`; the `archive` tool turns it into the one
+ * cursor every result continues with (`cursor.ts`).
  */
 
 interface ArchiveParams {
@@ -40,13 +40,16 @@ interface ArchiveParams {
 	keywords?: string;
 	file?: string;
 	line?: number;
+	/** The page to show: the archive cursor's (`cursor.ts`), never a field of the call. */
 	page?: number;
 	errors?: boolean;
 	since?: string;
 	/** Search: one session's history (`current` is this session's). */
 	sessionId?: string;
-	/** A search's continuation (`isScanCursor`); other cursors continue record listings. */
-	cursor?: string;
+	/** Sessions per page of the session index (the archive tool's `limit`). */
+	limit?: number;
+	/** The scan position a regex search starts from (the archive cursor's `scan`). */
+	scan?: string;
 }
 
 interface ArchiveDetails {
@@ -56,16 +59,12 @@ interface ArchiveDetails {
 	pages: number;
 	hits?: number;
 	files?: number;
-	/** A search stopped at its budget: the cursor that continues it. */
-	nextCursor?: string;
+	/** A regex search: the scan position it started from, and the one that continues it when it stopped at its budget. */
+	scan?: { from?: string; next?: string };
 }
 
-const pageNote = (page: number, pages: number, again: string): string =>
-	page < pages
-		? `Page ${page} of ${pages}; next: page ${page + 1} with the same ${again}.`
-		: pages > 1
-			? `Page ${page} of ${pages}, the last.`
-			: "";
+/** Where a paged result is, said in its text; how it continues is the archive cursor's line (`continueLine`). */
+const pageLine = (page: number, pages: number): string => (pages > 1 ? `Page ${page} of ${pages}.` : "");
 
 export function pattern(query: string): RegExp {
 	try {
@@ -105,9 +104,9 @@ function scanNote(found: HistorySearch, total: number, sessions: number, source:
 		...(found.unreadable ? [plural(found.unreadable, "file") + " unreadable"] : []),
 		...(found.skippedLines ? [plural(found.skippedLines, "line") + " over 16 MiB not tested"] : []),
 	];
-	const read = `Read ${found.scanned} of ${plural(total, "file")} (${plural(sessions, "session")})${skipped.length ? `; ${skipped.join(", ")}` : ""}.`;
+	const read = `Read ${found.scanned} of ${plural(total, "file")} (${plural(sessions, "session")}) for /${source}/i${skipped.length ? `; ${skipped.join(", ")}` : ""}.`;
 	return found.cursor
-		? `${read} The search stopped at its match or time budget: for more, repeat it with cursor ${found.cursor} (and the same query /${source}/i and file).`
+		? `${read} The search stopped at its match or time budget; the rest is not read yet.`
 		: `${read} Every file was read.`;
 }
 
@@ -131,19 +130,20 @@ export function createHistoryTool() {
 			file: Type.Optional(
 				Type.String({ description: "Listed file or folder: search narrows to it; get reads it from line" }),
 			),
-			line: Type.Optional(Type.Integer({ description: "Read from this line; profile: request number" })),
-			page: Type.Optional(Type.Integer({ description: "Continue a result" })),
+			line: Type.Optional(Type.Integer({ description: "Read from this line" })),
 			errors: Type.Optional(
 				Type.Boolean({
 					description: "true: tool errors in full transcripts, grouped, with rates by tool, model, day",
 				}),
 			),
 			since: Type.Optional(Type.String({ description: "From this ISO time: errors, or files changed since" })),
-			sessionId: Type.Optional(Type.String({ description: "Search one session's history; current: this session" })),
-			cursor: Type.Optional(Type.String({ description: "Continue a stopped search with its cursor" })),
+			sessionId: Type.Optional(
+				Type.String({ description: "One session's history and its agents' (current: this session)" }),
+			),
 		}),
 		async execute(_toolCallId, input, signal, _onUpdate, ctx) {
-			const params = input;
+			// `page` and `scan` come from the archive cursor (`tool.ts`), not from the declared fields.
+			const params = input as typeof input & Pick<ArchiveParams, "page" | "scan" | "limit">;
 			signal?.throwIfAborted();
 			const reason = params.reason?.trim();
 			if (!reason) throw new Error("archive needs reason (why history is needed, not the code).");
@@ -182,19 +182,14 @@ export function createHistoryTool() {
 				const filtered = query ? ` matching /${query.source}/i` : "";
 				const seconds = ((Date.now() - started) / 1000).toFixed(1);
 				const head = `Tool errors${filtered}, grouped by tool and signature, most frequent first; scanned in ${seconds}s. Compare rates before and after a fix with since; read a sample's session with list, query and file.`;
-				return textResult(
-					[head, shown.text, pageNote(shown.page, shown.pages, "errors, since, query and file")]
-						.filter(Boolean)
-						.join("\n\n"),
-					{
-						...why,
-						mode: "errors",
-						page: shown.page,
-						pages: shown.pages,
-						hits: found.errors,
-						files: found.transcripts,
-					} satisfies ArchiveDetails,
-				);
+				return textResult([head, shown.text, pageLine(shown.page, shown.pages)].filter(Boolean).join("\n\n"), {
+					...why,
+					mode: "errors",
+					page: shown.page,
+					pages: shown.pages,
+					hits: found.errors,
+					files: found.transcripts,
+				} satisfies ArchiveDetails);
 			}
 			if (!query && !keywords && target === undefined) {
 				if (scope.length === 0)
@@ -202,10 +197,9 @@ export function createHistoryTool() {
 						"No history yet: this session has not compacted, and no other session of this repository has a record.",
 						{ ...why, mode: "list", page: 1, pages: 0 } satisfies ArchiveDetails,
 					);
-				const listed = listHistory(scope, page);
-				const head = `${plural(scope.length, "session")} with history, nearest first. Search them with keywords (ranked) or query (regex); read a file with file (and line).`;
+				const listed = listHistory(scope, page, params.sessionId?.trim(), params.limit);
 				return textResult(
-					[head, listed.text, pageNote(listed.page, listed.pages, "reason")].filter(Boolean).join("\n\n"),
+					[listed.head, listed.text, pageLine(listed.page, listed.pages)].filter(Boolean).join("\n\n"),
 					{ ...why, mode: "list", page: listed.page, pages: listed.pages } satisfies ArchiveDetails,
 				);
 			}
@@ -215,7 +209,7 @@ export function createHistoryTool() {
 					throw new Error(`${params.file} cannot be read (missing, or a folder: list it, or search it with query).`);
 				const more =
 					read.page < read.pages
-						? `Page ${read.page} of ${read.pages} of these lines; next: page ${read.page + 1} with the same file and line.`
+						? `Page ${read.page} of ${read.pages} of lines ${read.first}–${read.last} of ${read.total}.`
 						: read.last < read.total
 							? `Lines ${read.first}–${read.last} of ${read.total}; next: line ${read.last + 1}.`
 							: `Lines ${read.first}–${read.last} of ${read.total}, the end of the file.`;
@@ -249,9 +243,7 @@ export function createHistoryTool() {
 				const text =
 					ranked.hits === 0
 						? `${ranked.text}\n\nNo passage matches${query ? ` with /${query.source}/i` : ""}. Try synonyms, other spellings, identifiers or file names, fewer words, or list the sessions.`
-						: [ranked.text, pageNote(ranked.page, ranked.pages, "keywords, query and file")]
-								.filter(Boolean)
-								.join("\n\n");
+						: [ranked.text, pageLine(ranked.page, ranked.pages)].filter(Boolean).join("\n\n");
 				return textResult(text, {
 					...why,
 					mode: "rank",
@@ -262,13 +254,7 @@ export function createHistoryTool() {
 				} satisfies ArchiveDetails);
 			}
 			if (!query) throw new Error("archive searches with query or keywords.");
-			const found = await searchHistory(
-				files,
-				query,
-				page,
-				signal,
-				isScanCursor(params.cursor) ? params.cursor : undefined,
-			);
+			const found = await searchHistory(files, query, page, signal, params.scan);
 			const sessions = new Set(files.map((file) => file.session.id)).size;
 			const coverage = scanNote(found, files.length, sessions, query.source);
 			const details = {
@@ -278,7 +264,7 @@ export function createHistoryTool() {
 				pages: found.pages,
 				hits: found.hits,
 				files: found.files,
-				...(found.cursor ? { nextCursor: found.cursor } : {}),
+				scan: { ...(params.scan ? { from: params.scan } : {}), ...(found.cursor ? { next: found.cursor } : {}) },
 			} satisfies ArchiveDetails;
 			if (found.hits === 0)
 				return textResult(
@@ -286,10 +272,7 @@ export function createHistoryTool() {
 					{ ...details, page: 1, pages: 0 },
 				);
 			const head = `${plural(found.hits, "matching line")} in ${plural(found.files, "file")}, this session first, then the most recently active; > marks a hit. Read around one with file and line. ${coverage}`;
-			return textResult(
-				[head, found.text, pageNote(found.page, found.pages, "query, cursor and file")].filter(Boolean).join("\n\n"),
-				details,
-			);
+			return textResult([head, found.text, pageLine(found.page, found.pages)].filter(Boolean).join("\n\n"), details);
 		},
 		renderCall(args, theme, context) {
 			const params = args as Partial<ArchiveParams>;

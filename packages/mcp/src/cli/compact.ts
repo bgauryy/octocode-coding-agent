@@ -1,7 +1,7 @@
 /**
  * `octocode mcp compact`: the model-facing TypeScript file of each MCP server (see `../compact`) outside a session.
  * Agents and the `octocode-context-optimization` skill use it to show a server's file, measure description overrides against the
- * source catalog, store them, print them in a preset's per-tool form, and see which stored files are stale.
+ * source catalog, store them, and see which stored files are stale.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -27,7 +27,6 @@ import {
 } from "../compact/index.ts";
 import type { LoadedMcpConfig, McpServerEntry } from "../config.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
-import { findMcpPreset } from "../preset.ts";
 import { isEnabled } from "../server.ts";
 import { readCatalogFile, readLiveCatalog } from "./compact-catalog.ts";
 import { sizeReport } from "./compact-report.ts";
@@ -38,7 +37,6 @@ export const compactUsage =
   ${hostIdentity().appName} mcp compact catalog <server> [--catalog <file>] [--out <file>]
   ${hostIdentity().appName} mcp compact check <server> --overrides <file> [--catalog <file>]
   ${hostIdentity().appName} mcp compact apply <server> --overrides <file> [--optimized-by <model>] [--catalog <file>]
-  ${hostIdentity().appName} mcp compact preset <server> --overrides <file> [--catalog <file>]
   ${hostIdentity().appName} mcp compact list [--offline] [--json]`;
 
 interface CompactContext {
@@ -119,9 +117,8 @@ async function show(context: CompactContext, args: string[]): Promise<number> {
 		return 0;
 	}
 	// What the next session renders: the stored file for this catalog, else a render with the overrides that still
-	// describe it (the stored ones over the preset's).
+	// describe it.
 	const file = resolveServerFile(dir, server, input, {
-		preset: findMcpPreset(context.options.presets, server)?.compactOverrides?.(input),
 		refresh: parsed.values.has("refresh"),
 		onWriteError: (error) => context.error(`Could not store the file: ${errorMessage(error)}`),
 	});
@@ -214,25 +211,12 @@ async function apply(context: CompactContext, args: string[]): Promise<number> {
 	return 0;
 }
 
-/** The overrides in the preset form (`McpServerPreset.compactOverrides`), each tool's entries with its hash. */
-async function preset(context: CompactContext, args: string[]): Promise<number> {
-	const measured = await measure(context, args, {});
-	if (!measured) return 1;
-	const { input, overrides, result } = measured;
-	if (!result.ok) {
-		context.error(`The fidelity check failed:\n- ${result.problems.join("\n- ")}`);
-		return 1;
-	}
-	context.log(JSON.stringify(toPresetOverrides(overrides, input), null, "\t"));
-	return 0;
-}
-
 /**
  * Tools whose overrides no longer describe the live tool: the file's overrides that the live catalog would not get, and
  * the stored ones that are stale (a session already renders those from the server's text).
  */
-function staleTools(meta: GeneratedMeta, live: CompactServerInput, preset: DescriptionOverrides | undefined): string[] {
-	const current = describedOverrides(meta, live, preset);
+function staleTools(meta: GeneratedMeta, live: CompactServerInput): string[] {
+	const current = describedOverrides(meta, live);
 	const differing = (["tools", "triggers", "fields"] as const).flatMap((kind) =>
 		Object.entries(meta.overrides?.[kind] ?? {})
 			.filter(([tool, entry]) => !isDeepStrictEqual(entry, current?.[kind]?.[tool]))
@@ -281,8 +265,7 @@ async function list(context: CompactContext, args: string[]): Promise<number> {
 				row.stale = stored
 					? stored.meta.hash !== live || stored.meta.generatorVersion !== COMPACT_GENERATOR_VERSION
 					: undefined;
-				const preset = findMcpPreset(context.options.presets, entry.name)?.compactOverrides?.(input);
-				const stale = stored ? staleTools(stored.meta, input, preset) : [];
+				const stale = stored ? staleTools(stored.meta, input) : [];
 				if (stale.length) row.staleTools = stale;
 				if (!stored) row.note = `no file; live catalog ${live.slice(0, 12)}`;
 			} catch (error) {
@@ -340,8 +323,6 @@ export async function compact(
 			return check(context, rest);
 		case "apply":
 			return apply(context, rest);
-		case "preset":
-			return preset(context, rest);
 		case "list":
 			return list(context, rest);
 		default:

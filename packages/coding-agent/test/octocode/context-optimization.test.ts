@@ -310,6 +310,44 @@ describe("context optimization", () => {
 			).toEqual(["gone.json", "live.json"]);
 		});
 
+		it("check warns when a configured server's instructions or the context files pass 1% of the window, and cuts nothing", async () => {
+			writeSkillsStore(
+				userDir,
+				syncSkills(readSkillsStore(userDir), [{ name: "a", description: "A long source", file: "/a" }]).store,
+			);
+			const file = path.join(root, "overrides.json");
+			fs.writeFileSync(file, JSON.stringify({ skills: { a: "A" } }));
+			const meta = { hash: "h", generatorVersion: 1, generatedAt: "2026-01-01T00:00:00.000Z" };
+			const dir = generatedDir(agentDir);
+			const generated = (instructions: string) =>
+				`/** ${instructions} */\ndeclare namespace s {\n/** ${"tool docs ".repeat(2_000)} */\nfunction t(): void;\n}\n`;
+			// Only the instructions count, not the typed functions after them; a record no server uses counts for nothing.
+			writeGenerated(dir, "long", generated("i".repeat(8_001)), meta);
+			writeGenerated(dir, "short", generated("i".repeat(8_000)), meta);
+			writeGenerated(dir, "gone", generated("i".repeat(9_000)), meta);
+			fs.writeFileSync(
+				path.join(agentDir, "mcp.json"),
+				JSON.stringify({ mcpServers: { long: { command: "x" }, short: { command: "y" } } }),
+			);
+			const quiet = await run("check", "--overrides", file);
+			expect(quiet.code).toBe(0);
+			expect(quiet.out).toContain(
+				"Warning: MCP server long instructions over budget: 8001 chars > 8000 budget (1% of the context window). Nothing is cut.",
+			);
+			expect(quiet.out).not.toMatch(/MCP server (short|gone)/);
+			expect(quiet.out).not.toContain("Context files over budget");
+			expect(quiet.out).toContain("0 problems.");
+
+			const agents = "rule\n".repeat(2_000);
+			fs.writeFileSync(path.join(project, "AGENTS.md"), agents);
+			const loud = await run("check", "--overrides", file);
+			expect(loud.code).toBe(0);
+			expect(loud.out).toContain(
+				`Warning: Context files over budget: ${agents.length} chars > 8000 budget (1% of the context window). Nothing is cut.`,
+			);
+			expect(fs.readFileSync(path.join(project, "AGENTS.md"), "utf8")).toBe(agents);
+		});
+
 		it("explains an empty store and an unknown command", async () => {
 			expect((await run("list")).out).toContain("No skills recorded yet");
 			expect(await run("nope")).toMatchObject({ code: 1 });

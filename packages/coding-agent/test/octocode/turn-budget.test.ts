@@ -11,7 +11,7 @@ import {
 	TURN_MAX_CHARS,
 } from "../../src/utils/output-budget.ts";
 import { capResultText } from "../../src/octocode/shared/spill.ts";
-import { budgetToolResult, registerTurnBudget, TurnBudget } from "../../src/octocode/shared/turn-budget.ts";
+import { budgetToolResult, registerTurnBudget, TurnBudget } from "../../src/octocode/compaction/turn-budget.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

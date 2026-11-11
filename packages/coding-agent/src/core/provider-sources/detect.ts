@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { DetectedTool, DetectedToolAction, ProviderSourceEnvironment, ProviderSourceFs } from "./types.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 
 export const nodeProviderSourceFs: ProviderSourceFs = {
 	exists: (path) => existsSync(path),
@@ -107,11 +108,6 @@ const TOOLS: readonly ToolDefinition[] = [
 	},
 ];
 
-/** `~`-relative form for display. */
-export function displayPath(path: string, home: string): string {
-	return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
-}
-
 /**
  * Local tools found by their documented install or config paths. Only existence is checked: no file is opened, and no
  * keychain or credential store is touched.
@@ -131,7 +127,7 @@ export function detectLocalTools(options: ProviderSourceEnvironment = {}): Detec
 		found.push({
 			id: tool.id,
 			label: tool.label,
-			foundAt: present.map((path) => displayPath(path, at.home)),
+			foundAt: present.map((path) => homeTilde(path, at.home)),
 			action: tool.action,
 		});
 	}

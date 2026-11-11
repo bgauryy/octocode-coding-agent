@@ -313,6 +313,41 @@ describe("checkpoints", () => {
 		expect(fs.readFileSync(file, "utf8")).toBe("original content");
 	});
 
+	it("rewrites a zeroed blob of the right length that an earlier process left unflushed", async () => {
+		const cwd = tmp();
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "original content");
+		const store = path.join(tmp(), "cp");
+		const digest = sha256("original content");
+		// A crash before the unflushed blob reached the disk: the right name and length, all zero bytes.
+		fs.mkdirSync(path.join(store, "blobs"), { recursive: true });
+		fs.writeFileSync(path.join(store, "blobs", digest), Buffer.alloc("original content".length));
+		const checkpoints = new Checkpoints();
+		checkpoints.open(store);
+		checkpoints.beginTurn();
+		await change(checkpoints, file, () => fs.writeFileSync(file, "agent"));
+		expect(fs.readFileSync(path.join(store, "blobs", digest), "utf8")).toBe("original content");
+		expect(await checkpoints.rewind([1])).toEqual({ restored: [file], partly: [], skipped: [] });
+		expect(fs.readFileSync(file, "utf8")).toBe("original content");
+	});
+
+	it("reuses a blob this process wrote without reading it again, and rewrites one collected meanwhile", async () => {
+		const cwd = tmp();
+		const file = path.join(cwd, "a.txt");
+		const store = path.join(tmp(), "cp");
+		const checkpoints = new Checkpoints();
+		checkpoints.open(store);
+		fs.writeFileSync(file, "v0");
+		checkpoints.beginTurn();
+		await change(checkpoints, file, () => fs.writeFileSync(file, "v1"));
+		// Rewinding drops the entry and collects its blob; the same content captured again must be stored again.
+		expect(await checkpoints.rewind([1])).toEqual({ restored: [file], partly: [], skipped: [] });
+		expect(fs.readdirSync(path.join(store, "blobs"))).toEqual([]);
+		checkpoints.beginTurn();
+		await change(checkpoints, file, () => fs.writeFileSync(file, "v1"));
+		expect(fs.readFileSync(path.join(store, "blobs", sha256("v0")), "utf8")).toBe("v0");
+	});
+
 	it("reuses an existing blob of the right size without reading it, and skips a restore whose blob is corrupt", async () => {
 		const cwd = tmp();
 		const [a, b] = [path.join(cwd, "a.txt"), path.join(cwd, "b.txt")];
@@ -444,7 +479,7 @@ describe("checkpoints", () => {
 		expect(journalLines(to)).toHaveLength(3);
 	});
 
-	it("reads the session id from a Octocode session file header", async () => {
+	it("reads the session id from an Octocode session file header", async () => {
 		const dir = tmp();
 		fs.writeFileSync(path.join(dir, "s.jsonl"), `${JSON.stringify({ type: "session", id: "abc" })}\n{}\n`);
 		fs.writeFileSync(path.join(dir, "bad.jsonl"), "nope");
@@ -519,6 +554,35 @@ describe("/rewind and the fork offer", () => {
 	afterEach(() => {
 		if (home === undefined) delete process.env.OCTOCODE_HOME;
 		else process.env.OCTOCODE_HOME = home;
+	});
+
+	it("flushes the user's edited bytes but neither their directory nor the checkpoint blob", async () => {
+		process.env.OCTOCODE_HOME = tmp();
+		const cwd = tmp();
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one");
+		const { handlers, commands, ctx, edit } = host(cwd);
+		await handlers.get("session_start")!({}, ctx);
+		await handlers.get("agent_start")!({}, ctx);
+		const probe = await fs.promises.open(cwd, "r");
+		const proto = Object.getPrototypeOf(probe) as { sync: () => Promise<void> };
+		await probe.close();
+		const original = proto.sync;
+		const synced: Array<number | "dir"> = [];
+		const spy = vi.spyOn(proto, "sync").mockImplementation(async function (this: fs.promises.FileHandle) {
+			const stat = await this.stat();
+			synced.push(stat.isDirectory() ? "dir" : stat.size);
+			return original.call(this);
+		});
+		try {
+			await edit("one", "three!!");
+		} finally {
+			spy.mockRestore();
+		}
+		// The new 7 bytes of a.txt only: the 3-byte blob of "one" is content-addressed and digest-checked on restore.
+		expect(synced).toEqual([7]);
+		await commands.get("rewind")!.handler("", ctx as never);
+		expect(fs.readFileSync(file, "utf8")).toBe("one");
 	});
 
 	it("checkpoints file tool changes per user turn and restores them from /rewind or a fork", async () => {

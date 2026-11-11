@@ -127,10 +127,55 @@ function validate(snapshot: unknown): asserts snapshot is SkillResourceSnapshot 
 	}
 }
 
+/** Deep-freeze a captured snapshot: one object is shared by every reader of its loader generation. */
+function frozen<T>(value: T): T {
+	if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+		Object.freeze(value);
+		for (const child of Object.values(value)) frozen(child);
+	}
+	return value;
+}
+
+/** The whole catalog's snapshot per loaded skill list: a loader reload makes a new list (and so a new snapshot). */
+const whole = new WeakMap<
+	readonly Skill[],
+	{ explicit: LoadSkillsResult["explicitSkills"]; skills: number; identities: number; snapshot: SkillResourceSnapshot }
+>();
+
+/**
+ * The snapshot of `available`, or of the skills `names` selects. The whole catalog's (no `names`) is validated once
+ * per loaded skill list and then shared, frozen: the session asks for it before every model request. Whoever reads a
+ * skill's file checks that file's identity then (`adoptSkillResourceSnapshot` validates again; the `skill` tool checks
+ * the one file it reads).
+ */
 export function captureSkillResourceSnapshot(
 	available: LoadSkillsResult,
 	names?: readonly string[],
 	commands: readonly SlashCommandInfo[] = [],
+): SkillResourceSnapshot {
+	if (names) return captureSnapshot(available, names, commands);
+	const cached = whole.get(available.skills);
+	if (
+		cached &&
+		cached.explicit === available.explicitSkills &&
+		cached.skills === available.skills.length &&
+		cached.identities === (available.explicitSkills?.length ?? -1)
+	)
+		return cached.snapshot;
+	const snapshot = frozen(captureSnapshot(available, names, commands));
+	whole.set(available.skills, {
+		explicit: available.explicitSkills,
+		skills: available.skills.length,
+		identities: available.explicitSkills?.length ?? -1,
+		snapshot,
+	});
+	return snapshot;
+}
+
+function captureSnapshot(
+	available: LoadSkillsResult,
+	names: readonly string[] | undefined,
+	commands: readonly SlashCommandInfo[],
 ): SkillResourceSnapshot {
 	let loaded = available;
 	if (names?.length === 0) return { version: 1, resources: [], explicitSkills: [] };

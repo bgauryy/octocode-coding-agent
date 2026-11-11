@@ -86,7 +86,7 @@ async function fixture(
 						finish_reason: "tool_calls",
 					}
 				: {
-						delta: { role: "assistant", content: "CHILD_DONE" },
+						delta: { role: "assistant", content: "done: CHILD_DONE" },
 						finish_reason: "stop",
 					};
 		res.end(
@@ -233,7 +233,7 @@ async function fixture(
 		description: "Permission fixture",
 		prompt: "Run the requested safe command.",
 		tools: "bash",
-		...(options.hooksEnabled === false ? {} : { hooks: true as const }),
+		...(options.hooksEnabled === false ? {} : { hooks: "all" as const }),
 	};
 	const read = (file: string) =>
 		fs.existsSync(file)
@@ -257,7 +257,7 @@ async function fixture(
 		mcpRecords: () => read(mcpCapture),
 		async run() {
 			const args = buildAgentArgs(profile, "fixture-local/fixture", childSession, []);
-			return runSubagent("Run fixture command", args, cwd, profile, identity, undefined, () => undefined);
+			return runSubagent({ task: "Run fixture command", args, cwd, profile, identity, onProgress: () => undefined });
 		},
 		async close() {
 			server.closeAllConnections();

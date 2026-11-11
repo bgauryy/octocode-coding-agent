@@ -37,7 +37,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-// #9490: discover PowerShell outside PATH without assuming a drive or Windows directory name.
+// Discover PowerShell outside PATH without assuming a drive or Windows directory name.
 describe("getPowerShellConfig", () => {
 	it("prefers PowerShell 7 on PATH over known installation locations", () => {
 		const shell = "E:\\Tools\\pwsh.exe";

@@ -9,6 +9,9 @@ export interface BacklogToolDetails {
 	total?: number;
 }
 
+/** The operations that change one item; `update` is the name calls stored before the tool was split carry. */
+const CHANGES = ["claim", "note", "done", "close", "edit", "update"];
+
 /** The `⎿` line: `B12 → done`, `Added B3`, `3 items`. */
 export function backlogSummary(op: unknown, details: BacklogToolDetails, text: string): string {
 	const item = details.item;
@@ -19,15 +22,16 @@ export function backlogSummary(op: unknown, details: BacklogToolDetails, text: s
 				? `${details.shown} of ${plural(details.total, "item")}`
 				: plural(details.total, "item");
 	if (item && op === "add") return `Added ${item.ref} · ${item.state}`;
-	if (item && op === "update") return `${item.ref} → ${item.closed ? "closed" : item.state}`;
+	if (item && CHANGES.includes(op as string)) return `${item.ref} → ${item.closed ? "closed" : item.state}`;
 	if (item) return `${item.ref} · ${item.state} · ${item.title}`;
 	return text.split("\n", 1)[0] ?? "";
 }
 
 /**
  * What the model reads about `backlog`: the description says what it is, `op` owns the operations, the guidelines only
- * when to use it. The write rules (who may change what) live in `writes.ts`; this tool checks the shape of a call. Which
- * work is an item is stated here; the quick-work threshold for steps is in `steps`'s guidelines (`task-tool.ts`).
+ * when to use it. The write rules (who may change what) live in `writes.ts`; the tool checks the shape of a call. The
+ * text is the same for every role, so parent and child declare identical bytes; a role's limits are stated when it
+ * hits them.
  */
 export function backlogPrompt(subagent: boolean): {
 	promptSnippet: string;
@@ -35,21 +39,33 @@ export function backlogPrompt(subagent: boolean): {
 	ops: string;
 	promptGuidelines: string[];
 } {
-	const description =
-		// The same text for every role, so parent and child declare identical bytes; a role's limits are stated when it hits them.
-		"Repository work items by state: backlog proposed, todo accepted, ongoing claimed, done completed. " +
-		"An item another running session holds takes only notes. " +
-		"Claiming (ongoing) needs why and goal; done needs completion; close (obsolete, duplicate of, wont_do) needs a reason. Items are never deleted.";
-	const ops =
-		"list/get: read; follow Next for more. " +
-		(subagent
-			? "add: propose; update: ongoing, done, close or notes"
-			: "add: propose; update: edit, claim (ongoing), close or add notes");
 	return {
-		// The snippet says when to use the tool for every role; the description and `op` say how.
 		promptSnippet: renderInstruction("tools/backlog/snippet.md"),
-		description,
-		ops,
+		description:
+			"Work one repository item. States: backlog proposed, todo accepted, ongoing claimed, done completed. " +
+			"An item another running session holds takes only notes. Items are never deleted.",
+		ops: "get: read (follow Next); claim: start work; note: add progress; done: finish; close: end an unneeded item",
 		promptGuidelines: renderInstruction("tools/backlog/guidelines.md", { subagent }).split("\n"),
+	};
+}
+
+/**
+ * What the model reads about `backlogPlan`: planning and triage, which a session does far less often than it works an
+ * item. The description names the operations and the shape of an entry, because a deferred declaration
+ * (`permission/native-deferral.ts`) carries it without the schema.
+ */
+export function backlogPlanPrompt(): {
+	promptSnippet: string;
+	description: string;
+	ops: string;
+	promptGuidelines: string[];
+} {
+	return {
+		promptSnippet: renderInstruction("tools/backlog-plan/snippet.md"),
+		description:
+			"Plan and triage repository work items. op add and edit write the entries of items, e.g. [{title, goal, why}] or " +
+			"[{id, priority}]; list finds items by the other fields. Work one item with backlog.",
+		ops: "add: propose items; edit: change their fields; list: follow Next",
+		promptGuidelines: renderInstruction("tools/backlog-plan/guidelines.md").split("\n"),
 	};
 }

@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { getBuiltinModel } from "../src/providers/all.ts";
-import type { Message, Model, StreamOptions } from "../src/types.ts";
+import type { Message, Model, StreamOptions, Tool } from "../src/types.ts";
 import {
 	assistant,
 	capture,
@@ -98,10 +98,21 @@ const retentions: { name: string; options: StreamOptions; instructionTtl?: strin
 	},
 ];
 
+/** A tool only some roles declare, after the shared prefix (`toolCacheBoundary`). */
+const roleTool: Tool = {
+	name: "agent",
+	description: "Start a subagent",
+	parameters: Type.Object({ goal: Type.String() }),
+};
+
 const cases = [collapse, native].flatMap((model) =>
 	["sk-ant-api-test"].flatMap((apiKey) =>
 		[undefined, "project_context"].flatMap((boundary) =>
-			retentions.flatMap((retention) => histories.map((history) => ({ model, apiKey, boundary, retention, history }))),
+			[undefined, "agent"].flatMap((toolBoundary) =>
+				retentions.flatMap((retention) =>
+					histories.map((history) => ({ model, apiKey, boundary, toolBoundary, retention, history })),
+				),
+			),
 		),
 	),
 );
@@ -127,11 +138,12 @@ function expectValidPlacement(payload: Payload): void {
 
 describe("Anthropic cache breakpoint matrix", () => {
 	it.each(cases)(
-		"$model.id key=$apiKey boundary=$boundary retention=$retention.name: $history.name",
-		async ({ model, apiKey, boundary, retention, history }) => {
-			const payload = await capture(model, transcript(history.messages(model)), {
+		"$model.id key=$apiKey boundary=$boundary tools=$toolBoundary retention=$retention.name: $history.name",
+		async ({ model, apiKey, boundary, toolBoundary, retention, history }) => {
+			const payload = await capture(model, transcript(history.messages(model), [readTool, roleTool]), {
 				apiKey,
 				instructionCacheBoundary: boundary,
+				toolCacheBoundary: toolBoundary,
 				...retention.options,
 			});
 			expectValidPlacement(payload);
@@ -139,14 +151,55 @@ describe("Anthropic cache breakpoint matrix", () => {
 			const found = markers(payload);
 			const instructions = found.filter(({ section }) => section !== "messages");
 			const historyMarkers = found.filter(({ section }) => section === "messages");
-			// Split: base and project blocks. Unsplit: the prompt block and the last initial tool.
+			// Split: base and project blocks. Unsplit: the prompt block and the last initial tool. With a shared tool
+			// prefix, its last tool takes the slot of the first marker after it (the last tool's, or the base block's).
 			expect(instructions).toHaveLength(2);
+			const toolMarkers = found.filter(({ section }) => section === "tools").map(({ block }) => block.name);
+			const lastTool = payload.tools?.filter((tool) => tool.name !== "__pi_deferred_placeholder__").at(-1)?.name;
+			expect(toolMarkers).toEqual(toolBoundary ? ["read"] : boundary ? [] : [lastTool]);
 			expect(historyMarkers).toHaveLength(history.history);
 			for (const { block } of instructions) expect(block.cache_control?.ttl).toBe(retention.instructionTtl);
 			for (const { block } of historyMarkers) expect(block.cache_control?.ttl).toBe(retention.historyTtl);
-			if (boundary) expect(found.filter(({ section }) => section === "system")).toHaveLength(2);
+			if (boundary) expect(found.filter(({ section }) => section === "system")).toHaveLength(toolBoundary ? 1 : 2);
 		},
 	);
+
+	it("gives two roles the same bytes and marker up to the end of their shared tools", async () => {
+		const other: Tool = { ...roleTool, name: "skill", description: "Load a skill" };
+		for (const model of [collapse, native]) {
+			const request = (tools: Tool[], toolCacheBoundary: string) =>
+				capture(model, transcript([user("task")], tools), {
+					cacheRetention: "short",
+					instructionCacheRetention: "long",
+					instructionCacheBoundary: "project_context",
+					toolCacheBoundary,
+				});
+			const [a, b] = [
+				await request([readTool, grepTool, roleTool], "agent"),
+				await request([readTool, grepTool, other], "skill"),
+			];
+			// Not vacuous: the role tools differ, so without the marker the first cache point (the last tool) differs.
+			expect(JSON.stringify(a.tools)).not.toBe(JSON.stringify(b.tools));
+			expect(JSON.stringify(a.tools?.slice(0, 2))).toBe(JSON.stringify(b.tools?.slice(0, 2)));
+			expect(a.tools?.[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+			expect(markers(a)).toHaveLength(markers(b).length);
+			expect(markers(a).length).toBeLessThanOrEqual(4);
+		}
+	});
+
+	it("ignores a tool boundary that names the first tool or no tool", async () => {
+		for (const toolCacheBoundary of ["read", "missing"]) {
+			const payload = await capture(collapse, transcript([user("task")], [readTool, roleTool]), {
+				cacheRetention: "long",
+				toolCacheBoundary,
+			});
+			expect(
+				markers(payload)
+					.filter(({ section }) => section === "tools")
+					.map(({ block }) => block.name),
+			).toEqual(["agent"]);
+		}
+	});
 
 	it("keeps native tool changes off the top-level tool list", async () => {
 		const history = histories[2];

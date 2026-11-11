@@ -1,3 +1,5 @@
+import { MERMAID_SCRIPT_HASH } from "./mermaid-hash.generated.ts";
+
 export interface PagePolicyOptions {
 	/**
 	 * The `script-src` sources. The meta tag allows the page's own inline script with `'unsafe-inline'`; a header names
@@ -14,7 +16,7 @@ export interface PagePolicyOptions {
 }
 
 /**
- * The Content-Security-Policy of the backlog and workspace pages, for both their meta tag and the daemon's header, so
+ * The Content-Security-Policy of the backlog and workspace pages, for both their meta tag and the servers' header, so
  * the two cannot drift apart. A page served with both must satisfy both. Nothing loads from the network: images are
  * `data:` or page-made `blob:` URLs, media only page-made `blob:` URLs, and connections go only to the page's host.
  */
@@ -30,4 +32,13 @@ export function pagePolicy({ scripts, live, header = false }: PagePolicyOptions)
 		"form-action 'none'",
 		...(header ? ["frame-ancestors 'none'"] : []),
 	].join("; ");
+}
+
+/**
+ * The Content-Security-Policy header of a live page (per-session server and daemon alike): the page's own inline script
+ * and the Mermaid text its docs view runs inline, both by hash, so the meta tag's `'unsafe-inline'` never applies, and
+ * framing is forbidden.
+ */
+export function livePageHeaderPolicy(scriptHash: string): string {
+	return pagePolicy({ scripts: [`'${scriptHash}'`, `'${MERMAID_SCRIPT_HASH}'`], live: true, header: true });
 }

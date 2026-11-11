@@ -1,4 +1,5 @@
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { listHistory } from "../../src/octocode/history/list.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,7 +14,6 @@ import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
 import {
 	historyFiles,
 	historyScope,
-	listHistory,
 	PAGE_CHARS,
 	READ_LINES,
 	readableHistory,
@@ -210,13 +210,41 @@ describe("search and read", () => {
 		expect(readHistory(path.join(archiveFolder(), "missing.md"))).toBeUndefined();
 	});
 
-	it("lists each session with its record labels and files", () => {
+	it("lists one line per session, with subagent sessions counted on their parent's line", () => {
 		const cwd = repo();
 		session("me", { body: "mine", tldr: "did the thing", cwd, record: { lastActive: "2026-03-01T00:00:00Z" } });
+		session("lead", { body: "lead work", cwd, record: { lastActive: "2026-02-01T00:00:00Z" } });
+		session("child-1", { body: "child work", cwd, record: { parent: "lead", lastActive: "2026-02-02T00:00:00Z" } });
+		session("child-2", { cwd, record: { parent: "lead", lastActive: "2026-02-03T00:00:00Z" } });
 		const listed = listHistory(historyScope(cwd));
-		expect(listed.text).toContain(`## me (this session) · ${archiveFolder()}`);
-		expect(listed.text).toContain("last active 2026-03-01T00:00:00Z · goal: goal of me · ended: me ended well");
-		expect(listed.text).toContain(`- ${RECORD_FILE} · record: goal and ending`);
-		expect(listed.text).toMatch(/- 1-e-me\.md · segment 1 · did the thing/);
+		expect(listed.head).toContain(
+			"4 sessions with history, nearest first; 2 subagent sessions counted on their parent's line",
+		);
+		expect(listed.text).toContain(
+			"- me (this session) · last active 2026-03-01T00:00:00Z · goal: goal of me · 1 segment",
+		);
+		// The ending is in the session's own listing; the index pages by sessions.
+		expect(listed.text).not.toContain("ended:");
+		const paged = listHistory(historyScope(cwd), 2, undefined, 1);
+		expect(paged).toMatchObject({ page: 2, pages: 2 });
+		expect(paged.text).toMatch(/^- lead /);
+		expect(listed.text).toMatch(/- lead \(same repository\) · .* · 1 segment · 2 subagent sessions$/m);
+		expect(listed.text).not.toContain("child-1");
+		// The index names no files: they are listed per session.
+		expect(listed.text).not.toContain(RECORD_FILE);
+	});
+
+	it("lists one session's files and its subagent sessions by sessionId", () => {
+		const cwd = repo();
+		session("me", { body: "mine", tldr: "did the thing", cwd, record: { lastActive: "2026-03-01T00:00:00Z" } });
+		session("child-1", { body: "child work", cwd, record: { parent: "me" } });
+		const own = listHistory(historyScope(cwd), 1, "current");
+		expect(own.text).toContain(`## me (this session) · ${archiveFolder()}`);
+		expect(own.text).toContain("last active 2026-03-01T00:00:00Z · goal: goal of me · ended: me ended well");
+		expect(own.text).toContain(`- ${RECORD_FILE} · record: goal and ending`);
+		expect(own.text).toMatch(/- 1-e-me\.md · segment 1 · did the thing/);
+		// A child of this session is a "same repository" session counted under it.
+		expect(own.text).toMatch(/## Subagent sessions\n- child-1 \(same repository\)/);
+		expect(() => listHistory(historyScope(cwd), 1, "nobody")).toThrow(/No session nobody/);
 	});
 });

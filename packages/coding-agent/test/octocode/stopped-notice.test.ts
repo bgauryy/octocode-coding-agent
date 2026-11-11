@@ -41,12 +41,11 @@ const saveReport = (sessionId: string, id: string): string | undefined =>
 
 function newSession() {
 	const f = fakeHost();
-	registerAgentTool(
-		f.api,
-		() => new Map(),
-		new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
-		fakePermission(),
-	);
+	registerAgentTool(f.api, {
+		profiles: () => new Map(),
+		team: new Team(f.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") }),
+		permission: fakePermission(),
+	});
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 	const notes = () => ctx.ui.notes.filter((note) => note.message.includes("background agent report"));
 	return { f, ctx, notes };

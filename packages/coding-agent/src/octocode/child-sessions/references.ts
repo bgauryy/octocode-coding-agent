@@ -4,7 +4,7 @@ import { readChildReport, type SessionChild, sessionChildren } from "./session-c
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
 import { formatClock } from "../shared/format.ts";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 
 /**
@@ -133,7 +133,7 @@ async function resolveReport(ref: string, id: string, ctx: ReferenceContext): Pr
 		} catch (error) {
 			// Swept or removed: the received report still answers. A file that is not the child's own is refused outright.
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-				return `${ref}: refused ${tildePath(child.report)} (${errorMessage(error)}); only a regular report artifact in ${id}'s scratch folder is read`;
+				return `${ref}: refused ${homeTilde(child.report)} (${errorMessage(error)}); only a regular report artifact in ${id}'s scratch folder is read`;
 		}
 	}
 	body ??= child.reportText === undefined ? undefined : { text: child.reportText, at: child.reportAt };
@@ -149,7 +149,7 @@ async function resolveReport(ref: string, id: string, ctx: ReferenceContext): Pr
 	if (excerpt && !source)
 		return `${ref}: report exceeds the ${REPORT_EXCERPT_CHARS}-character inline limit without a saved artifact; request a smaller report or a summary`;
 	const content = excerpt
-		? `${body.text.slice(0, REPORT_EXCERPT_CHARS - 512)}\n\n[Excerpt: intervening details omitted; read or search ${tildePath(source!)} for the complete report before relying on omitted details.]\n\n${(body.tail ?? body.text).slice(-512)}`
+		? `${body.text.slice(0, REPORT_EXCERPT_CHARS - 512)}\n\n[Excerpt: intervening details omitted; read or search ${homeTilde(source!)} for the complete report before relying on omitted details.]\n\n${(body.tail ?? body.text).slice(-512)}`
 		: body.text;
 	return {
 		ref,

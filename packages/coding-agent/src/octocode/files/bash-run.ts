@@ -4,6 +4,7 @@ import { constants as osConstants } from "node:os";
 import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
 import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
+import { recordShellGroup } from "../shared/shell-groups.ts";
 import { signalTree } from "../../utils/process-tree.ts";
 import { firstLine } from "../shared/util.ts";
 import type { BashJob } from "./bash-jobs/types.ts";
@@ -40,6 +41,8 @@ const killRunning = (): void => {
 function track(pid: number): void {
 	if (running.size === 0) process.on("exit", killRunning);
 	running.add(pid);
+	// An exit hook never runs after SIGKILL: a subagent's parent then stops the group (`shared/shell-groups.ts`).
+	recordShellGroup(pid);
 }
 
 function untrack(pid: number): void {

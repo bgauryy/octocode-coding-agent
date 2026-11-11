@@ -122,12 +122,14 @@ it("keeps messages evicted while the first page is in flight", async () => {
 	stream(LIVE_WINDOW, LIVE_WINDOW + 1);
 	await act(async () => finish(page(["h0"])));
 
-	await earlier().findByText("Text of h0");
-	expect(
-		earlier()
-			.getAllByText(/^Text of /)
-			.map((node) => node.textContent),
-	).toEqual(["Text of h0", "Text of m0"]);
+	// Live updates reach the session store once per animation frame, so the eviction can land just after the page.
+	await waitFor(() =>
+		expect(
+			earlier()
+				.getAllByText(/^Text of /)
+				.map((node) => node.textContent),
+		).toEqual(["Text of h0", "Text of m0"]),
+	);
 });
 
 it("bounds retained history to the requested depth and keeps the older part loadable", async () => {

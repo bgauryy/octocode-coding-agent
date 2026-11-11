@@ -17,7 +17,12 @@ export interface LayoutBox {
 	lines?: readonly string[];
 	lineOffset?: number;
 	scrollView?: ScrollView;
+	/** A scroll view's whole content; reading it measures any rows a virtualized frame left unmeasured. */
 	scrollContentLines?: readonly string[];
+	/** One row of a scroll view's content near the rows in view, without measuring the rest. */
+	scrollContentRow?: (row: number) => string | undefined;
+	/** Measure a virtualized scroll view's whole content now, settling its scroll position. */
+	materialize?: () => void;
 	layer: number;
 }
 

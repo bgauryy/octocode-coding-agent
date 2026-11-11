@@ -49,7 +49,6 @@
 			"import": "./dist/bun-oauth.js"
 		}
 	},
-	"bin": "dist/cli.js",
 	"files": [
 		"dist",
 		"docs",

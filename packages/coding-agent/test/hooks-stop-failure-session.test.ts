@@ -28,7 +28,7 @@ it("delivers the persisted provider error once at the real session settlement bo
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		extensionFactories: [
 			(api) => {
-				registerHooks(api, {}, home);
+				registerHooks(api, { env: {}, home });
 			},
 		],
 	});

@@ -1,4 +1,3 @@
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +15,7 @@ import {
 	TOTAL_BUDGET,
 } from "../../src/octocode/memory/inject.ts";
 import { ftsQuery, jaccard, normalizeTitle, parseMemoryId, terms } from "../../src/octocode/memory/query.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import {
 	MemoryError,
@@ -373,13 +373,13 @@ describe("memory tool", () => {
 	const setup = (isSubagent = false) => {
 		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerArchiveTool(fake.api, registerMemory(fake.api, { commands, isSubagent, permission: fakePermission() }));
-		return { ...fake, subcommands: commands, tool: fake.tools.get("archive") };
+		registerMemory(fake.api, { commands, isSubagent, permission: fakePermission() });
+		return { ...fake, subcommands: commands, tool: fake.tools.get("memory") };
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
 		tool.execute(
 			"call",
-			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			{ goal: "Remember a preference", reason: "user requested", ...params },
 			undefined,
 			undefined,
 			ctx,
@@ -392,10 +392,10 @@ describe("memory tool", () => {
 			await run(tool, { op: "set", title, body: "gadget details" });
 		const capped = text(await run(tool, { op: "search", query: "gadget", limit: 2 }));
 		expect(capped.split("\n").filter((line) => /^M\d+$/.test(line))).toHaveLength(2);
-		expect(capped).toContain("More records remain");
+		expect(capped).toContain("More memories remain");
 		const all = text(await run(tool, { op: "search", query: "gadget", limit: 3 }));
 		expect(all.split("\n").filter((line) => /^M\d+$/.test(line))).toHaveLength(3);
-		expect(all).not.toContain("More records remain");
+		expect(all).not.toContain("More memories remain");
 	});
 
 	it("sets, searches, lists, gets and deletes", async () => {
@@ -419,13 +419,13 @@ describe("memory tool", () => {
 			text(await run(tool, { op: "set", id: "M1", pinned: true }, ctxFor({ selects: ["Allow once"] }).ctx)),
 		).toMatch(/^Updated M1 \(workspace, procedure, pinned, 0d\)/);
 		await run(tool, { op: "set", title: "Second memory", scope: "global" }, ctxFor({ selects: ["Allow once"] }).ctx);
-		expect(text(await run(tool, { op: "list", limit: 1 }))).toContain("More records remain");
+		expect(text(await run(tool, { op: "list", limit: 1 }))).toContain("More memories remain");
 		expect(text(await run(tool, { op: "delete", id: "m1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toMatch(
 			/^Deleted M1/,
 		);
 		await expect(run(tool, { op: "get", id: "M1" })).rejects.toThrow(/No memory M1/);
-		await expect(run(tool, { op: "get", id: "B1" })).rejects.toThrow(/No visible archive record/);
-		await expect(run(tool, { op: "get" })).rejects.toThrow(/requires a record id/);
+		await expect(run(tool, { op: "get", id: "B1" })).rejects.toThrow(/"B1" is not a memory id/);
+		await expect(run(tool, { op: "get" })).rejects.toThrow(/get needs id/);
 		await expect(run(tool, { op: "search" })).rejects.toThrow(/needs query/);
 		await expect(run(tool, { op: "set", title: "x", scope: "all" })).rejects.toThrow(/project or global/);
 		await expect(run(tool, { op: "set", title: "Key", body: `sk-${"a".repeat(40)}` })).rejects.toThrow(/secret/);
@@ -517,17 +517,28 @@ describe("memory tool", () => {
 		}
 	});
 
-	it("renders public archive operations, sanitizes titles and shows saved notes and errors", async () => {
+	it("renders its operations, sanitizes titles and shows saved notes and errors", async () => {
 		const { tool } = setup();
-		expect(rendered(tool.renderCall({ op: "search", source: "memories", query: "rewind flow" }, theme, {}))).toBe(
+		expect(rendered(tool.renderCall({ op: "search", query: "rewind flow" }, theme, {}))).toBe(
+			"○ Memory(search rewind flow)",
+		);
+		expect(rendered(tool.renderCall({ op: "set", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}))).toBe(
+			"○ Memory(set red text)",
+		);
+		expect(rendered(tool.renderCall({ op: "get", id: "M7" }, theme, {}))).toBe("○ Memory(get M7)");
+		// A stored session's `archive` call from before the split still renders as it did.
+		const host = fakeHost();
+		registerArchiveTool(host.api);
+		const archive = host.tools.get("archive");
+		expect(rendered(archive.renderCall({ op: "search", source: "memories", query: "rewind flow" }, theme, {}))).toBe(
 			"○ Archive(search memories rewind flow)",
 		);
 		expect(
 			rendered(
-				tool.renderCall({ op: "set", source: "memories", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}),
+				archive.renderCall({ op: "set", source: "memories", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}),
 			),
 		).toBe("○ Archive(set memories red text)");
-		expect(rendered(tool.renderCall({ op: "get", source: "memories", id: "M7" }, theme, {}))).toBe(
+		expect(rendered(archive.renderCall({ op: "get", source: "memories", id: "M7" }, theme, {}))).toBe(
 			"○ Archive(get memories M7)",
 		);
 		const saved = await run(tool, { op: "set", title: "Render this note" });
@@ -549,23 +560,20 @@ describe("memory tool", () => {
 describe("memory lines the model reads", () => {
 	const setup = () => {
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() }),
-		);
-		return fake.tools.get("archive");
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission() });
+		return fake.tools.get("memory");
 	};
 	const run = (tool: any, params: Record<string, unknown>, ctx = ctxFor().ctx) =>
 		tool.execute(
 			"call",
-			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			{ goal: "Remember a preference", reason: "user requested", ...params },
 			undefined,
 			undefined,
 			ctx,
 		);
 	const text = (result: any) => result.content[0].text as string;
 	const long = `${"sentence about gadgets. ".repeat(30)}the end`;
-	const pointer = "archive op=get source=memories id=M1";
+	const pointer = "memory op=get id=M1";
 
 	it("writes the whole body unless a caller asks for a clip, which the terminal views do", () => {
 		const memory = add(new MemoryStore(freshDb(), "repo-a"), { title: "Gadgets", body: long });
@@ -580,7 +588,7 @@ describe("memory lines the model reads", () => {
 		for (const params of [{ op: "search", keywords: "gadgets" }, { op: "list" }]) {
 			const lines = text(await run(tool, params)).split("\n");
 			const gadgets = lines.find((line) => line.includes("Gadgets"))!;
-			expect(gadgets).toMatch(/… \(archive op=get source=memories id=M1\)$/);
+			expect(gadgets).toMatch(/… \(memory op=get id=M1\)$/);
 			expect(lines.find((line) => line.includes("Widgets"))).toMatch(/short gadget note$/);
 		}
 		// The call the line names returns the body exactly.
@@ -605,10 +613,7 @@ describe("memory lines the model reads", () => {
 describe("memory auto-injection", () => {
 	const setup = (isSubagent = false) => {
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() }),
-		);
+		registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() });
 		return fake;
 	};
 	const seed = () => {
@@ -652,7 +657,7 @@ describe("memory auto-injection", () => {
 		expect(await fake.fire("before_agent_start", { prompt: "rewind" }, ctxFor().ctx)).toBeUndefined();
 	});
 
-	it("gives a subagent at most 3 hits and no pinned memories (its parent holds those)", async () => {
+	it("gives a subagent at most 3 hits and no pinned fact (only pinned preferences reach it)", async () => {
 		const fake = setup(true);
 		const store = memoryStore(cwd);
 		const pinned = add(store, { title: "Always on", body: "unrelated", pinned: true });
@@ -672,10 +677,7 @@ describe("/memory", () => {
 	const setup = () => {
 		const fake = fakeHost();
 		const commands = new Subcommands();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() }),
-		);
+		registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() });
 		const command = commands.get("memory")!;
 		return { command, commands };
 	};

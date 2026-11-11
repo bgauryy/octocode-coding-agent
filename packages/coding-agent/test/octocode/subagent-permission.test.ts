@@ -40,8 +40,14 @@ afterAll(() => {
 describe("a child's refused actions", () => {
 	it("are reported to the parent one by one, apart from ordinary tool failures", async () => {
 		const denials: boolean[] = [];
-		await runSubagent("denied", [], tmp(), undefined, { id: "general-000001" }, undefined, ({ denied }) => {
-			if (denied) denials.push(true);
+		await runSubagent({
+			task: "denied",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "general-000001" },
+			onProgress: ({ denied }) => {
+				if (denied) denials.push(true);
+			},
 		});
 		expect(denials).toHaveLength(2);
 	});
@@ -49,7 +55,7 @@ describe("a child's refused actions", () => {
 	it("show on the parent's agent row and in its result", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
-		registerAgentTool(f.api, () => new Map(), team, fakePermission());
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
@@ -76,7 +82,7 @@ describe("a child's refused actions", () => {
 	it("name the child's outcome in a background report's header and row", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
-		registerAgentTool(f.api, () => new Map(), team, fakePermission());
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
 		const ctx = fakeCtx({ cwd: tmp() });
 		Object.assign(ctx, {
 			model: { provider: "faux", id: "model" },
@@ -109,7 +115,7 @@ describe("kinds allowed for the session", () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
 		const permission = new Permission({ api: f.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
-		registerAgentTool(f.api, () => new Map(), team, permission);
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission });
 		// Untrusted, so manual: the web ask takes "all web requests", the spawn ask is allowed once.
 		const ctx = Object.assign(
 			fakeCtx({ cwd: tmp(), ui: { selects: ["Allow all web requests for this session", "Allow once"] } }),

@@ -89,7 +89,13 @@ describe("native Octocode subagent completion", () => {
 			const script = path.join(cwd, "octocode");
 			fs.writeFileSync(script, `process.stdout.write(${JSON.stringify(`${records.join("\n")}\n`)});`);
 			process.argv[1] = script;
-			const result = await runSubagent("", [], cwd, undefined, { id: "native-test" }, undefined, () => undefined);
+			const result = await runSubagent({
+				task: "",
+				args: [],
+				cwd,
+				identity: { id: "native-test" },
+				onProgress: () => undefined,
+			});
 			if (boundary === "completed") {
 				expect(result.text).toBe("REPORT");
 				expect(result.error).toBeUndefined();

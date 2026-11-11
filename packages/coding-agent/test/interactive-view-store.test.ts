@@ -35,6 +35,7 @@ function setup() {
 			getImageWidthCells: () => 60,
 		},
 		session: {},
+		sessionManager: { getCwd: () => "/tmp" },
 		hiddenThinkingLabel: "Thinking…",
 		outputPad: 1,
 		streamingComponent: undefined,

@@ -1,12 +1,11 @@
 /**
- * Temporary compatibility entrypoint preserving the old global octocode-ai API
- * surface: api-dispatch `stream()`/`complete()` with env API key injection,
- * the api-registry, per-API lazy stream wrappers, and image generation.
+ * Global-registry entrypoint: api-dispatch `stream()`/`complete()` with env API
+ * key injection, the api-registry, per-API lazy stream wrappers, and image
+ * generation. It is a strict superset of the root entrypoint.
  *
- * Existing apps switch imports from "@octocodeai/octocode-ai" to
- * "@octocodeai/octocode-ai/compat" unchanged; new code uses `createModels()`
- * and the provider factories. This module is deleted with the coding-agent
- * ModelManager migration.
+ * The coding agent dispatches through this registry, so the entrypoint is kept
+ * as supported API. New library code may prefer `createModels()` and the
+ * provider factories, which hold no global state.
  */
 
 export * from "./api/anthropic-messages.lazy.ts";

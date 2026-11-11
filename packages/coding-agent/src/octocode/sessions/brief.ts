@@ -45,6 +45,8 @@ export interface BriefInput {
 	unreported?: string[];
 	/** Tool calls the earlier process made and recorded no result for (`unansweredCalls`), already described. */
 	unanswered?: string[];
+	/** The subagents an unanswered `agent` call started, with how each ended (`danglingChildren`). */
+	children?: string[];
 	/** The last user request of the saved session (`latestRequest`). */
 	request?: string;
 	/** A new user prompt started this run: the brief follows it in the conversation, so it says which request is current. */
@@ -61,8 +63,6 @@ const MAX_TASKS = 8;
 const TASK_CHARS = 160;
 /** Characters kept of a described item's title and goal and of a step's reason (a cut ends in `…`). */
 const FIELD_CHARS = { title: 100, goal: 120, why: 160 } as const;
-/** Characters kept of the latest user request. */
-const REQUEST_CHARS = 400;
 
 /**
  * This session's ongoing backlog items, most important first, for the reorient brief: a header, then one line per
@@ -170,14 +170,14 @@ export function teamBrief(notes: TeamNotes): string[] {
 	];
 }
 
-/** The last user message in `entries` with text, on one line and capped, or undefined when there is none. */
+/** The last user message in `entries` with text, whole, or undefined when there is none. */
 export function latestRequest(entries: readonly unknown[]): string | undefined {
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];
 		if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
 		if (entry.message.role !== "user") continue;
 		const text = contentText(entry.message.content);
-		if (flatLine(text)) return shownLine(text, REQUEST_CHARS);
+		if (flatLine(text)) return text.trim();
 	}
 	return undefined;
 }
@@ -209,7 +209,12 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 	if (input.unreported?.length)
 		facts.unshift(renderInstruction("notices/resume/unreported.md", { work: input.unreported.join("; ") }));
 	if (input.unanswered?.length)
-		facts.unshift(renderInstruction("notices/resume/unanswered.md", { calls: input.unanswered.join("; ") }));
+		facts.unshift(
+			renderInstruction("notices/resume/unanswered.md", {
+				calls: input.unanswered.join("; "),
+				children: input.children?.join("; ") ?? "",
+			}),
+		);
 	const ongoing = ongoingBrief(agent, input.repoKey, input.sessionId);
 	if (ongoing.length > 0) facts.push(ongoing.join("\n"));
 	const openTasks = openTasksBrief(agent, input.repoKey, input.sessionId);
@@ -229,6 +234,6 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 		renderInstruction("notices/resume/brief.md", { tag: RESUME_TAG, away: shortDuration(away), first }),
 		...rest,
 	];
-	// The backlog part and the request are capped (`ongoingBrief`, `latestRequest`); the brief itself is never cut.
+	// The backlog part is capped (`ongoingBrief`); the request and the unanswered calls are whole, and the brief is never cut.
 	return lines.join("\n");
 }

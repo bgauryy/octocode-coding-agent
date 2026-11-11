@@ -79,7 +79,7 @@ describe("readClipboardText", () => {
 		["DISPLAY", "xsel", ["--clipboard", "--output"], ["xclip", "xsel"]],
 	] as const) {
 		test.each(["clipboard text", ""])(`${command} result %j stops fallback`, async (text) => {
-			// Regression test for #7248: empty Wayland content must not fall through to stale X11.
+			// Empty Wayland content must not fall through to stale X11.
 			mocks.platform.mockReturnValue("linux");
 			vi.stubEnv("DISPLAY", ":0");
 			vi.stubEnv(env, "1");
@@ -101,7 +101,7 @@ describe("readClipboardText", () => {
 		expect(mocks.command.mock.calls.map(([name]) => name)).toEqual(["wl-paste", "xclip", "xsel"]);
 	});
 	test.each(["clipboard text", ""])("Termux reads termux-clipboard-get result %j on Android", async (text) => {
-		// Regression test for #10391: Termux reports platform "android".
+		// Termux reports platform "android".
 		mocks.platform.mockReturnValue("android");
 		vi.stubEnv("TERMUX_VERSION", "0.119");
 		mocks.command.mockResolvedValue(Buffer.from(text));
@@ -156,7 +156,7 @@ describe("copyToClipboard", () => {
 		["win32", undefined],
 		["linux", ":99"],
 	] as const)("OCTOCODE_CLIPBOARD_OSC52=1 emits OSC 52 after a successful %s copy", async (platform, display) => {
-		// Regression test for #10826, #10835, #10114: remote clients without SSH markers.
+		// Remote clients without SSH markers.
 		mocks.platform.mockReturnValue(platform);
 		if (display) vi.stubEnv("DISPLAY", display);
 		vi.stubEnv("OCTOCODE_CLIPBOARD_OSC52", "1");
@@ -195,7 +195,6 @@ describe("copyToClipboard", () => {
 		expect(osc52Writes).toHaveLength(0);
 	});
 	test("local Linux failure does not report an unverified OSC 52 write as success", async () => {
-		// Regression test for #9618.
 		mocks.platform.mockReturnValue("linux");
 		vi.stubEnv("DISPLAY", ":0");
 		mocks.command.mockResolvedValue(undefined);
@@ -206,14 +205,14 @@ describe("copyToClipboard", () => {
 		expect(osc52Writes).toHaveLength(0);
 	});
 	test("display-less Linux falls back to OSC 52", async () => {
-		// Regression test for #9688: containers without X11/Wayland access.
+		// Containers without X11/Wayland access.
 		mocks.platform.mockReturnValue("linux");
 		await copyToClipboard("hello");
 		expect(mocks.command).not.toHaveBeenCalled();
 		expect(osc52Writes).toHaveLength(1);
 	});
 	test("WSL without a display writes the Windows clipboard through PowerShell", async () => {
-		// Regression test for #9688: WSL with WSLg disabled.
+		// WSL with WSLg disabled.
 		mocks.platform.mockReturnValue("linux");
 		vi.stubEnv("WSL_DISTRO_NAME", "Ubuntu");
 		let written: string | undefined;
@@ -298,7 +297,7 @@ describe("copyToClipboard", () => {
 		expect(osc52Writes).toHaveLength(0);
 	});
 	test("reports the Termux:API requirement on Android", async () => {
-		// Regression test for #10391: Termux reports platform "android".
+		// Termux reports platform "android".
 		mocks.platform.mockReturnValue("android");
 		vi.stubEnv("TERMUX_VERSION", "0.119");
 		mocks.getNativeClipboard.mockReturnValue(undefined);

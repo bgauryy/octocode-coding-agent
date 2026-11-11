@@ -106,7 +106,7 @@ export async function inheritCheckpoints(from: string, to: string, branch: Itera
 	return entries.filter((entry) => !entry.before || carried.has(entry.before)).length;
 }
 
-/** The id in a Octocode session file's header (its first line), or undefined. */
+/** The id in an Octocode session file's header (its first line), or undefined. */
 export async function sessionIdOf(file: string): Promise<string | undefined> {
 	let handle: fs.promises.FileHandle | undefined;
 	try {

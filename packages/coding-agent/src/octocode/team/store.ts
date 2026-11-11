@@ -6,7 +6,7 @@ import {
 	agents,
 	dbStamp,
 	deliveries,
-	history,
+	isBusy,
 	leases,
 } from "../../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
@@ -146,7 +146,7 @@ export class TeamStore {
 		try {
 			this.quick(() => this.prune());
 		} catch (error) {
-			if (!history.isBusy(error)) throw error;
+			if (!isBusy(error)) throw error;
 		}
 	}
 

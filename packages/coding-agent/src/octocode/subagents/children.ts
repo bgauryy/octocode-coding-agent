@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { tildePath } from "../shared/home.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { type ChildFiles, type SessionChild, sessionChildren } from "../child-sessions/session-children.ts";
 import { type ChildSession, childSessionFile } from "./process/session.ts";
 import { REF_PREFIX } from "./worktree-base.ts";
@@ -10,11 +10,11 @@ import { GENERAL_PROFILE } from "./profiles.ts";
 /** `, transcript ~/…` (or `, transcript folder ~/…` before the file is known) `, report ~/…`; empty when none is recorded. */
 export function describeFiles(files: ChildFiles): string {
 	const where = files.transcript
-		? `, transcript ${tildePath(files.transcript)}`
+		? `, transcript ${homeTilde(files.transcript)}`
 		: files.folder
-			? `, transcript folder ${tildePath(files.folder)}`
+			? `, transcript folder ${homeTilde(files.folder)}`
 			: "";
-	return `${where}${files.report ? `, report ${tildePath(files.report)}` : ""}`;
+	return `${where}${files.report ? `, report ${homeTilde(files.report)}` : ""}`;
 }
 
 /** The custom message that tells a fork's model about the children that stopped with the session it forked from. */
@@ -105,7 +105,7 @@ export function resumableChild(
 	if (!transcript) throw new Error(`${id} has no saved transcript to continue.`);
 	if (!fs.existsSync(transcript))
 		throw new Error(
-			`${id}'s transcript ${tildePath(transcript)} is gone; start a new agent with the context it needs.`,
+			`${id}'s transcript ${homeTilde(transcript)} is gone; start a new agent with the context it needs.`,
 		);
 	return { child, session: { dir: path.dirname(transcript), id: sessionId } };
 }

@@ -1,5 +1,5 @@
 import { Value } from "typebox/value";
-import { ConfigSnapshotSchema, HarnessListSchema } from "@octocodeai/octocode-contracts/config";
+import { ConfigSnapshotSchema, HarnessListSchema, ToolExposureListSchema } from "@octocodeai/octocode-contracts/config";
 import { configAudits } from "../../../../db/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
@@ -10,9 +10,15 @@ import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { listHarness, switchHarness } from "./harness-config.ts";
 import { writeConfigProvider } from "./provider-write.ts";
+import { listToolExposure, pinTool, type NativeToolsLive } from "./tool-exposure.ts";
 
 function checkedHarness<T>(list: T): T {
 	if (!Value.Check(HarnessListSchema, list)) throw new Error("The harness list is invalid.");
+	return list;
+}
+
+function checkedTools<T>(list: T): T {
+	if (!Value.Check(ToolExposureListSchema, list)) throw new Error("The tool list is invalid.");
 	return list;
 }
 
@@ -20,6 +26,8 @@ export interface ConfigFactoryOptions {
 	env: NodeJS.ProcessEnv;
 	/** Audit actor, read per call: the daemon learns its nonce after it starts listening. */
 	actor: () => string;
+	/** The running session's native tools, for the Tools panel; absent in a process without a session. */
+	nativeTools?: () => NativeToolsLive;
 }
 
 /**
@@ -31,7 +39,7 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 	routes: Omit<ConfigRoutes, "catalog">;
 	signIns: SignInManager;
 } {
-	const { env, actor } = options;
+	const { env, actor, nativeTools: native } = options;
 	const audit = (entry: Parameters<typeof configAudits.record>[1]) => configAudits.record(sharedAgentDb(env).db, entry);
 	const signIns = new SignInManager({ ...runtimeSignIn(getAgentDir()), actor, audit });
 	const routes: Omit<ConfigRoutes, "catalog"> = {
@@ -48,6 +56,13 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 		harness: async (repo) => checkedHarness(await listHarness({ agentDir: getAgentDir(), cwd: repo?.root })),
 		writeHarness: async (command, repo) =>
 			checkedHarness(await switchHarness(command, { agentDir: getAgentDir(), cwd: repo?.root, actor: actor(), audit })),
+		// A session's own answer (`live`) wins over this process's: the daemon has no tools of its own.
+		tools: async (repo, live) =>
+			checkedTools(await listToolExposure({ agentDir: getAgentDir(), cwd: repo?.root, native, ...live })),
+		writeTools: async (command, repo, live) =>
+			checkedTools(
+				await pinTool(command, { agentDir: getAgentDir(), cwd: repo?.root, native, ...live, actor: actor(), audit }),
+			),
 		auditRefused: (code) => refusalAuditor(actor(), audit)(code),
 	};
 	return { routes, signIns };

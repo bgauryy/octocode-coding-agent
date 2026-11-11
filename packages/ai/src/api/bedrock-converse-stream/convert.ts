@@ -23,6 +23,7 @@ import type {
 	Tool,
 	ToolResultMessage,
 } from "../../types.ts";
+import type { InstructionBlocks } from "../../utils/instruction-split.ts";
 import { liftRootComposition } from "../../utils/json-schema-shape.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { type TranscriptContext, withoutInitialSystemMessage } from "../../utils/transcript.ts";
@@ -38,7 +39,7 @@ import { type BedrockOptions, EMPTY_TEXT_PLACEHOLDER } from "./types.ts";
  * point, so a split prompt keeps the base block cached for sessions that share tools but differ in project context.
  */
 export function buildSystemPrompt(
-	systemPrompt: string | readonly string[] | undefined,
+	systemPrompt: string | InstructionBlocks | undefined,
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 	env?: ProviderEnv,
@@ -47,9 +48,13 @@ export function buildSystemPrompt(
 
 	const cachePoint = getCachePoint(model, cacheRetention, env);
 	const blocks: SystemContentBlock[] = [];
-	for (const text of typeof systemPrompt === "string" ? [systemPrompt] : systemPrompt) {
+	for (const text of typeof systemPrompt === "string" ? [systemPrompt] : systemPrompt.cached) {
 		blocks.push({ text: sanitizeSurrogates(text) });
 		if (cachePoint) blocks.push({ cachePoint });
+	}
+	// The volatile block follows the last cache point, so a change in it rewrites nothing cached.
+	if (typeof systemPrompt !== "string" && systemPrompt.volatile !== undefined) {
+		blocks.push({ text: sanitizeSurrogates(systemPrompt.volatile) });
 	}
 	return blocks;
 }

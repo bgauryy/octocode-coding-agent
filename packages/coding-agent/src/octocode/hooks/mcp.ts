@@ -1,4 +1,4 @@
-import type { BoundMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
+import type { BoundMcpHookCaller } from "../../../../mcp/src/api.ts";
 import { type HookMcp, HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
 import { stringOrEmpty } from "../shared/util.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";

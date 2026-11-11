@@ -77,6 +77,16 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 
 	const isOpenRouterDeveloperRoleModel =
 		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
+	// The `developer` role is opt-in: a host that does not know it can drop the instructions without an error, so an
+	// unlisted host (a proxy, a local server) gets `system`. Listed here are the hosts whose built-in models carry no
+	// `supportsDeveloperRole` flag and accept the role; any model can still set the flag in its compat.
+	const isDeveloperRoleHost =
+		provider === "openai" ||
+		matchesHost(baseUrl, "api.openai.com") ||
+		provider === "groq" ||
+		matchesHost(baseUrl, "api.groq.com") ||
+		provider.startsWith("xiaomi") ||
+		matchesDomain(baseUrl, "xiaomimimo.com");
 	const isOpenRouterAnthropic = provider === "openrouter" && /^~?anthropic\//.test(model.id);
 	// OpenRouter documents Alibaba caching as explicit-breakpoint only, with a fixed 5-minute TTL.
 	const isOpenRouterAlibabaExplicitCache =
@@ -85,7 +95,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 
 	return {
 		supportsStore: !isNonStandard,
-		supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (!isNonStandard && !isOpenRouter),
+		supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (isDeveloperRoleHost && !isNonStandard && !isOpenRouter),
 		supportsReasoningEffort:
 			!isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isAntLing,
 		supportsUsageInStreaming: true,

@@ -316,7 +316,7 @@ describe("AuthStorage", () => {
 	});
 
 	describe("Windows EPERM on lock acquisition", () => {
-		// #10801: a delete-pending lock directory on Windows makes mkdir fail with EPERM briefly.
+		// A delete-pending lock directory on Windows makes mkdir fail with EPERM briefly.
 		const eperm = () => Object.assign(new Error("operation not permitted"), { code: "EPERM" });
 		const originalPlatform = process.platform;
 		const setPlatform = (platform: NodeJS.Platform) =>

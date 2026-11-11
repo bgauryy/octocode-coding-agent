@@ -29,7 +29,7 @@ export function checkDelegable(backlog: Backlog, ref: string): { item: Item; cla
 	if (!item) throw new BacklogError(`No backlog item ${ref}.`);
 	if (item.type === "epic")
 		throw new BacklogError(
-			`${item.ref} is an epic: it follows its items, so delegate one of them (list parentId ${item.ref}).`,
+			`${item.ref} is an epic: it follows its items, so delegate one of them (backlogPlan list underEpic ${item.ref}).`,
 		);
 	if (item.state !== "todo" && item.state !== "backlog") {
 		const held = heldItem(backlog, ref);
@@ -41,7 +41,7 @@ export function checkDelegable(backlog: Backlog, ref: string): { item: Item; cla
 	);
 	if (missing.length)
 		throw new BacklogError(
-			`${item.ref} is ${item.state} and needs ${missing.join(" and ")} before it can be delegated: add ${missing.length > 1 ? "them" : "it"} with backlog update, then call again.`,
+			`${item.ref} is ${item.state} and needs ${missing.join(" and ")} before it can be delegated: add ${missing.length > 1 ? "them" : "it"} with backlogPlan edit, then call again.`,
 		);
 	// Refused here, before the spawn is approved: the claim would refuse it after (`entity-write.ts`, Blocked by).
 	refuseWaiting(backlog, item);
@@ -53,7 +53,7 @@ function refuseWaiting({ store }: Backlog, item: Item): void {
 	const open = store.openPrerequisites(item);
 	if (open.length)
 		throw new BacklogError(
-			`${item.ref} waits on ${open.join(", ")}: start it when ${open.length > 1 ? "they are" : "it is"} done (timer until item ${item.ref} ready), or drop the link with backlog update dependsOn.`,
+			`${item.ref} waits on ${open.join(", ")}: start it when ${open.length > 1 ? "they are" : "it is"} done (timer until item ${item.ref} ready), or drop the link with backlogPlan edit dependsOn.`,
 		);
 }
 

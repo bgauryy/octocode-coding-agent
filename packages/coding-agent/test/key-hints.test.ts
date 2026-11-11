@@ -1,7 +1,7 @@
 import { getKeybindings, setKeybindings } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { formatKeyText, keyHint, keyText } from "../src/modes/interactive/components/keybinding-hints.ts";
+import { formatKeyText, keyHint, keyText } from "../src/theme/theme-tui-helpers.ts";
 import { shortcutText } from "../src/octocode/shared/keys.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

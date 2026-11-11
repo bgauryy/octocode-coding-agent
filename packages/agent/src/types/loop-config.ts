@@ -19,6 +19,7 @@ import type {
 	ThinkingLevel,
 	ToolExecutionMode,
 } from "./core.ts";
+import type { ListenerErrorReporter } from "../listener-errors.ts";
 
 /**
  * Result returned from `beforeToolCall`.
@@ -350,6 +351,9 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * message ends. See {@link EarlyToolStart}.
 	 */
 	earlyStart?: EarlyToolStart;
+
+	/** Receives a tool-update listener that threw or rejected; defaults to one line on `process.stderr`. */
+	onListenerError?: ListenerErrorReporter;
 }
 
 /**

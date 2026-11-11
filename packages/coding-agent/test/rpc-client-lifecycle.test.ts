@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RpcClient } from "../src/modes/rpc/rpc-client.ts";
 
@@ -15,6 +15,7 @@ function fixture(body: string): string {
 		`import { createInterface } from "node:readline";
 const output = value => process.stdout.write(JSON.stringify(value) + "\\n");
 const reply = (command, data) => output({type:"response", id:command.id, command:command.type, success:true, data});
+process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"test",sessionId:"test"}) + "\\n");
 ${body}
 `,
 	);
@@ -178,7 +179,7 @@ process.stdin.resume();`);
 		clients.push(instance);
 		instance.onEvent(event);
 		await instance.start();
-		// start() waits a fixed 100ms, which a loaded machine can spend before the child writes; wait for its last frame.
+		// start() returns at rpc_ready; the frames after it may still be on their way.
 		await vi.waitFor(() => expect(event).toHaveBeenCalled(), { timeout: 10_000 });
 		expect(identity).toHaveBeenCalledExactlyOnceWith("canonical-id");
 		expect(event).toHaveBeenCalledExactlyOnceWith({
@@ -187,6 +188,30 @@ process.stdin.resume();`);
 			event: "command",
 			error: "refused",
 		});
+	});
+
+	it("resolves start() only once the session announces itself, however late", async () => {
+		const ready = vi.fn();
+		const entry = join(mkdtempSync(join(tmpdir(), "octocode-rpc-late-")), "child.mjs");
+		roots.push(dirname(entry));
+		writeFileSync(
+			entry,
+			`setTimeout(() => process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"late",sessionId:"s"}) + "\\n"), 400);
+process.stdin.resume();`,
+		);
+		const instance = new RpcClient({ invocation: { command: process.execPath, args: [entry] }, onReady: ready });
+		clients.push(instance);
+		await instance.start();
+		expect(ready).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ version: "late" }));
+	});
+
+	it("rejects start() when the process exits before announcing itself", async () => {
+		const entry = join(mkdtempSync(join(tmpdir(), "octocode-rpc-early-exit-")), "child.mjs");
+		roots.push(dirname(entry));
+		writeFileSync(entry, `setTimeout(() => process.exit(3), 300);`);
+		const instance = new RpcClient({ invocation: { command: process.execPath, args: [entry] } });
+		clients.push(instance);
+		await expect(instance.start()).rejects.toThrow("code=3");
 	});
 
 	it("reports a spawn failure once and can stop a process that never obtained a PID", async () => {

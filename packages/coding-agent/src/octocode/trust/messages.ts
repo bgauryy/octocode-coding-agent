@@ -1,5 +1,5 @@
 import os from "node:os";
-import path from "node:path";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { RefusedRoot } from "./identity.ts";
 
@@ -11,9 +11,7 @@ import type { RefusedRoot } from "./identity.ts";
 
 /** A path as one safe row, with the home folder written `~`. */
 export function shown(folder: string, home: string = os.homedir()): string {
-	const clean = sanitizeTerminalText(folder).replace(/[\n\t]/g, " ");
-	if (clean === home) return "~";
-	return clean.startsWith(`${home}${path.sep}`) ? `~${clean.slice(home.length)}` : clean;
+	return homeTilde(sanitizeTerminalText(folder).replace(/[\n\t]/g, " "), home);
 }
 
 /** Opening a folder the user recorded "Do not trust" for: one line, then the caller exits. */

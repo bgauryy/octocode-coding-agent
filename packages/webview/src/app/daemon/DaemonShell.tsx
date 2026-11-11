@@ -129,6 +129,7 @@ function RepoRow({ repo }: { repo: DaemonRepo }) {
 export function DaemonShell({ access }: { access: string }) {
 	const api = useMemo(() => createDaemonApi(access), [access]);
 	const harnessApi = useMemo(() => ({ list: api.harness, set: api.setHarness }), [api]);
+	const toolsApi = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const route = useHashRoute();
 	const tab = TABS.find((entry) => entry.name === route.name)?.name ?? "sessions";
 	const sessions = usePolled(api.sessions);
@@ -167,7 +168,7 @@ export function DaemonShell({ access }: { access: string }) {
 					<List
 						state={sessions}
 						count={(value) => value.sessions.length + (value.unavailable?.length ?? 0)}
-						empty="No live sessions. Start one with OCTOCODE_WEB_DAEMON=1 and run /web."
+						empty="No live sessions. Start Octocode in a terminal; each session appears here."
 					>
 						{(value) => (
 							<>
@@ -207,6 +208,7 @@ export function DaemonShell({ access }: { access: string }) {
 						saveProvider={api.saveProvider}
 						signIn={api.signIn}
 						harness={harnessApi}
+						tools={toolsApi}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}
 					/>
 				)}

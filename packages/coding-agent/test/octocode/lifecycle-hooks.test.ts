@@ -71,7 +71,7 @@ async function setup(hooks: unknown) {
 	const dbFile = path.join(tmp(), "team.sqlite");
 	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile });
 	teams.push(team);
-	const view = registerHooks(fake.api, {}, tmp());
+	const view = registerHooks(fake.api, { env: {}, home: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	team.start(ctx);
 	// Another Octocode process: its own connection to the same database.
@@ -292,7 +292,7 @@ describe("the hooks, driven by the team", () => {
 		const ctx = fakeCtx({ cwd, hasUI: false });
 		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		teams.push(team);
-		registerHooks(fake.api, { OCTOCODE_SUBAGENT: "1" }, tmp());
+		registerHooks(fake.api, { env: { OCTOCODE_SUBAGENT: "1" }, home: tmp() });
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		team.start(ctx);
 		team.join();

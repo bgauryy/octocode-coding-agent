@@ -15,7 +15,7 @@ const USAGE = `Usage: octocode remote <command>
                                       (by fingerprint; a link is printed in full only when it is published)
   link [view] [--relay <ws(s) url>]   Publish a control (or view) link; --relay dials that relay instead of SSH
   stop                                Stop publishing; every link stops working
-Needs a running web daemon (a session started with OCTOCODE_WEB_DAEMON=1).`;
+Needs a running web daemon: run /web or /remote in an Octocode session to start it.`;
 
 async function read(daemon: LaunchedDaemon, route: string, options?: { method: "POST" | "DELETE"; body?: unknown }) {
 	const response = await daemonRequest(daemon, route, options);
@@ -45,7 +45,7 @@ export async function runRemoteCli(
 	}
 	const daemon = await findWebDaemon(env);
 	if (!daemon) {
-		io.err("No web daemon is running. Start a session with OCTOCODE_WEB_DAEMON=1 and run /web or /remote.");
+		io.err("No web daemon is running. Run /web or /remote in an Octocode session to start it.");
 		return 2;
 	}
 	try {

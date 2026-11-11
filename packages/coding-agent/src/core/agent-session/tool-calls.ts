@@ -29,8 +29,20 @@ export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"
 }
 
 /**
+ * Tools this version removed, with what replaces each: a model that still calls one (from a replayed session, a saved
+ * profile or habit) learns it is gone instead of being told to ask for it. The text follows `Tool <name> not found: `.
+ */
+const REMOVED_TOOLS: ReadonlyMap<string, string> = new Map([
+	[
+		"steps",
+		"it was removed. Keep the steps of an item in its plan (backlogPlan edit) and record progress with backlog note.",
+	],
+]);
+
+/**
  * The error a call to an undeclared tool gets when the session knows the tool: it is switched off for this session.
- * Unknown names keep the agent's default. A declared MCP tool whose server is still connecting is retried shortly.
+ * A removed tool names its replacement, unless an extension or MCP server registered a tool of that name. Other unknown
+ * names keep the agent's default. A declared MCP tool whose server is still connecting is retried shortly.
  * Each text keeps the default's `Tool <name> not found` prefix, which consumers match.
  */
 export function unknownToolMessage(
@@ -39,7 +51,10 @@ export function unknownToolMessage(
 	pending: ReadonlySet<string> = new Set(),
 ): string | undefined {
 	if (pending.has(name)) return `Tool ${name} not found: its MCP server is still connecting. Retry in a moment.`;
-	if (!session.getAllTools().some((candidate) => candidate.name === name)) return undefined;
+	if (!session.getAllTools().some((candidate) => candidate.name === name)) {
+		const removed = REMOVED_TOOLS.get(name);
+		return removed ? `Tool ${name} not found: ${removed}` : undefined;
+	}
 	return `Tool ${name} not found: it is not active in this session. Use another tool, or ask the user to enable it.`;
 }
 

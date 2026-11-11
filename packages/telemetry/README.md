@@ -1,15 +1,11 @@
 # @octocodeai/octocode-telemetry
 
-Vendor-neutral telemetry contracts and typed schema utilities. The host chooses what to collect and export (see [configuration](../coding-agent/docs/configuration.md) and [environment variables](../coding-agent/docs/environment-variables.md)). The package has no exporter, no global current-span state and no backend dependency; code passes a context explicitly.
+Vendor-neutral telemetry contracts and typed schema utilities. Today no host passes a telemetry context, so every model request records through the no-op context; the package keeps the contract and schema so an adapter can be wired without changing callers. The host chooses what to collect and export (see [configuration](../coding-agent/docs/configuration.md) and [environment variables](../coding-agent/docs/environment-variables.md)). The package has no exporter, no global current-span state and no backend dependency; code passes a context explicitly.
 
-| Page                         | Covers                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| [Adapters](docs/adapters.md) | Adapter contract, no-op and in-memory contexts, stored telemetry, conformance |
-| [Schemas](docs/schemas.md)   | Typed spans, start and end attributes, schema metadata, typed metrics         |
-
-```bash
-npm install @octocodeai/octocode-telemetry
-```
+| Page                         | Covers                                                                |
+| ---------------------------- | --------------------------------------------------------------------- |
+| [Adapters](docs/adapters.md) | Adapter contract, no-op and in-memory contexts                        |
+| [Schemas](docs/schemas.md)   | Typed spans, start and end attributes, schema metadata, typed metrics |
 
 ## Concepts
 
@@ -101,15 +97,12 @@ Factories and recording are synchronous and trust typed inputs (malformed input 
 | Core        | `TelemetryContext`, `TelemetrySpan`, `SpanOptions`, `SpanLink`, `SpanAttributes`, `AttributeValue`, `SpanStatus`, `NOOP_TELEMETRY_CONTEXT`                                                                                                                                                             |
 | Propagation | `TelemetryCarrier`, `TelemetryPropagation`, `NOOP_TELEMETRY_PROPAGATION`                                                                                                                                                                                                                               |
 | Metrics     | `TelemetryMetrics`, `TelemetryCounter`, `TelemetryUpDownCounter`, `TelemetryHistogram`, `InstrumentOptions`, `HistogramOptions`, `NOOP_TELEMETRY_METRICS`                                                                                                                                              |
-| Store       | `TelemetryStore`, `StoredSpan`, `StoredTrace`, `TraceQuery`, `MetricQuery`, `StoredMetric`                                                                                                                                                                                                             |
 | In-memory   | `InMemoryTelemetryContext`, `RecordedTelemetrySpan`, `RecordedTelemetryEvent`, `RecordedTelemetryLink`, `RecordedTelemetryMeasurement`                                                                                                                                                                 |
 | Schemas     | `defineTelemetrySchema`, `createTypedSpanStarter`, `createTypedMetrics`, `TypedSpanStarter`, `TypedTelemetryMetrics`, `SchemaTelemetrySpan`, `SchemaTelemetryCounter`, `SchemaTelemetryHistogram`, `Telemetry*Definition` and `TelemetrySchema*` types, `Infer*Attributes`, `ExactTelemetryAttributes` |
-| `/render`   | `renderTrace(spans)`                                                                                                                                                                                                                                                                                   |
-| `/testing`  | `createTelemetryAdapterConformance`, `TelemetryAdapterFixture`, `TelemetryAdapterFixtureFactory`, `TelemetryAdapterConformanceCase`                                                                                                                                                                    |
 
 ## Package integration
 
-`@octocodeai/octocode-ai` is the only workspace package that uses this one: provider request options take a parent `TelemetrySpan` as `telemetry`, and `AI_TELEMETRY_SCHEMA` is exported from its root and `./models` entry points. Its span names keep the upstream `pi.ai.*` prefix; adapters may translate them without changing the emitted vocabulary.
+`@octocodeai/octocode-ai` is the only workspace package that uses this one: provider request options take a parent `TelemetrySpan` as `telemetry`, and `AI_TELEMETRY_SCHEMA` is exported from its root and `./models` entry points. Its span and metric names use the `octocode.ai.*` prefix; adapters may translate them without changing the emitted vocabulary.
 
 ## Security and portability
 

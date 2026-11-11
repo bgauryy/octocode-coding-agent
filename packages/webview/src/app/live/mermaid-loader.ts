@@ -8,7 +8,7 @@ let loading: Promise<MermaidApi> | undefined;
 
 /**
  * Mermaid, loaded once and only when a diagram needs it. The host serves the script under the page's token; it runs as an
- * inline script, which the meta policy's `script-src 'unsafe-inline'` allows and the daemon's hash-only header allows by
+ * inline script, which the meta policy's `script-src 'unsafe-inline'` allows and the servers' hash-only header allows by
  * `MERMAID_SCRIPT_HASH`, the hash of exactly this text. A failed load is forgotten so a later diagram can try again.
  */
 export function loadMermaid(fetchScript: () => Promise<string>): Promise<MermaidApi> {

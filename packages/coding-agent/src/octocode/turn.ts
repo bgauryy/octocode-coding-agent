@@ -5,15 +5,17 @@ import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
-import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { currentToolRoles } from "../../../mcp/src/roles.ts";
 import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
 import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
 import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
 import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
+import { agentCall } from "./child-sessions/agent-call.ts";
+import { entryMessage } from "./shared/util.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
@@ -27,6 +29,11 @@ export function registerTurnSetup(
 ): { reset(): void } {
 	let prompt: Record<string, string> | undefined;
 	let promptKey: string | undefined;
+	// The `children` section (how to run children and use their reports) is sent from the session's first `agent` call
+	// that starts a child or messages an agent, and stays from then on: `delegated` never turns false within a session.
+	let delegated = false;
+	let entriesRead = false;
+	let policyInputs: (Parameters<typeof octocodePromptSections>[0] & { childStarted: boolean }) | undefined;
 	const role = options.isSubagent ? readRolePrompt() : undefined;
 	const readOnly = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
 	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
@@ -70,6 +77,11 @@ export function registerTurnSetup(
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
 		const browserControl = browserMcp && ownProfile?.permissions?.includes("browser.control") === true;
+		// A resumed, reloaded or forked session: its entries say whether it delegated before this process. Read once.
+		if (!options.isSubagent && !delegated && !entriesRead) {
+			entriesRead = true;
+			delegated = hasDelegated(ctx.sessionManager?.getEntries() ?? []);
+		}
 		const inputs = {
 			research,
 			profiles: profiles.map(({ name, description }) => ({ name, description, model: routes?.profiles[name] })),
@@ -91,7 +103,7 @@ export function registerTurnSetup(
 			canSave: selected.includes(FILE_TOOL),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
-			canBacklog: selected.includes("backlog"),
+			canBacklog: selected.includes("backlog") && selected.includes("backlogPlan"),
 			// What the selection allows, never what has connected: a server coming up must not change these bytes.
 			canReadLocal:
 				research !== undefined && (typeof api.selectsTools !== "function" || api.selectsTools(research.reader, true)),
@@ -99,7 +111,9 @@ export function registerTurnSetup(
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
 			browserControl,
+			childStarted: delegated,
 		};
+		policyInputs = lean ? undefined : inputs;
 		const key = JSON.stringify(inputs);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
@@ -143,6 +157,21 @@ export function registerTurnSetup(
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});
 
+	// The call is seen before it runs, so the rules are in the request that reads its result: a foreground child's report
+	// arrives as that result. A refused call counts too; the section is then early, never missing.
+	api.on("tool_call", (event) => {
+		if (!options.isSubagent && event.toolName === "agent" && waitsOnAnAgent(event.input)) delegated = true;
+	});
+
+	// The next request of the same run: before_agent_start runs only when a run starts, and the first child starts inside one.
+	api.on("turn_prompt", (event) => {
+		if (!delegated || policyInputs === undefined || policyInputs.childStarted) return;
+		policyInputs = { ...policyInputs, childStarted: true };
+		promptKey = JSON.stringify(policyInputs);
+		prompt = octocodePromptSections(policyInputs);
+		if (prompt.children) event.systemPromptOptions.sections.children = prompt.children;
+	});
+
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
 	api.on("turn_end", (_event, ctx) => {
 		if (!coordinates(api.getActiveTools())) return;
@@ -155,9 +184,30 @@ export function registerTurnSetup(
 		reset() {
 			prompt = undefined;
 			promptKey = undefined;
+			policyInputs = undefined;
+			delegated = false;
+			entriesRead = false;
 			routing.reset();
 		},
 	};
+}
+
+/** Whether an `agent` call starts something the session then waits on: a child, or a message to a peer or an outside agent. Only `coordinate` does not. */
+const waitsOnAnAgent = (args: unknown): boolean => agentCall(args).type !== "coordinate";
+
+/** Whether the session's entries hold such a call. */
+function hasDelegated(entries: readonly unknown[]): boolean {
+	return entries.some((entry) => {
+		const message = entryMessage(entry);
+		return (
+			isRecord(message) &&
+			message.role === "assistant" &&
+			Array.isArray(message.content) &&
+			message.content.some(
+				(part) => isRecord(part) && part.type === "toolCall" && part.name === "agent" && waitsOnAnAgent(part.arguments),
+			)
+		);
+	});
 }
 
 /** Whether this session can reach MCP at all: the native `mcp` tool or declared server tools. */

@@ -181,7 +181,6 @@ const referenceCases: ReferenceCase[] = [
 	{ name: "empty text", text: "  ", expected: "not-found" },
 
 	// Exact matches across providers
-	// #7327
 	{ name: "sole usable provider wins", text: "shared", usable: ["gw-b"], expected: { model: "gw-b/shared" } },
 	{
 		name: "no usable provider is ambiguous instead of falling through to fuzzy",
@@ -207,21 +206,18 @@ const referenceCases: ReferenceCase[] = [
 		expected: { ambiguous: ["gw-a/shared", "gw-b/shared"], usableCount: 2 },
 	},
 	{
-		// #10160
 		name: "provider prefix without a direct model selects the usable raw id",
 		text: "anthropic/future",
 		usable: ["gw-b"],
 		expected: { model: "gw-b/anthropic/future" },
 	},
 	{
-		// #5823
 		name: "usable qualified match beats a usable raw id",
 		text: "anthropic/exact",
 		usable: ["anthropic", "gw-a"],
 		expected: { model: "anthropic/exact" },
 	},
 	{
-		// #5643
 		name: "usable raw id beats an unusable qualified match",
 		text: "anthropic/exact",
 		usable: ["gw-a"],
@@ -517,7 +513,7 @@ describe("resolveCliModel", () => {
 		expect(result.error).toContain("No models available");
 	});
 
-	describe("duplicate raw ids behind a known provider prefix (#10160)", () => {
+	describe("duplicate raw ids behind a known provider prefix", () => {
 		const direct = { ...mockModels[0], id: "claude-sonnet-4-5", provider: "anthropic" };
 		const openrouter = { ...mockModels[0], id: "anthropic/claude-opus-5.5", provider: "openrouter" };
 		const vercel = { ...mockModels[0], id: "anthropic/claude-opus-5.5", provider: "vercel-ai-gateway" };
@@ -562,7 +558,7 @@ describe("resolveCliModel", () => {
 		});
 	});
 
-	describe("custom model fallback with :thinking suffix (#5552)", () => {
+	describe("custom model fallback with :thinking suffix", () => {
 		// Models for a provider that has registered models but the specific model ID
 		// is not in the registry (triggers buildFallbackModel path).
 		const neuralwattModel: Model<"anthropic-messages"> = {

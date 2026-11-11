@@ -9,7 +9,8 @@ import { describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { CustomEditor, ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
+import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/extension-selector.ts";
+import { CustomEditor } from "../../src/theme/custom-editor.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import {
 	BOX_MIN_WIDTH,

@@ -14,7 +14,7 @@ import {
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { renderHintLine } from "./hint-bar.ts";
+import { renderHintLine } from "../../../theme/theme-tui-helpers.ts";
 
 export interface QueueListRow {
 	mode: "steer" | "followUp";

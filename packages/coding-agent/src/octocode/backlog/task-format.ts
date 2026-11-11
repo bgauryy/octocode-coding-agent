@@ -12,7 +12,7 @@ export function taskLine(task: BacklogTask, options: { owner?: boolean } = {}): 
  * A step's own why as an indented line, for views that show a step in detail; nothing when it has none (a step under an
  * item then serves the item's why, which those views show).
  */
-export function taskWhy(task: BacklogTask, indent = "  "): string[] {
+function taskWhy(task: BacklogTask, indent = "  "): string[] {
 	const why = visibleControls(task.reason).replace(/\s+/g, " ").trim();
 	return why ? [`${indent}why: ${why}`] : [];
 }

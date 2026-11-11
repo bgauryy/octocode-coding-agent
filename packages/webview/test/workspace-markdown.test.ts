@@ -1,10 +1,10 @@
-import { safeMarkdownLink } from "@octocodeai/octocode-webview/markdown";
-import { createWorkspaceStore, selectEvents } from "@octocodeai/octocode-webview/state";
+import { safeWebLink } from "../src/link.ts";
+import { createWorkspaceStore, selectEvents } from "../src/state.ts";
 import { describe, expect, it } from "vitest";
 
 describe("workspace output contracts", () => {
 	it("allows web citations without enabling executable or credential-bearing links", () => {
-		expect(safeMarkdownLink("https://example.com/docs?q=one#two")).toBe("https://example.com/docs?q=one#two");
+		expect(safeWebLink("https://example.com/docs?q=one#two")).toBe("https://example.com/docs?q=one#two");
 		for (const url of [
 			"javascript:alert(1)",
 			"data:text/html,test",
@@ -14,7 +14,7 @@ describe("workspace output contracts", () => {
 			"/api/workspace",
 			"#agents",
 		])
-			expect(safeMarkdownLink(url)).toBeNull();
+			expect(safeWebLink(url)).toBeNull();
 	});
 	it("surfaces failed tools and blocked agents without confusing successful results", () => {
 		const store = createWorkspaceStore();

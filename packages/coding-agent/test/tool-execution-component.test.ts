@@ -82,8 +82,8 @@ describe("ToolExecutionComponent parity", () => {
 		expect(renderResult.mock.calls.at(-1)?.[0]).toEqual(result);
 	});
 
-	// Issue #10292: the component loads the PNG transcoder itself, so this works in any TUI host.
-	// Issue #8577: a replaced partial image must not resurface.
+	// The component loads the PNG transcoder itself, so this works in any TUI host.
+	// A replaced partial image must not resurface.
 	test("converts non-PNG tool images once the transcoder loads", async () => {
 		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
 		const component = new ToolExecutionComponent("tool", "id", {}, {}, undefined, createFakeTui(), process.cwd());
@@ -266,7 +266,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toMatch(/Full output:/);
 	});
 
-	// Issue #9628: short durations stay precise; long ones use the one shared duration format (octocode/shared/format.ts).
+	// Short durations stay precise; long ones use the one shared duration format (octocode/shared/format.ts).
 	test.each([
 		{ ms: 0, formatted: "0ms" },
 		{ ms: 850, formatted: "850ms" },
@@ -307,7 +307,6 @@ describe("ToolExecutionComponent parity", () => {
 		expect(completed).toContain(`Took ${formatted}`);
 	});
 
-	// #10549
 	test("bash renderer shows a result's recorded duration, also for a result restored without a live start", () => {
 		const render = (live: boolean): string => {
 			vi.useFakeTimers();

@@ -21,7 +21,7 @@ import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 import { displayRenderers, rowDisplay } from "./tool-execution/display.ts";
 import { noImages, updateImageRows, type ImageRows } from "./tool-execution/images.ts";
-import type { ToolDisplay } from "@octocodeai/octocode-contracts";
+import { resultPurposeData, type ToolDisplay } from "@octocodeai/octocode-contracts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
 
 /** Arguments as comparable text; undefined when they cannot be serialized, which always redraws. */
@@ -308,7 +308,7 @@ export class ToolExecutionComponent extends Container {
 					hasContent = true;
 				}
 			}
-			const reason = reasonRow(this.toolName, this.args, this.result?.structuredContent);
+			const reason = reasonRow(this.toolName, this.args, resultPurposeData(this.result));
 			if (reason) renderContainer.addChild(this.createResultRegion(reason));
 			if (this.result) {
 				const resultRenderer = this.getResultRenderer();
@@ -340,7 +340,7 @@ export class ToolExecutionComponent extends Container {
 						hasContent = true;
 					}
 				}
-				const purpose = purposeRows(this.toolName, this.args, this.result.structuredContent);
+				const purpose = purposeRows(this.toolName, this.args, resultPurposeData(this.result));
 				if (purpose) renderContainer.addChild(this.createResultRegion(purpose));
 			}
 		} else {

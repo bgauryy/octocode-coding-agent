@@ -161,6 +161,8 @@ export function applySelectionToScreen(
 		if (!layout) return screen;
 		const box = getScrollViewBox(layout, selection.start.scrollView);
 		if (!box) return screen;
+		// Selection rows count the whole content: a virtualized frame measures it first, settling the scroll position.
+		box.materialize?.();
 		minRow = Math.max(0, box.rect.y, box.clip.y);
 		maxRow = Math.min(screen.length - 1, box.rect.y + box.rect.height - 1, box.clip.y + box.clip.height - 1);
 		minColumn = Math.max(0, box.rect.x, box.clip.x);

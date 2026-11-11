@@ -53,8 +53,17 @@ ${chalk.bold("Examples:")}
   # Include files in initial message
   ${APP_NAME} @prompt.md @image.png "What color is the sky?"
 
-  # Non-interactive mode (process and exit)
-  ${APP_NAME} -p "List all .ts files in src/"
+  # Delegate one task without reading a parent's open stdin (pre-trusted folder)
+  ${APP_NAME} -p --no-stdin --no-session --permission-mode workspace "Review this project without editing files"
+
+  # Stream JSON Lines events, not a single JSON document
+  ${APP_NAME} --mode json --no-stdin --permission-mode workspace "Run tests and report failures"
+
+  # Persistent worker. Keep stdin open until completion; --no-dialogs refuses asks
+  ${APP_NAME} --mode rpc --no-dialogs --permission-mode workspace
+
+  # Configure provider credentials first; --trust records folder trust, not a sandbox
+  # Text/JSON: check exit status. RPC: check the completed run's outcome.
 
   # Prompt beginning with a dash
   ${APP_NAME} -p -- "- Summarize these points"
@@ -159,9 +168,10 @@ ${chalk.bold("Environment Variables:")}
 ${chalk.bold("Built-in Tool Names:")}
   bash       - Execute commands (type: bash or powershell)
   file       - Guarded file edits, writes and deletions
-  backlog    - Track tasks and progress
-  steps      - Track the steps of the backlog item you hold
-  archive    - Recall history and lifecycle events; store and retrieve workspace memories
+  backlog    - Work a backlog item: read, claim, note, finish, close
+  backlogPlan - Add, edit and list backlog items
+  archive    - Recall session history, compaction summaries and lifecycle events
+  memory     - Save, search and read workspace memories
   web        - Search and fetch public web content
   agent      - Task, external-agent, coordination and message modes
   askUser    - Ask structured questions

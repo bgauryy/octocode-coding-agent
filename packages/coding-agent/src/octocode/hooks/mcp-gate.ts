@@ -1,7 +1,6 @@
-import type { BoundMcpHookCaller, McpHookCaller } from "../../../../mcp/src/hook-caller.ts";
+import { type BoundMcpHookCaller, type McpHookCaller, getMcpHookCaller } from "../../../../mcp/src/api.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { getMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
 
 /**
  * What an `mcp_tool` hook's call goes through before it reaches the server. A hook's call is a tool call like the

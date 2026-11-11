@@ -8,10 +8,6 @@
 		"host": "coding-agent",
 		"mount": "acp"
 	},
-	"exports": {
-		"./server": "./src/server/acp-mode.ts",
-		"./client": "./src/client/client.ts"
-	},
 	"scripts": {
 		"test": "vitest --run"
 	},

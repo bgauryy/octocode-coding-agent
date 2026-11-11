@@ -46,9 +46,11 @@ async function setup(config: unknown, enabled = true) {
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	const failures: unknown[] = [];
-	const hooks = registerHooks(fake.api, enabled ? {} : { OCTOCODE_SUBAGENT: "1" }, tmp(), (...failure) =>
-		failures.push(failure),
-	);
+	const hooks = registerHooks(fake.api, {
+		env: enabled ? {} : { OCTOCODE_SUBAGENT: "1" },
+		home: tmp(),
+		onFailure: (...failure) => failures.push(failure),
+	});
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, cwd, ctx, hooks, failures };
 }

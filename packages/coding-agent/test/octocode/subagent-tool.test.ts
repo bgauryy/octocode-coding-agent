@@ -101,13 +101,12 @@ const refused = new Map<string, string>();
 function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	const f = fakeHost();
 	const team = new Team(f.api);
-	const control = registerAgentTool(
-		f.api,
-		() => profiles,
+	const control = registerAgentTool(f.api, {
+		profiles: () => profiles,
 		team,
-		fakePermission(),
-		() => refused,
-	);
+		permission: fakePermission(),
+		refused: () => refused,
+	});
 	// As index.ts wires it: the `/agents` command.
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
@@ -301,7 +300,7 @@ describe("agent tool with a scripted child", () => {
 				"--model",
 				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,timer,archive,skill,mcp,mcp__*",
+				"read,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser,mcp__browser__*",
 			]),
@@ -827,6 +826,31 @@ describe("agent tool with a scripted child", () => {
 		});
 	});
 
+	it("ends a report with a notice when the run took delegated cost past a multiple of the session's own, once", async () => {
+		// The session itself spent half a cent; each scripted child costs one cent.
+		s.ctx.sessionManager.getEntries = () =>
+			[
+				{
+					type: "message",
+					message: {
+						role: "assistant",
+						provider: "faux",
+						model: "model",
+						usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.005 } },
+					},
+				},
+			] as never;
+		const first = await s.run({ task: "echo cost" });
+		expect(first.isError).not.toBe(true);
+		expect(first.content[0].text).toMatch(
+			/Subagents have now cost ≈\$0\.01 in this session: over 2 times its own ≈\$<0\.01\. Nothing is stopped\./,
+		);
+		// The entries still show no child: the same multiple is not named again.
+		const second = await s.run({ task: "echo cost" });
+		expect(second.isError).not.toBe(true);
+		expect(second.content[0].text).not.toContain("Subagents have now cost");
+	});
+
 	it("lets a child whose step a team interrupt stopped continue with the message, not end as cancelled", async () => {
 		const result = await s.run({ task: "interrupted" });
 		expect(result.isError).toBeUndefined();
@@ -1224,7 +1248,7 @@ describe("isolated subagents and /agents merge", () => {
 
 		// Background isolated runs report the outcome in their message: child.txt is already merged, so nothing changed.
 		await s.run({ task: "edit in background", isolate: true, background: true });
-		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toMatch(/finished[\s\S]*changed no files/), {
+		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toMatch(/reported done[\s\S]*changed no files/), {
 			timeout: 15_000,
 		});
 		await expect(s.run({ task: "fail isolated", isolate: true })).rejects.toThrow(
@@ -1368,20 +1392,19 @@ describe("runSubagent", () => {
 		async () => {
 			const controller = new AbortController();
 			let helper = 0;
-			const run = runSubagent(
-				"detached helper",
-				[],
-				tmp(),
-				undefined,
-				{ id: "a-helper" },
-				controller.signal,
-				({ activity }) => {
+			const run = runSubagent({
+				task: "detached helper",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-helper" },
+				signal: controller.signal,
+				onProgress: ({ activity }) => {
 					const pid = Number(
 						/"helper":(\d+)/.exec(activity ?? "")?.[1] ?? /helper[^\d]*(\d+)/.exec(activity ?? "")?.[1],
 					);
 					if (pid) helper = pid;
 				},
-			);
+			});
 			await vi.waitFor(() => expect(helper).toBeGreaterThan(0), { timeout: 10_000 });
 			try {
 				controller.abort();
@@ -1430,7 +1453,13 @@ describe("runSubagent", () => {
 
 		it("stops what the child left in its process group before the run settles", async () => {
 			await withScript(holder, async (holderFile) => {
-				const outcome = await runSubagent("go", [], tmp(), undefined, { id: "a-holder" }, undefined, () => undefined);
+				const outcome = await runSubagent({
+					task: "go",
+					args: [],
+					cwd: tmp(),
+					identity: { id: "a-holder" },
+					onProgress: () => undefined,
+				});
 				expect(outcome.text).toBe("DONE");
 				// The run has settled: the holder it left behind is already gone, so a worktree removal now races nothing.
 				expect(processAlive(Number(fs.readFileSync(holderFile, "utf8")))).toBe(false);
@@ -1441,19 +1470,17 @@ describe("runSubagent", () => {
 	it("terminates the child when recording its launch fails", async () => {
 		let pid = 0;
 		await expect(
-			runSubagent(
-				"slow launch",
-				[],
-				tmp(),
-				undefined,
-				{ id: "a-launch-failure" },
-				undefined,
-				() => undefined,
-				(childPid) => {
+			runSubagent({
+				task: "slow launch",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-launch-failure" },
+				onProgress: () => undefined,
+				onSpawn: (childPid) => {
 					pid = childPid;
 					throw new Error("cannot record launch");
 				},
-			),
+			}),
 		).rejects.toThrow("cannot record launch");
 		try {
 			expect(() => process.kill(pid, 0)).toThrow();
@@ -1468,21 +1495,25 @@ describe("runSubagent", () => {
 
 	it("rejects oversized unterminated events instead of buffering them without limit", async () => {
 		await expect(
-			runSubagent("oversized", [], tmp(), undefined, { id: "a-oversized" }, undefined, () => undefined),
+			runSubagent({
+				task: "oversized",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-oversized" },
+				onProgress: () => undefined,
+			}),
 		).rejects.toThrow(/JSON event exceeds/);
 	});
 
 	it("bounds the returned report while preserving the complete text in scratch", async () => {
 		const scratch = tmp();
-		const outcome = await runSubagent(
-			"long report",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-bounded", scratch },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "long report",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-bounded", scratch },
+			onProgress: () => undefined,
+		});
 		expect(Buffer.byteLength(outcome.text)).toBeLessThan(9 * 1024);
 		expect(outcome.text).toContain("Full report:");
 		expect(fs.readFileSync(path.join(scratch, "report.md"), "utf8")).toMatch(/the end$/);
@@ -1490,15 +1521,13 @@ describe("runSubagent", () => {
 
 	it("keeps the pointer to the saved partial report in a crash error, however long the narration was", async () => {
 		const scratch = tmp();
-		const error = await runSubagent(
-			"long narrate then crash",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-crash", scratch },
-			undefined,
-			() => undefined,
-		).then(
+		const error = await runSubagent({
+			task: "long narrate then crash",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-crash", scratch },
+			onProgress: () => undefined,
+		}).then(
 			() => undefined,
 			(e: Error) => e,
 		);
@@ -1510,20 +1539,18 @@ describe("runSubagent", () => {
 
 	it("streams the gist of its thinking and keeps thoughts and narration as steps", async () => {
 		const seen: Array<{ step?: string; thinking?: string; activity?: string }> = [];
-		const outcome = await runSubagent(
-			"think aloud",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-think" },
-			undefined,
-			({ step, thinking, activity }) =>
+		const outcome = await runSubagent({
+			task: "think aloud",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-think" },
+			onProgress: ({ step, thinking, activity }) =>
 				seen.push({
 					...(step ? { step } : {}),
 					...(thinking !== undefined ? { thinking } : {}),
 					...(activity ? { activity } : {}),
 				}),
-		);
+		});
 		expect(outcome.text).toBe("THE ANSWER");
 		expect(seen.filter((update) => Object.keys(update).length > 0)).toEqual([
 			{ thinking: "Locating the bug" },
@@ -1533,6 +1560,8 @@ describe("runSubagent", () => {
 			{ thinking: "" },
 			{ activity: "→ read src/auth.ts" },
 			{ thinking: "" },
+			// The answer to the one question about the outcome word its report lacks.
+			{ thinking: "" },
 		]);
 	});
 
@@ -1540,22 +1569,27 @@ describe("runSubagent", () => {
 		const controller = new AbortController();
 		controller.abort();
 		await expect(
-			runSubagent("x", [], tmp(), undefined, { id: "a-0000" }, controller.signal, () => undefined),
+			runSubagent({
+				task: "x",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-0000" },
+				signal: controller.signal,
+				onProgress: () => undefined,
+			}),
 		).rejects.toThrow("Subagent cancelled");
 	});
 
 	it("reports the child pid and parses a final line without a newline", async () => {
 		const pids: number[] = [];
-		const outcome = await runSubagent(
-			"report",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-0001", goal: "t", workspace: "/w" },
-			undefined,
-			() => undefined,
-			(pid) => pids.push(pid),
-		);
+		const outcome = await runSubagent({
+			task: "report",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0001", goal: "t", workspace: "/w" },
+			onProgress: () => undefined,
+			onSpawn: (pid) => pids.push(pid),
+		});
 		expect(pids).toHaveLength(1);
 		expect(reportOf(outcome.text).id).toBe("a-0001");
 		expect(outcome.usage.input).toBe(100);
@@ -1575,43 +1609,37 @@ describe("runSubagent", () => {
 	});
 
 	it("keeps the report when a late notice wakes the child after it answered", async () => {
-		const outcome = await runSubagent(
-			"late notice",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-0003" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "late notice",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0003" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.text).toBe("FULL REPORT\n\n---\n\nThat job was my coverage rerun; findings unchanged.");
 		expect(outcome.error).toBeUndefined();
 	});
 
 	it("propagates a failed follow-up while preserving the prior report", async () => {
-		const outcome = await runSubagent(
-			"late failure",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-0004" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "late failure",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0004" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.text).toBe("FULL REPORT\n\n---\n\n(A later follow-up turn failed: overloaded)");
 		expect(outcome.error).toBe("overloaded");
 	});
 
 	it("never keeps a failed draft as a report section", async () => {
-		const outcome = await runSubagent(
-			"steered draft",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-0005" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "steered draft",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0005" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.text).toBe("FINAL REPORT");
 		expect(outcome.error).toBeUndefined();
 	});
@@ -1620,15 +1648,13 @@ describe("runSubagent", () => {
 		"settles shortly after the child exits even when an escaped grandchild holds its pipes open",
 		async () => {
 			const started = Date.now();
-			const outcome = await runSubagent(
-				"orphan holder",
-				[],
-				tmp(),
-				undefined,
-				{ id: "a-orphan" },
-				undefined,
-				() => undefined,
-			);
+			const outcome = await runSubagent({
+				task: "orphan holder",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-orphan" },
+				onProgress: () => undefined,
+			});
 			expect(outcome.text).toBe("ORPHAN REPORT");
 			expect(Date.now() - started).toBeLessThan(5_000);
 		},
@@ -1636,8 +1662,14 @@ describe("runSubagent", () => {
 	);
 
 	it("keeps running when the progress callback throws", async () => {
-		const outcome = await runSubagent("report", [], tmp(), undefined, { id: "a-0002" }, undefined, () => {
-			throw new Error("render gone");
+		const outcome = await runSubagent({
+			task: "report",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0002" },
+			onProgress: () => {
+				throw new Error("render gone");
+			},
 		});
 		expect(reportOf(outcome.text).id).toBe("a-0002");
 	});
@@ -1658,7 +1690,15 @@ describe("subagent watchdog and exits", () => {
 				busy = resolve;
 				return undefined;
 			});
-			const run = runSubagent(task, [], tmp(), undefined, { id }, controller.signal, () => busy(), undefined, limits);
+			const run = runSubagent({
+				task,
+				args: [],
+				cwd: tmp(),
+				identity: { id },
+				signal: controller.signal,
+				onProgress: () => busy(),
+				limits,
+			});
 			const outcome = Promise.allSettled([run]);
 			await started;
 			await vi.advanceTimersByTimeAsync(ms);
@@ -1682,9 +1722,16 @@ describe("subagent watchdog and exits", () => {
 
 	it("kills a child that emits nothing for the idle limit and says what it last did", async () => {
 		await expect(
-			runSubagent("hang", [], tmp(), undefined, { id: "a-hang" }, undefined, () => undefined, undefined, {
-				idleMs: 300,
-				busyMs: 60_000,
+			runSubagent({
+				task: "hang",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-hang" },
+				onProgress: () => undefined,
+				limits: {
+					idleMs: 300,
+					busyMs: 60_000,
+				},
 			}),
 		).rejects.toThrow(
 			/^Subagent stopped: no output for .*; last activity: started, .* ago\. Its process tree was killed\.$/,
@@ -1708,17 +1755,14 @@ describe("subagent watchdog and exits", () => {
 				busy = resolve;
 				return undefined;
 			});
-			const run = runSubagent(
-				"slow tool",
-				[],
-				tmp(),
-				undefined,
-				{ id: "a-slow-hung" },
-				undefined,
-				() => busy(),
-				undefined,
-				{ idleMs: 200, busyMs: 200 },
-			);
+			const run = runSubagent({
+				task: "slow tool",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-slow-hung" },
+				onProgress: () => busy(),
+				limits: { idleMs: 200, busyMs: 200 },
+			});
 			const outcome = Promise.allSettled([run]);
 			await started;
 			await vi.advanceTimersByTimeAsync(1_000); // past the call's deadline (busyMs + idleMs) and a watchdog tick
@@ -1742,9 +1786,14 @@ describe("subagent watchdog and exits", () => {
 				ignoring = resolve;
 				return undefined;
 			});
-			const run = runSubagent("stubborn", [], tmp(), undefined, { id: "a-stubborn" }, controller.signal, () =>
-				ignoring(),
-			);
+			const run = runSubagent({
+				task: "stubborn",
+				args: [],
+				cwd: tmp(),
+				identity: { id: "a-stubborn" },
+				signal: controller.signal,
+				onProgress: () => ignoring(),
+			});
 			// The child reported that it ignores SIGTERM: only now is a stop a test of the grace.
 			await ignores;
 			const started = Date.now();

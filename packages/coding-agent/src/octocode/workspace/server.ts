@@ -1,11 +1,11 @@
 import {
 	ApplicationCommandSchema,
-	APPLICATION_PROTOCOL_VERSION,
 	type ApplicationConnection,
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
+import { sameSecret } from "../../../../common/src/env.ts";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
-import { renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
+import { livePageHeaderPolicy, renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
 import {
 	handleWebPrefsRequest,
 	serveServiceWorker,
@@ -14,13 +14,11 @@ import {
 } from "../browser/page-routes.ts";
 import {
 	WorkspaceCommandSchema,
-	BacklogCommandSchema,
-	BacklogMutationSchema,
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
 } from "@octocodeai/octocode-contracts/protocol";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, WebSocket } from "ws";
@@ -28,10 +26,13 @@ import { Value } from "typebox/value";
 import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { BacklogError, TaskError } from "../backlog/store.ts";
-import { applyBacklogCommand, applyBacklogMutation, mutationShapeError } from "../backlog/web-commands.ts";
+import { applyBoardWrite } from "../backlog/web-commands.ts";
 import { handleApplicationDataRequest } from "./application-data.ts";
 import { pumpApplicationFrames } from "./application-stream.ts";
 import { handleDocsRequest, repoDocsNeverTrusted, type RepoDocsTrusted } from "./docs.ts";
+import { inlineScriptHash } from "./inline-script-hash.ts";
+import { bearerOf, ownHost, ownOrigin, readHello, servePage } from "./page-access.ts";
+
 import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
@@ -55,6 +56,13 @@ export async function startWorkspaceWeb(
 	sessionConfig?: SessionConfig,
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
+	const page = () =>
+		renderBacklogHtml(
+			{ repo: backlog.repoName, generatedAt: Date.now(), states: STATES, idleMs: 604800000, items: [] },
+			true,
+		);
+	// The page's script text never depends on its data, so one hash covers every render.
+	const csp = livePageHeaderPolicy(inlineScriptHash(page()));
 	const notifyChanged = () => {
 		try {
 			changed();
@@ -82,11 +90,7 @@ export async function startWorkspaceWeb(
 			applicationStreams.delete(socket);
 		}
 	};
-	const authorized = (value: string) => {
-		const supplied = Buffer.from(value);
-		const expected = Buffer.from(token);
-		return supplied.length === expected.length && timingSafeEqual(supplied, expected);
-	};
+	const authorized = (value: string) => sameSecret(token, value);
 	const snapshot = () => backlogSnapshot(backlog.store, backlog.repoName, Date.now(), backlog.session);
 	const sendSnapshot = (socket: WebSocket) => {
 		if (readerStalled(socket)) return socket.terminate();
@@ -159,29 +163,12 @@ export async function startWorkspaceWeb(
 			res.end(JSON.stringify(body));
 		};
 		const handle = async () => {
-			if (req.headers.host !== origin.slice(7) || (req.headers.origin !== undefined && req.headers.origin !== origin))
+			if (!ownHost(req, origin) || !ownOrigin(req, origin))
 				return reply(403, { error: "This board accepts requests only from its own local address." });
-			if (req.method === "GET" && req.url === "/") {
-				res.writeHead(200, {
-					"content-type": "text/html; charset=utf-8",
-					"cache-control": "no-store",
-					"referrer-policy": "no-referrer",
-					"x-frame-options": "DENY",
-					"content-security-policy": "frame-ancestors 'none'",
-				});
-				res.end(
-					renderBacklogHtml(
-						{ repo: backlog.repoName, generatedAt: Date.now(), states: STATES, idleMs: 604800000, items: [] },
-						true,
-					),
-				);
-				return;
-			}
+			if (req.method === "GET" && req.url === "/") return servePage(res, page(), csp);
 			// Static code like the page: no token, but the host and origin checks above still apply.
 			if (serveServiceWorker(req, req.url ?? "", res, WEB_PAGE_ASSETS)) return;
-			const supplied = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /, ""));
-			const expected = Buffer.from(token);
-			if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
+			if (!authorized(bearerOf(req)))
 				return reply(401, { error: "Reopen /web to connect to the Octocode web workspace." });
 			if (req.url === WORKSPACE_ROUTES.application && !workspace?.application)
 				return reply(503, { error: "Application controls are unavailable in this session." });
@@ -247,20 +234,11 @@ export async function startWorkspaceWeb(
 				workspaceUpdates();
 				return reply(200, { receipt });
 			}
-			if (typeof input === "object" && input !== null && "command" in input) {
-				if (!Value.Check(BacklogCommandSchema, input)) return reply(400, { error: "Invalid backlog command" });
-				const result = applyBacklogCommand(backlog.store, input, backlog.session);
-				notifyChanged();
-				broadcast();
-				return reply(200, result);
-			}
-			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
-			const shapeError = mutationShapeError(input);
-			if (shapeError) return reply(400, { error: shapeError });
-			const result = applyBacklogMutation(backlog.store, input, { actor: backlog.actor, session: backlog.session });
+			const outcome = applyBoardWrite(backlog.store, input, backlog.session);
+			if (!outcome.ok) return reply(400, { error: outcome.error });
 			notifyChanged();
 			broadcast();
-			reply(200, result);
+			reply(200, outcome.result);
 		};
 		void handle().catch((error: unknown) =>
 			reply(409, {
@@ -276,8 +254,8 @@ export async function startWorkspaceWeb(
 		socket.on("error", () => socket.destroy());
 		if (
 			req.url !== WORKSPACE_ROUTES.live ||
-			req.headers.host !== origin.slice(7) ||
-			req.headers.origin !== origin ||
+			!ownHost(req, origin) ||
+			!ownOrigin(req, origin, true) ||
 			sockets.clients.size >= 32
 		) {
 			socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
@@ -296,33 +274,9 @@ export async function startWorkspaceWeb(
 			});
 			client.on("message", (data, binary) => {
 				if (authenticated.has(client)) return client.close(1008, "Updates only");
-				if (binary) return client.close(1008, "Reopen /web");
-				// The default binaryType ("nodebuffer") delivers each message as one Buffer.
-				let supplied = (data as Buffer).toString();
-				let cursor: ApplicationCursor | undefined;
-				if (supplied.startsWith("{")) {
-					let hello: { token?: unknown; protocolVersion?: unknown; cursor?: unknown };
-					try {
-						hello = JSON.parse(supplied);
-					} catch {
-						return client.close(1008, "Invalid handshake");
-					}
-					if (!hello || hello.protocolVersion !== APPLICATION_PROTOCOL_VERSION || typeof hello.token !== "string")
-						return client.close(1008, "Unsupported protocol; reopen workspace");
-					supplied = hello.token;
-					if (hello.cursor !== undefined) {
-						const value = hello.cursor as ApplicationCursor;
-						if (
-							!value ||
-							typeof value.sessionId !== "string" ||
-							typeof value.epoch !== "string" ||
-							!Number.isSafeInteger(value.sequence) ||
-							value.sequence < 0
-						)
-							return client.close(1008, "Invalid cursor");
-						cursor = value;
-					}
-				}
+				const hello = readHello(data as Buffer, binary);
+				if ("refusal" in hello) return client.close(1008, hello.refusal);
+				const { token: supplied, cursor } = hello;
 				if (!authorized(supplied)) return client.close(1008, "Reopen /web");
 				clearTimeout(timeout);
 				authenticated.add(client);

@@ -51,6 +51,9 @@ function unknownSkill(name: string, available: readonly CatalogSkill[]): Error {
 }
 
 function body(entry: CatalogSkill, sessionId: string, cwd: string): string {
+	// The catalog's snapshot is validated once per loaded skill list: the file read now must still be the one captured.
+	if (fs.realpathSync(entry.file) !== entry.file || !fs.statSync(entry.file).isFile())
+		throw new Error("its file now resolves to another path");
 	const raw = stripFrontmatter(fs.readFileSync(entry.file, "utf8")).trim();
 	const { skill } = entry;
 	// The same expansion `/skill:name` does, without arguments: a Claude skill's `${CLAUDE_*}` values resolve here too.

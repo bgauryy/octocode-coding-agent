@@ -114,10 +114,12 @@ describe("browser MCP preset", () => {
 		expect(server.connection?.tools.map((tool) => tool.name)).toEqual(
 			expect.arrayContaining(["open", "run", "snapshot", "screenshot", "query", "artifact", "cleanup"]),
 		);
-		// The preset's compact overrides (`presets/browser/compact-overrides.json`) replace the server's own text.
+		// Contract change: Octocode ships no overrides for the browser server, so the prompt carries the server's own
+		// instructions, word for word.
 		const prompt = Object.values(sections).join("\n");
-		expect(prompt).toContain("A run plan stops at its first failure");
-		expect(prompt).not.toContain("Batch known transitions with run");
+		const instructions = server.connection?.instructions?.trim() ?? "";
+		expect(instructions).not.toBe("");
+		for (const line of instructions.split("\n").filter((entry) => entry.trim())) expect(prompt).toContain(line.trim());
 		const result = await host.call(createMcpToolName(BROWSER_SERVER, "schema"), {
 			command: "run",
 			operation: "extract",

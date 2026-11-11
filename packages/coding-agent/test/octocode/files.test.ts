@@ -308,7 +308,7 @@ describe("file tool", () => {
 		expect(returnedContent("octocode_localFetch", { path: "a" }, text, undefined)).toBeUndefined();
 	});
 
-	it("records a Octocode read from the returned text: a change between the read and the hook is caught", async () => {
+	it("records an Octocode read from the returned text: a change between the read and the hook is caught", async () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "new!");

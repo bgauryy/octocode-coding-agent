@@ -5,6 +5,7 @@ import { tmp } from "./helpers.ts";
 
 afterEach(() => {
 	delete process.env.OCTOCODE_SUBAGENT;
+	delete process.env.OCTOCODE_LEAN;
 });
 
 /**
@@ -24,5 +25,16 @@ describe("agent keeps timer", () => {
 		const tools = fake.api.getAllTools() as { name: string; companionTools?: readonly string[] }[];
 		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toEqual(["timer"]);
 		expect(tools.some((tool) => tool.name === "timer")).toBe(true);
+	});
+
+	it("declares no companion in a lean child, which gets no delegation rules and has timer only from its own list", async () => {
+		process.env.OCTOCODE_SUBAGENT = "1";
+		process.env.OCTOCODE_LEAN = "1";
+		const fake = fakeHost();
+		Object.assign(fake.api, { getSessionName: () => undefined });
+		await octocode(fake.api);
+		const tools = fake.api.getAllTools() as { name: string; companionTools?: readonly string[] }[];
+		expect(tools.some((tool) => tool.name === "agent")).toBe(true);
+		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toBeUndefined();
 	});
 });

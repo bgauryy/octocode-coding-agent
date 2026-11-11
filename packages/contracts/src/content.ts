@@ -144,17 +144,17 @@ function statedPurpose(records: Record<string, unknown>[]): Pick<ReturnedPurpose
 /**
  * Every goal and reasoning an external tool's result states for its call, for display: the server's data (the
  * `structuredContent` of the stored MCP result, else the value itself) at its top level, then per row of its top-level
- * arrays, a row's own text before its `data`'s. Rows carry their `index`, else their position; empty values and whole
+ * arrays, a row's own text before its `data`'s. Data that is itself an array is the row list. Rows carry their `index`, else their position; empty values and whole
  * duplicate entries are dropped. Empty when the result states none; the call's own arguments are never consulted, since
  * an external tool's input is not ours to annotate. The text is the server's, untrimmed beyond its outer whitespace.
  */
 export function returnedPurposes(structuredContent: unknown): ReturnedPurpose[] {
-	if (!isRecord(structuredContent)) return [];
-	const data = isRecord(structuredContent.structuredContent) ? structuredContent.structuredContent : structuredContent;
-	const entries: ReturnedPurpose[] = [{ ...statedPurpose([data]) }];
-	for (const value of Object.values(data)) {
-		if (!Array.isArray(value)) continue;
-		value.forEach((row, position) => {
+	// The stored MCP result wraps the server's data; a server may also return the row list itself, with no object around it.
+	const inner = isRecord(structuredContent) ? structuredContent.structuredContent : undefined;
+	const data = isRecord(inner) || Array.isArray(inner) ? inner : structuredContent;
+	const entries: ReturnedPurpose[] = [];
+	const rows = (list: unknown[]) =>
+		list.forEach((row, position) => {
 			if (!isRecord(row)) return;
 			const index = row.index;
 			entries.push({
@@ -162,7 +162,11 @@ export function returnedPurposes(structuredContent: unknown): ReturnedPurpose[] 
 				...statedPurpose(isRecord(row.data) ? [row, row.data] : [row]),
 			});
 		});
-	}
+	if (Array.isArray(data)) rows(data);
+	else if (isRecord(data)) {
+		entries.push({ ...statedPurpose([data]) });
+		for (const value of Object.values(data)) if (Array.isArray(value)) rows(value);
+	} else return [];
 	const seen = new Set<string>();
 	return entries.filter((entry) => {
 		if (entry.mainGoal === undefined && entry.reasoning === undefined) return false;
@@ -171,6 +175,40 @@ export function returnedPurposes(structuredContent: unknown): ReturnedPurpose[] 
 		seen.add(key);
 		return true;
 	});
+}
+
+/** The value each text block last parsed to, so a view that draws a result again does not parse it again. */
+const parsedText = new WeakMap<object, { text: string; value: unknown }>();
+
+/**
+ * The data a tool result states its call's purposes in, for `returnedPurposes`: its `structuredContent` when it has
+ * one, else the value of its text when the result's one text block is one JSON object or array. Any other result
+ * (prose, several text blocks, a scalar, text shortened for display) has none. The same for every tool, native or MCP.
+ */
+export function resultPurposeData(
+	result: { structuredContent?: unknown; content?: unknown } | null | undefined,
+): unknown {
+	if (!result) return undefined;
+	if (result.structuredContent !== undefined && result.structuredContent !== null) return result.structuredContent;
+	if (!Array.isArray(result.content)) return undefined;
+	const blocks = result.content.filter(
+		(block): block is { type: "text"; text: string } =>
+			isRecord(block) && block.type === "text" && typeof block.text === "string",
+	);
+	if (blocks.length !== 1) return undefined;
+	const [block] = blocks;
+	const known = parsedText.get(block);
+	if (known?.text === block.text) return known.value;
+	let value: unknown;
+	const text = block.text.trim();
+	if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]")))
+		try {
+			value = JSON.parse(text);
+		} catch {
+			value = undefined;
+		}
+	parsedText.set(block, { text: block.text, value });
+	return value;
 }
 
 /** The first goal, else the first reasoning, a result states: the one line a tool row shows under its title. */

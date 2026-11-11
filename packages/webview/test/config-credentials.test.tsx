@@ -207,6 +207,33 @@ describe("ConfigView sign-in", () => {
 		expect(document.querySelector('a[href^="javascript"]')).toBeNull();
 	});
 
+	it("applies the page's one link policy to key pages and sign-in links", async () => {
+		const open = vi.fn();
+		vi.stubGlobal("open", open);
+		const unsafe: ConfigSnapshot = {
+			...withAuth,
+			providers: [
+				{
+					...withAuth.providers[0],
+					auth: { keyAuth: { name: "OpenAI API key", keyPage: "javascript:alert(1)" } },
+				},
+			],
+		};
+		const view = render(<ConfigView load={async () => unsafe} saveCredential={vi.fn()} signIn={vi.fn()} />);
+		expect(await screen.findByText(/Sign in with: API key/)).toBeInTheDocument();
+		expect(screen.queryByRole("link", { name: "Get key for OpenAI" })).toBeNull();
+		view.unmount();
+		const signIn = vi.fn(async () =>
+			state({ events: [{ type: "auth_url", url: "https://user:secret@auth.example.com/go" }] }),
+		);
+		render(<ConfigView load={async () => withAuth} signIn={signIn} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Sign in with subscription for OpenAI" }));
+		await screen.findByText(/Signing in to OpenAI/);
+		expect(screen.queryByRole("link", { name: /auth\.example\.com/ })).toBeNull();
+		expect(open).not.toHaveBeenCalled();
+		vi.unstubAllGlobals();
+	});
+
 	it("sends a blank answer to a text question but keeps a secret answer required", async () => {
 		const commands: SignInCommand[] = [];
 		const signIn = vi.fn(async (command: SignInCommand): Promise<SignInState> => {

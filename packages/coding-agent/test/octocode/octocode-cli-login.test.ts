@@ -17,12 +17,14 @@ const { GITHUB_LOGIN_NOTICE, githubLoginMissing } = await import("../../src/octo
 const { registerOctocodeCli } = await import("../../src/octocode/cli/command.ts");
 const { Subcommands } = await import("../../src/octocode/shared/commands.ts");
 
-const HELP = "Usage: octocode auth status [OPTIONS]\n\nOptions:\n      --json  Print JSON\n  -h, --help  Print help\n";
-
-/** A CLI that answers `auth status --help` with HELP and `auth status` with `status`. */
-function cli(status: { code: number | null; stdout: string } | "hang" | "fail") {
+/** A CLI that answers `auth status --json` with `status`; one without `--json` rejects it as invalid input (exit 2). */
+function cli(
+	status: { code: number | null; stdout: string } | "hang" | "fail",
+	options: { json?: boolean; plain?: { code: number | null; stdout: string } } = {},
+) {
 	return vi.fn((argv: string[], signal: AbortSignal) => {
-		if (argv.includes("--help")) return Promise.resolve({ code: 0, stdout: HELP });
+		if (options.json === false && argv.includes("--json")) return Promise.resolve({ code: 2, stdout: "" });
+		if (!argv.includes("--json") && options.plain) return Promise.resolve(options.plain);
 		if (status === "fail") return Promise.reject(new Error("spawn ENOENT"));
 		if (status === "hang")
 			return new Promise<{ code: number | null; stdout: string }>((resolve) =>
@@ -40,11 +42,25 @@ afterEach(() => {
 });
 
 describe("GitHub sign-in check", () => {
-	it("reports a missing sign-in from exit code 4 or `authenticated: false`, asking JSON because the help lists it", async () => {
+	it("reports a missing sign-in from exit code 4 or `authenticated: false`, in one `--json` run", async () => {
 		const byCode = cli({ code: 4, stdout: "" });
 		expect(await check(byCode)).toBe(true);
-		expect(byCode).toHaveBeenLastCalledWith(["auth", "status", "--json"], expect.any(AbortSignal));
-		expect(await check(cli({ code: 0, stdout: '{"authenticated":false}' }))).toBe(true);
+		expect(byCode.mock.calls.map(([argv]) => argv)).toEqual([["auth", "status", "--json"]]);
+		const byJson = cli({ code: 0, stdout: '{"authenticated":false}' });
+		expect(await check(byJson)).toBe(true);
+		expect(byJson).toHaveBeenCalledOnce();
+	});
+
+	it("asks a CLI without `--json` plainly once it rejects the option, judging by the exit code alone", async () => {
+		const old = cli({ code: 0, stdout: "" }, { json: false, plain: { code: 4, stdout: "Not signed in" } });
+		expect(await check(old)).toBe(true);
+		expect(old.mock.calls.map(([argv]) => argv)).toEqual([
+			["auth", "status", "--json"],
+			["auth", "status"],
+		]);
+		const signedIn = cli({ code: 0, stdout: "" }, { json: false, plain: { code: 0, stdout: "Signed in as u" } });
+		expect(await check(signedIn)).toBe(false);
+		expect(signedIn).toHaveBeenCalledTimes(2);
 	});
 
 	it("is silent when signed in, when the CLI is missing, fails, times out or prints something else", async () => {
@@ -84,10 +100,10 @@ describe("GitHub sign-in notice", () => {
 	}
 
 	it("shows one notice per run when not signed in, none when the CLI is missing", async () => {
-		captureCli.mockImplementation(async (_bin: string, argv: string[]) => ({
+		captureCli.mockImplementation(async () => ({
 			output: "",
-			stdout: argv.includes("--help") ? HELP : '{"authenticated":false}',
-			code: argv.includes("--help") ? 0 : 4,
+			stdout: '{"authenticated":false}',
+			code: 4,
 			truncated: false,
 			cancelled: false,
 		}));
@@ -95,6 +111,8 @@ describe("GitHub sign-in notice", () => {
 		registerOctocodeCli(api as never, new Subcommands());
 		await emit("session_start");
 		await vi.waitFor(() => expect(notify).toHaveBeenCalledWith(GITHUB_LOGIN_NOTICE, "warning"));
+		// One CLI run per start: no `--help` probe before it.
+		expect(captureCli.mock.calls.map(([, argv]) => argv)).toEqual([["auth", "status", "--json"]]);
 		await emit("session_start");
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(notify).toHaveBeenCalledOnce();

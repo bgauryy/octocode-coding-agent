@@ -90,4 +90,21 @@ describe("an update listener that fails while a tool runs", () => {
 		});
 		expect(delivered).toBe(true);
 	});
+
+	it("reports through the host's reporter instead of stderr when one is given", async () => {
+		const reported: [string, unknown][] = [];
+		const failure = new Error("listener failed");
+		const tool = updatesThen(() => ({ content: [], details: undefined }));
+		await runToolCall(call, {
+			tools: [tool],
+			assistantMessage,
+			context,
+			onUpdate: () => {
+				throw failure;
+			},
+			onListenerError: (message, error) => reported.push([message, error]),
+		});
+		expect(reported).toEqual([["Tool update listener error (work): Error: listener failed", failure]]);
+		expect(process.stderr.write).not.toHaveBeenCalled();
+	});
 });

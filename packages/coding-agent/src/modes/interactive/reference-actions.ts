@@ -9,7 +9,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { openBrowser } from "../../../../common/src/open-browser.ts";
+import { openTarget } from "../../../../common/src/open-target.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openItemLink } from "../../octocode/shared/item-ref.ts";
 import { locationText, openReference, referenceLocation, type ReferenceHost } from "./reference-opener.ts";
@@ -106,7 +106,10 @@ export async function handleLinksCommand(host: ActionHost, args: string): Promis
 		);
 	else if (action === "Copy location" && location) await copy(host, locationText(location), "file location");
 	else if (action === "Copy path" && location) await copy(host, location.path, "file path");
-	else if (action === "Reveal parent folder" && location) openBrowser(pathToFileURL(dirname(location.path)).href);
+	else if (action === "Reveal parent folder" && location)
+		await openTarget(pathToFileURL(dirname(location.path)).href).catch((error: unknown) =>
+			host.showError(`Could not reveal the folder: ${errorMessage(error)}`),
+		);
 }
 
 export async function handleSemanticCopy(host: ActionHost, mode: string): Promise<void> {

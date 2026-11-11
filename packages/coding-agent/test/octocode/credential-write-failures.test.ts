@@ -20,6 +20,8 @@ let agentDir: string;
 let keychainDir: string;
 
 beforeEach(() => {
+	// The provider's key check accepts every key here, so only the write paths under test decide; nothing leaves the machine.
+	vi.stubGlobal("fetch", async () => new Response("{}", { status: 200 }));
 	root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-credential-failures-"));
 	agentDir = path.join(root, "agent");
 	keychainDir = path.join(root, "keychain");
@@ -28,6 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 

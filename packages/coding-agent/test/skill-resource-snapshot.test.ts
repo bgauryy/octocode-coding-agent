@@ -440,3 +440,30 @@ it("reads Codex sidecar policy beside the canonical skill file", async () => {
 	expect(loaded.skills[0].disableModelInvocation).toBe(true);
 	expect(loaded.skills[0].canonicalPath).toBe(target.filePath);
 });
+it("validates the whole catalog once per loaded skill list and shares that snapshot frozen", () => {
+	const { make } = fixture();
+	// As a loader captures it: with its canonical path.
+	const first = { ...make("first"), canonicalPath: "" };
+	first.canonicalPath = first.filePath;
+	const skills: Skill[] = [first];
+	const snapshot = captureSkillResourceSnapshot({ skills, diagnostics: [] });
+	// The loader's wrapper object is new on every call; its skill list is what a reload replaces.
+	expect(captureSkillResourceSnapshot({ skills, diagnostics: [] })).toBe(snapshot);
+	expect(Object.isFrozen(snapshot.resources[0].skill.sourceInfo)).toBe(true);
+	expect(() => adoptSkillResourceSnapshot(snapshot)).not.toThrow();
+	// A skill added to the same list in place, or a new list, is captured and validated again.
+	skills.push(make("second"));
+	expect(
+		captureSkillResourceSnapshot({ skills, diagnostics: [] }).resources.map((resource) => resource.skill.name),
+	).toEqual(["first", "second"]);
+	const elsewhere = path.join(path.dirname(path.dirname(first.filePath)), "elsewhere.md");
+	fs.writeFileSync(elsewhere, "not the skill");
+	fs.rmSync(first.filePath);
+	fs.symlinkSync(elsewhere, first.filePath);
+	expect(captureSkillResourceSnapshot({ skills, diagnostics: [] }).resources).toHaveLength(2);
+	expect(() => captureSkillResourceSnapshot({ skills: [...skills], diagnostics: [] })).toThrow(
+		"Child skill canonical identity changed",
+	);
+	// A selection is never served from the cache.
+	expect(() => captureSkillResourceSnapshot({ skills, diagnostics: [] }, ["first"])).toThrow();
+});

@@ -338,6 +338,43 @@ describe("AgentSession bash and persistence characterization", () => {
 		]);
 	});
 
+	it("paces session update events to one per 100 ms and always delivers the last chunk", async () => {
+		const harness = await createHarness();
+		harnesses.push(harness);
+		const callbackDeltas: string[] = [];
+		const updates: Array<{ at: number; delta: string }> = [];
+		const unsubscribe = harness.session.subscribe((event) => {
+			if (event.type === "bash_execution_update") updates.push({ at: Date.now(), delta: event.delta });
+		});
+		const chunks = Array.from({ length: 300 }, (_, index) => `line ${index}\n`);
+		const operations: BashOperations = {
+			exec: async (_command, _cwd, options) => {
+				// 300 chunks over about a quarter of a second, then the last one right before the exit.
+				for (const [index, chunk] of chunks.entries()) {
+					options.onData(Buffer.from(chunk));
+					if (index % 60 === 59) await new Promise((resolve) => setTimeout(resolve, 50));
+				}
+				options.onData(Buffer.from("the end\n"));
+				return { exitCode: 0 };
+			},
+		};
+
+		await harness.session.executeBash("chatty", (delta) => callbackDeltas.push(delta), { id: "bash-2", operations });
+		unsubscribe();
+
+		// The caller's own callback still sees every chunk as it arrives.
+		expect(callbackDeltas).toHaveLength(301);
+		// The session events carry the same text in far fewer events, none closer than the cadence allows.
+		expect(updates.map((update) => update.delta).join("")).toBe(`${chunks.join("")}the end\n`);
+		expect(updates.length).toBeLessThanOrEqual(6);
+		expect(updates.length).toBeGreaterThanOrEqual(2);
+		expect(updates.at(-1)!.delta.endsWith("the end\n")).toBe(true);
+		// All but the final flush (sent when the command ends, whatever the clock says) keep the cadence.
+		const paced = updates.slice(0, -1);
+		for (let index = 1; index < paced.length; index++)
+			expect(paced[index].at - paced[index - 1].at).toBeGreaterThanOrEqual(90);
+	});
+
 	describe("escape sequences split across output chunks", () => {
 		/** Runs a user bash command whose fake shell emits the given chunks; `beforeExit` sees what was streamed by then. */
 		async function runChunks(chunks: Array<string | Buffer>, beforeExit?: (streamed: string) => void) {

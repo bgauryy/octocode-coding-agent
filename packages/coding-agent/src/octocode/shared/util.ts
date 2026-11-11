@@ -139,9 +139,6 @@ export const finiteNumber = (value: unknown): number | undefined =>
 export const stringList = (value: unknown): string[] | undefined =>
 	Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 
-/** `text` as a regular-expression source that matches it literally. */
-export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 export { MINUTE_MS, HOUR_MS, DAY_MS } from "../../../../common/src/time.ts";
 
 /** Octocode's wording for an extension context used after its session was replaced or reloaded. */

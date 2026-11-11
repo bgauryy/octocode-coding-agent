@@ -1,9 +1,8 @@
-import { createAbortError } from "../utils/abort.ts";
+import { assertStreamCompleted, stripStreamScratch } from "./stream-finalize.ts";
 import { redactProviderText } from "../utils/error-body.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
@@ -14,7 +13,7 @@ import { consumeChatStream } from "./mistral-conversations/stream-events.ts";
 import { createMistralToolCallIdNormalizer } from "./mistral-conversations/tool-call-ids.ts";
 import { formatMistralError, requestMistralStream } from "./mistral-conversations/transport.ts";
 import type { MistralChatPayload, MistralOptions, MistralReasoningEffort } from "./mistral-conversations/types.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, requestedReasoningEffort } from "./simple-options.ts";
 import { transformMessages } from "./transform-messages.ts";
 
 export type { MistralOptions } from "./mistral-conversations/types.ts";
@@ -64,24 +63,12 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			stream.push({ type: "start", partial: output });
 			await consumeChatStream(model, output, stream, mistralStream, options?.onProviderStreamEvent);
 
-			if (options?.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error("Mistral stream ended without a finish reason");
-			}
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error(output.errorMessage || "An unknown error occurred");
-			}
+			assertStreamCompleted(output, options?.signal, { label: "Mistral", missing: "finish reason" });
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) {
-				// partialArgs is only a streaming scratch buffer; never persist it.
-				delete (block as { partialArgs?: string }).partialArgs;
-			}
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = redactProviderText(formatMistralError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
@@ -111,8 +98,7 @@ export const streamSimple: StreamFunction<"mistral-conversations", SimpleStreamO
 		...buildBaseOptions(model, context, options, apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies MistralOptions;
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoning = clampedReasoning === "off" ? undefined : clampedReasoning;
+	const reasoning = requestedReasoningEffort(model, options);
 	// Models with a thinking level map use `reasoning_effort`; other reasoning models use `prompt_mode`.
 	const effortMap = model.reasoning ? model.thinkingLevelMap : undefined;
 	const reasoningEffort = effortMap

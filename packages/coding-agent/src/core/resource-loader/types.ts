@@ -1,6 +1,6 @@
 import type { Theme } from "../../theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
-import type { EventBus } from "@octocodeai/octocode-agent-core";
+import type { EventBus, ListenerErrorReporter } from "@octocodeai/octocode-agent-core";
 import type { Feature, InlineExtension, LoadExtensionsResult } from "../features/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
@@ -16,6 +16,8 @@ export interface ResourceExtensionPaths {
 
 export interface ResourceLoader {
 	getEventBus?(): EventBus;
+	/** Where a failing event-bus handler is reported from now on (the session's diagnostics); stderr until called. */
+	reportHandlerErrorsTo?(report: ListenerErrorReporter): void;
 	getExtensions(): LoadExtensionsResult;
 	getSkills(): LoadSkillsResult;
 	getPrompts(): {

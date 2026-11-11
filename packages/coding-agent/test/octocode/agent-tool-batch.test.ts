@@ -21,6 +21,7 @@ function unified() {
 			reason: Type.Optional(Type.String()),
 		}),
 		async execute(id: string, input: Record<string, unknown>) {
+			if (input.task === "crashes") throw new Error("Subagent killed by SIGKILL: (stderr)");
 			const entry = { id, input, start: tick.now++, end: -1 };
 			log.push(entry);
 			await new Promise((resolve) => setTimeout(resolve, input.background ? 0 : 20));
@@ -69,6 +70,21 @@ describe("agent task batch", () => {
 		expect(text(result)).toContain("Started kid-call1#2");
 		expect(result.details.agentType).toBe("task");
 		expect(result.details.batch).toHaveLength(2);
+	});
+
+	it("names the goal of an entry whose child crashed", async () => {
+		const { run } = unified();
+		const result = await run({
+			type: "task",
+			tasks: [
+				{ goal: "child C1", task: "a" },
+				{ goal: "child C2", task: "crashes" },
+			],
+		});
+		const out = text(result);
+		expect(out).toContain("#1 ok: child C1");
+		expect(out).toContain("#2 error: child C2\nSubagent killed by SIGKILL");
+		expect(out).not.toContain("(no goal)");
 	});
 
 	it("returns an invalid entry's error while the other starts", async () => {

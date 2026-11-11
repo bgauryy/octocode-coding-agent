@@ -73,6 +73,8 @@ describe("application port", () => {
 	it("keeps the replay buffer within 256 KB of serialized frames while text streams", () => {
 		const f = fixture();
 		const service = getApplicationPort(f.session);
+		// Frames are kept for replay once a view has connected.
+		service.connect();
 		for (let i = 0; i < 40; i++)
 			f.emit({
 				type: "message_update",

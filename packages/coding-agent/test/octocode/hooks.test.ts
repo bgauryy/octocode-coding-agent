@@ -400,7 +400,7 @@ describe("registerHooks", () => {
 		});
 		const { api, fire } = fakeHost();
 		const audit = vi.fn();
-		const hooks = registerHooks(api, {}, tmp(), audit);
+		const hooks = registerHooks(api, { env: {}, home: tmp(), onFailure: audit });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -415,7 +415,7 @@ describe("registerHooks", () => {
 			PreToolUse: command('echo \'{"decision":"block","hookSpecificOutput":{"additionalContext":"hidden"}}\''),
 		});
 		const { api, fire, sent } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(
@@ -433,7 +433,7 @@ describe("registerHooks", () => {
 			PostToolUse: command("cat > post.json", "Bash"),
 		});
 		const { api, fire, sent } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		const event = { toolName: "bash", toolCallId: "call-123", input: { command: "true" } };
@@ -457,7 +457,7 @@ describe("registerHooks", () => {
 		const guard = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).tool_input.file_path||'';if(p.endsWith('.env')){console.error('no .env: '+p);process.exit(2)}})"`;
 		const cwd = project({ PreToolUse: command(guard, "Edit|Write") });
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		const call = (...paths: string[]) => ({
@@ -476,7 +476,7 @@ describe("registerHooks", () => {
 	it("shows a status while the first prompt waits for SessionStart hooks", async () => {
 		const cwd = project({ SessionStart: command("while [ ! -f go ]; do sleep 0.02; done; echo ready") });
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const statuses: Array<string | undefined> = [];
 		const ctx = {
 			...context(cwd),
@@ -495,10 +495,18 @@ describe("registerHooks", () => {
 		await fire("session_shutdown", {}, ctx);
 	}, 10_000);
 
-	it("is off in a subagent whose profile does not opt in", () => {
+	it("is off in a subagent whose profile and task do not turn hooks on", () => {
 		const { api, handlers } = fakeHost();
-		registerHooks(api, { OCTOCODE_SUBAGENT: "1" });
+		registerHooks(api, { env: { OCTOCODE_SUBAGENT: "1" } });
 		expect([...handlers.keys()].filter((event) => event !== "message_end" && event !== "session_start")).toEqual([]);
+	});
+
+	it("registers only the gates' upkeep in a subagent in the decisions mode", () => {
+		const { api, handlers } = fakeHost();
+		registerHooks(api, { env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "decisions" } });
+		// Loading the hook files and clearing per-call state; no event a hook hangs on (the gates are called by the tool and permission gates).
+		const upkeep = ["message_end", "session_start", "session_shutdown", "turn_end"];
+		expect([...handlers.keys()].filter((event) => !upkeep.includes(event))).toEqual([]);
 	});
 
 	it("maps PreToolUse, PostToolUse, SessionStart and PreCompact to Octocode events", async () => {
@@ -509,7 +517,7 @@ describe("registerHooks", () => {
 			PreCompact: command("cat > compact.json", "manual"),
 		});
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 
@@ -567,7 +575,7 @@ describe("registerHooks", () => {
 			),
 		});
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		// A second session starts before the first one's hook finished: only the new session's context reaches its prompt.
@@ -587,7 +595,7 @@ describe("registerHooks", () => {
 			),
 		});
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		expect(((await fire("before_agent_start", {}, ctx)) as { message: { content: string } }).message.content).toContain(
@@ -603,14 +611,14 @@ describe("registerHooks", () => {
 	it("reports hooks off with the files it would read, and on with what loaded", async () => {
 		const cwd = project({ PreToolUse: command("echo pre", "Bash") });
 		const home = tmp();
-		const off = registerHooks(fakeHost().api, { OCTOCODE_SUBAGENT: "1" }, home);
-		expect(off.summary()).toBe("off in this subagent (its profile does not set hooks: true)");
+		const off = registerHooks(fakeHost().api, { env: { OCTOCODE_SUBAGENT: "1" }, home });
+		expect(off.summary()).toBe("off in this subagent (neither its profile nor its task turned hooks on)");
 		expect(off.report(cwd)).toMatch(/^Hooks: off in this subagent/);
 		expect(off.report(cwd)).toContain(`· ~${path.sep}${path.join(".claude", "settings.json")}`);
 		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project\)/);
 
 		const { api, fire } = fakeHost();
-		const on = registerHooks(api, {}, home);
+		const on = registerHooks(api, { env: {}, home });
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		expect(on.summary()).toBe("on, 1 hook");
 		expect(on.report(cwd)).toContain("[source octocode; runtime octocode]");
@@ -628,7 +636,7 @@ describe("registerHooks", () => {
 	it("warns once when SessionStart hooks cannot run", async () => {
 		const cwd = project({ SessionStart: command("echo hi") });
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const notify = vi.fn();
 		const broken = {
 			...context(cwd),
@@ -653,7 +661,7 @@ describe("registerHooks", () => {
 	it("skips project hooks in an untrusted project", async () => {
 		const cwd = project({ PreToolUse: command("exit 2") });
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		await fire("session_start", { reason: "startup" }, context(cwd, false));
 		expect(
 			await hooks.preToolUse({ toolName: "bash", input: {} } as never, context(cwd, false) as never),
@@ -674,7 +682,7 @@ describe("Stop, Notification and hook timing", () => {
 		const stop = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const i=JSON.parse(s);require('fs').appendFileSync('stop.log',JSON.stringify(i)+'\\n');if(!i.stop_hook_active)console.log(JSON.stringify({decision:'block',reason:'run the tests'}))})"`;
 		const cwd = project({ Stop: command(stop) });
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		expect(await fire("agent_before_settle", settle("aborted"), ctx)).toBeUndefined();
@@ -758,7 +766,7 @@ describe("Stop, Notification and hook timing", () => {
 
 	it("draws Stop feedback as a sanitized, collapsible block under a ⚑ header, even with hooks off", () => {
 		const { api, renderers } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const render = renderers.get("octocode-hook-stop");
 		const tail = Array.from({ length: 12 }, (_, index) => `note ${index + 1}`).join("\n");
 		const content = `Stop hook feedback:\n# not a heading\n\u001b]52;c;evil\u0007two\nthree\n${tail}\nfive`;
@@ -783,7 +791,7 @@ describe("Stop, Notification and hook timing", () => {
 				Stop: [{ hooks: outputs.map((output) => ({ type: "command", command: `echo '${JSON.stringify(output)}'` })) }],
 			});
 			const { api, fire } = fakeHost();
-			registerHooks(api, {}, tmp());
+			registerHooks(api, { env: {}, home: tmp() });
 			const ctx = context(cwd);
 			await fire("session_start", { reason: "startup" }, ctx);
 			expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
@@ -793,7 +801,7 @@ describe("Stop, Notification and hook timing", () => {
 	it("stops continuing after 8 blocks in a row unless a tool runs; continue:false is not a block", async () => {
 		const cwd = project({ Stop: command('echo \'{"decision":"block","reason":"again"}\'') });
 		const { api, fire } = fakeHost();
-		registerHooks(api, {}, tmp());
+		registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
 		await fire("session_start", { reason: "startup" }, ctx);
 		for (let index = 0; index < 8; index += 1) expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
@@ -805,7 +813,7 @@ describe("Stop, Notification and hook timing", () => {
 
 		const quiet = project({ Stop: command('echo \'{"continue":false,"stopReason":"done"}\'') });
 		const other = fakeHost();
-		registerHooks(other.api, {}, tmp());
+		registerHooks(other.api, { env: {}, home: tmp() });
 		await other.fire("session_start", { reason: "startup" }, context(quiet));
 		expect(await other.fire("agent_before_settle", settle(), context(quiet))).toBeUndefined();
 	}, 20_000);
@@ -813,7 +821,7 @@ describe("Stop, Notification and hook timing", () => {
 	it("runs Notification hooks matching the type, in the background", async () => {
 		const cwd = project({ Notification: command("cat > note.json", "permission_prompt") });
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		// Background: an aborted run (its signal) does not cancel the hook.
 		const aborted = { ...context(cwd), signal: AbortSignal.abort() };
@@ -850,7 +858,7 @@ describe("Stop, Notification and hook timing", () => {
 			],
 		});
 		const { api, fire } = fakeHost();
-		const hooks = registerHooks(api, {}, tmp());
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		await fire("session_start", { reason: "startup" }, context(cwd));
 		const started = Date.now();
 		expect(
@@ -870,7 +878,7 @@ describe("Stop, Notification and hook timing", () => {
 		try {
 			const cwd = project({ PreToolUse: command("true", "Bash") });
 			const { api, fire } = fakeHost();
-			const hooks = registerHooks(api, {}, tmp());
+			const hooks = registerHooks(api, { env: {}, home: tmp() });
 			const notes: string[] = [];
 			const ctx = {
 				...context(cwd),
@@ -899,7 +907,7 @@ describe("Stop, Notification and hook timing", () => {
 it("writes hook configuration diagnostics to stderr when the session has no UI", async () => {
 	const cwd = project({ PreToolUse: [{ hooks: [{ type: "command", command: "true", args: [] }] }] });
 	const { api, fire } = fakeHost();
-	registerHooks(api, {}, tmp());
+	registerHooks(api, { env: {}, home: tmp() });
 	const written: string[] = [];
 	const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
 		written.push(String(chunk));
@@ -917,7 +925,7 @@ it("says which calls a PreToolUse hook would see, by its matcher, and none while
 	const cwd = project({ PreToolUse: command("true", "Bash|mcp__research__.*") });
 	const { api, fire } = fakeHost();
 	let paused = false;
-	const hooks = registerHooks(api, {}, tmp(), undefined, undefined, () => paused);
+	const hooks = registerHooks(api, { env: {}, home: tmp(), paused: () => paused });
 	await fire("session_start", { reason: "startup" }, context(cwd));
 	expect(hooks.hasPreToolUse("bash", { command: "ls" }, cwd)).toBe(true);
 	expect(hooks.hasPreToolUse("mcp__research__search", {}, cwd)).toBe(true);
@@ -930,7 +938,7 @@ it("pauses executable hooks during planning and permits them after leaving", asy
 	const cwd = project({ PreToolUse: command("touch ran", "Bash") });
 	const { api, fire } = fakeHost();
 	let paused = true;
-	const hooks = registerHooks(api, {}, tmp(), undefined, undefined, () => paused);
+	const hooks = registerHooks(api, { env: {}, home: tmp(), paused: () => paused });
 	const ctx = context(cwd);
 	await fire("session_start", { reason: "startup" }, ctx);
 	const event = { toolName: "bash", toolCallId: "test", input: { command: "true" } } as never;

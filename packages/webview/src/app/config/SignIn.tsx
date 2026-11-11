@@ -6,6 +6,7 @@ import type {
 } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import { safeWebLink } from "../../link.ts";
 import { Button } from "../ui/primitives.tsx";
 
 /** Runs one sign-in command on the host and returns the sign-in's state. The host runs the login; this page only relays. */
@@ -14,13 +15,12 @@ export type SignInRequest = (command: SignInCommand) => Promise<SignInState>;
 /** How often a running sign-in is asked for news. */
 const SIGN_IN_POLL_MS = 1000;
 
-const WEB_URL = /^https?:\/\/\S+$/;
-
-/** A link from the host is shown and opened only when it is an http(s) address. */
+/** A link from the host is shown and opened only when it passes the page's one link policy. */
 function SafeLink({ url, label }: { url: string; label?: string }) {
-	if (!WEB_URL.test(url)) return <code>{label ?? "(link not shown)"}</code>;
+	const href = safeWebLink(url);
+	if (!href) return <code>{label ?? "(link not shown)"}</code>;
 	return (
-		<a href={url} target="_blank" rel="noopener noreferrer">
+		<a href={href} target="_blank" rel="noopener noreferrer">
 			{label ?? url}
 		</a>
 	);
@@ -180,9 +180,11 @@ export function SignInControl({
 	// The first link of a sign-in is opened for the user; the same link is also shown, in case the browser blocks it.
 	useEffect(() => {
 		const link = state?.events.find((event) => event.type === "auth_url");
-		if (link?.type !== "auth_url" || opened.current.has(link.url) || !WEB_URL.test(link.url)) return;
+		if (link?.type !== "auth_url" || opened.current.has(link.url)) return;
+		const href = safeWebLink(link.url);
+		if (!href) return;
 		opened.current.add(link.url);
-		if (typeof window.open === "function") window.open(link.url, "_blank", "noopener,noreferrer");
+		if (typeof window.open === "function") window.open(href, "_blank", "noopener,noreferrer");
 	}, [state]);
 
 	const running = status === "running";

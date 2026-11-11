@@ -1,222 +1,187 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Type } from "typebox";
 import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Permission } from "../permission/ask.ts";
-import { textResult } from "../shared/util.ts";
-import { memoryLabel, parseMemoryId } from "./query.ts";
-import {
-	MEMORY_KINDS,
-	MemoryError,
-	type MemoryStore,
-	memoryLine,
-	memoryTags,
-	memoryToolLine,
-	refuseMemorySecrets,
-} from "./store.ts";
-import { timedTool } from "../render/rows.ts";
-
-/** Why an agent's global or pinned change asks: the system's reason line on the card. */
-const WIDE_REASON =
-	"Global memories reach every workspace; pinned memories are recalled automatically within their scope.";
-
-/** The private memory capability consumed by Archive: the description says what it is, `op` owns the operations, the guidelines only when to use it. */
-function memoryPrompt(subagent: boolean): {
-	ops: string;
-	promptGuidelines: string[];
-} {
-	const ops =
-		"search: topic keywords or regex query; get: full record by id; list: newest, pinned first" +
-		(subagent ? "" : "; set: add a memory (title required) or update one by id; delete: remove id");
-	return {
-		ops,
-		promptGuidelines: renderInstruction("tools/archive/memory-guidelines.md", { subagent }).split("\n"),
-	};
-}
+import { textResultDisplay } from "../render/display.ts";
+import { timedTool, timingOf } from "../render/rows.ts";
+import { resultBlock, toolHeader } from "../render/tool.ts";
+import { exclusive } from "../shared/locks.ts";
+import { clip } from "../shared/text.ts";
+import { contentText, textResult } from "../shared/util.ts";
+import { parseMemoryId } from "./query.ts";
+import { getMemory, readMemories } from "./reads.ts";
+import { MEMORY_KINDS, type MemoryStore } from "./store.ts";
+import { type MemoryWriteParams, writeMemory } from "./write.ts";
 
 /** Every field the full (non-subagent) schema accepts. */
-type MemoryParams = {
+type MemoryParams = Omit<MemoryWriteParams, "op"> & {
 	op: "search" | "get" | "list" | "set" | "delete";
 	id?: string;
-	scope?: "workspace" | "project" | "global" | "all";
-	title?: string;
-	body?: string;
-	keywords?: string;
-	kind?: (typeof MEMORY_KINDS)[number];
-	pinned?: boolean;
+	query?: string;
+	limit?: number;
+	cursor?: string;
 };
 
-/** Characters of a body in a search, list or save line; a longer body ends its line with the Archive reference that reads it whole. */
-const SAVED_BODY_CHARS = 60;
-/** A saved body longer than this keeps its save but gets a warning: an injected line is cut at 600 characters. */
-const BODY_SOFT_MAX = 500;
-/** Other memories named after a save, so the agent can merge overlapping ones. */
-const RELATED_COUNT = 2;
+interface MemoryDetails {
+	/** A read: its op, how many memories it returned and the cursor that continues it. */
+	mode?: "search" | "get" | "list";
+	hits?: number;
+	nextCursor?: string;
+	/** A write: the memory it saved, updated or deleted. */
+	ids?: number[];
+}
 
-/** Private memory mutation capability. Archive owns retrieval, presentation and the public tool. */
-export function createMemoryActions(
+const SCOPES = ["workspace", "project", "global", "all"] as const;
+
+/** `op`, then what the call names: an id, a title, keywords or a query. */
+function callSummary(args: Record<string, unknown> | undefined): string {
+	const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+	const detail = text(args?.id) ?? text(args?.title) ?? text(args?.keywords) ?? text(args?.query) ?? "";
+	return [text(args?.op) ?? "list", clip(detail, 100)].filter(Boolean).join(" ");
+}
+
+/**
+ * The `memory` tool: durable notes of this workspace (`store.ts`). The main session searches, reads, saves and deletes;
+ * a subagent only reads, so its schema leaves out `set`, `delete` and the fields only a save takes. Reads run side by
+ * side; writes run one at a time.
+ */
+export function createMemoryTool(
 	storeFor: (ctx: ExtensionContext) => MemoryStore,
 	options: { isSubagent: boolean; permission: Permission },
 ) {
-	const ops = options.isSubagent
-		? (["search", "get", "list"] as const)
-		: (["search", "get", "list", "set", "delete"] as const);
-	const { ops: opsDescription, ...prompt } = memoryPrompt(options.isSubagent);
-	const tool = timedTool(
-		{
-			name: "archive",
-			label: "Memory",
-			description: "Internal memory mutations; exposed through Archive.",
-			...prompt,
-			parameters: Type.Object({
-				op: StringEnum(ops, { description: opsDescription }),
-				id: Type.Optional(
-					Type.String({
-						description: options.isSubagent ? "get: M<n>" : "get/delete: M<n>",
-					}),
-				),
-				// A subagent only reads: the set-only fields would only cost context.
-				...(options.isSubagent
-					? {
-							scope: Type.Optional(
-								StringEnum(["workspace", "project", "global", "all"] as const, {
-									description: "search/list: default all",
-								}),
-							),
-						}
-					: {
-							scope: Type.Optional(
-								StringEnum(["workspace", "project", "global", "all"] as const, {
-									description: "set: workspace (default), project or global; search/list: default all",
-								}),
-							),
-							title: Type.Optional(
-								Type.String({
-									description: "set: the rule itself in one line, not a pointer (recall can cut the body)",
-								}),
-							),
-							body: Type.Optional(
-								Type.String({
-									description: "set: the note; keep it short, it may be injected into every session",
-								}),
-							),
-							keywords: Type.Optional(
-								Type.String({ description: "set: synonyms/terms that should retrieve this memory" }),
-							),
-							kind: Type.Optional(
-								StringEnum(MEMORY_KINDS, {
-									description: "set: sort of note (default fact; reference: a URL, dashboard or ticket)",
-								}),
-							),
-							pinned: Type.Optional(
-								Type.Boolean({
-									description: "set: always inject this memory (keep pinned ones few and short)",
-								}),
-							),
-						}),
+	const subagent = options.isSubagent;
+	const ops = subagent ? (["search", "get", "list"] as const) : (["search", "get", "list", "set", "delete"] as const);
+	const write = exclusive(writeMemory);
+	return timedTool({
+		name: "memory",
+		label: "Memory",
+		promptSnippet: renderInstruction("tools/memory/snippet.md"),
+		// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
+		description:
+			"Workspace memories: short notes later sessions receive. list shows pinned first. " +
+			"A near-duplicate in the scope is refused: update it. Global or pinned changes ask for approval.",
+		promptGuidelines: renderInstruction("tools/memory/guidelines.md", { subagent }).split("\n"),
+		parameters: Type.Object({
+			op: StringEnum(ops, {
+				description: subagent ? "search, get or list" : "set: add a memory (needs title), or update id",
 			}),
-			async execute(toolCallId, input, signal, _onUpdate, ctx) {
-				// The subagent schema omits the set-only fields; set is refused there before they are read.
-				const params = input as MemoryParams;
-				signal?.throwIfAborted();
-				const store = storeFor(ctx);
-				/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. A save asks in every mode: `full` runs a `file.outside` change, and this text would steer every later session. */
-				const confirmWide = async (wide: boolean, title: string, what: string[], effect: string) => {
-					if (!wide) return;
-					const verdict = await options.permission.check(ctx, {
-						action: "file.outside",
-						title,
-						what,
-						reason: WIDE_REASON,
-						...(params.op === "set" ? { reasons: ["memory.wide" as const] } : {}),
-						effect,
-						undo: "/memory edits or deletes it",
-						risk: "text this session read could steer every later session",
-						toolCallId,
-						cwd: ctx.cwd,
-						...(signal ? { signal } : {}),
-					});
-					if (!verdict.allowed) throw new MemoryError(verdict.message);
-				};
-				const id = params.id === undefined ? undefined : parseMemoryId(params.id);
-				if (params.id !== undefined && id === undefined) throw new Error(`"${params.id}" is not a memory id (M<n>).`);
-				const needId = (): number => {
-					if (id === undefined) throw new Error(`${params.op} needs id.`);
-					return id;
-				};
-				switch (params.op) {
-					case "set":
-					case "delete": {
-						if (options.isSubagent)
-							throw new Error("Memory is read-only in a subagent: report it to your coordinator instead.");
-						const current = id === undefined ? undefined : store.get(id);
-						if (params.op === "delete") {
-							if (current) {
-								await confirmWide(
-									current.scope === "global" || current.pinned,
-									"Delete this shared memory?",
-									[`${memoryLabel(current.id)} (${memoryTags(current)}) ${current.title}`],
-									"removes a memory every later session receives",
-								);
-							}
-							const removed = store.delete(needId());
-							return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
-						}
-						if (params.scope === "all") throw new Error("set scope is workspace, project or global.");
-						const global = (params.scope ?? current?.scope) === "global";
-						const pinned = params.pinned ?? current?.pinned ?? false;
-						// Refusals the store would raise come first, so the user is never asked about a save that then fails.
-						refuseMemorySecrets(params);
-						if (!current && !params.title?.trim()) throw new MemoryError("A new memory needs a title.");
-						const body = params.body ?? current?.body ?? "";
-						// Only what reaches every session after the change asks: unpinning or moving into the project narrows it.
-						await confirmWide(
-							global || pinned,
-							current ? "Change this shared memory?" : "Save this shared memory?",
-							[
-								`${current ? `${memoryLabel(current.id)} ` : ""}(${global ? "global" : (params.scope ?? current?.scope ?? (store.workspaceId ? "workspace" : "project"))}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
-								...(body ? [body] : []),
-							],
-							`${current ? "changes" : "saves"} a memory every later session receives`,
-						);
-						const { memory, created } = store.set({
-							...(id !== undefined ? { id } : {}),
-							...(params.scope ? { scope: params.scope } : {}),
-							...(params.kind ? { kind: params.kind } : {}),
-							...(params.title !== undefined ? { title: params.title } : {}),
-							...(params.body !== undefined ? { body: params.body } : {}),
-							...(params.keywords !== undefined ? { keywords: params.keywords } : {}),
-							...(params.pinned !== undefined ? { pinned: params.pinned } : {}),
-							author: "agent",
-							sourceSession: ctx.sessionManager.getSessionId(),
-						});
-						const long =
-							memory.body.length > BODY_SOFT_MAX
-								? `\nKept, but the body is ${memory.body.length} chars: shorten it to under ${BODY_SOFT_MAX}, the rule and why.`
-								: "";
-						const related = store
-							.search(`${memory.title} ${memory.keywords} ${memory.body}`, "all", RELATED_COUNT, new Set([memory.id]))
-							.map((hit) => `${memoryLabel(hit.id)} ${hit.title.replace(/\s+/g, " ")}`);
-						const neighbours = related.length > 0 ? `\nRelated: ${related.join("; ")}` : "";
-						return textResult(
-							`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}`,
-							{ ids: [memory.id] },
-						);
-					}
-					// Archive answers the reads itself and routes only set and delete here.
-					case "search":
-					case "get":
-					case "list":
-						throw new Error(`Archive answers ${params.op}; memory actions only set and delete.`);
-					default: {
-						// Unreachable by type, but the op is model input at runtime.
-						const unknown: never = params.op;
-						throw new Error(`Unknown op ${JSON.stringify(unknown)}.`);
-					}
-				}
-			},
+			id: Type.Optional(Type.String({ description: "M<n>" })),
+			query: Type.Optional(Type.String({ description: "search: case-insensitive regex filter" })),
+			keywords: Type.Optional(
+				Type.String({
+					description: subagent
+						? "search: topic words, ranked"
+						: "search: topic words, ranked; set: terms that retrieve it",
+				}),
+			),
+			scope: Type.Optional(
+				StringEnum(SCOPES, {
+					description: subagent
+						? "search/list: default all"
+						: "set: workspace (default), project or global; search/list: default all",
+				}),
+			),
+			// A subagent only reads: the set-only fields would only cost context.
+			...(subagent
+				? {}
+				: {
+						title: Type.Optional(
+							Type.String({
+								description: "set: the rule itself in one line, not a pointer (recall can cut the body)",
+							}),
+						),
+						body: Type.Optional(
+							Type.String({
+								description: "set: the note; keep it short, it may be injected into every session",
+							}),
+						),
+						kind: Type.Optional(
+							StringEnum(MEMORY_KINDS, {
+								description: "set: sort of note (default fact; reference: a URL, dashboard or ticket)",
+							}),
+						),
+						pinned: Type.Optional(
+							Type.Boolean({
+								description: "set: always inject this memory (keep pinned ones few and short)",
+							}),
+						),
+					}),
+			limit: Type.Optional(Type.Integer({ description: "1–50 (default 10)" })),
+			cursor: Type.Optional(Type.String({ description: "Continue a search or list" })),
+		}),
+		display(input) {
+			const head = { title: "Memory", summary: callSummary(input.args), kind: "search" as const, blocks: [] };
+			return textResultDisplay(head, input);
 		},
-		{ exclusive: true },
-	);
-	return Object.assign(tool, { storeFor });
+		renderCall(args, theme, context) {
+			return toolHeader(theme, context, "Memory", callSummary(args));
+		},
+		renderResult(result, _options, theme, context) {
+			const [head = "", ...rest] = contentText(result.content).split("\n");
+			return resultBlock(theme, context, { summary: head, body: rest.join("\n").trim(), ...timingOf(result.details) });
+		},
+		async execute(toolCallId, input, signal, _onUpdate, ctx) {
+			// The subagent schema omits the set-only fields; set is refused there before they are read.
+			const params = input as MemoryParams;
+			signal?.throwIfAborted();
+			const store = storeFor(ctx);
+			switch (params.op) {
+				case "set":
+				case "delete": {
+					if (subagent) throw new Error("Memory is read-only in a subagent: report it to your coordinator instead.");
+					const id = params.id === undefined ? undefined : parseMemoryId(params.id);
+					if (params.id !== undefined && id === undefined) throw new Error(`"${params.id}" is not a memory id (M<n>).`);
+					const { op } = params;
+					return write({
+						toolCallId,
+						id,
+						params: { ...params, op },
+						store,
+						permission: options.permission,
+						ctx,
+						signal,
+					});
+				}
+				case "get": {
+					if (!params.id) throw new Error("get needs id.");
+					return textResult<MemoryDetails>(getMemory(store, params.id), { mode: "get", hits: 1 });
+				}
+				case "search":
+				case "list": {
+					if (params.op === "search" && !params.query?.trim() && !params.keywords?.trim())
+						throw new Error("Memory search needs query or keywords.");
+					// An invalid regular expression names the fix before any row is read.
+					if (params.query?.trim()) validPattern(params.query.trim());
+					const { op } = params;
+					const read = await readMemories(store, { ...params, op }, signal);
+					const more = read.cursor
+						? `\n\nMore memories remain. Continue with cursor ${read.cursor} and the same query, keywords and scope.`
+						: "";
+					return textResult<MemoryDetails>(`${read.text}${more}`, {
+						mode: op,
+						hits: read.hits,
+						...(read.cursor ? { nextCursor: read.cursor } : {}),
+					});
+				}
+				default: {
+					// Unreachable by type, but the op is model input at runtime.
+					const unknown: never = params.op;
+					throw new Error(`Unknown op ${JSON.stringify(unknown)}.`);
+				}
+			}
+		},
+	});
+}
+
+function validPattern(query: string): void {
+	try {
+		new RegExp(query, "i");
+	} catch (error) {
+		throw new Error(
+			`query is a regular expression, and this one is invalid (${errorMessage(error)}); escape ( [ . * + ? with a backslash.`,
+			{ cause: error },
+		);
+	}
 }

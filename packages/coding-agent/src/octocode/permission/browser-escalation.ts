@@ -1,11 +1,11 @@
 import path from "node:path";
-import { browserMcpEscalations } from "../../../../common/src/browser-mcp.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { workspaceRoot } from "../../utils/git-repository.ts";
+import { browserMcpEscalations } from "./browser-mcp-escalations.ts";
 
 /**
- * What a browser MCP call does beyond the generic MCP class (`common/src/browser-mcp.ts` `browserMcpEscalations`), for
+ * What a browser MCP call does beyond the generic MCP class (`browserMcpEscalations`), for
  * `cwd`, the folder the browser server runs in: `control` lines, each a `browser.control` ask, `cookies` lines, each a `browser.cookies` ask, and `outside`, the
  * upload paths outside the workspace (symlinks resolved), an `upload.outside` ask. An upload from inside the workspace
  * is an ordinary MCP call. A session with no workspace (started in the home folder or above) has every path outside.

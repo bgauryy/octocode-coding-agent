@@ -1,7 +1,6 @@
 // Wiring for the file guard's reader role and the confirmation before a session switch, fork or quit stops running work.
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
-import { MCP_STATUS_EVENT, getMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { currentToolRoles } from "../../../mcp/src/roles.ts";
+import { MCP_STATUS_EVENT, getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
 import type { BashJobs } from "./files/bash-jobs.ts";
 import { BASH_READER, type FileGuard, mcpReader } from "./files/tool/guard.ts";
 import type { ExternalAgents } from "./external/manager.ts";

@@ -283,9 +283,14 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const narrowed =
 			previous && previous.source === entries && previous.query !== "" && fuzzyQuery.startsWith(previous.query);
 		let matched: IndexedPath[] | undefined;
-		const ranked = rankPaths(narrowed ? previous.matched : entries, fuzzyQuery, undefined, (all) => {
-			matched = all;
+		const ranked = await rankPaths(narrowed ? previous.matched : entries, fuzzyQuery, {
+			signal,
+			onMatches: (all) => {
+				matched = all;
+			},
 		});
+		// An aborted ranking saw only part of the entries: keep the previous narrowing instead of a partial one.
+		if (signal.aborted) return [];
 		this.lastRank = matched && fuzzyQuery !== "" ? { source: entries, query: fuzzyQuery, matched } : undefined;
 		return ranked;
 	}
@@ -305,7 +310,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			let ranked = await this.rankIndex(scopedQuery, fuzzyQuery, options.signal);
 			// The cached index may predate the file the user means (a new file, a checkout): when nothing matched,
 			// rebuild it now (or join the running rebuild), wait once and rank again.
-			const refresh = ranked.length === 0 ? refreshFileIndexNow(this.basePath, this.fdPath) : null;
+			const refresh =
+				ranked.length === 0 && !options.signal.aborted ? refreshFileIndexNow(this.basePath, this.fdPath) : null;
 			if (refresh) {
 				await refresh;
 				ranked = await this.rankIndex(scopedQuery, fuzzyQuery, options.signal);

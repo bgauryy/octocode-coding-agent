@@ -1,6 +1,7 @@
 import { KillRing } from "../../kill-ring.ts";
 import type { TUI } from "../../tui.ts";
 import { UndoStack } from "../../undo-stack.ts";
+import { BracketedPasteBuffer } from "../input/paste.ts";
 import { EditorAutocomplete, type EditorAutocompleteHost } from "./autocomplete.ts";
 import { buildVisualLineMap, findVisualLineAt, layoutText } from "./layout.ts";
 import { expandPasteMarkers, graphemeSegmenter, segmentWithMarkers, wordSegmenter } from "./segmentation.ts";
@@ -41,8 +42,8 @@ export class EditorModel implements EditorAutocompleteHost {
 	pastes: Map<number, string> = new Map();
 	pasteCounter: number = 0;
 
-	pasteBuffer: string = "";
-	isInPaste: boolean = false;
+	/** Collects a bracketed paste across input chunks. */
+	readonly bracketedPaste = new BracketedPasteBuffer();
 
 	history: string[] = [];
 	historyIndex: number = -1; // -1 = not browsing, 0 = most recent, 1 = older, etc.

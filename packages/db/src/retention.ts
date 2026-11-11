@@ -3,6 +3,7 @@ import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
 import * as timers from "./queries/timers.ts";
 import type { HistoryTable } from "./queries/history.ts";
+import { isBusy, withBusyTimeout } from "./sqlite.ts";
 import { num, type Row } from "./rows.ts";
 import { DAY_MS, HOUR_MS } from "../../common/src/time.ts";
 import {
@@ -67,7 +68,7 @@ export function archiveHistory(
 	const source = archiveSource(agentDb);
 	try {
 		trimArchive(agentDb.archiveDir, now, keepMs);
-		history.withBusyTimeout(db, QUICK_BUSY_MS, () => {
+		withBusyTimeout(db, QUICK_BUSY_MS, () => {
 			for (const { table, family, key } of FAMILIES) {
 				const oldest = history.oldestAt(db, table);
 				if (oldest === undefined || oldest >= cutoff) continue;
@@ -93,7 +94,7 @@ export function archiveHistory(
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
 		});
 	} catch (error) {
-		if (history.isBusy(error)) return { ...result, skipped: "busy" };
+		if (isBusy(error)) return { ...result, skipped: "busy" };
 		if (lockHeld(error)) return { ...result, skipped: "locked" };
 		throw error;
 	}

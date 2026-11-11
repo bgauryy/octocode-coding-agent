@@ -76,7 +76,7 @@ function tool(cwd: string) {
 	};
 }
 
-const cursorOf = (text: string) => /with cursor (h1\.[\w-]+)/.exec(text)?.[1];
+const cursorOf = (text: string) => /with cursor (a2\.[\w-]+)/.exec(text)?.[1];
 
 describe("archive search over a corpus larger than 32 MiB", () => {
 	it("returns matches, this session first, and continues by cursor without repeating or failing", async () => {
@@ -100,15 +100,13 @@ describe("archive search over a corpus larger than 32 MiB", () => {
 		expect(cursor, first.text).toBeDefined();
 		expect(first.text).toMatch(/Read \d+ of \d+ files/);
 
+		// One cursor walks every page and every stretch of the scan: no page loop inside a cursor loop.
 		let all = first.text;
-		for (let page = 2; page <= first.details.pages; page++) all += (await call({ query: "needle-\\w+", page })).text;
 		let guard = 0;
-		while (cursor && guard++ < 10) {
+		while (cursor && guard++ < 40) {
 			const next = await call({ query: "needle-\\w+", cursor });
 			expect(next.text).not.toContain("needle-me");
 			all += next.text;
-			for (let page = 2; page <= next.details.pages; page++)
-				all += (await call({ query: "needle-\\w+", cursor, page })).text;
 			cursor = cursorOf(next.text);
 		}
 		expect(cursor).toBeUndefined();

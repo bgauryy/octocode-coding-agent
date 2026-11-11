@@ -4,6 +4,7 @@ import {
 	ApplicationContentBlockSchema,
 	applicationContentText,
 	layoutPurposes,
+	resultPurposeData,
 	returnedPurpose,
 	returnedPurposes,
 } from "../src/content.ts";
@@ -102,6 +103,16 @@ it("lists every purpose a result returns, per row, from its own data only", () =
 });
 
 it("drops empty values, duplicate entries and non-records from the returned purposes", () => {
+	// A result that is itself the row list, bare or inside the stored MCP result.
+	expect(returnedPurposes([{ mainGoal: "first" }, { index: 4, data: { reasoning: "second" } }, "text"])).toEqual([
+		{ row: 0, mainGoal: "first" },
+		{ row: 4, reasoning: "second" },
+	]);
+	expect(returnedPurposes({ content: [], structuredContent: [{ mainGoal: "wrapped" }] })).toEqual([
+		{ row: 0, mainGoal: "wrapped" },
+	]);
+	expect(returnedPurposes([])).toEqual([]);
+	expect(returnedPurposes("text")).toEqual([]);
 	expect(returnedPurposes({ results: [{ mainGoal: "  ", reasoning: "" }, { data: {} }, "text", 3, null] })).toEqual([]);
 	expect(returnedPurposes({ a: [{ index: 1, mainGoal: "g" }], b: [{ index: 1, mainGoal: "g" }] })).toEqual([
 		{ row: 1, mainGoal: "g" },
@@ -111,6 +122,53 @@ it("drops empty values, duplicate entries and non-records from the returned purp
 		{ row: 1, mainGoal: "g" },
 	]);
 	for (const value of ["text", 4, null, undefined, ["x"]]) expect(returnedPurposes(value)).toEqual([]);
+});
+
+it("reads a result's purposes from its one JSON text when it has no structured content", () => {
+	const text = (value: string) => ({ content: [{ type: "text", text: value }] });
+	const rows = [{ index: 2, mainGoal: "find it", reasoning: "because" }];
+	// One JSON object or array is read the way structured content is.
+	expect(returnedPurposes(resultPurposeData(text(JSON.stringify({ results: rows }))))).toEqual([
+		{ row: 2, mainGoal: "find it", reasoning: "because" },
+	]);
+	expect(returnedPurposes(resultPurposeData(text(`\n ${JSON.stringify(rows)} \n`)))).toEqual([
+		{ row: 2, mainGoal: "find it", reasoning: "because" },
+	]);
+	expect(returnedPurpose(resultPurposeData(text('{"mainGoal":"top"}')))).toBe("top");
+	// Structured content, when there is any, is the only source.
+	const both = { ...text('{"mainGoal":"from text"}'), structuredContent: { mainGoal: "structured" } };
+	expect(resultPurposeData(both)).toBe(both.structuredContent);
+	expect(returnedPurposes(resultPurposeData({ ...text('{"mainGoal":"from text"}'), structuredContent: {} }))).toEqual(
+		[],
+	);
+	// Anything that is not one JSON object or array shows nothing, and the text is left as it was.
+	const prose = text('mainGoal: "find it"');
+	for (const result of [
+		prose,
+		text('{"mainGoal":"cut'),
+		text('"mainGoal"'),
+		text("42"),
+		text('{"mainGoal":"a"} and more'),
+		{ content: [...text('{"mainGoal":"a"}').content, ...text('{"mainGoal":"b"}').content] },
+		{ content: "plain" },
+		{},
+		undefined,
+		null,
+	]) {
+		expect(resultPurposeData(result)).toBeUndefined();
+		expect(returnedPurposes(resultPurposeData(result))).toEqual([]);
+	}
+	expect(prose.content[0].text).toBe('mainGoal: "find it"');
+	// Blocks that are not text do not count; a displayed block (with its id) reads the same.
+	const image = { type: "image", asset: { id: "a", mimeType: "image/png", size: 1 } };
+	expect(resultPurposeData({ content: [image, { id: "t:1", type: "text", text: '{"mainGoal":"shown"}' }] })).toEqual({
+		mainGoal: "shown",
+	});
+	// The same block is parsed once; new text in it is read again.
+	const result = text('{"mainGoal":"first"}');
+	expect(resultPurposeData(result)).toBe(resultPurposeData(result));
+	result.content[0].text = '{"mainGoal":"second"}';
+	expect(resultPurposeData(result)).toEqual({ mainGoal: "second" });
 });
 
 it("lays out a shared goal once and keeps per-row goals with their rows", () => {

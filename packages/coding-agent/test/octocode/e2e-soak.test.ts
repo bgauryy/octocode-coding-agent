@@ -14,6 +14,7 @@ import type { AgentSessionEvent } from "../../src/core/agent-session/types.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../../src/core/compaction/utils.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { CompactionEntry, SessionEntry } from "../../src/core/session-manager/types.ts";
+import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { IDENTITY_ENTRY } from "../../src/octocode/subagents/identity-reminder.ts";
 import { type Identity, subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
@@ -353,6 +354,8 @@ async function soak(fx: Fixture): Promise<Observed> {
 	seen.compactionSizes = seen.entries
 		.filter((entry): entry is CompactionEntry => entry.type === "compaction")
 		.map((entry) => entry.summary.length);
+	// The database writer saves the mirror after the file; its acknowledgements come before the read.
+	await sessionMirrorSettled(30_000);
 	const agent = openAgentDb(agentDbPath(process.env), process.env);
 	try {
 		seen.mirror = {

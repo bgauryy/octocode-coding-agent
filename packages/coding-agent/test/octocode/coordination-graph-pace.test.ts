@@ -16,7 +16,7 @@ import { WAKE_INTERVAL_MS, WakePace } from "../../src/octocode/team/wake-pace.ts
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerWakeRetry, WAKE_RETRY_MS } from "../../src/octocode/wake-retry.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
-import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -80,13 +80,12 @@ vi.mock("../../src/config.ts", async (original) => ({
 function agentTool() {
 	const f = fakeHost();
 	const team = new Team(f.api);
-	const control = registerAgentTool(
-		f.api,
-		() => new Map<string, AgentProfile>(),
+	const control = registerAgentTool(f.api, {
+		profiles: () => new Map<string, AgentProfile>(),
 		team,
-		fakePermission(),
-		() => new Map(),
-	);
+		permission: fakePermission(),
+		refused: () => new Map(),
+	});
 	const cwd = fs.realpathSync(tmp("octocode-graph-pace-agent-"));
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx.ui, { confirm: async () => true });
@@ -94,6 +93,7 @@ function agentTool() {
 	Object.assign(ctx, {
 		model: models[0],
 		modelRegistry: {
+			...meteredBilling,
 			getAvailable: () => models,
 			find: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 			getCachePolicy: fakeCachePolicy,

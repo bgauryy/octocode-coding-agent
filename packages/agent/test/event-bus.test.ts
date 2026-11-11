@@ -75,4 +75,38 @@ describe("createEventBus", () => {
 		]);
 		error.mockRestore();
 	});
+
+	it("hands a failing handler to the host's reporter instead of stderr", async () => {
+		const reported: [string, unknown][] = [];
+		const bus = createEventBus({ onHandlerError: (message, error) => reported.push([message, error]) });
+		const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		const failure = new Error("async");
+		bus.on("a", async () => {
+			throw failure;
+		});
+		bus.emit("a", 1);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(reported).toEqual([["Event handler error (a): Error: async", failure]]);
+		expect(write).not.toHaveBeenCalled();
+		write.mockRestore();
+	});
+
+	it("falls back to console.error where the runtime has no process.stderr", async () => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const bus = createEventBus();
+		bus.on("a", () => {
+			throw new Error("sync");
+		});
+		vi.stubGlobal("process", undefined);
+		try {
+			bus.emit("a", 1);
+			// The handler's rejection is caught and reported on a microtask; keep `process` hidden until then.
+			await Promise.resolve();
+			await Promise.resolve();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+		expect(logged).toHaveBeenCalledWith("Event handler error (a): Error: sync");
+		logged.mockRestore();
+	});
 });

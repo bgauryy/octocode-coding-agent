@@ -19,6 +19,7 @@ import { applyToolModifiers, getToolListError, isToolModifier } from "../setting
 import { getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import { createConvertToLlmWithBlockImages } from "./block-images.ts";
 import { withRequestTrace } from "./request-trace.ts";
+import { listenerErrorReporter } from "../listener-diagnostics.ts";
 
 /** Session inputs resolved against already-created, cwd-bound services. */
 export interface CreateSessionFromServicesOptions {
@@ -279,7 +280,9 @@ export async function createSessionFromServices(
 		transport: settingsManager.getTransport(),
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
+		onListenerError: listenerErrorReporter(() => extensionRunnerRef.current, "agent"),
 	});
+	resourceLoader.reportHandlerErrorsTo?.(listenerErrorReporter(() => extensionRunnerRef.current, "event bus"));
 
 	// Restore missing settings metadata for older sessions, and record a level the caller chose on resume so a later
 	// reopen keeps it. A restored level that was only clamped to another model stays unrecorded.

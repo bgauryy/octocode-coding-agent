@@ -11,13 +11,13 @@ type EditorFactory = ReturnType<ExtensionContext["ui"]["getEditorComponent"]>;
 export const fakeCachePolicy: ModelRegistry["getCachePolicy"] = (model, settings, options) =>
 	resolveConfiguredCache(model, undefined, options, settings);
 
-/** Identity theme: colours and styles pass text through, so rendered components read as plain text. */
 /** The billing facts a registry gives subagent routing: every provider metered, unattended use allowed. */
 export const meteredBilling = {
 	getProviderBilling: (): "plan" | "metered" => "metered",
 	allowsUnattendedUse: (): boolean => true,
 };
 
+/** Identity theme: colours and styles pass text through, so rendered components read as plain text. */
 export const theme = {
 	fg: (_color: string, text: string) => text,
 	bg: (_color: string, text: string) => text,
@@ -37,7 +37,7 @@ export function rendered(component: { render(width: number): string[] }, width =
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
-/** Records every registration a Octocode extension makes and lets a test fire its events. */
+/** Records every registration an Octocode extension makes and lets a test fire its events. */
 export function fakeHost(settings: Record<string, unknown> = {}) {
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();

@@ -48,7 +48,7 @@ async function fixture() {
 	vi.stubEnv("CLAUDE_CONFIG_DIR", home);
 	const fake = fakeHost();
 	const changed = vi.fn();
-	const owner = registerSourcePolicy(fake.api, home, changed);
+	const owner = registerSourcePolicy(fake.api, { home, onChange: changed });
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	await owner.refresh(ctx);
 	const decision = () =>

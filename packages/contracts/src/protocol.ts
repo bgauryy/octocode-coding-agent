@@ -39,6 +39,8 @@ export const DAEMON_ROUTES = {
 	configSignin: "/api/admin/config/signin",
 	/** Launch capability only: GET the `HarnessList` (`?repoId=`), POST one `HarnessSwitchCommand`; the reply is the fresh `HarnessList`. */
 	configHarness: "/api/admin/config/harness",
+	/** Launch capability only: GET the `ToolExposureList` (`?repoId=`), POST one `ToolPinCommand`; the reply is the fresh `ToolExposureList`. */
+	configTools: "/api/admin/config/tools",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",

@@ -7,7 +7,7 @@ import type { ResourceDiagnostic } from "./diagnostics.ts";
 export type { ResourceDiagnostic } from "./diagnostics.ts";
 
 import { resolvePath } from "../../../common/src/paths.ts";
-import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
+import { createEventBus, type EventBus, type ListenerErrorReporter } from "@octocodeai/octocode-agent-core";
 import { discoveryInput } from "./discovery/service.ts";
 import { createExtensionRuntime } from "./features/runtime.ts";
 import type { Feature, InlineExtension, LoadExtensionsResult } from "./features/types.ts";
@@ -36,6 +36,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private agentDir: string;
 	private settingsManager: SettingsManager;
 	private eventBus: EventBus;
+	private reportHandlerError: ListenerErrorReporter = (message) => process.stderr.write(`${message}\n`);
 	private packageManager: DefaultPackageManager;
 	private extensionFactories: InlineExtension[];
 	private builtinFeatures: readonly Feature[];
@@ -66,7 +67,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.cwd = resolvePath(options.cwd);
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
-		this.eventBus = options.eventBus ?? createEventBus();
+		// Reported through the session's diagnostics once one binds them (`reportHandlerErrorsTo`).
+		this.eventBus =
+			options.eventBus ??
+			createEventBus({ onHandlerError: (message, error) => this.reportHandlerError(message, error) });
 		const nativeFeatures = options.nativeFeatures !== false;
 		this.extensionFactories = options.extensionFactories ?? [];
 		this.builtinFeatures = options.builtinFeatures ?? (nativeFeatures ? BUILTIN_FEATURES : []);
@@ -127,6 +131,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	getEventBus(): EventBus {
 		return this.eventBus;
+	}
+
+	reportHandlerErrorsTo(report: ListenerErrorReporter): void {
+		this.reportHandlerError = report;
 	}
 
 	getExtensions(): LoadExtensionsResult {

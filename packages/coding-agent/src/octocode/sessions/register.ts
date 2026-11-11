@@ -41,7 +41,7 @@ import {
 	registerGoalName,
 	totals,
 } from "./session-scan.ts";
-import { describeWork, unansweredCalls, unreportedWork } from "./work.ts";
+import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
 
 /** Custom message type of the resume brief. */
 export const RESUME_MESSAGE_TYPE = "octocode-resume";
@@ -199,6 +199,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 				const recorded = { branch: previous?.branch ?? null, head: previous?.head ?? null };
 				const request = latestRequest(branchOf(ctx));
 				const unanswered = unansweredCalls(branchOf(ctx));
+				const children = unanswered.length > 0 ? danglingChildren(sessions.agent, id, branchOf(ctx)) : [];
 				pending = {
 					previous: recorded,
 					lastActive: at,
@@ -206,6 +207,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 					repoKey: registeredWorkspace(ctx.cwd, sessions.agent).id,
 					...(unreported.length > 0 ? { unreported } : {}),
 					...(unanswered.length > 0 ? { unanswered } : {}),
+					...(children.length > 0 ? { children } : {}),
 					...(request ? { request } : {}),
 				};
 			}

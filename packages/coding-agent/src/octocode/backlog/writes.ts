@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
 import { type AgentDb, type Db, USER_AUTHOR, backlog, meta } from "../../../../db/src/api.ts";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText, visibleControls } from "../../../../common/src/sanitize.ts";
 import { refText } from "./row.ts";
 import {
 	type Actor,
@@ -255,7 +255,8 @@ export function updateItem(
 					`A subagent sets only ongoing or done; ask your coordinator to move an item to ${input.state}.`,
 				);
 			const state = input.state ?? item.state;
-			if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
+			if (!STATES.includes(state))
+				throw new BacklogError(`Unknown backlog state ${visibleControls(state)}: use ${STATES.join(", ")}.`);
 			checkEpicState(agentDb.db, repo, item, input);
 			if (
 				(state === "ongoing" || state === "done") &&

@@ -3,7 +3,8 @@ import { getKeybindings } from "../keybindings.ts";
 import { isKeyRelease } from "../keys/sequences.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
-import { OSC133_PROMPT_START, PAGE_SCROLL_OVERLAP } from "./constants.ts";
+import { OSC133_PROMPT_START } from "../terminal/sequences.ts";
+import { PAGE_SCROLL_OVERLAP } from "./constants.ts";
 import type { AltScreenSearchController } from "./search-controller.ts";
 
 /** Alternate-screen viewport operations the keyboard bindings call. */

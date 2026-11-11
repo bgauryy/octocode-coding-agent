@@ -11,8 +11,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
-import { HintBar, type RankedHint } from "./hint-bar.ts";
-import { keyText } from "./keybinding-hints.ts";
+import { HintBar, keyText, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
 import { plainText } from "./styled-line.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {

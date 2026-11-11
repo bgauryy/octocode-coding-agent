@@ -47,23 +47,34 @@ export function isSessionLockTimeout(error: unknown): boolean {
 	return (error as { code?: unknown } | null)?.code === "ELOCKED";
 }
 
-/** Run `write` while holding the cross-process lock `<file>.lock`. A failed release is ignored: the lock goes stale and is reclaimed. */
-export function withSessionFileLock<T>(file: string, write: () => T): T {
+/**
+ * Take the cross-process lock `<file>.lock` and return its release, for a write whose locked part does not fit one
+ * callback (`rewriteSessionFile`). The release never throws: a failed one leaves a stale lock that is reclaimed.
+ */
+export function lockSessionFile(file: string): () => void {
 	// A new session may belong to a folder that does not exist yet (the workspace folder, for a session opened from the legacy one).
 	mkdirSync(dirname(file), { recursive: true });
 	const release = acquireSessionLock(canonicalPath(file));
-	try {
-		return write();
-	} finally {
+	return () => {
 		try {
 			release();
 		} catch {
 			// The write already succeeded or failed on its own terms.
 		}
+	};
+}
+
+/** Run `write` while holding the cross-process lock `<file>.lock` (`lockSessionFile`). */
+export function withSessionFileLock<T>(file: string, write: () => T): T {
+	const release = lockSessionFile(file);
+	try {
+		return write();
+	} finally {
+		release();
 	}
 }
 
-function readForeignEntries(file: string, known: number, to: number): SessionEntry[] {
+function readForeignEntries(state: SessionState, file: string, known: number, to: number): SessionEntry[] {
 	// Read from one byte early so a `known` offset inside a record (a size taken while another writer was appending)
 	// can be detected: that record's remainder is skipped, since the load read it whole or skips it by id.
 	const from = Math.max(0, known - 1);
@@ -100,7 +111,8 @@ function readForeignEntries(file: string, known: number, to: number): SessionEnt
 		if (typeof record.id !== "string") {
 			throw new Error(`Session has a record without an id written by another process. ${forkHint(file)}`);
 		}
-		entries.push(record as SessionEntry);
+		// Stored against the lines before it, which this state's codec has read or written (`codec.ts`).
+		entries.push(state.codec.decode(record as SessionEntry));
 	}
 	return entries;
 }
@@ -124,7 +136,7 @@ export function mergeForeignEntries(state: SessionState, file: string, pending: 
 	const pendingIndex = pending.length > 0 ? state.fileEntries.lastIndexOf(pending[0]) : -1;
 	for (const entry of pending) state.byId.delete(entry.id);
 	// Records this state already holds (read by the load, or re-read after another process rewrote the file) are skipped.
-	const foreign = readForeignEntries(file, known, size).filter((entry) => !state.byId.has(entry.id));
+	const foreign = readForeignEntries(state, file, known, size).filter((entry) => !state.byId.has(entry.id));
 	for (const entry of foreign) indexSessionEntry(entry, state.byId, state.labelsById, state.labelTimestampsById);
 	state.fileEntries.splice(pendingIndex === -1 ? state.fileEntries.length : pendingIndex, 0, ...foreign);
 	for (const entry of pending) {

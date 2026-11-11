@@ -6,7 +6,7 @@ import type {
 import type { Model, Tool } from "../../types.ts";
 import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
-import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { keepsToolBreakpoint, splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import { getCurrentTools, getInitialSystemMessage, type TranscriptContext } from "../../utils/transcript.ts";
@@ -136,11 +136,17 @@ export function buildParams(
 	};
 	const initialTools = initialSystemMessage?.toolsAdded ?? [];
 	const nativeToolChanges = resolveToolLoadingMode(model.api, compat) === "changes" && initialTools.length > 0;
-	// A second instruction block takes the tools-only marker's slot: the base block's marker already covers the
-	// tools that precede it. Without an instruction marker or a usable boundary, the prompt stays one block.
+	// A second cached instruction block takes the tools-only marker's slot: the base block's marker already covers the
+	// tools that precede it. The volatile block carries no marker, so the request holds at most four: two on the
+	// instructions (or one and the tools), the last message and the lookback. Without an instruction marker or a
+	// usable boundary, the prompt stays one block.
 	const splitSystem =
 		instructionCacheControl && initialSystemMessage
-			? splitSystemMessageAtBoundary(initialSystemMessage, options?.instructionCacheBoundary)
+			? splitSystemMessageIntoBlocks(
+					initialSystemMessage,
+					options?.instructionCacheBoundary,
+					options?.instructionVolatileBoundary,
+				)
 			: undefined;
 	const thinkingDisabled =
 		model.reasoning && options?.thinkingEnabled === false && model.thinkingLevelMap?.off !== null;
@@ -166,11 +172,26 @@ export function buildParams(
 	const cacheDiagnostics = buildCacheDiagnosticsParam(model, context, options?.env);
 	if (cacheDiagnostics) params.diagnostics = cacheDiagnostics;
 
-	const promptBlocks = (splitSystem ?? [initialSystemText]).map((text) => ({
+	// The tool prefix every agent role declares alike gets its own instruction marker, so a child of one role reads the
+	// prefix another role wrote. It takes the slot of the marker that would follow it: the last tool's, or the base
+	// block's when the prompt has two cached blocks (the session block's marker still covers the base block).
+	const sentTools = nativeToolChanges ? initialTools : getCurrentTools(context.messages);
+	const sharedToolEnd =
+		instructionCacheControl && compat.supportsCacheControlOnTools
+			? sharedToolPrefix(sentTools, options?.toolCacheBoundary)
+			: 0;
+	const unmarkedBase = sharedToolEnd > 0 && (splitSystem?.cached.length ?? 0) > 1;
+	const promptBlock = (text: string, cached: boolean) => ({
 		type: "text" as const,
 		text: sanitizeSurrogates(text),
-		...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
-	}));
+		...(cached && instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
+	});
+	const promptBlocks = splitSystem
+		? [
+				...splitSystem.cached.map((text, index) => promptBlock(text, !(unmarkedBase && index === 0))),
+				...(splitSystem.volatile === undefined ? [] : [promptBlock(splitSystem.volatile, false)]),
+			]
+		: [promptBlock(initialSystemText, true)];
 	if (initialSystemText) params.system = promptBlocks;
 
 	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
@@ -185,19 +206,20 @@ export function buildParams(
 		params.temperature = options.temperature;
 	}
 
-	const toolCacheControl = compat.supportsCacheControlOnTools && !splitSystem ? instructionCacheControl : undefined;
+	const toolCacheControl =
+		compat.supportsCacheControlOnTools && keepsToolBreakpoint(splitSystem) && sharedToolEnd === 0
+			? instructionCacheControl
+			: undefined;
 	if (nativeToolChanges) {
 		// Initial tools stay active with the cache breakpoint on the last one, followed by the
 		// placeholder. The list never changes afterwards: later tools are defined by value in
 		// `tool_addition` blocks and withdrawn by `tool_removal`, so the cached prefix survives
 		// every tool change.
 		params.tools = [...convertToolDefinitions(initialTools, toolCacheControl), DEFERRED_TOOL_PLACEHOLDER];
-	} else {
-		const tools = getCurrentTools(context.messages);
-		if (tools.length > 0) {
-			params.tools = convertToolDefinitions(tools, toolCacheControl);
-		}
+	} else if (sentTools.length > 0) {
+		params.tools = convertToolDefinitions(sentTools, toolCacheControl);
 	}
+	if (sharedToolEnd > 0 && params.tools) params.tools[sharedToolEnd - 1].cache_control = instructionCacheControl;
 
 	if (cacheControl) {
 		addHistoryLookbackBreakpoint(
@@ -262,6 +284,15 @@ export function buildParams(
 	}
 
 	return { params, hasPreferredStrictTools, providerThinkingLevel: effortMessages ? activeEffort : undefined };
+}
+
+/** How many leading tools end before `boundary` (the first role-specific tool), or 0 when it names none after the first. */
+function sharedToolPrefix(tools: readonly Tool[], boundary: string | undefined): number {
+	if (!boundary) return 0;
+	return Math.max(
+		0,
+		tools.findIndex((tool) => tool.name === boundary),
+	);
 }
 
 /** Whether the request thinks: requested, or forced because the model cannot turn thinking off (`off: null`). */

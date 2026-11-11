@@ -1,4 +1,5 @@
-import { pathFromRoot } from "./ancestors.ts";
+import { SessionCodec } from "./codec.ts";
+import { branchPath, EntryIndex } from "./entry-index.ts";
 import type { FileEntry, SessionEntry, SessionInfoEntry, SessionNameSource } from "./types.ts";
 
 /**
@@ -23,10 +24,9 @@ export interface SessionState {
 	failedWrite?: FailedWrite;
 	/** Messages kept in memory because another process held the lock past the wait; the next write saves them first. */
 	readonly unwritten: SessionEntry[];
-	mirrorProblem?: string;
-	/** After a failed mirror rebuild, when an append may try the next one and how many failed in a row. */
-	mirrorRebuild?: { notBefore: number; failures: number };
 	fileEntries: FileEntry[];
+	/** What the session file holds so far, for storing the next line against it (`codec.ts`). */
+	codec: SessionCodec;
 	readonly byId: Map<string, SessionEntry>;
 	readonly labelsById: Map<string, string>;
 	readonly labelTimestampsById: Map<string, string>;
@@ -54,7 +54,8 @@ export function createSessionState(cwd: string, sessionDir: string, persist: boo
 		persistenceFailure: undefined,
 		unwritten: [],
 		fileEntries: [],
-		byId: new Map(),
+		codec: new SessionCodec(),
+		byId: new EntryIndex(),
 		labelsById: new Map(),
 		labelTimestampsById: new Map(),
 		leafId: null,
@@ -69,7 +70,7 @@ export function getSessionEntries(state: SessionState): SessionEntry[] {
 /** Walk from an entry (default: the leaf) to root, returning all entries in path order. */
 export function getBranchEntries(state: SessionState, fromId?: string): SessionEntry[] {
 	const startId = fromId ?? state.leafId;
-	return pathFromRoot(startId ? state.byId.get(startId) : undefined, (id) => state.byId.get(id));
+	return branchPath(state.byId, startId ? state.byId.get(startId) : undefined);
 }
 
 /** Get all direct children of an entry. */

@@ -4,9 +4,8 @@ import type { LayoutFrame } from "./layout/types.ts";
 import { renderLayoutFrame } from "./layout.ts";
 import { detachScrollViews } from "./layout/detach.ts";
 import type { Terminal } from "./terminal.ts";
-import type { ImageProtocol, TerminalCapabilities } from "./terminal-image/types.ts";
-import { getCapabilities, setCapabilities } from "./terminal-image/capabilities.ts";
 import { registerTerminalRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
+import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT, OSC133_ZONE_PREFIX } from "./terminal/sequences.ts";
 import { clipLinesToWidth } from "./tui/clip.ts";
 import {
 	type Component,
@@ -20,25 +19,23 @@ import {
 } from "./tui.ts";
 import { compositeFlashLines, compositeScrollToEndIndicator } from "./tui-alt-screen/compose.ts";
 import {
-	BEGIN_SYNCHRONIZED_OUTPUT,
 	DISABLE_AUTOWRAP,
 	DISABLE_MOUSE,
 	ENABLE_AUTOWRAP,
-	END_SYNCHRONIZED_OUTPUT,
 	ENTER_ALT_SCREEN,
 	EXIT_ALT_SCREEN,
-	OSC133_ZONE_PREFIX,
 } from "./tui-alt-screen/constants.ts";
 import { buildAltScreenExit, buildAltScreenForcedExit, renderAltScreenOutput } from "./tui-alt-screen/frame.ts";
-import { deleteKittyImagesFor } from "./tui-alt-screen/kitty-cache.ts";
+import { AltScreenImages } from "./tui-alt-screen/images.ts";
 import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt-screen/mouse-gesture.ts";
 import { getMouseTrackingSequence } from "./tui-alt-screen/mouse-input.ts";
 import { type AltScreenPointerHost, handlePointerInput } from "./tui-alt-screen/pointer-input.ts";
 import { AltScreenScrollbar, type AltScreenScrollbarHost } from "./tui-alt-screen/scrollbar-controller.ts";
+import { TrimmedRowsMemo } from "./tui-alt-screen/scroll-shift.ts";
 import { applySearchHighlights, applySearchTextHighlight } from "./tui-alt-screen/search.ts";
 import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-screen/search-controller.ts";
 import { AltScreenSelection, type AltScreenSelectionHost } from "./tui-alt-screen/selection-controller.ts";
-import type { CachedKittyImage, ScrollToEndIndicatorRect, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
+import type { ScrollToEndIndicatorRect, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 import { type AltScreenViewportKeysHost, handleViewportKeys } from "./tui-alt-screen/viewport-keys.ts";
 import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
@@ -57,9 +54,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly flashes: AltScreenFlashContainer;
 	private altScreenActive = false;
 	private disposeExitRestore?: () => void;
-	private imageProtocol: ImageProtocol = null;
-	private savedCapabilities?: TerminalCapabilities;
-	private readonly uploadedKittyImages = new Map<number, CachedKittyImage>();
+	private readonly images = new AltScreenImages();
+	private readonly trimmedRows = new TrimmedRowsMemo();
 	private readonly search: AltScreenSearchController;
 	private readonly selection: AltScreenSelection;
 	private readonly scrollbar: AltScreenScrollbar;
@@ -103,7 +99,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			getCurrentLayout: () => this.currentLayout,
 			getPreviousScreen: () => this.previousScreen,
 			getPrimaryScrollView: () => this.getPrimaryScrollView(),
-			requestRender: () => this.requestRender(),
+			requestRender: () => this.scheduler.requestInteractive(),
 			hasOverlay: () => this.hasOverlay(),
 			showOverlay: (component, overlayOptions) => this.showOverlay(component, overlayOptions),
 			isMouseTargetMounted: (target) => this.isMouseTargetMounted(target),
@@ -237,14 +233,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.flashes.dispose();
 		this.altScreenActive = true;
 		this.disposeExitRestore = registerTerminalRestore(this.terminal, buildAltScreenForcedExit(this.mouseEnabled));
-		const capabilities = getCapabilities();
-		this.imageProtocol = capabilities.images;
-		this.uploadedKittyImages.clear();
-		if (capabilities.images === "iterm2") {
-			this.savedCapabilities = capabilities;
-			setCapabilities({ ...capabilities, images: null });
-			this.invalidate();
-		}
+		if (this.images.start()) this.invalidate();
 		this.lastDocument = [];
 		this.selection.resetSelectionPoints();
 		this.mouse.clearComponentMouseGesture();
@@ -256,9 +245,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	protected override onTerminalCapabilitiesChanged(): void {
-		this.terminal.write(this.deleteKittyImages());
-		this.uploadedKittyImages.clear();
-		this.imageProtocol = getCapabilities().images;
+		this.terminal.write(this.images.refresh());
 		this.resetRenderState();
 	}
 
@@ -273,9 +260,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.flashes.dispose();
 		if (!this.altScreenActive) return;
 		this.terminal.write(
-			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.deleteKittyImages()}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
+			`${BEGIN_SYNCHRONIZED_OUTPUT}${this.images.deleteAll()}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`,
 		);
-		this.uploadedKittyImages.clear();
 	}
 
 	protected override afterTerminalStop(options: TuiStopOptions): void {
@@ -291,16 +277,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			this.lastDocument = clipLinesToWidth(this.applyLineResets(documentLines), width);
 			this.terminal.write(buildAltScreenExit(this.lastDocument));
 		}
-		if (this.savedCapabilities) {
-			setCapabilities(this.savedCapabilities);
-			this.savedCapabilities = undefined;
-		}
+		this.images.restore();
 		if (this.disposeExitRestore) unregisterAfterOutput(this.terminal, this.disposeExitRestore);
 		this.disposeExitRestore = undefined;
-	}
-
-	private deleteKittyImages(): string {
-		return deleteKittyImagesFor(this.imageProtocol);
 	}
 
 	protected override resetRenderState(): void {
@@ -310,19 +289,20 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.currentLayout = undefined;
 	}
 
+	// Scrolling follows a key or the pointer: its frame takes the scheduler's interactive path, not the streaming cadence.
 	scrollBy(lines: number): void {
 		this.getPrimaryScrollView().scrollBy(lines);
-		this.requestRender();
+		this.scheduler.requestInteractive();
 	}
 
 	scrollToTop(): void {
 		this.getPrimaryScrollView().scrollToStart();
-		this.requestRender();
+		this.scheduler.requestInteractive();
 	}
 
 	scrollToBottom(): void {
 		this.getPrimaryScrollView().scrollToEnd();
-		this.requestRender();
+		this.scheduler.requestInteractive();
 	}
 
 	/** Show a transient message in the alternate-screen flash stack. */
@@ -382,10 +362,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			previousScreenHeight: this.previousScreenHeight,
 			width,
 			height,
-			imageProtocol: this.imageProtocol,
-			uploadedKittyImages: this.uploadedKittyImages,
+			imageProtocol: this.images.protocol,
+			uploadedKittyImages: this.images.uploaded,
 			cursorPos,
 			showHardwareCursor: this.getShowHardwareCursor(),
+			trimmedRows: this.trimmedRows,
 		});
 		if (fullRedraw) this.fullRedrawCount += 1;
 		this.terminal.write(buffer);

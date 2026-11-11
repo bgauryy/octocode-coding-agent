@@ -46,7 +46,7 @@ it.each([false, true])("observes one full tool batch and applies block=%s before
 		tools: [tool],
 		extensionFactories: [
 			(api) => {
-				registerHooks(api, {}, home);
+				registerHooks(api, { env: {}, home });
 			},
 		],
 	});

@@ -1,8 +1,9 @@
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { HistoryRepair } from "./repair.ts";
+import { repairCatalog } from "./repair-stamps.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { type AgentDb, compactions, sessions, workspaces } from "../../../../db/src/api.ts";
+import { type AgentDb, compactions, workspaces } from "../../../../db/src/api.ts";
 import { resolveRetention } from "../../storage/retention.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { archiveFolder, isSegmentFile } from "../history/archive.ts";
@@ -18,14 +19,7 @@ export async function expireArchiveDetails(
 ): Promise<void> {
 	const { days } = resolveRetention(env);
 	if (!days) return;
-	const repair = new HistoryRepair(agent, env);
-	for (const session of sessions.catalog(agent.db)) {
-		try {
-			await repair.transcript(session.file);
-		} catch {
-			/* This session's details remain until repair succeeds. */
-		}
-	}
+	await repairCatalog(agent, new HistoryRepair(agent, env));
 	for (const row of compactions.expirable(agent.db, now - days * DAY_MS)) {
 		const workspace = workspaces.byId(agent.db, row.workspace);
 		if (!workspace) continue;

@@ -92,7 +92,7 @@ describe("one task, one report", () => {
 	it("delivers one background report with the follow-up attached, still reported done", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
-		const control = registerAgentTool(f.api, () => new Map(), team, fakePermission("full"));
+		const control = registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission("full") });
 		const ctx = fakeCtx({ cwd: tmp() });
 		team.start(ctx);
 		try {
@@ -115,15 +115,13 @@ describe("one task, one report", () => {
 	});
 
 	it("reads the job notice from the child's event stream", async () => {
-		const outcome = await runSubagent(
-			"job follow-up fails",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-0009" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "job follow-up fails",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-0009" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.text).toContain(`Follow-up to the report above (${NOTICE}):\nfailed: the build broke`);
 		expect(outcome.outcome).toBe("failed");
 	});

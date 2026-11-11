@@ -11,19 +11,14 @@
  * It is only intended for CLI use, not browser environments.
  */
 
-import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { startOAuthCallbackServer, waitForCallbackOrManualInput } from "./callback-server.ts";
+import { getOAuthCallbackHost, startOAuthCallbackServer, waitForCallbackOrManualInput } from "./callback-server.ts";
 import { generatePKCE } from "./pkce.ts";
 
 const AUTHORIZE_URL = "https://openrouter.ai/auth";
 const TOKEN_URL = "https://openrouter.ai/api/v1/auth/keys";
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
-
-function getCallbackHost(): string {
-	return getProviderEnvValue("OCTOCODE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
-}
 
 type JsonObject = Record<string, unknown>;
 
@@ -115,7 +110,7 @@ async function loginOpenRouter(interaction: ProviderAuthInteraction): Promise<OA
 	// OpenRouter sends no `state`; the random path keeps stray requests from completing the sign-in.
 	const callback = await startOAuthCallbackServer({
 		providerName: "OpenRouter",
-		host: getCallbackHost(),
+		host: getOAuthCallbackHost(),
 		port: 0,
 		path: `/oauth/callback/${crypto.randomUUID()}`,
 		complete: (code) => exchangeAuthorizationCode(code, verifier, interaction.signal),

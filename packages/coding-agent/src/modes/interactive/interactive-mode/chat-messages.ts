@@ -27,6 +27,7 @@ type ChatMessagesHost = Pick<
 	| "uiStore"
 	| "outputPad"
 	| "session"
+	| "sessionManager"
 	| "settingsManager"
 	| "streamingComponent"
 	| "ui"
@@ -136,7 +137,7 @@ export function addMessageToChat(
 				host.getMarkdownTransformers(),
 				{
 					readAsset: (id) => port.readAsset(id),
-					cwd: host.session.sessionManager.getCwd(),
+					cwd: host.sessionManager.getCwd(),
 					showImages: host.settingsManager.getShowImages(),
 					imageWidthCells: host.settingsManager.getImageWidthCells(),
 					requestRender: () => host.ui.requestRender(),

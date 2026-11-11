@@ -1,4 +1,4 @@
-import type { AgentEnd } from "../team/panel-state.ts";
+import type { AgentEnd } from "../team/panel/state.ts";
 import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration, formatSpend, toolCallCount } from "../shared/format.ts";
@@ -145,7 +145,12 @@ export function startBackground(
 				: "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
-			const reachable = outcome.error ? "" : (linger?.(reported, awaited) ?? "");
+			// A plan's turns have no price to weigh: the line names the requests alone.
+			const spent = {
+				requests: details.requests,
+				cost: details.billing === "plan" ? "" : formatSpend(details, undefined),
+			};
+			const reachable = outcome.error ? "" : (linger?.(reported, awaited, spent) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;

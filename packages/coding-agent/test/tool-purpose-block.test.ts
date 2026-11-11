@@ -88,6 +88,53 @@ describe("the purpose block below a tool result", () => {
 		expect(lines).toEqual(["  #0 find the loader — where it starts", "  #1 find the writer", "  #2 just why"]);
 	});
 
+	it("reads the purposes of any tool's result, native or MCP, from structured data or one JSON text", () => {
+		const rows = [
+			{ index: 0, mainGoal: "map the parser", reasoning: "entry point" },
+			{ index: 1, mainGoal: "map the parser", reasoning: "its callers" },
+		];
+		const jsonText = (name: string, withRenderer: boolean) => {
+			const component = new ToolExecutionComponent(
+				name,
+				"call-1",
+				{ reason: "look around the parser" },
+				{},
+				withRenderer ? definition(name) : undefined,
+				ui,
+				process.cwd(),
+			);
+			component.updateResult({ content: [{ type: "text", text: JSON.stringify({ results: rows }) }], isError: false });
+			return text(component).map((line) => line.trim());
+		};
+		for (const withRenderer of [true, false]) {
+			// A native tool: its own reason stays the title line, and the result's goal and rows follow the output.
+			const native = jsonText("web", withRenderer);
+			expect(native, String(withRenderer)).toEqual(
+				expect.arrayContaining([
+					"↳ look around the parser",
+					"◎ map the parser",
+					"· #0 entry point",
+					"· #1 its callers",
+				]),
+			);
+			// An MCP tool whose server returned only JSON text: the goal is its title line, as with structured data.
+			const external = jsonText(MCP, withRenderer);
+			expect(external, String(withRenderer)).toEqual(
+				expect.arrayContaining(["↳ map the parser", "· #0 entry point", "· #1 its callers"]),
+			);
+			expect(external).not.toContain("↳ look around the parser");
+			// The same native tool with structured data.
+			const structured = text(resultRow("web", { reason: "look around the parser" }, returned(rows), withRenderer));
+			expect(structured.map((line) => line.trim())).toEqual(
+				expect.arrayContaining(["◎ map the parser", "· #0 entry point", "· #1 its callers"]),
+			);
+		}
+		// Text that is not one JSON value shows no block.
+		const prose = new ToolExecutionComponent("web", "c", {}, {}, undefined, ui, process.cwd());
+		prose.updateResult({ content: [{ type: "text", text: 'mainGoal: "map the parser"' }], isError: false });
+		expect(text(prose).join("\n")).not.toContain("◎");
+	});
+
 	it("shows nothing before a result exists", () => {
 		const component = new ToolExecutionComponent(MCP, "c", {}, {}, undefined, ui, process.cwd());
 		expect(text(component).join("\n")).not.toContain("·");

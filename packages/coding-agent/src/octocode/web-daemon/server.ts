@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES, WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { MERMAID_SCRIPT_HASH, pagePolicy, WEB_PAGE_ASSETS, WEB_PREFS_ROUTE } from "@octocodeai/octocode-webview";
+import { livePageHeaderPolicy, WEB_PAGE_ASSETS, WEB_PREFS_ROUTE } from "@octocodeai/octocode-webview";
 import {
 	handleWebPrefsRequest,
 	serveServiceWorker,
@@ -19,9 +19,11 @@ import {
 	type WebPrefsStore,
 } from "../browser/page-routes.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
+
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";
-import { bearerOf, replier, tokenAccess, type DaemonTokens, type Reply } from "./http-util.ts";
+import { bearerOf, ownHost, ownOrigin, servePage } from "../workspace/page-access.ts";
+import { replier, tokenAccess, type DaemonTokens, type Reply } from "./http-util.ts";
 import { LAUNCH_CODE_ROUTE, LAUNCH_DOOR_PREFIX, LaunchCodes, openDoor } from "./launch-code.ts";
 import { RemotePublisher } from "./remote/publisher.ts";
 import { handleRemoteRequest } from "./remote/routes.ts";
@@ -29,6 +31,7 @@ import { handleRepoRequest } from "./repo-routes.ts";
 import { RepoCatalog } from "./repos.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { handleSessionRequest } from "./session-routes.ts";
+import { handleSessionSettings } from "./session-settings.ts";
 import { TabHub, type TabScope } from "./tabs.ts";
 
 const SCOPE_ID = /^[\w.-]{1,128}$/;
@@ -55,6 +58,10 @@ export interface DaemonServerOptions {
 	harness?: ConfigRoutes["harness"];
 	/** Applies a validated `POST /api/admin/config/harness` switch. */
 	writeHarness?: ConfigRoutes["writeHarness"];
+	/** Lists the Tools panel's rows (`GET /api/admin/config/tools`). */
+	tools?: ConfigRoutes["tools"];
+	/** Applies a validated `POST /api/admin/config/tools` pin. */
+	writeTools?: ConfigRoutes["writeTools"];
 	/** Records a credential request refused before it reached `writeCredential`; see `ConfigRoutes.auditRefused`. */
 	auditRefused?: ConfigRoutes["auditRefused"];
 	/** Asked by `POST /api/admin/drain`. */
@@ -126,7 +133,6 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 	const nonce = randomBytes(16).toString("hex");
 	const startedAt = Date.now();
 	let origin = "";
-	let host = "";
 	let port = 0;
 	const notify = () => options.onActivity();
 	const launchCodes = new LaunchCodes();
@@ -167,29 +173,18 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 
 	// The page's own script and the Mermaid text its docs view runs inline; the rest of the policy is the page's own.
 	const webPrefs = options.webPrefs ?? settingsWebPrefs();
-	const csp = pagePolicy({
-		scripts: [`'${page.scriptHash}'`, `'${MERMAID_SCRIPT_HASH}'`],
-		live: true,
-		header: true,
-	});
+	const csp = livePageHeaderPolicy(page.scriptHash);
+
+	// A board edit from the page repaints the footer counts of every session of that repository, as an edit on the
+	// session's own server does.
+	const boardWritten = (repoId: string) => () => registry.boardChanged(repoId);
 
 	const handle = async (req: http.IncomingMessage, res: http.ServerResponse, reply: Reply) => {
-		if (req.headers.host !== host || (req.headers.origin !== undefined && req.headers.origin !== origin))
+		if (!ownHost(req, origin) || !ownOrigin(req, origin))
 			return reply(403, { error: "The Octocode web workspace accepts requests only from its own local address." });
 		const url = requestUrl(req.url, origin);
 		if (!url) return reply(400, { error: "Bad request target" });
-		if (req.method === "GET" && url.pathname === "/") {
-			res.writeHead(200, {
-				"content-type": "text/html; charset=utf-8",
-				"cache-control": "no-store",
-				"referrer-policy": "no-referrer",
-				"x-frame-options": "DENY",
-				"x-content-type-options": "nosniff",
-				"content-security-policy": csp,
-			});
-			res.end(page.html);
-			return;
-		}
+		if (req.method === "GET" && url.pathname === "/") return servePage(res, page.html, csp);
 		if (serveServiceWorker(req, url.pathname, res, WEB_PAGE_ASSETS)) return;
 		if (req.method === "GET" && url.pathname.startsWith(LAUNCH_DOOR_PREFIX))
 			return openDoor(url, launchCodes, tokens.launch, res, reply);
@@ -248,6 +243,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			if (!session) return reply(404, { error: "That session is not attached. Open /web in a running session." });
 			const repo = catalog.resolve(session.record.repo.key);
 			if (!repo) return reply(404, { error: "Unknown repository" });
+			if (await handleSessionSettings(req, scopedUrl, access, options, session, repo, reply)) return;
 			if (
 				await handleSessionRequest(
 					req,
@@ -259,7 +255,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 				)
 			)
 				return;
-			if (await handleRepoRequest(req, scopedUrl, repo, catalog, scope.id, reply)) return;
+			if (await handleRepoRequest(req, scopedUrl, repo, catalog, scope.id, reply, boardWritten(repo.id))) return;
 			return reply(404, { error: "Not found" });
 		}
 		const repo = catalog.resolve(scope.id);
@@ -270,7 +266,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			scopedUrl.pathname.startsWith(WORKSPACE_ROUTES.profiler)
 		)
 			return reply(503, { error: "Agent controls need a running session; open one from the session list." });
-		if (await handleRepoRequest(req, scopedUrl, repo, catalog, undefined, reply)) return;
+		if (await handleRepoRequest(req, scopedUrl, repo, catalog, undefined, reply, boardWritten(repo.id))) return;
 		return reply(404, { error: "Not found" });
 	};
 
@@ -284,11 +280,11 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		// Node hands the socket over without its own error listener: a peer that resets must not become an uncaught error.
 		socket.on("error", () => socket.destroy());
 		const reject = (status: string) => void socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
-		if (req.headers.host !== host) return reject("403 Forbidden");
+		if (!ownHost(req, origin)) return reject("403 Forbidden");
 		const url = requestUrl(req.url, origin);
 		if (!url) return reject("400 Bad Request");
 		// The origin is checked before the scope is looked up, so a foreign page learns nothing about which sessions exist.
-		if (req.headers.origin !== origin) return reject("403 Forbidden");
+		if (!ownOrigin(req, origin, true)) return reject("403 Forbidden");
 		const scope = scoped(url.pathname);
 		if (!scope || scope.rest !== WORKSPACE_ROUTES.live) return reject("404 Not Found");
 		let tabScope: TabScope | undefined;
@@ -313,8 +309,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		});
 	});
 	port = (server.address() as AddressInfo).port;
-	host = `127.0.0.1:${port}`;
-	origin = `http://${host}`;
+	origin = `http://127.0.0.1:${port}`;
 	registry.start();
 	tabs.start();
 	return {

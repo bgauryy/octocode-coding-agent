@@ -1,10 +1,10 @@
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
@@ -267,26 +267,17 @@ describe("shared memory moves", () => {
 
 	it("unpins a pinned memory and moves a global one into the project at once: narrowing shared memory has no prompt", async () => {
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, {
-				commands: new Subcommands(),
-				isSubagent: false,
-				permission: fakePermission("manual"),
-			}),
-		);
-		const tool = fake.tools.get("archive");
+		registerMemory(fake.api, {
+			commands: new Subcommands(),
+			isSubagent: false,
+			permission: fakePermission("manual"),
+		});
+		const tool = fake.tools.get("memory");
 		// Saving each shared memory asks once; the moves that narrow them do not.
 		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once", "Allow once"] } });
 		const run = (params: Record<string, unknown>) =>
 			tool
-				.execute(
-					"c",
-					{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
-					undefined,
-					undefined,
-					ctx,
-				)
+				.execute("c", { goal: "Remember a preference", reason: "user requested", ...params }, undefined, undefined, ctx)
 				.then((r: { content: Array<{ text: string }> }) => r.content[0].text);
 		await run({ op: "set", title: "Pinned note", pinned: true });
 		await run({ op: "set", title: "Global note", scope: "global" });
@@ -295,24 +286,30 @@ describe("shared memory moves", () => {
 		expect(ctx.ui.selects).toEqual([]);
 	});
 
-	it("set and delete imply source memories and name the fix for another source", async () => {
+	it("memory saves without a source, and archive refuses a memory operation naming the memory call", async () => {
 		const fake = fakeHost();
-		registerArchiveTool(
-			fake.api,
-			registerMemory(fake.api, {
-				commands: new Subcommands(),
-				isSubagent: false,
-				permission: fakePermission("manual"),
-			}),
-		);
-		const tool = fake.tools.get("archive");
+		registerMemory(fake.api, {
+			commands: new Subcommands(),
+			isSubagent: false,
+			permission: fakePermission("manual"),
+		});
+		registerArchiveTool(fake.api);
 		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once"] } });
-		const run = (params: Record<string, unknown>) =>
-			tool.execute("c", { reason: "user requested", ...params }, undefined, undefined, ctx);
-		const added = await run({ op: "set", title: "No source given" });
+		const run = (name: string, params: Record<string, unknown>) =>
+			fake.tools.get(name).execute("c", { reason: "user requested", ...params }, undefined, undefined, ctx);
+		const added = await run("memory", { op: "set", title: "No source given" });
 		expect(added.content[0].text).toMatch(/Saved M1/);
-		await expect(run({ op: "delete", id: "M1", source: "sessions" })).rejects.toThrow(
-			/delete works on source memories only; drop source or set source "memories"/,
-		);
+		for (const [params, op] of [
+			[{ op: "delete", id: "M1", source: "sessions" }, "delete"],
+			[{ op: "set", title: "Another" }, "set"],
+			[{ op: "search", source: "memories", keywords: "source" }, "search"],
+			[{ source: "memories" }, "list"],
+			[{ op: "get", id: "M1" }, "get"],
+		] as const)
+			await expect(run("archive", params)).rejects.toThrow(
+				`archive no longer reads or writes memories: call the memory tool with op "${op}".`,
+			);
+		// The refused calls changed nothing.
+		expect((await run("memory", { op: "get", id: "M1" })).content[0].text).toContain("No source given");
 	});
 });

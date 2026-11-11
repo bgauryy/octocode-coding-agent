@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { closeSharedAgentDb, compactions } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { sweepSessions } from "../../src/octocode/sessions/sweep.ts";
 import { sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
@@ -38,6 +38,94 @@ afterEach(() => {
 });
 
 describe("session sweep", () => {
+	it("keeps an aged output or bash log the session's latest checkpoint names, in its text or its saved-results list file", async () => {
+		const agent = sharedAgentDb();
+		const index = new SessionIndex(agent);
+		agent.db.prepare("INSERT INTO workspaces (id, name, root, binding) VALUES ('w', 'w', ?, 'path')").run(tmp());
+		agent.db.prepare("INSERT INTO sessions (id, workspace_id) VALUES ('kept', 'w')").run();
+		const dir = path.join(home, "agent", "sessions", "kept");
+		const files: Record<string, string> = {};
+		for (const [kind, name] of [
+			["output", "named.txt"],
+			["output", "listed.txt"],
+			["output", "saved-results-1-1.txt"],
+			["output", "earlier.txt"],
+			["output", "unnamed.txt"],
+			["bash", "job-named.log"],
+			["bash", "job-unnamed.log"],
+		]) {
+			fs.mkdirSync(path.join(dir, kind), { recursive: true });
+			files[name] = path.join(dir, kind, name);
+			fs.writeFileSync(files[name], "x");
+		}
+		// The list too long for the summary: the checkpoint names the list file, and the list names the evidence.
+		fs.writeFileSync(files["saved-results-1-1.txt"], "~/.octocode/agent/sessions/kept/output/listed.txt\n");
+		const old = new Date(Date.now() - 31 * DAY);
+		for (const file of Object.values(files)) fs.utimesSync(file, old, old);
+		const summary = (entryId: string, text: string) =>
+			compactions.save(agent.db, {
+				workspace: "w",
+				sessionId: "kept",
+				entryId,
+				summary: text,
+				committedAt: Date.now(),
+				originVerified: true,
+				metadata: {},
+				detailFile: null,
+				detailState: "missing",
+			});
+		// Only the latest checkpoint counts: what an earlier one named and this one dropped ages out.
+		summary("e1", `## Goal\nx\n<saved-results>\n${files["earlier.txt"]}\n</saved-results>`);
+		summary(
+			"e2",
+			[
+				"## Goal\nship it",
+				`Full output: ${files["named.txt"]}`,
+				'<saved-results count="40">',
+				"The 40 saved files are listed in ~/.octocode/agent/sessions/kept/output/saved-results-1-1.txt",
+				"agent/sessions/kept/bash/job-named.log",
+				"</saved-results>",
+			].join("\n"),
+		);
+
+		await sweepSessions(index, "other", { listed: async () => new Set(["kept"]) });
+		const left = Object.keys(files).filter((name) => fs.existsSync(files[name]));
+		expect(left.sort()).toEqual(["job-named.log", "listed.txt", "named.txt", "saved-results-1-1.txt"]);
+	});
+
+	it("removes aged output of a session without a checkpoint, as before", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("plain");
+		const file = path.join(home, "agent", "sessions", "plain", "output", "old.txt");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "x");
+		fs.utimesSync(file, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		await sweepSessions(index, "other", { listed: async () => new Set(["plain"]) });
+		expect(fs.existsSync(file)).toBe(false);
+	});
+
+	it("does not wait for another connection's reader before it checkpoints what it removed", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("plain");
+		const file = path.join(home, "agent", "sessions", "plain", "output", "old.txt");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "x");
+		fs.utimesSync(file, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		// A reader holding a snapshot: a truncating checkpoint waits for it up to its busy timeout.
+		const reader = openAgentDb(sharedAgentDb().file);
+		try {
+			reader.db.exec("BEGIN");
+			reader.db.prepare("SELECT COUNT(*) FROM sessions").get();
+			const started = Date.now();
+			await sweepSessions(index, "other", { listed: async () => new Set(["plain"]) });
+			expect(fs.existsSync(file)).toBe(false);
+			expect(Date.now() - started).toBeLessThan(500);
+		} finally {
+			reader.db.exec("ROLLBACK");
+			reader.close();
+		}
+	});
+
 	const age = (dir: string, ms: number) => {
 		const at = new Date(Date.now() - ms);
 		for (const file of [dir, ...fs.readdirSync(dir, { recursive: true }).map((name) => path.join(dir, String(name)))])

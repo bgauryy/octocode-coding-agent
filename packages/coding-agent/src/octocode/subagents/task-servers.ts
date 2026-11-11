@@ -1,5 +1,5 @@
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import { getMcpSessionHandoff, planTaskMcpServers, type TaskMcpServers } from "../../../../mcp/src/session-servers.ts";
+import { getMcpSessionHandoff, planTaskMcpServers, type TaskMcpServers } from "../../../../mcp/src/api.ts";
 import { localResearchTools } from "./core-tools.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";
 

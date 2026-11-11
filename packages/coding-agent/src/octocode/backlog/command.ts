@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
-import { openFile } from "../browser/open.ts";
+import { openTarget } from "../../../../common/src/open-target.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";
@@ -18,6 +18,9 @@ const OPEN_TASKS = TASK_STATES.filter(isOpenTask);
 
 export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
 	const doWeb = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+		// The same page as `/web backlogs` where that command is registered: the web daemon's, or this session's own.
+		const web = deps.web?.();
+		if (web) return web.handler("backlogs", ctx);
 		const url = await deps.openView(ctx, backlog);
 		say(ctx, `Opened the live backlog board at ${url}\nChanges are saved; keep this session open.`);
 	};
@@ -46,7 +49,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		const snapshot = "a snapshot, not live: run /backlog html to refresh it";
 		if (!ctx.hasUI) return say(ctx, `Wrote ${file} (${snapshot}). Open it in a browser.`);
 		try {
-			await (deps.open ?? openFile)(file);
+			await (deps.open ?? openTarget)(file);
 			say(ctx, `Opened ${file} in your browser (${snapshot}).`);
 		} catch (error) {
 			say(ctx, `Wrote ${file} but could not open it: ${errorMessage(error)}`, "warning");

@@ -1,4 +1,5 @@
 import { hasTmuxSession } from "./multiplexer.ts";
+import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "./terminal/sequences.ts";
 import { isImageLine } from "./terminal-image.ts";
 import { clipLineToWidth, FinishedLines } from "./tui/clip.ts";
 import { applyLineReset } from "./tui/composite.ts";
@@ -6,20 +7,18 @@ import { LayoutRecorder, recordLayout } from "./tui/layout-recorder.ts";
 import type { RenderCounters } from "./tui/render-counters.ts";
 import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
-import { collectKittyImageIds, deleteChangedKittyImages, deleteKittyImages } from "./tui-main-screen/kitty-images.ts";
-import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
+import { CursorRows } from "./tui-main-screen/cursor-rows.ts";
+import { writeChangedRows, writeDeletedRows } from "./tui-main-screen/frame-write.ts";
 import {
-	appendChangedRows,
-	appendClearedExtraLines,
-	appendFullRenderLines,
-	cursorMoveSequence,
-} from "./tui-main-screen/render-output.ts";
+	collectKittyImageIds,
+	deleteKittyImages,
+	KittyImageRowCache,
+	type KittyImageRows,
+} from "./tui-main-screen/kitty-images.ts";
+import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
+import { appendFullRenderLines, cursorMoveSequence } from "./tui-main-screen/render-output.ts";
 import { ScrollbackPolicy } from "./tui-main-screen/scrollback.ts";
 import { BoundedTerminalWriter } from "./tui-main-screen/terminal-writer.ts";
-
-function isTermuxSession(): boolean {
-	return Boolean(process.env.TERMUX_VERSION);
-}
 
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {
@@ -28,6 +27,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	/** Resets and clipping of the rows, once per changed row. */
 	private readonly finishedLines = new FinishedLines((line, width) => clipLineToWidth(applyLineReset(line), width));
 	private previousKittyImageIds = new Set<number>();
+	private readonly cursorRows = new CursorRows();
+	private readonly kittyRows = new KittyImageRowCache();
 	private previousWidth = 0;
 	private previousHeight = 0;
 	private cursorRow = 0;
@@ -102,115 +103,92 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
 		const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
 		const previousBufferLength = this.previousHeight > 0 ? this.previousViewportTop + this.previousHeight : height;
-		let prevViewportTop = heightChanged ? Math.max(0, previousBufferLength - height) : this.previousViewportTop;
-		let viewportTop = prevViewportTop;
-		let hardwareCursorRow = this.hardwareCursorRow;
-		const computeLineDiff = (targetRow: number): number => {
-			const currentScreenRow = hardwareCursorRow - prevViewportTop;
-			const targetScreenRow = targetRow - viewportTop;
-			return targetScreenRow - currentScreenRow;
-		};
+		const viewportTop = heightChanged ? Math.max(0, previousBufferLength - height) : this.previousViewportTop;
 
-		// Render all components to get new lines
-		// Resolve fake cursors before compositing so overlays and line slicing see plain SGR codes
+		// Render, resolve fake cursors (so overlays and line slicing see plain SGR codes), composite overlays, then
+		// extract the cursor position: all before line resets and the differential compare.
 		const layout = new LayoutRecorder();
-		let newLines = this.resolveFakeCursors(recordLayout(layout, () => this.render(width)));
+		const renderedLines = recordLayout(layout, () => this.render(width));
 		const previousLayout = this.scrollback.advance(layout.leaves);
 		const repaintRequested = this.ledger.takeRepaint();
-
-		// Composite overlays into the rendered lines (before differential compare)
-		if (this.hasOverlayEntries) {
-			newLines = this.compositeOverlays(newLines, width, height);
-		}
-
-		// Extract cursor position before applying line resets (marker must be found first)
-		const cursorPos = this.extractCursorPosition(newLines, height);
+		const overlays = this.hasOverlayEntries
+			? (lines: string[]) => this.compositeOverlays(lines, width, height)
+			: undefined;
+		const frame = this.cursorRows.resolve(renderedLines, this.getShowHardwareCursor(), height, overlays);
+		const cursorPos = frame.cursor;
 
 		// A row wider than the terminal would wrap and shift every row below it, in the full render and the diff alike.
-		newLines = this.finishedLines.apply(newLines, width);
+		const newLines = this.finishedLines.apply(frame.lines, width);
+		const previousImageRows = this.kittyRows.of(this.previousLines);
+		const imageRows = this.kittyRows.of(newLines);
+		const commit = { newLines, imageRows, width, height, cursorPos };
 
 		// Helper to clear scrollback and viewport and render all new lines
 		const fullRender = (clear: boolean): void => {
 			this.fullRedrawCount += 1;
-			const output = new BoundedTerminalWriter((data) => this.terminal.write(data));
-			output.append("\x1b[?2026h"); // Begin synchronized output
+			const output = this.createWriter();
+			output.append(BEGIN_SYNCHRONIZED_OUTPUT);
 			if (clear) {
 				output.append(deleteKittyImages(this.previousKittyImageIds));
 				output.append("\x1b[2J\x1b[H\x1b[3J"); // Clear screen, home, then clear scrollback
 			}
 			appendFullRenderLines(output, newLines, height, hasTmuxSession());
-			output.append("\x1b[?2026l"); // End synchronized output
-			output.flush();
-			this.ledger.counters.written += 1;
+			output.append(END_SYNCHRONIZED_OUTPUT);
+			this.flush(output);
 			this.cursorRow = Math.max(0, newLines.length - 1);
 			this.hardwareCursorRow = this.cursorRow;
 			// Reset max lines when clearing, otherwise track growth
-			if (clear) {
-				this.maxLinesRendered = newLines.length;
-			} else {
-				this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
-			}
+			this.maxLinesRendered = clear ? newLines.length : Math.max(this.maxLinesRendered, newLines.length);
 			const bufferLength = Math.max(height, newLines.length);
-			this.previousViewportTop = Math.max(0, bufferLength - height);
-			this.positionHardwareCursor(cursorPos, newLines.length);
-			this.previousLines = newLines;
-			this.previousKittyImageIds = collectKittyImageIds(newLines);
-			this.previousWidth = width;
-			this.previousHeight = height;
+			this.commitFrame({ ...commit, viewportTop: Math.max(0, bufferLength - height) });
 		};
 
 		const redrawLogDirectory = process.env.OCTOCODE_TUI_DEBUG_REDRAW === "1" ? this.logDirectory : undefined;
-		const logRedraw = (reason: string): void =>
+		const replay = (reason: string): void => {
 			writeRedrawLog(redrawLogDirectory, reason, this.previousLines.length, newLines.length, height);
+			fullRender(true);
+		};
 
 		// First render - just output everything without clearing (assumes clean screen)
 		if (this.previousLines.length === 0 && !widthChanged && !heightChanged) {
-			logRedraw("first render");
+			writeRedrawLog(redrawLogDirectory, "first render", this.previousLines.length, newLines.length, height);
 			fullRender(false);
 			return;
 		}
 
 		// Width changes always need a full re-render because wrapping changes.
-		if (widthChanged) {
-			logRedraw(`terminal width changed (${this.previousWidth} -> ${width})`);
-			fullRender(true);
-			return;
-		}
+		if (widthChanged) return replay(`terminal width changed (${this.previousWidth} -> ${width})`);
 
 		// Height changes normally need a full re-render to keep the visible viewport aligned,
 		// but Termux changes height when the software keyboard shows or hides.
 		// In that environment, a full redraw causes the entire history to replay on every toggle.
-		if (heightChanged && !isTermuxSession()) {
-			logRedraw(`terminal height changed (${this.previousHeight} -> ${height})`);
-			fullRender(true);
-			return;
+		if (heightChanged && !process.env.TERMUX_VERSION) {
+			return replay(`terminal height changed (${this.previousHeight} -> ${height})`);
 		}
 
 		// Content shrunk below the working area and no overlays - re-render to clear empty rows
 		// (overlays need the padding, so only do this when no overlays are active)
 		// Configurable via setClearOnShrink()
 		if (this.getClearOnShrink() && newLines.length < this.maxLinesRendered && !this.hasOverlayEntries) {
-			logRedraw(`clearOnShrink (maxLinesRendered=${this.maxLinesRendered})`);
-			fullRender(true);
-			return;
+			return replay(`clearOnShrink (maxLinesRendered=${this.maxLinesRendered})`);
 		}
 
-		let range = findChangedLineRange(this.previousLines, newLines);
+		const bothImageRows = { previous: previousImageRows, next: imageRows };
+		let range = findChangedLineRange(this.previousLines, newLines, 0, bothImageRows);
 		// Scrollback cannot be edited: rows that changed in place above the viewport are left as the terminal has them.
 		const deferred =
 			range.firstChanged !== -1 &&
-			range.firstChanged < prevViewportTop &&
+			range.firstChanged < viewportTop &&
 			this.scrollback.canDefer({
 				previousLayout,
 				layout: layout.leaves,
 				previousLines: this.previousLines,
 				newLines,
-				viewportTop: prevViewportTop,
+				viewportTop,
 				repaintRequested,
 			});
-		if (deferred) range = findChangedLineRange(this.previousLines, newLines, prevViewportTop);
+		if (deferred) range = findChangedLineRange(this.previousLines, newLines, viewportTop, bothImageRows);
 		const { firstChanged, lastChanged, appendedLines } = range;
-		const appendStart = appendedLines && firstChanged === this.previousLines.length && firstChanged > 0;
 
 		// No changes - but still need to update hardware cursor position if it moved
 		if (firstChanged === -1) {
@@ -219,136 +197,57 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				this.previousLines = newLines;
 			}
 			this.positionHardwareCursor(cursorPos, newLines.length);
-			this.previousViewportTop = prevViewportTop;
+			this.previousViewportTop = viewportTop;
 			this.previousHeight = height;
 			return;
 		}
 
+		const change = {
+			previousLines: this.previousLines,
+			newLines,
+			firstChanged,
+			lastChanged,
+			previousImageRows,
+			hardwareCursorRow: this.hardwareCursorRow,
+			viewportTop,
+			height,
+		};
+
 		// All changes are in deleted lines (nothing to render, just clear)
 		if (firstChanged >= newLines.length) {
 			if (this.previousLines.length > newLines.length) {
-				const output = new BoundedTerminalWriter((data) => this.terminal.write(data));
-				output.append("\x1b[?2026h");
-				output.append(deleteChangedKittyImages(this.previousLines, firstChanged, lastChanged));
-				// Move to end of new content (clamp to 0 for empty content)
-				const targetRow = Math.max(0, newLines.length - 1);
-				if (targetRow < prevViewportTop) {
-					logRedraw(`deleted lines moved viewport up (${targetRow} < ${prevViewportTop})`);
-					fullRender(true);
-					return;
-				}
-				const lineDiff = computeLineDiff(targetRow);
-				if (lineDiff > 0) output.append(`\x1b[${lineDiff}B`);
-				else if (lineDiff < 0) output.append(`\x1b[${-lineDiff}A`);
-				output.append("\r");
-				const extraLines = this.previousLines.length - newLines.length;
-				if (extraLines > height) {
-					logRedraw(`extraLines > height (${extraLines} > ${height})`);
-					fullRender(true);
-					return;
-				}
-				appendClearedExtraLines(output, extraLines, newLines.length);
-				output.append("\x1b[?2026l");
-				output.flush();
-				this.ledger.counters.written += 1;
-				this.cursorRow = targetRow;
-				this.hardwareCursorRow = targetRow;
+				const output = this.createWriter();
+				const written = writeDeletedRows(output, change);
+				if ("replay" in written) return replay(written.replay);
+				this.flush(output);
+				this.cursorRow = written.cursorRow;
+				this.hardwareCursorRow = written.cursorRow;
 			}
-			this.positionHardwareCursor(cursorPos, newLines.length);
-			this.previousLines = newLines;
-			this.previousKittyImageIds = collectKittyImageIds(newLines);
-			this.previousWidth = width;
-			this.previousHeight = height;
-			this.previousViewportTop = prevViewportTop;
+			this.commitFrame({ ...commit, viewportTop });
 			return;
 		}
 
 		// Differential rendering can only touch what was actually visible.
 		// If the first changed line is above the previous viewport, we need a full redraw.
-		if (firstChanged < prevViewportTop) {
-			logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
-			fullRender(true);
-			return;
-		}
+		if (firstChanged < viewportTop) return replay(`firstChanged < viewportTop (${firstChanged} < ${viewportTop})`);
 
 		// Render from first changed line to end
 		// Keep updates wrapped in synchronized output while writing bounded chunks.
-		const output = new BoundedTerminalWriter((data) => this.terminal.write(data));
-		output.append("\x1b[?2026h"); // Begin synchronized output
-		output.append(deleteChangedKittyImages(this.previousLines, firstChanged, lastChanged));
-		const prevViewportBottom = prevViewportTop + height - 1;
-		const moveTargetRow = appendStart ? firstChanged - 1 : firstChanged;
-		if (moveTargetRow > prevViewportBottom) {
-			const currentScreenRow = Math.max(0, Math.min(height - 1, hardwareCursorRow - prevViewportTop));
-			const moveToBottom = height - 1 - currentScreenRow;
-			if (moveToBottom > 0) {
-				output.append(`\x1b[${moveToBottom}B`);
-			}
-			const scroll = moveTargetRow - prevViewportBottom;
-			output.append("\r\n".repeat(scroll));
-			prevViewportTop += scroll;
-			viewportTop += scroll;
-			hardwareCursorRow = moveTargetRow;
-		}
-
-		// Move cursor to first changed line (use hardwareCursorRow for actual position)
-		const lineDiff = computeLineDiff(moveTargetRow);
-		if (lineDiff > 0) {
-			output.append(`\x1b[${lineDiff}B`); // Move down
-		} else if (lineDiff < 0) {
-			output.append(`\x1b[${-lineDiff}A`); // Move up
-		}
-
-		output.append(appendStart ? "\r\n" : "\r"); // Move to column 0
-
-		// Only render changed lines (firstChanged to lastChanged), not all lines to end
-		// This reduces flicker when only a single line changes (e.g., spinner animation)
-		const renderEnd = Math.min(lastChanged, newLines.length - 1);
-		const replayReason = appendChangedRows(output, {
-			newLines,
-			previousLines: this.previousLines,
-			firstChanged,
-			renderEnd,
-			viewportTop,
-			height,
-		});
-		if (replayReason) {
-			logRedraw(replayReason);
-			fullRender(true);
-			return;
-		}
-
-		// Track where cursor ended up after rendering
-		let finalCursorRow = renderEnd;
-
-		// If we had more lines before, clear them and move cursor back
-		if (this.previousLines.length > newLines.length) {
-			// Move to end of new content first if we stopped before it
-			if (renderEnd < newLines.length - 1) {
-				const moveDown = newLines.length - 1 - renderEnd;
-				output.append(`\x1b[${moveDown}B`);
-				finalCursorRow = newLines.length - 1;
-			}
-			const extraLines = this.previousLines.length - newLines.length;
-			for (let i = newLines.length; i < this.previousLines.length; i++) {
-				output.append("\r\n\x1b[2K");
-			}
-			// Move cursor back to end of new content
-			output.append(`\x1b[${extraLines}A`);
-		}
-
-		output.append("\x1b[?2026l"); // End synchronized output
+		const output = this.createWriter();
+		const appendStart = appendedLines && firstChanged === this.previousLines.length && firstChanged > 0;
+		const written = writeChangedRows(output, { ...change, appendStart });
+		if ("replay" in written) return replay(written.replay);
 
 		if (process.env.OCTOCODE_TUI_DEBUG === "1") {
 			writeRenderDebugLog({
 				firstChanged,
-				viewportTop,
+				viewportTop: written.viewportTop,
 				cursorRow: this.cursorRow,
 				height,
-				lineDiff,
-				hardwareCursorRow,
-				renderEnd,
-				finalCursorRow,
+				lineDiff: written.lineDiff,
+				hardwareCursorRow: written.hardwareCursorRow,
+				renderEnd: written.renderEnd,
+				finalCursorRow: written.cursorRow,
 				cursorPos,
 				newLines,
 				previousLines: this.previousLines,
@@ -356,25 +255,42 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			});
 		}
 
-		output.flush();
-		this.ledger.counters.written += 1;
+		this.flush(output);
 		if (deferred) this.ledger.counters.deferredAboveViewport += 1;
 
-		// Track cursor position for next render
 		// cursorRow tracks end of content (for viewport calculation)
 		// hardwareCursorRow tracks actual terminal cursor position (for movement)
 		this.cursorRow = Math.max(0, newLines.length - 1);
-		this.hardwareCursorRow = finalCursorRow;
+		this.hardwareCursorRow = written.cursorRow;
 		// Track terminal's working area (grows but doesn't shrink unless cleared)
 		this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
-		this.previousViewportTop = Math.max(prevViewportTop, finalCursorRow - height + 1);
+		this.commitFrame({ ...commit, viewportTop: Math.max(written.viewportTop, written.cursorRow - height + 1) });
+	}
 
-		this.positionHardwareCursor(cursorPos, newLines.length);
+	private createWriter(): BoundedTerminalWriter {
+		return new BoundedTerminalWriter((data) => this.terminal.write(data));
+	}
 
-		this.previousLines = newLines;
-		this.previousKittyImageIds = collectKittyImageIds(newLines);
-		this.previousWidth = width;
-		this.previousHeight = height;
+	private flush(output: BoundedTerminalWriter): void {
+		output.flush();
+		this.ledger.counters.written += 1;
+	}
+
+	/** Place the hardware cursor and remember what the terminal now shows, for the next frame's compare. */
+	private commitFrame(frame: {
+		newLines: string[];
+		imageRows: KittyImageRows;
+		width: number;
+		height: number;
+		cursorPos: { row: number; col: number } | null;
+		viewportTop: number;
+	}): void {
+		this.positionHardwareCursor(frame.cursorPos, frame.newLines.length);
+		this.previousLines = frame.newLines;
+		this.previousKittyImageIds = collectKittyImageIds(frame.newLines, frame.imageRows);
+		this.previousWidth = frame.width;
+		this.previousHeight = frame.height;
+		this.previousViewportTop = frame.viewportTop;
 	}
 
 	/** Move the hardware cursor to the IME position, or hide it when there is none. */

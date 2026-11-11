@@ -312,7 +312,7 @@ function describeRequest(
 }
 
 /** The main session as the user starts it: native tools, the Octocode MCP server, bundled skills and a project AGENTS.md. */
-async function captureMain(): Promise<AgentContext> {
+export async function captureMain(): Promise<AgentContext> {
 	const fx = fixture();
 	try {
 		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, {}, MAIN_REQUEST));

@@ -7,6 +7,7 @@ import {
 	type ToolChoice,
 	type Transport,
 } from "@octocodeai/octocode-ai";
+import { type AgentEventListener, deliverAgentEvent } from "./agent/event-delivery.ts";
 import { createAgentLoopConfig } from "./agent/loop-config.ts";
 import type { AgentOptions } from "./agent/options.ts";
 import {
@@ -56,7 +57,7 @@ type ActiveRun = {
  */
 export class Agent {
 	private _state: MutableAgentState;
-	private readonly listeners = new Set<(event: AgentEvent, signal: AbortSignal) => Promise<void> | void>();
+	private readonly listeners = new Set<AgentEventListener>();
 	private readonly steeringQueue: PendingMessageQueue;
 	private readonly followUpQueue: PendingMessageQueue;
 
@@ -80,9 +81,6 @@ export class Agent {
 	public nextToolChoice?: ToolChoice;
 	public prepareInput?: PrepareInput;
 	public onInputSelected?: (batch: InputBatch) => void;
-	public prepareNextTurn?: (
-		signal?: AbortSignal,
-	) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
 	public prepareNextTurnWithContext?: (
 		context: PrepareNextTurnContext,
 		signal?: AbortSignal,
@@ -98,6 +96,7 @@ export class Agent {
 	public maxRetryDelayMs?: number;
 	/** Tool execution strategy for assistant messages that contain multiple tool calls. */
 	public toolExecution: ToolExecutionMode;
+	public onListenerError?: AgentOptions["onListenerError"];
 
 	constructor(options: AgentOptions) {
 		// Older compiled consumers may omit options or streamFn even though the current API requires them.
@@ -118,7 +117,6 @@ export class Agent {
 		this.prepareRequest = runtimeOptions.prepareRequest;
 		this.prepareInput = runtimeOptions.prepareInput;
 		this.onInputSelected = runtimeOptions.onInputSelected;
-		this.prepareNextTurn = runtimeOptions.prepareNextTurn;
 		this.prepareNextTurnWithContext = runtimeOptions.prepareNextTurnWithContext;
 		this.steeringQueue = new PendingMessageQueue(runtimeOptions.steeringMode ?? "one-at-a-time");
 		this.followUpQueue = new PendingMessageQueue(runtimeOptions.followUpMode ?? "one-at-a-time");
@@ -127,6 +125,7 @@ export class Agent {
 		this.transport = runtimeOptions.transport ?? "auto";
 		this.maxRetryDelayMs = runtimeOptions.maxRetryDelayMs;
 		this.toolExecution = runtimeOptions.toolExecution ?? "parallel";
+		this.onListenerError = runtimeOptions.onListenerError;
 	}
 
 	/**
@@ -134,12 +133,14 @@ export class Agent {
 	 *
 	 * Listener promises are awaited in subscription order and are included in
 	 * the current run's settlement. Listeners also receive the active abort
-	 * signal for the current run.
+	 * signal for the current run. After that signal aborts, the run no longer
+	 * waits for a listener still busy with a `message_update` or
+	 * `tool_execution_update`; every other event stays awaited.
 	 *
 	 * `agent_end` is the final emitted event for a run, but the agent does not
 	 * become idle until all awaited listeners for that event have settled.
 	 */
-	subscribe(listener: (event: AgentEvent, signal: AbortSignal) => Promise<void> | void): () => void {
+	subscribe(listener: AgentEventListener): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
 	}
@@ -300,12 +301,12 @@ export class Agent {
 		messages: AgentMessage[],
 		options: { skipInitialSteeringPoll?: boolean } = {},
 	): Promise<void> {
-		await this.runWithLifecycle(async (signal) => {
+		await this.runWithLifecycle(async (signal, emit) => {
 			await runAgentLoop(
 				messages,
 				createAgentContext(this._state, this.pendingToolNames),
 				this.createLoopConfig(options),
-				(event) => this.processEvents(event),
+				emit,
 				signal,
 				this.streamFunction,
 			);
@@ -313,11 +314,11 @@ export class Agent {
 	}
 
 	private async runContinuation(): Promise<void> {
-		await this.runWithLifecycle(async (signal) => {
+		await this.runWithLifecycle(async (signal, emit) => {
 			await runAgentLoopContinue(
 				createAgentContext(this._state, this.pendingToolNames),
 				this.createLoopConfig(),
-				(event) => this.processEvents(event),
+				emit,
 				signal,
 				this.streamFunction,
 			);
@@ -328,7 +329,9 @@ export class Agent {
 		return createAgentLoopConfig(this, this._state, this.steeringQueue, this.followUpQueue, options);
 	}
 
-	private async runWithLifecycle(executor: (signal: AbortSignal) => Promise<void>): Promise<void> {
+	private async runWithLifecycle(
+		executor: (signal: AbortSignal, emit: (event: AgentEvent) => Promise<void>) => Promise<void>,
+	): Promise<void> {
 		if (this.activeRun) {
 			throw new Error("Agent is already processing.");
 		}
@@ -338,17 +341,19 @@ export class Agent {
 		const promise = new Promise<void>((resolve) => {
 			resolvePromise = resolve;
 		});
-		this.activeRun = { promise, resolve: resolvePromise, abortController };
+		const run: ActiveRun = { promise, resolve: resolvePromise, abortController };
+		this.activeRun = run;
+		const emit = (event: AgentEvent) => this.processEvents(event, run);
 
 		this._state.isStreaming = true;
 		this._state.streamingMessage = undefined;
 		this._state.errorMessage = undefined;
 
 		try {
-			await executor(abortController.signal);
+			await executor(abortController.signal, emit);
 		} catch (error) {
-			if (this.activeRun?.ended) this._state.errorMessage = error instanceof Error ? error.message : String(error);
-			else await this.handleRunFailure(error, abortController.signal.aborted);
+			if (run.ended) this._state.errorMessage = error instanceof Error ? error.message : String(error);
+			else await this.handleRunFailure(error, abortController.signal.aborted, emit);
 			// Stop the run's other work (parallel tools still running) before going idle; the failure is reported first,
 			// as a failed run, not an aborted one.
 			abortController.abort();
@@ -357,12 +362,16 @@ export class Agent {
 		}
 	}
 
-	private async handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
+	private async handleRunFailure(
+		error: unknown,
+		aborted: boolean,
+		emit: (event: AgentEvent) => Promise<void>,
+	): Promise<void> {
 		const failureMessage = runFailureMessage(this._state.model, error, aborted);
-		await this.processEvents({ type: "message_start", message: failureMessage });
-		await this.processEvents({ type: "message_end", message: failureMessage });
-		await this.processEvents({ type: "turn_end", message: failureMessage, toolResults: [] });
-		await this.processEvents({ type: "agent_end", messages: [failureMessage] });
+		await emit({ type: "message_start", message: failureMessage });
+		await emit({ type: "message_end", message: failureMessage });
+		await emit({ type: "turn_end", message: failureMessage, toolResults: [] });
+		await emit({ type: "agent_end", messages: [failureMessage] });
 	}
 
 	private finishRun(): void {
@@ -374,22 +383,16 @@ export class Agent {
 	}
 
 	/**
-	 * Reduce internal state for a loop event, then await listeners.
+	 * Reduce internal state for one run's event, then deliver it to listeners.
 	 *
-	 * `agent_end` only means no further loop events will be emitted. The run is
-	 * considered idle later, after all awaited listeners for `agent_end` finish
-	 * and `finishRun()` clears runtime-owned state.
+	 * An event of a run that is no longer active (a later run may be) is refused before it touches state. `agent_end`
+	 * only means no further loop events will be emitted; the run is idle after its `agent_end` listeners finish and
+	 * `finishRun()` clears runtime-owned state.
 	 */
-	private async processEvents(event: AgentEvent): Promise<void> {
+	private async processEvents(event: AgentEvent, run: ActiveRun): Promise<void> {
+		if (this.activeRun !== run) throw new Error("Agent listener invoked outside active run");
 		reduceAgentState(this._state, event);
-		if (event.type === "agent_end" && this.activeRun) this.activeRun.ended = true;
-
-		const signal = this.activeRun?.abortController.signal;
-		if (!signal) {
-			throw new Error("Agent listener invoked outside active run");
-		}
-		for (const listener of this.listeners) {
-			await listener(event, signal);
-		}
+		if (event.type === "agent_end") run.ended = true;
+		await deliverAgentEvent(this.listeners, event, run.abortController.signal);
 	}
 }

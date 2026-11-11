@@ -29,8 +29,17 @@ interface ScrollLayoutState {
 	readonly primary: boolean;
 	readonly overscroll: "chain" | "contain";
 	readonly viewportHeight: number;
+	/** Opt-in: while following the end, lay out only the rows in view and measure the rest over later frames. */
+	readonly virtualize?: boolean;
+	readonly isFollowingEnd?: boolean;
+	readonly isScrollbarVisible?: boolean;
+	readonly scrollbar?: "hidden" | "auto" | "always";
 	getContentWidth(width: number): number;
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void;
+	/** Content above the viewport turned out `rows` taller (or shorter, when negative) than laid out: keep the rows in view. */
+	shiftContent?(rows: number): void;
+	/** Called each frame: scrolling first measures what a virtualized frame left unmeasured. */
+	setContentSettler?(settle: (() => void) | undefined): void;
 }
 
 export interface ScrollLayoutNode {

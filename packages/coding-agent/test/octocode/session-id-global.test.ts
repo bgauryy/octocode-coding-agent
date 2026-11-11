@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Args } from "../../src/cli/args.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createSessionManager } from "../../src/main/session-manager.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
@@ -89,6 +90,8 @@ describe("--session-id across folders", () => {
 
 	it("forks an exact historical ID after its checkout and transcript file disappear", async () => {
 		const source = savedSession("historical", worktreeDir);
+		// The mirror is written after the file; a file removed before its rows land is not mirrored at all.
+		expect(await sessionMirrorSettled()).toBe(true);
 		rmSync(source);
 		rmSync(worktreeDir, { recursive: true });
 		savedSession("historical-prefix", mainDir);

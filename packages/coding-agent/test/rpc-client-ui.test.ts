@@ -22,6 +22,7 @@ async function startClient() {
 		`
 import { createInterface } from "node:readline";
 const output = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"test",sessionId:"test"}) + "\\n");
 createInterface({ input: process.stdin }).on("line", (line) => {
 	const command = JSON.parse(line);
 	if (command.type === "get_state") {

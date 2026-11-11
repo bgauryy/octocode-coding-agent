@@ -54,7 +54,7 @@ function setup() {
 	const cwd = tmp();
 	const f = fakeHost();
 	const team = new Team(f.api);
-	const control = registerAgentTool(f.api, () => new Map(), team, fakePermission("full"));
+	const control = registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission("full") });
 	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },

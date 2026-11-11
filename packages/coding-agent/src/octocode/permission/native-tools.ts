@@ -3,6 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
+import { withNativeDeferral } from "./native-deferral.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
@@ -12,17 +13,24 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["bash", "gate/classify: shell and destructive commands"],
 	["web", "gate/classify plus Web tool: search, resolved URLs and private hosts"],
 	["file", "File tool: checked mutation transaction and source-policy projection"],
-	["archive", "Archive tool: persistent memory scope checks"],
+	[
+		"archive",
+		"Archive tool: reads this workspace's session history, compaction summaries and lifecycle records; changes nothing",
+	],
+	[
+		"memory",
+		"Memory tool: persistent memory scope checks (a global or pinned change asks; secrets and near-duplicates are refused); a subagent only reads",
+	],
 	["agent", "Agent modes: task/profile and external-process checks; session coordination and messages"],
 	["models", "Session state only: lists model and provider state; check sends one small request per provider"],
 	["askUser", "Session UI only: collects the user's answers"],
 	["backlog", "Session workspace state only: backlog records and comments"],
-	["steps", "Session workspace state only: steps (tasks) of repository items and of this session"],
+	["backlogPlan", "Session workspace state only: backlog records (add, edit) and their listing"],
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 	[
 		"timer",
-		"gate/classify: an until-command (alone or as a check's trigger) is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; the other until kinds only stat, connect to loopback or read this workspace's rows, and until.check is read-only but spends money only after its own first-use ask; otherwise this session's own timers",
+		"gate/classify: an until-command (alone or as a check's trigger) is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; the other until kinds only read this workspace's rows and reservations, and until.check is read-only but spends money only after its own first-use ask; otherwise this session's own timers",
 	],
 ]);
 
@@ -75,7 +83,7 @@ export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
 		if (!isNativeTool(tool.name)) {
 			throw new Error(`Native tool ${tool.name} has no permission owner; register its gate or internal check first.`);
 		}
-		api.registerTool(withReasonArgument(tool));
+		api.registerTool(withNativeDeferral(api, withReasonArgument(tool)));
 	};
 	return withRegisterTool(api, registerTool);
 }

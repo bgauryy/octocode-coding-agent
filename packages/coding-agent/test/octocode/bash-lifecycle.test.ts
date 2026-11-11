@@ -36,10 +36,10 @@ const until = async (check: () => boolean, ms = 5_000) => {
 const posix = process.platform !== "win32";
 const hasPerl = posix && spawnSync("perl", ["-e", "1"]).status === 0;
 
-const setup = () => {
+const setup = (shell: { backgroundAfterSeconds?: number } = {}) => {
 	const { api, tools, sent, fire } = fakeHost();
 	const jobs = new BashJobs(tmp());
-	registerBashTool(api, new Subcommands(), jobs, () => ({}));
+	registerBashTool(api, new Subcommands(), jobs, () => shell);
 	const cwd = tmp();
 	return { tool: tools.get("bash"), jobs, sent, fire, cwd, ctx: fakeCtx({ cwd }) };
 };
@@ -89,12 +89,15 @@ describe.runIf(posix)("foreground bash process handling", () => {
 	});
 });
 
-describe.runIf(posix)("foreground command that reaches its deadline", () => {
+// A call that names no timeout moves at the threshold; one that names a timeout is stopped then (RFC core-tools B1).
+const MOVES = { backgroundAfterSeconds: 1 };
+
+describe.runIf(posix)("foreground command that reaches the background threshold", () => {
 	it("keeps running as a background job and later reports its exit with the output from before and after the move", async () => {
-		const { tool, jobs, sent, ctx } = setup();
+		const { tool, jobs, sent, ctx } = setup(MOVES);
 		const result = await tool.execute(
 			"t1",
-			{ command: "echo before; sleep 2; echo after; exit 3", timeout: 1 },
+			{ command: "echo before; sleep 2; echo after; exit 3" },
 			undefined,
 			undefined,
 			ctx,
@@ -115,15 +118,15 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 	});
 
 	it("moves a command with a stderr stream and a later exit 0 as finished", async () => {
-		const { tool, sent, ctx } = setup();
-		await tool.execute("t1", { command: "echo out; sleep 1.5; echo err >&2", timeout: 1 }, undefined, undefined, ctx);
+		const { tool, sent, ctx } = setup(MOVES);
+		await tool.execute("t1", { command: "echo out; sleep 1.5; echo err >&2" }, undefined, undefined, ctx);
 		await until(() => sent.length === 1, 8_000);
 		expect(sent[0].message.content).toMatch(/bash-1 finished after [12]s[\s\S]*out\nerr$/);
 	});
 
 	it("stops a moved command at session end, with its whole process group", async () => {
-		const { tool, jobs, sent, fire, ctx } = setup();
-		await tool.execute("t1", { command: "{ sleep 30 & }; echo started; wait", timeout: 1 }, undefined, undefined, ctx);
+		const { tool, jobs, sent, fire, ctx } = setup(MOVES);
+		await tool.execute("t1", { command: "{ sleep 30 & }; echo started; wait" }, undefined, undefined, ctx);
 		const job = jobs.jobs.get("bash-1")!;
 		expect(groupAlive(job.pid)).toBe(true);
 		await fire("session_shutdown", {}, ctx);
@@ -137,13 +140,13 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		const { api, tools, sent } = fakeHost();
 		const commands = new Subcommands();
 		const jobs = new BashJobs(tmp());
-		registerBashTool(api, commands, jobs, () => ({}));
+		registerBashTool(api, commands, jobs, () => MOVES);
 		const ctx = fakeCtx({ cwd: tmp() });
 		await tools
 			.get("bash")
 			.execute(
 				"t1",
-				{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
+				{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait" },
 				undefined,
 				undefined,
 				ctx,
@@ -158,9 +161,9 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 
-	it("is stopped at the end of a headless run, since it has no timeout of its own", async () => {
-		const { tool, jobs, sent, ctx } = setup();
-		await tool.execute("t1", { command: "echo up; sleep 30", timeout: 1 }, undefined, undefined, ctx);
+	it("is stopped at the end of a headless run, since the call named no timeout", async () => {
+		const { tool, jobs, sent, ctx } = setup(MOVES);
+		await tool.execute("t1", { command: "echo up; sleep 30" }, undefined, undefined, ctx);
 		const job = jobs.jobs.get("bash-1")!;
 		expect(job.timeout).toBeUndefined();
 		const started = Date.now();
@@ -173,14 +176,14 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 	});
 
 	it("does not move a command that starts with sleep: it is stopped at the deadline", async () => {
-		const { tool, jobs, ctx } = setup();
+		const { tool, jobs, ctx } = setup(MOVES);
 		for (const command of ["sleep 30", "  sleep 30 && echo done"]) {
 			await expect(tool.execute("t1", { command, timeout: 1 }, undefined, undefined, ctx)).rejects.toThrow(
 				/\[timed out after 1s · /,
 			);
 		}
 		// `sleep` only as a first word: a command that merely mentions it moves.
-		await tool.execute("t2", { command: "echo sleep; sleep 30", timeout: 1 }, undefined, undefined, ctx);
+		await tool.execute("t2", { command: "echo sleep; sleep 30" }, undefined, undefined, ctx);
 		expect(jobs.jobs.size).toBe(1);
 		await jobs.stopAll("session end");
 	});
@@ -200,10 +203,10 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		fs.writeFileSync(dir, "a file where the log folder should be");
 		const { api, tools } = fakeHost();
 		const jobs = new BashJobs(dir);
-		registerBashTool(api, new Subcommands(), jobs, () => ({}));
+		registerBashTool(api, new Subcommands(), jobs, () => MOVES);
 		const message = await tools
 			.get("bash")
-			.execute("t1", { command: "echo x; sleep 30", timeout: 1 }, undefined, undefined, fakeCtx({ cwd: tmp() }))
+			.execute("t1", { command: "echo x; sleep 30" }, undefined, undefined, fakeCtx({ cwd: tmp() }))
 			.catch((error: Error) => error.message);
 		expect(message).toMatch(/^\[timed out after 1s · /);
 		expect(jobs.jobs.size).toBe(0);
@@ -299,7 +302,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 		expect(fs.existsSync(record)).toBe(false);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(
 			new RegExp(
-				`^Stopped 1 background bash job left running by a Octocode that exited without ending it:\\n {2}${job.id} · pid ${job.pid} · sleep 30\\n {4}log: .*${path.basename(job.log)}$`,
+				`^Stopped 1 background bash job left running by an Octocode that exited without ending it:\\n {2}${job.id} · pid ${job.pid} · sleep 30\\n {4}log: .*${path.basename(job.log)}$`,
 			),
 		);
 		expect(ctx.ui.notes.at(-1)!.type).toBe("warning");
@@ -328,7 +331,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 });
 
 describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
-	/** A Octocode that died: its job's record names an owner that is gone. */
+	/** An Octocode that died: its job's record names an owner that is gone. */
 	const orphan = (record: string, extra: Record<string, unknown> = {}) =>
 		fs.writeFileSync(
 			record,

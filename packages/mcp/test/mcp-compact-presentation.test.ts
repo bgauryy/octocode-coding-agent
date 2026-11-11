@@ -304,37 +304,15 @@ describe("McpPresentation", () => {
 		expect(next.text).toContain("Changed.");
 	});
 
-	it("applies the preset overrides that describe the catalog, only when they pass fidelity", () => {
+	// Contract change: Octocode ships no overrides. Without ones the user stored, the file is the server's own text.
+	it("renders the server's own text when the user stored no overrides", () => {
 		const agentDir = tmp();
-		const seen: string[] = [];
-		let overrides: { tools: Record<string, string> } | undefined = { tools: { a: "Short preset text." } };
-		const presentation = new McpPresentation({
-			agentDir: () => agentDir,
-			mode: () => "compact",
-			presetOverrides: (name, input) => {
-				seen.push(`${name}:${input.tools.length}`);
-				return overrides;
-			},
-		});
-		presentation.sync("s", "s", undefined, [tool("a")]);
+		new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" }).sync("s", "s", undefined, [tool("a")]);
 		const stored = readGenerated(generatedDir(agentDir), "s")!;
-		expect(seen).toEqual(["s:1"]);
-		expect(stored.text).toContain("/** Short preset text. */");
-		expect(stored.meta.overrides).toEqual(overrides);
-		expect(stored.meta.optimizedBy?.model).toBe("preset");
-
-		// An override that fails fidelity (adds a URL) is ignored; the deterministic text is used.
-		overrides = { tools: { a: "See https://example.invalid now." } };
-		const fresh = tmp();
-		new McpPresentation({ agentDir: () => fresh, mode: () => "compact", presetOverrides: () => overrides }).sync(
-			"s",
-			"s",
-			undefined,
-			[tool("a")],
-		);
-		const rejected = readGenerated(generatedDir(fresh), "s")!;
-		expect(rejected.text).toContain("/** Does work. */");
-		expect(rejected.meta.overrides).toBeUndefined();
+		expect(stored.text).toBe(renderServer({ server: "s", tools: [tool("a")] }));
+		expect(stored.text).toContain("/** Does work. */");
+		expect(stored.meta.overrides).toBeUndefined();
+		expect(stored.meta.optimizedBy).toBeUndefined();
 	});
 });
 

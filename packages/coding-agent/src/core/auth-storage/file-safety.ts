@@ -4,25 +4,15 @@
  * Octocode skips in it.
  */
 
-import { existsSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { statSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 import { getLegacyProviderDirs } from "../../config.ts";
+import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { providerSourceGate } from "../provider-sources/gate.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 
 export interface AuthFileSafetyOptions {
 	platform?: NodeJS.Platform;
-}
-
-function findGitWorkTree(startDir: string): string | undefined {
-	let dir = resolve(startDir);
-	for (;;) {
-		// A `.git` directory marks a repository; a `.git` file marks a linked work tree or submodule.
-		if (existsSync(join(dir, ".git"))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) return undefined;
-		dir = parent;
-	}
 }
 
 /** What Octocode skips in a fallback auth.json, each naming the file; empty for any other file or with Pi off. */
@@ -48,7 +38,7 @@ export function checkAuthFileSafety(authPath: string, options: AuthFileSafetyOpt
 			`${authPath} is readable by other users (mode ${(mode & 0o777).toString(8)}) and may hold API keys. Run: chmod 600 ${authPath}`,
 		);
 	}
-	const workTree = findGitWorkTree(dirname(authPath));
+	const workTree = gitMarkerDir(dirname(authPath));
 	if (workTree) {
 		warnings.push(
 			`${authPath} is inside the git work tree ${workTree}; add it to .gitignore so API keys are not committed, or store keys in the system keychain with /providers.`,

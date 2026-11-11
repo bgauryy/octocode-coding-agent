@@ -4,6 +4,8 @@ import { parseSkillBlock } from "./prompt-expansion.ts";
 import type { ContextUsage } from "../features/index.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts";
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
+import { contextSizeWarnings, mcpInstructionSizes } from "../context-budget.ts";
+import { MCPS_SECTION } from "../../../../common/src/mcp-names.ts";
 
 interface ContextContributor {
 	name: string;
@@ -21,6 +23,8 @@ export interface ContextReport {
 	estimatedTotal: number;
 	difference: number | null;
 	contributors: ContextContributor[];
+	/** Parts of the instructions over their share of the window (`context-budget.ts`); nothing is cut for them. */
+	warnings: string[];
 	note: string;
 }
 
@@ -75,6 +79,11 @@ export function contextReport(
 		estimatedTotal,
 		difference: usage?.tokens === null || usage?.tokens === undefined ? null : usage.tokens - estimatedTotal,
 		contributors,
+		warnings: contextSizeWarnings({
+			servers: mcpInstructionSizes(system?.sections?.[MCPS_SECTION] ?? ""),
+			contextFilesChars: system?.sections?.project_context?.length ?? 0,
+			contextWindow: capacity,
+		}),
 		note: "Current usage is the session estimate anchored to available provider receipts, not exact tokenization. Contributors estimate the committed projection; the next request's hooks and provider transformations can change it. Unknown usage after compaction stays unknown. Skill bodies already present in messages are counted once; skill listings remain in instruction sections.",
 	};
 }
@@ -115,6 +124,7 @@ export function renderContextReport(report: ContextReport, all = false): string 
 	const rest = rows.slice(visible.length).reduce((sum, row) => sum + row.tokens, 0);
 	return [
 		totalLines(report, number),
+		report.warnings.map((warning) => `Warning: ${warning}`).join("\n"),
 		[
 			"| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",
 			...visible.map((row) => `| ${row.name.replaceAll("|", "\\|")} | ${number(row.tokens)} | ${share(row.tokens)} |`),

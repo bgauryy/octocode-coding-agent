@@ -34,7 +34,7 @@ function setup(hasUI = true) {
 	const f = fakeHost();
 	const team = new Team(f.api);
 	const permission = fakePermission("workspace");
-	const control = registerAgentTool(f.api, () => new Map(), team, permission);
+	const control = registerAgentTool(f.api, { profiles: () => new Map(), team, permission });
 	permission.setConfirmStop(stopConfirmation(() => control.running(), false));
 	const ctx = fakeCtx({ cwd: tmp(), hasUI });
 	team.start(ctx);

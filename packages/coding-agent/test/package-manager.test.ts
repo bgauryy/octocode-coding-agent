@@ -1022,7 +1022,6 @@ process.exit(result.status ?? 1);
 		});
 
 		it("should prefer the package manager after a separator over the outer executable", () => {
-			// Regression for #9863.
 			settingsManager = SettingsManager.inMemory(
 				{ npmCommand: ["npm", "exec", "--", "pnpm"] },
 				{ projectTrusted: true },
@@ -1035,7 +1034,6 @@ process.exit(result.status ?? 1);
 		});
 
 		it("should detect pnpm through a corepack wrapper without a separator", async () => {
-			// Regression for #9863.
 			createRemote();
 			managerWith({ npmCommand: ["corepack", "pnpm"] });
 
@@ -1927,7 +1925,6 @@ else process.exit(1);`,
 	});
 
 	describe("pattern filtering in top-level arrays", () => {
-		// #10765
 		it("should expand ~ in exclusion and exact patterns", async () => {
 			const previousHome = process.env.HOME;
 			process.env.HOME = tempDir;
@@ -2588,7 +2585,7 @@ else process.exit(1);`,
 		});
 	});
 
-	describe("multi-file extension discovery (issue #1102)", () => {
+	describe("multi-file extension discovery", () => {
 		it("should only load index.ts from subdirectories, not helper modules", async () => {
 			// Regression test: packages with multi-file extensions in subdirectories
 			// should only load the index.ts entry point, not helper modules like agents.ts

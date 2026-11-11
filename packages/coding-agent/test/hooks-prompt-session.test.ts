@@ -54,7 +54,7 @@ it.each([false, true])(
 			],
 			extensionFactories: [
 				(api) => {
-					const hooks = registerHooks(api, {}, home);
+					const hooks = registerHooks(api, { env: {}, home });
 					api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 					api.on("turn_end", async (event) => {
 						outcomes.push(event.outcome);
@@ -92,7 +92,7 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 		tools: [],
 		extensionFactories: [
 			(api) => {
-				registerHooks(api, {}, home);
+				registerHooks(api, { env: {}, home });
 			},
 		],
 	});

@@ -238,7 +238,7 @@ describe("team message delivery", () => {
 	it("labels the sender, never passing an API client off as the user, and says how to reply", () => {
 		const peer = messageText(message({ replyRequired: true }), { parentId: "main-aaaaaa" });
 		expect(peer).toMatch(
-			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: agent type message, input\.to researcher-1234, input\.replyTo 7\)$/,
+			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: `agent` type `message` with `to` researcher-1234 and `replyTo` 7\)$/,
 		);
 		expect(messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" })).toMatch(
 			/from your coordinator main-aaaaaa .*\(FYI: no reply needed\.\)$/s,

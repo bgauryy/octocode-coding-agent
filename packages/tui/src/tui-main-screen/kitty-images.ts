@@ -36,10 +36,68 @@ function extractKittyImageRows(line: string): number {
 	return parseKittyImageHeader(line)?.rows ?? 1;
 }
 
-export function collectKittyImageIds(lines: string[]): Set<number> {
+/** Rows that hold a Kitty image, in ascending order, with the image ids each one names. */
+export type KittyImageRows = ReadonlyMap<number, number[]>;
+
+function scanKittyImageRows(lines: readonly string[], from: number, to: number, into: Map<number, number[]>): void {
+	for (let row = from; row < to; row++) {
+		const ids = extractKittyImageIds(lines[row] ?? "");
+		if (ids.length > 0) into.set(row, ids);
+	}
+}
+
+export function findKittyImageRows(lines: readonly string[]): KittyImageRows {
+	const rows = new Map<number, number[]>();
+	scanKittyImageRows(lines, 0, lines.length, rows);
+	return rows;
+}
+
+/**
+ * The Kitty image rows of `lines`, carried over from rows of `knownLines` that are equal at the same index, so a frame
+ * scans only the rows that changed and not the whole transcript.
+ */
+export function carryKittyImageRows(
+	knownLines: readonly string[],
+	knownRows: KittyImageRows,
+	lines: readonly string[],
+): KittyImageRows {
+	const shared = Math.min(knownLines.length, lines.length);
+	let first = 0;
+	while (first < shared && knownLines[first] === lines[first]) first++;
+	let last = shared - 1;
+	while (last >= first && knownLines[last] === lines[last]) last--;
+	const rows = new Map<number, number[]>();
+	const carry = (from: number, to: number): void => {
+		for (const [row, ids] of knownRows) if (row >= from && row < to) rows.set(row, ids);
+	};
+	carry(0, first);
+	scanKittyImageRows(lines, first, last + 1, rows);
+	carry(last + 1, shared);
+	scanKittyImageRows(lines, shared, lines.length, rows);
+	return rows;
+}
+
+/**
+ * Image rows of the last two line arrays asked for: a frame asks for the previous frame's lines and its own, and its
+ * own become the next frame's previous lines.
+ */
+export class KittyImageRowCache {
+	private entries: Array<{ lines: readonly string[]; rows: KittyImageRows }> = [];
+
+	of(lines: readonly string[]): KittyImageRows {
+		const hit = this.entries.find((entry) => entry.lines === lines);
+		if (hit) return hit.rows;
+		const known = this.entries.at(-1);
+		const rows = known ? carryKittyImageRows(known.lines, known.rows, lines) : findKittyImageRows(lines);
+		this.entries = [...this.entries.slice(-1), { lines, rows }];
+		return rows;
+	}
+}
+
+export function collectKittyImageIds(lines: string[], rows: KittyImageRows = findKittyImageRows(lines)): Set<number> {
 	const ids = new Set<number>();
-	for (const line of lines) {
-		for (const id of extractKittyImageIds(line)) {
+	for (const rowIds of rows.values()) {
+		for (const id of rowIds) {
 			ids.add(id);
 		}
 	}
@@ -73,12 +131,15 @@ export function expandChangedRangeForKittyImages(
 	firstChanged: number,
 	lastChanged: number,
 	newLines: string[],
+	imageRows: { previous: KittyImageRows; next: KittyImageRows } = {
+		previous: findKittyImageRows(previousLines),
+		next: findKittyImageRows(newLines),
+	},
 ): { firstChanged: number; lastChanged: number } {
 	let expandedFirstChanged = firstChanged;
 	let expandedLastChanged = lastChanged;
-	const expandForLines = (lines: string[]): void => {
-		for (let i = 0; i < lines.length; i++) {
-			if (extractKittyImageIds(lines[i]).length === 0) continue;
+	const expandForLines = (lines: string[], rows: KittyImageRows): void => {
+		for (const i of rows.keys()) {
 			const blockEnd = i + getKittyImageReservedRows(lines, i) - 1;
 			if (i >= firstChanged || (i <= lastChanged && blockEnd >= firstChanged)) {
 				expandedFirstChanged = Math.min(expandedFirstChanged, i);
@@ -87,18 +148,24 @@ export function expandChangedRangeForKittyImages(
 		}
 	};
 
-	expandForLines(previousLines);
-	expandForLines(newLines);
+	expandForLines(previousLines, imageRows.previous);
+	expandForLines(newLines, imageRows.next);
 	return { firstChanged: expandedFirstChanged, lastChanged: expandedLastChanged };
 }
 
-export function deleteChangedKittyImages(previousLines: string[], firstChanged: number, lastChanged: number): string {
+export function deleteChangedKittyImages(
+	previousLines: string[],
+	firstChanged: number,
+	lastChanged: number,
+	previousRows: KittyImageRows = findKittyImageRows(previousLines),
+): string {
 	if (firstChanged < 0 || lastChanged < firstChanged) return "";
 
 	const ids = new Set<number>();
 	const maxLine = Math.min(lastChanged, previousLines.length - 1);
-	for (let i = firstChanged; i <= maxLine; i++) {
-		for (const id of extractKittyImageIds(previousLines[i] ?? "")) {
+	for (const [row, rowIds] of previousRows) {
+		if (row < firstChanged || row > maxLine) continue;
+		for (const id of rowIds) {
 			ids.add(id);
 		}
 	}

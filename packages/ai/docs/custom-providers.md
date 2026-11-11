@@ -112,7 +112,7 @@ Use `models.refresh({ providers: ['openrouter'] })` to restrict work to selected
 
 Custom models can carry `headers` (e.g. proxies behind bot detection) and `compat` flags. `Models.getAuth(model)` includes those model headers, and stream methods merge them before explicit request headers and `transformHeaders`. See [OpenAI Compatibility Settings](#openai-compatibility-settings).
 
-Some OpenAI-compatible servers do not understand the `developer` role used for reasoning-capable models. For those providers, set `compat.supportsDeveloperRole` to `false` so the system prompt is sent as a `system` message instead. If the server also does not support `reasoning_effort`, set `compat.supportsReasoningEffort` to `false` too. This commonly applies to Ollama, vLLM, SGLang, and similar OpenAI-compatible servers.
+Some OpenAI-compatible servers do not understand the `developer` role used for reasoning-capable models, so an `openai-completions` model on a host the library does not recognize sends the system prompt as a `system` message. Set `compat.supportsDeveloperRole` to `true` for a server that accepts the `developer` role, or to `false` to force `system` on a recognized host. If the server also does not support `reasoning_effort`, set `compat.supportsReasoningEffort` to `false` too. This commonly applies to Ollama, vLLM, SGLang, and similar OpenAI-compatible servers.
 
 Use model-level `thinkingLevelMap` to describe model-specific thinking controls. Keys are Octocode thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Missing standard levels through `high` use provider defaults; `xhigh` and `max` are opt-in and require a non-null map entry. String values are sent to the provider, `null` marks a level unsupported, and maps may skip levels.
 
@@ -180,7 +180,7 @@ The `openai-completions` API is implemented by many providers with minor differe
 ```typescript
 interface OpenAICompletionsCompat {
 	supportsStore?: boolean; // Whether provider supports the `store` field (default: true)
-	supportsDeveloperRole?: boolean; // Whether provider supports `developer` role vs `system` (default: true)
+	supportsDeveloperRole?: boolean; // Whether provider supports `developer` role vs `system` (default: true on OpenAI, Groq, Xiaomi and OpenRouter `openai/` and `anthropic/` models; false elsewhere)
 	supportsReasoningEffort?: boolean; // Whether provider supports `reasoning_effort` (default: true)
 	supportsUsageInStreaming?: boolean; // Whether provider supports `stream_options: { include_usage: true }` (default: true)
 	supportsStrictMode?: boolean; // Whether provider supports `strict` in tool definitions (default: false; enabled in metadata for capable built-in models)
@@ -238,7 +238,7 @@ interface OpenAIResponsesCompat {
 }
 ```
 
-OpenAI Responses requests to `xai` also send `x-grok-conv-id` from `sessionId`, as the Chat Completions client does. On explicit-cache models (`supportsExplicitPromptCacheMode`, GPT-5.6+), `cacheRetention: "long"` sends `prompt_cache_options: { ttl: "12h" }`; `"short"` sends no request TTL, and `"none"` sends `{ mode: "explicit" }` with no breakpoints. The leading instructions carry an explicit breakpoint with the instruction retention. When `instructionCacheBoundary` names a section of the leading system message, they are split before that section into two `input_text` parts that each carry the breakpoint; an absent or unknown boundary, or a prompt without sections, keeps one part.
+OpenAI Responses requests to `xai` also send `x-grok-conv-id` from `sessionId`, as the Chat Completions client does. On explicit-cache models (`supportsExplicitPromptCacheMode`, GPT-5.6+), `cacheRetention: "long"` sends `prompt_cache_options: { ttl: "12h" }`; `"short"` sends no request TTL, and `"none"` sends `{ mode: "explicit" }` with no breakpoints. The leading instructions carry an explicit breakpoint with the instruction retention. When `instructionCacheBoundary` names a section of the leading system message, they are split before that section into two `input_text` parts that each carry the breakpoint; an absent or unknown boundary, or a prompt without sections, keeps one part. When `instructionVolatileBoundary` names a section, that section and every later one become a last part without a breakpoint, so a change there rewrites no cached part.
 
 `promptCacheKey` optionally groups related OpenAI, Azure Responses, Codex and Mistral requests for prompt caching without sharing transport sessions. It defaults to `OCTOCODE_PROMPT_CACHE_KEY` when set, then `sessionId`. Simple APIs preserve it. The wire key is capped at 64 characters and omitted when `cacheRetention` is `"none"`; session headers and WebSocket pooling continue to use `sessionId`.
 

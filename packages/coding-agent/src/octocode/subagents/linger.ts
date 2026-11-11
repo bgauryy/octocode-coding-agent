@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
-import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
+import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_SENDER } from "../shared/messages.ts";
 import { messageText } from "../team/routing.ts";
@@ -25,9 +25,16 @@ import { retakeReservation } from "./reservation.ts";
 /** Whom a finished run's unanswered `replyRequired` asks wait on: its parent, or only other agents. */
 export type AwaitedReply = "parent" | "peer";
 
+/** A reported run's model requests and their cost as shown (`formatSpend`: empty when nothing was priced). */
+interface RunSpend {
+	requests?: number | undefined;
+	cost?: string | undefined;
+}
+
 /** Opens a reported run's follow-up window and returns the report's line about it ("" when it does not linger). */
 export interface LingerWindow {
-	(outcome?: ReportStatus, awaited?: AwaitedReply): string;
+	/** `spent`: what the run that just reported used, which the line names so the coordinator can weigh continuing it. */
+	(outcome?: ReportStatus, awaited?: AwaitedReply, spent?: RunSpend): string;
 	/** Whether calling the window with the same arguments opens it: read before the report's footer is written. */
 	stays(outcome?: ReportStatus, awaited?: AwaitedReply): boolean;
 }
@@ -210,7 +217,7 @@ export class Lingering {
 			session === this.runs.session
 				? reachableSeconds(outcome, process.env, run.profile?.linger, awaited !== undefined)
 				: 0;
-		const open = (outcome?: ReportStatus, awaited?: AwaitedReply): string => {
+		const open = (outcome?: ReportStatus, awaited?: AwaitedReply, spent?: RunSpend): string => {
 			const seconds = secondsFor(outcome, awaited);
 			if (seconds === 0) return "";
 			this.sessionId ??= ctx.sessionManager.getSessionId();
@@ -232,6 +239,9 @@ export class Lingering {
 				peer,
 				parent,
 				reachable: !blocked && !peer && !parent,
+				requests: spent?.requests ?? 0,
+				one: spent?.requests === 1,
+				cost: spent?.cost ?? "",
 			});
 			return `\n\n${note}`;
 		};

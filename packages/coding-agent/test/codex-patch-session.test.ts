@@ -130,7 +130,7 @@ async function fixture(
 				});
 				api.on("session_start", async (_event, ctx) => permission.start(ctx));
 				registerFileTool(api, guard, permission);
-				const hooks = registerHooks(api, {}, home);
+				const hooks = registerHooks(api, { env: {}, home });
 				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
 		],
@@ -414,7 +414,9 @@ it("preserves native query batches' continue-after-failure behavior independentl
 		]);
 		await f.harness.session.prompt("Apply the native queries.");
 		const result = getToolResult(f.harness, "file");
-		expect(result.isError).toBe(false);
+		// One query of three failed: the batch reads as a failure, and the other two were still applied.
+		expect(result.isError).toBe(true);
+		expect(getMessageText(result)).toMatch(/^1 of 3 failed/);
 		expect(getMessageText(result)).toMatch(/not read/);
 		expect(fs.readFileSync(first, "utf8")).toBe("first\n");
 		expect(fs.readFileSync(path.join(f.harness.tempDir, "third.txt"), "utf8")).toBe("third\n");

@@ -51,7 +51,7 @@ const profiles = new Map<string, AgentProfile>([
 function setup() {
 	const f = fakeHost();
 	const team = new Team(f.api);
-	registerAgentTool(f.api, () => profiles, team, fakePermission());
+	registerAgentTool(f.api, { profiles: () => profiles, team, permission: fakePermission() });
 	const cwd = tmp("octocode-agent-goal-cwd-");
 	const ctx = fakeCtx({ cwd, hasUI: true });
 	team.start(ctx);

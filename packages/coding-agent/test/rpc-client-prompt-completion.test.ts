@@ -19,6 +19,7 @@ async function fixture(body: string) {
 		`import { createInterface } from "node:readline";
 const output = value => process.stdout.write(JSON.stringify(value) + "\\n");
 const reply = (command, data) => output({type:"response", id:command.id, command:command.type, success:true, data});
+process.stdout.write(JSON.stringify({type:"rpc_ready",protocolVersion:1,version:"test",sessionId:"test"}) + "\\n");
 ${body}
 `,
 	);

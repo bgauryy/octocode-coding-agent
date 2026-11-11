@@ -8,7 +8,7 @@ Each line on stdin is one JSON command, and each line on stdout is one JSON reco
 
 ## Protocol
 
-The first record of every session is `{"type":"rpc_ready","protocolVersion":1,"version":"…","sessionId":"…"}`. `protocolVersion` changes only when a change would break an existing driver; `version` is the Octocode version. `get_state` repeats both. Commands sent before startup finishes are held, so a driver need not wait for this record. The `RpcClient` passes it to its `onReady` option.
+The first record of every session is `{"type":"rpc_ready","protocolVersion":1,"version":"…","sessionId":"…"}`. `protocolVersion` changes only when a change would break an existing driver; `version` is the Octocode version. `get_state` repeats both. Commands sent before startup finishes are held, so a driver need not wait for this record. The `RpcClient` passes it to its `onReady` option, and its `start()` resolves when this record arrives, or rejects when the process exits or fails to start first.
 
 Every command has a `type` and an optional string `id`. A response repeats the `id` and names the `command` it answers:
 

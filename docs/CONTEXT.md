@@ -4,20 +4,21 @@ What a native Octocode session sends the model on each request, how updates reac
 
 ## What the model sees
 
-Each request is the tool declarations, two instruction blocks, then the history.
+Each request is the tool declarations, three instruction blocks, then the history.
 
 ```mermaid
 flowchart LR
-    T["Tool declarations"] --> B1["Block 1: base tier<br/>(shared across projects)"] --> B2["Block 2: session and volatile tiers<br/>(project, session, role)"] --> H["History<br/>(summary, messages, updates, memory)"]
+    T["Tool declarations"] --> B1["Block 1: base tier<br/>(shared across projects)"] --> B2["Block 2: session tier<br/>(project, session, role)"] --> B3["Block 3: volatile tier<br/>(directory, date, MCP status)"] --> H["History<br/>(summary, messages, updates, memory)"]
     B1 -. "cache breakpoint" .-> B2
-    B2 -. "cache breakpoint" .-> H
+    B2 -. "cache breakpoint" .-> B3
 ```
 
 | Part                | Holds                                                                                                                              | Shared by                                    |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | Tool declarations   | Role-invariant tools in a fixed order, other built-in and extension tools, MCP tools sorted by server and name, role-variant tools | sessions with the same tools and MCP servers |
 | Instruction block 1 | Sections of the base tier (below)                                                                                                  | sessions with the same tools and MCP servers |
-| Instruction block 2 | Sections of the session and volatile tiers (below)                                                                                 | one project, session and role                |
+| Instruction block 2 | Sections of the session tier (below)                                                                                               | one project and role, on any day             |
+| Instruction block 3 | Sections of the volatile tier (below); no cache breakpoint of its own                                                              | one directory, day and MCP state             |
 | History             | Compaction summary, messages, tool calls and results, section updates, memory, restored files                                      | one session                                  |
 
 Sections in prompt order. `SYSTEM.md` replaces `preamble` and drops `docs`; every other section stays ([instructions](../packages/coding-agent/docs/instructions.md)). A section with nothing to say is left out.
@@ -29,13 +30,15 @@ Sections in prompt order. `SYSTEM.md` replaces `preamble` and drops `docs`; ever
 | base     | `docs`                                                      | The root of Octocode's own documentation; dropped under a custom prompt and for subagents                                                                                                                                                           |
 | base     | `mcps`                                                      | One block per enabled MCP server: name, purpose, `mcp__<server>__*` prefix, instructions; under `mcpPresentation: "compact"` or `json` also its tool contracts (default `declared` keeps each tool's own description and schema in its declaration) |
 | session  | `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                                                                                                                                  |
-| session  | `cwd`                                                       | Working directory                                                                                                                                                                                                                                   |
 | session  | `work`, `research`, `delegation`, `safety`, `communication` | Policy prose, adapted to the tools and to main or child agent; `lean` replaces it for lean profiles                                                                                                                                                 |
+| session  | `children`                                                  | Main session only: how to run children and use their reports, sent as a section patch from its first child or message to an agent                                                                                                                   |
+| session  | `coordinator`                                               | A subagent that may write: its own task, its coordinator and its channel to it, in place of `delegation`                                                                                                                                            |
 | session  | `project_context`                                           | See [Project context](#project-context)                                                                                                                                                                                                             |
 | session  | `skills`                                                    | Name, optimized description and path of each skill; a body loads when the agent calls `skill`                                                                                                                                                       |
 | session  | `hooks`                                                     | One line per event and tool matcher that may act on a call, never a command, URL or prompt                                                                                                                                                          |
 | session  | `role`                                                      | The subagent's profile                                                                                                                                                                                                                              |
 | session  | `harnesses`                                                 | Which other agent products Octocode reads, on or off; main session only                                                                                                                                                                             |
+| volatile | `cwd`                                                       | Working directory                                                                                                                                                                                                                                   |
 | volatile | `environment`                                               | Platform, shell, local date                                                                                                                                                                                                                         |
 | volatile | `planning`                                                  | The plan-mode constraint                                                                                                                                                                                                                            |
 | volatile | `mcp_status`                                                | One line per MCP server that is not ready or whose tools are partly undeclared                                                                                                                                                                      |
@@ -136,7 +139,7 @@ sequenceDiagram
     X->>S: re-read up to 5 recent files
 ```
 
-1. The session stops cache warming, chooses the cut point (never on a tool result; a cut inside a turn adds a second summary of that turn's start) and emits `session_before_compact`.
+1. The session stops cache warming, chooses the cut point (never on a tool result; a cut inside a turn adds a second summary of that turn's start) and emits `session_before_compact`. Before any request it checks that the kept part, with the system prompt and tools, leaves room for a summary in the target window. When it does not (typically after a switch to a smaller model), it keeps a shorter tail and summarizes more. When even the newest turn leaves no room, the compaction fails at once with that reason, nothing is billed, and a request still larger than the whole window is not sent: switch to a model with a larger window, or `/new`.
 2. Octocode's handler captures the messages for the archive and picks files to restore.
 3. It asks the model for a checkpoint:
    - **Shared request** (same model, not an overflow): the session's own system prompt, tools, thinking settings and messages plus "write a checkpoint", so the provider reads the cached prefix instead of billing the history as new input. When the history entry has expired, the model was switched since the last reply, or an instruction or tool update was folded into the leading prompt, it goes with `cacheRetention: "none"`, since nothing would read what it wrote; if the long instruction entry is still live, `keepInstructionCache` keeps its markers. A warm request is unchanged.

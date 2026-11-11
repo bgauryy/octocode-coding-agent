@@ -21,7 +21,7 @@ import type {
 export type RpcOutput = (obj: RpcResponse | RpcExtensionUIRequest | RpcExtensionUIDismiss | object) => void;
 
 /** Pending extension UI requests waiting for response */
-export type PendingExtensionRequests = Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }>;
+export type PendingExtensionRequests = Map<string, { resolve: (response: RpcExtensionUIResponse) => void }>;
 
 /**
  * Helper for dialog methods with signal/timeout support. A dialog settled by anything but the host's response (its signal
@@ -39,7 +39,7 @@ function createDialogPromise<T>(
 	if (opts?.signal?.aborted) return Promise.resolve(dismissed());
 
 	const id = crypto.randomUUID();
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
 		const cleanup = () => {
@@ -64,7 +64,6 @@ function createDialogPromise<T>(
 				cleanup();
 				resolve(parseResponse(response));
 			},
-			reject,
 		});
 		output({ type: "extension_ui_request", id, ...request });
 	});

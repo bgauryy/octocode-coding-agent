@@ -36,7 +36,14 @@ afterAll(() => {
 describe.skipIf(process.platform === "win32")("a tree stop that rejects", () => {
 	it("still concludes the run, so its slot is released", async () => {
 		const controller = new AbortController();
-		const run = runSubagent("abortable", [], tmp(), undefined, { id: "a-reject" }, controller.signal, () => undefined);
+		const run = runSubagent({
+			task: "abortable",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-reject" },
+			signal: controller.signal,
+			onProgress: () => undefined,
+		});
 		const settled = run.then(
 			() => "resolved",
 			(error: Error) => error.message,

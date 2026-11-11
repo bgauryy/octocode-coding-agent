@@ -262,7 +262,6 @@ describe("runPrintMode", () => {
 		expect(errorSpy).toHaveBeenCalledWith("late failure");
 	});
 
-	// #10799
 	it("warns on stderr and returns non-zero when the response was truncated", async () => {
 		const runtimeHost = createRuntimeHost(createAssistantMessage({ stopReason: "length" }));
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

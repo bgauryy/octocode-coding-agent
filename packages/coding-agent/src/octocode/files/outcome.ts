@@ -163,7 +163,7 @@ export function querySize(query: { type?: string; edits?: unknown[]; content?: s
 	return "";
 }
 
-/** Added and removed line counts of a Octocode diff (lines prefixed with + / -, not the file headers). */
+/** Added and removed line counts of an Octocode diff (lines prefixed with + / -, not the file headers). */
 export function diffStats(diff: string): { added: number; removed: number } {
 	let added = 0;
 	let removed = 0;

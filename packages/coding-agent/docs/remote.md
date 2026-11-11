@@ -2,7 +2,7 @@
 
 `/remote` lets another device reach this machine's Octocode: every session the [web daemon](web-workspace.md#web-daemon) knows (sessions blocked on an approval or a question first), their live view, the task board and saved reports. From the remote page you can answer an approval or question a run is blocked on.
 
-Remote access needs the web daemon: start Octocode with `OCTOCODE_WEB_DAEMON=1`. Without it `/remote` says so and publishes nothing.
+`/remote` starts the web daemon when none is running, the same one `/web` opens. When the daemon cannot start, `/remote` says why and publishes nothing.
 
 ```mermaid
 flowchart LR

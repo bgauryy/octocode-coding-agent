@@ -29,7 +29,7 @@ async function setup(
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(fake.api, {}, home);
+	const hooks = registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const call = async (toolName: string, input: Record<string, unknown>) =>
 		hooks.preToolUse({ toolName, toolCallId: "c", input } as never, ctx);

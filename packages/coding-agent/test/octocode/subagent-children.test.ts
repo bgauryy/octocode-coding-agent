@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { describeWork, unreportedWork } from "../../src/octocode/sessions/work.ts";
-import { tildePath } from "../../src/octocode/shared/home.ts";
+import { homeTilde } from "../../../common/src/home-tilde.ts";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { describeChild, resumableChild, resumedTask } from "../../src/octocode/subagents/children.ts";
 import { runFooter } from "../../src/octocode/subagents/tracking.ts";
@@ -76,7 +76,7 @@ describe("a resumed session's unreported subagents", () => {
 		);
 		const [work] = unreportedWork(entries);
 		expect(describeWork(work)).toBe(
-			`general-ab12 (goal "Review the parser", transcript folder ${tildePath(child.session)})`,
+			`general-ab12 (goal "Review the parser", transcript folder ${homeTilde(child.session)})`,
 		);
 	});
 
@@ -356,7 +356,7 @@ describe("the subagents a session started", () => {
 			},
 		]);
 		expect(describeChild(sessionChildren(entries)[1])).toBe(
-			`general-bg (general, goal "Fix the build", stopped, transcript ${tildePath(background.file)}, report ${tildePath(path.join(background.dir, "report.md"))})`,
+			`general-bg (general, goal "Fix the build", stopped, transcript ${homeTilde(background.file)}, report ${homeTilde(path.join(background.dir, "report.md"))})`,
 		);
 	});
 

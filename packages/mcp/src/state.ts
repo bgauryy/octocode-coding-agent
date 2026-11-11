@@ -4,7 +4,7 @@ import { mcpServerGroup } from "./group.ts";
 import { hostPaths } from "./host.ts";
 import type { McpExtensionApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { openBrowser } from "../../common/src/open-browser.ts";
+import { openTarget } from "../../common/src/open-target.ts";
 import {
 	getMcpToolExposure,
 	type LoadedMcpConfig,
@@ -22,10 +22,18 @@ import type { McpServerConnection } from "./runtime.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { setMcpSessionStatus } from "./status.ts";
+import { StartupGate } from "./startup-gate.ts";
 import type { McpToolDetails } from "./tools.ts";
 
-import { deferRolesFromEnv, type McpDeferRole } from "./deferral.ts";
-import { envFlag, SUBAGENT_ENV } from "../../common/src/env.ts";
+import {
+	DEFAULT_MCP_EXPOSURE_SETTING,
+	deferRolesFromEnv,
+	defersByRecentUse,
+	type McpDeferRole,
+	recentToolKey,
+} from "./deferral.ts";
+import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
+import { recentlyUsed, RecentUseRecorder } from "../../common/src/recent-use.ts";
 import { isParentStopped } from "./session-servers.ts";
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
 import { expandLaunchTemplates } from "./launch-templates.ts";
@@ -59,10 +67,24 @@ export interface McpExtensionOptions {
 	startupWaitMs?: number;
 	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `declared`. */
 	presentation?: McpPresentationMode;
-	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `direct`. */
+	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `recent`. */
 	exposure?: string;
 	/** Tool roles (`roles` in a server's config) whose open tools are deferred in this instance. Default: `OCTOCODE_MCP_DEFER_ROLES` in a subagent, which a profile's `mcpDefer` sets. */
 	deferRoles?: readonly McpDeferRole[];
+	/** The tools in use for `mcpExposure: "recent"` (`recentToolKey`). Default: a child's coordinator's set, else the record in the agent directory. */
+	recentTools?: ReadonlySet<string>;
+}
+
+/** The set a coordinator handed its child, or undefined when it handed none or the value is not a list of names. */
+function recentToolsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> | undefined {
+	const text = env[MCP_RECENT_TOOLS_ENV];
+	if (text === undefined) return undefined;
+	try {
+		const value: unknown = JSON.parse(text);
+		return Array.isArray(value) ? new Set(value.filter((name): name is string => typeof name === "string")) : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
@@ -98,6 +120,8 @@ export class McpExtensionState {
 	/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 	overridden: string[] = [];
 	pending: Promise<unknown> | undefined;
+	/** Holds the session's startup connections until its resources are known (`startup-gate.ts`). */
+	readonly startupGate = new StartupGate();
 	/** Whether a prompt already waited for the startup connections since the session started. */
 	waitedForStartup = false;
 	readonly startupWaitMs: number;
@@ -136,6 +160,8 @@ export class McpExtensionState {
 	readonly definitions = new Map<string, McpToolDefinition<TSchema, McpToolDetails>>();
 	/** Generated TypeScript files that tell the model what each server offers; see `presentation/index.ts`. */
 	readonly presentation: McpPresentation;
+	/** What the transcript declared for each tool when the session started or changed branch (`declaredParameters`). */
+	declaredBefore: ReadonlyMap<string, string> = new Map();
 	readonly registeredMetadata = new Map<string, unknown>();
 	readonly cachedDefinitions = new Map<string, McpToolDefinition<TSchema, McpToolDetails>>();
 
@@ -158,9 +184,10 @@ export class McpExtensionState {
 				options.presentation ??
 				(typeof api.getSettings === "function" ? api.getSettings().mcpPresentation : undefined) ??
 				DEFAULT_MCP_PRESENTATION,
-			presetOverrides: (name, input) => findMcpPreset(options.presets, name)?.compactOverrides?.(input),
 		});
-		this.openUrl = options.openUrl ?? openBrowser;
+		// Every sign-in shows the URL (a message, or the manager's sign-in screen with a copy key), so a browser that
+		// cannot start is not reported again.
+		this.openUrl = options.openUrl ?? ((url) => void openTarget(url).catch(() => undefined));
 		this.updateConfig =
 			options.updateConfig ??
 			((entry, patch) =>
@@ -228,10 +255,39 @@ export class McpExtensionState {
 		return this.options.deferRoles ?? (envFlag(process.env, SUBAGENT_ENV) ? deferRolesFromEnv(process.env) : []);
 	}
 
-	/** The `mcpExposure` setting: the option, else the session's settings. */
+	readonly #uses = new RecentUseRecorder(() => join(hostPaths().agentDir(), "tool-use.json"));
+	#recent: ReadonlySet<string> | undefined;
+
+	/**
+	 * The tools in use, for `mcpExposure: "recent"`: read once and kept until the session changes (`forgetRecentTools`),
+	 * so a tool called during the session does not change what the cached prefix declares. A child takes its
+	 * coordinator's set, so both declare the same tools. Undefined when the setting does not defer by use.
+	 */
+	recentTools(): ReadonlySet<string> | undefined {
+		if (!defersByRecentUse(this.exposureSetting())) return undefined;
+		this.#recent ??=
+			this.options.recentTools ??
+			(envFlag(process.env, SUBAGENT_ENV) ? recentToolsFromEnv(process.env) : undefined) ??
+			recentlyUsed(join(hostPaths().agentDir(), "tool-use.json"), this.sessionCwd);
+		return this.#recent;
+	}
+
+	/** A new session reads the record again. */
+	forgetRecentTools(): void {
+		this.#recent = undefined;
+	}
+
+	/** Records a call of the tool, whatever the setting, so switching to `recent` starts from real use. */
+	recordToolUse(server: string, tool: string): void {
+		this.#uses.record(this.sessionCwd, recentToolKey(server, tool));
+	}
+
+	/** The `mcpExposure` setting: the option, else the session's settings, else `DEFAULT_MCP_EXPOSURE_SETTING`. */
 	exposureSetting(): unknown {
 		return (
-			this.options.exposure ?? (typeof this.api.getSettings === "function" ? this.api.getSettings() : {})?.mcpExposure
+			this.options.exposure ??
+			(typeof this.api.getSettings === "function" ? this.api.getSettings() : {})?.mcpExposure ??
+			DEFAULT_MCP_EXPOSURE_SETTING
 		);
 	}
 

@@ -2,7 +2,18 @@ import type { Item } from "./item.ts";
 import type { CompletionArgument } from "./completion-key.ts";
 
 /** The fields whose value is a list; a model sometimes sends the list as JSON text. */
-const LIST_KEYS = ["items", "updates", "paths", "tags", "evidence", "dependsOn", "ids", "states"] as const;
+const LIST_KEYS = [
+	"items",
+	"paths",
+	"tags",
+	"evidence",
+	"dependsOn",
+	"ids",
+	"states",
+	"dependingOn",
+	"touchingPaths",
+	"anyTag",
+] as const;
 /** The fields whose value is an object; same mistake. */
 const OBJECT_KEYS = ["completion", "close"] as const;
 
@@ -43,24 +54,35 @@ export function splitIds(text: string): string[] {
 }
 
 const COMPLETION_KEYS = ["summary", "verification", "files", "lesson", "operationKey", "replaces"];
-const STATUSES = ["passed", "failed", "not_run", "not_applicable"];
+const STATUSES = ["passed", "failed", "not_run", "not_applicable", "not_stated"];
+type Status = "passed" | "failed" | "not_run" | "not_applicable" | "not_stated";
 const NEEDS =
 	"completion needs summary (what was done) and verification (what ran and its result), e.g. {summary, verification, files: [paths]}";
 
-/** The status a one-sentence verification states in its first words; a plain result is passed. */
-function statusOf(text: string): "passed" | "failed" | "not_run" | "not_applicable" {
+const PASS_WORD = /\b(pass(ed|es|ing)?|green|succeed(ed|s)?|success(ful(ly)?)?)\b/;
+/** Words that put a pass in doubt ("2 failed", "did not pass"); "no failures" and "0 errors" are removed first. */
+const NO_FAILURE = /\b(no|0|zero|without)\s+(\w+\s+)?(fail\w*|errors?)\b/g;
+const DOUBT = /\b(fail\w*|errors?|not|never|skipp\w*)\b|n't/;
+
+/**
+ * The status a one-sentence verification states: in its first words, else a pass it names after what ran ("yarn test:
+ * 12 passed") with nothing that puts it in doubt. A sentence that names no status is `not_stated`, never passed.
+ */
+function statusOf(text: string): Status {
 	const lead = text.trim().toLowerCase();
 	if (/^(not applicable|n\/a|no check applies|nothing (to|can) (run|verify))/.test(lead)) return "not_applicable";
 	if (/^(failed|failing)\b/.test(lead)) return "failed";
 	if (/^(not run|not verified|unverified)/.test(lead)) return "not_run";
-	return "passed";
+	if (/^(pass(ed|es)?|ok|green|verified|success|succeeded)\b/.test(lead)) return "passed";
+	const rest = lead.replace(NO_FAILURE, "");
+	return PASS_WORD.test(rest) && !DOUBT.test(rest) ? "passed" : "not_stated";
 }
 
 const text = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 
 /**
  * A completion as the model may write it, mapped to the stored shape (`CompletionSchema`). Light form: `verification` is
- * one sentence (status passed unless it starts with not applicable / failed / not run) and `files` are paths (role
+ * one sentence whose status `statusOf` reads (not stated when it names none) and `files` are paths (role
  * changed). The stored form (`verification: {status, summary}`, `files: [{path, role}]`) is accepted unchanged. Errors
  * name the key in plain words, before the store's own checks.
  */

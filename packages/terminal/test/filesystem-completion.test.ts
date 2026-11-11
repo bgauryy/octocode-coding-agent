@@ -4,7 +4,7 @@ import { delimiter, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { PathCommands } from "../src/executables.ts";
 import { ShellCompletionService } from "../src/service.ts";
-import { untilAborted } from "../src/abort.ts";
+import { untilSettledOrAborted } from "../src/abort.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -66,7 +66,7 @@ it("observes a shared scan that fails after its waiter was canceled", async () =
 		fail = reject;
 	});
 	const controller = new AbortController();
-	const waiting = untilAborted(scan, controller.signal);
+	const waiting = untilSettledOrAborted(scan, controller.signal);
 	controller.abort();
 	expect(await waiting).toBeUndefined();
 	fail(new Error("late scan failure"));

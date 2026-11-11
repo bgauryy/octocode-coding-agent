@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { num, type Row } from "../rows.ts";
+import type { Row } from "../rows.ts";
 
 /**
  * The history tables housekeeping moves out of the database by age (`retention.ts`): audit rows and web
@@ -60,17 +60,3 @@ export function deleteRows(db: DatabaseSync, table: HistoryTable, rows: readonly
 	if (stored) db.exec(String(stored.sql));
 	return Number(deleted.changes);
 }
-
-/** Runs `work` with this connection waiting at most `ms` for another process's lock, then restores its wait. */
-export function withBusyTimeout<T>(db: DatabaseSync, ms: number, work: () => T): T {
-	const previous = num((db.prepare("PRAGMA busy_timeout").get() as Row | undefined)?.timeout);
-	db.exec(`PRAGMA busy_timeout=${Math.max(0, Math.floor(ms))}`);
-	try {
-		return work();
-	} finally {
-		db.exec(`PRAGMA busy_timeout=${previous}`);
-	}
-}
-
-/** SQLite's "database is locked" (`SQLITE_BUSY`, extended codes included). */
-export const isBusy = (error: unknown): boolean => (Number((error as { errcode?: unknown }).errcode) & 0xff) === 5;

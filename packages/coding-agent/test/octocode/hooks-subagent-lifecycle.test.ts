@@ -44,17 +44,15 @@ it.each(["guidance", "guidance".repeat(4000)])(
 				model: null,
 				thinkingLevel: "off",
 			}) as never;
-		registerHooks(
-			fake.api,
-			{
+		registerHooks(fake.api, {
+			env: {
 				OCTOCODE_SUBAGENT: "1",
 				OCTOCODE_SUBAGENT_HOOKS: "1",
 				OCTOCODE_PARENT_SESSION: "parent",
 			},
 			home,
-			undefined,
-			() => ({ permissionMode: "workspace" }),
-		);
+			metadata: () => ({ permissionMode: "workspace" }),
+		});
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const start = async () =>
 			(await fake.emit("before_agent_start", {}, ctx)).find(
@@ -93,14 +91,13 @@ it("reports missing standalone child metadata without inventing permission or pa
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	try {
-		const hooks = registerHooks(
-			fake.api,
-			{
+		const hooks = registerHooks(fake.api, {
+			env: {
 				OCTOCODE_SUBAGENT: "1",
 				OCTOCODE_SUBAGENT_HOOKS: "1",
 			},
 			home,
-		);
+		});
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		expect(JSON.stringify(await fake.emit("before_agent_start", {}, ctx))).not.toContain("should-not-run");
 		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("live permission"));
@@ -152,9 +149,13 @@ it("child source termination wins over native Stop continuation", async () => {
 		model: { id: "fixture" },
 	});
 	ctx.getTurnId = () => "turn";
-	registerHooks(fake.api, { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" }, home, undefined, () => ({
-		permissionMode: "full",
-	}));
+	registerHooks(fake.api, {
+		env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" },
+		home,
+		metadata: () => ({
+			permissionMode: "full",
+		}),
+	});
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const results = await fake.emit(
 		"agent_before_settle",
@@ -194,9 +195,13 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 	});
 	ctx.getTurnId = () => "turn";
 	let permissionMode: "workspace" | "full" = "workspace";
-	registerHooks(fake.api, { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" }, home, undefined, () => ({
-		permissionMode,
-	}));
+	registerHooks(fake.api, {
+		env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1" },
+		home,
+		metadata: () => ({
+			permissionMode,
+		}),
+	});
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		outcome: "completed",

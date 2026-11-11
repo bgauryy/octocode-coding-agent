@@ -1,1 +1,1 @@
-Before answering about earlier sessions or recalling preferences and decisions
+Before answering about earlier sessions or anything from before a compaction summary

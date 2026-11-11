@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs
 import { dirname, join, relative, resolve } from "node:path";
 import ignore from "ignore";
 import { CONFIG_DIR_NAME } from "../../config.ts";
+import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { addIgnoreRules, type IgnoreMatcher, toPosixPath } from "../../utils/ignore.ts";
 
 export function getExtensionTempFolder(agentDir: string): string {
@@ -130,20 +131,6 @@ export function collectSkillEntries(
 	return entries;
 }
 
-function findGitRepoRoot(startDir: string): string | null {
-	let dir = resolve(startDir);
-	while (true) {
-		if (existsSync(join(dir, ".git"))) {
-			return dir;
-		}
-		const parent = dirname(dir);
-		if (parent === dir) {
-			return null;
-		}
-		dir = parent;
-	}
-}
-
 /**
  * `.octocode/skills` of the directories above `startDir` up to its repository root, nearest first. The working
  * directory's own folder is the project skills folder. Outside a repository there are none, so a home `.octocode`
@@ -151,7 +138,7 @@ function findGitRepoRoot(startDir: string): string | null {
  */
 export function collectAncestorProjectSkillDirs(startDir: string): string[] {
 	const resolvedStartDir = resolve(startDir);
-	const gitRepoRoot = findGitRepoRoot(resolvedStartDir);
+	const gitRepoRoot = gitMarkerDir(resolvedStartDir);
 	const skillDirs: string[] = [];
 	if (!gitRepoRoot) return skillDirs;
 	let dir = resolvedStartDir;

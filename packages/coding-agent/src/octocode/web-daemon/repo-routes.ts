@@ -10,8 +10,9 @@ import type { RepoCatalog, RepoInfo } from "./repos.ts";
 
 /**
  * The routes both scopes share: the repository's board (read, and written through `handleBoardWrite`), audit and saved
- * reports and documents (read-only). `self` is the attached session (its claims show as live). Returns true when the
- * request was answered. Token, Host and Origin checks ran before this is reached.
+ * reports and documents (read-only). `self` is the attached session (its claims show as live). `written` runs after a
+ * board change was saved. Returns true when the request was answered. Token, Host and Origin checks ran before this is
+ * reached.
  */
 export async function handleRepoRequest(
 	req: IncomingMessage,
@@ -20,11 +21,12 @@ export async function handleRepoRequest(
 	catalog: RepoCatalog,
 	self: string | undefined,
 	reply: Reply,
+	written?: () => void,
 ): Promise<boolean> {
 	const store = () => catalog.store(repo.id);
 	if (url.pathname === WORKSPACE_ROUTES.backlogs) {
 		if (req.method === "POST") {
-			await handleBoardWrite(req, store(), self, reply);
+			await handleBoardWrite(req, store(), self, reply, written);
 			return true;
 		}
 		if (req.method !== "GET") {

@@ -200,7 +200,7 @@ export function itemDetail(
 			...shown.map((child) => `- ${line(child, child.parentId === item.ref)}`),
 		);
 		if (options.children.length > shown.length)
-			lines.push(`- … and ${options.children.length - shown.length} more: list parentId ${item.ref}`);
+			lines.push(`- … and ${options.children.length - shown.length} more: backlogPlan list underEpic ${item.ref}`);
 	}
 	if (options.derived?.length)
 		lines.push("", `Derived items (${options.derived.length}):`, ...options.derived.map((child) => `- ${line(child)}`));

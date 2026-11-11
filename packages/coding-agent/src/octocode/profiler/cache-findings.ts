@@ -212,7 +212,8 @@ function lastBefore(start: Start, at: number): { at: number; lifetime: number | 
 		const finished = Date.parse(String(entry.timestamp));
 		if (!Number.isFinite(finished) || finished > at) return;
 		const startedAt = num(message.timestamp) || finished - num(message.durationMs);
-		found = { at: startedAt, lifetime: cacheLifetimeMs(start.prepared, k) };
+		// A new child reads only the instructions a sibling left, so their tier decides.
+		found = { at: startedAt, lifetime: cacheLifetimeMs(start.prepared, k, "instructions") };
 	});
 	return found;
 }

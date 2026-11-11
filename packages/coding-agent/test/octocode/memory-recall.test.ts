@@ -1,11 +1,11 @@
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { parseTemplate } from "../../src/octocode/memory/command.ts";
-import { MEMORY_HEADER } from "../../src/octocode/memory/inject.ts";
+import { MEMORY_HEADER, PINNED_BUDGET, selectInjection, TOTAL_BUDGET } from "../../src/octocode/memory/inject.ts";
+import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -36,16 +36,13 @@ afterEach(() => {
 function setup(options: { isSubagent?: boolean; goal?: string } = {}) {
 	const fake = fakeHost();
 	const commands = new Subcommands();
-	registerArchiveTool(
-		fake.api,
-		registerMemory(fake.api, {
-			commands,
-			isSubagent: options.isSubagent ?? false,
-			permission: fakePermission(),
-			goal: options.goal,
-		}),
-	);
-	return { ...fake, tool: fake.tools.get("archive"), command: commands.get("memory") };
+	registerMemory(fake.api, {
+		commands,
+		isSubagent: options.isSubagent ?? false,
+		permission: fakePermission(),
+		goal: options.goal,
+	});
+	return { ...fake, tool: fake.tools.get("memory"), command: commands.get("memory") };
 }
 
 function ctxFor(options: { trusted?: boolean; hasUI?: boolean; branch?: unknown[] } = {}) {
@@ -59,7 +56,7 @@ const run = async (tool: any, params: Record<string, unknown>, ctx = ctxFor()) =
 	(
 		await tool.execute(
 			"call",
-			{ goal: "Remember a preference", reason: "user requested", source: "memories", ...params },
+			{ goal: "Remember a preference", reason: "user requested", ...params },
 			undefined,
 			undefined,
 			ctx,
@@ -72,9 +69,13 @@ describe("memory tool guidance", () => {
 		const child = setup({ isSubagent: true }).tool;
 		expect(child.description).toBe(main.description);
 		expect(child.promptSnippet).toBe(main.promptSnippet);
-		// The public Archive capability owns both history and memory.
+		// Memory owns recall; session history is the `archive` tool's.
 		expect(main.promptSnippet).toMatch(/recalling preferences/);
-		expect(main.promptSnippet).toMatch(/earlier sessions/);
+		expect(main.promptSnippet).not.toMatch(/earlier sessions/);
+		const host = fakeHost();
+		registerArchiveTool(host.api);
+		expect(host.tools.get("archive").promptSnippet).toMatch(/earlier sessions/);
+		expect(host.tools.get("archive").promptSnippet).not.toMatch(/preferences/);
 		const guidance = main.promptGuidelines.join("\n");
 		expect(guidance).toMatch(
 			/corrects your approach, confirms a non-obvious one or what a report proposes, or asks you to remember/,
@@ -151,6 +152,43 @@ describe("saving memories", () => {
 	});
 });
 
+describe("what recall searches by", () => {
+	const notice = (text: string) => ({
+		messageType: "custom",
+		message: { role: "custom", customType: "octocode-bash-job", content: text, display: true, timestamp: 1 },
+	});
+
+	it("searches by a user's prompt, never by the text of an agent's result, a job notice or the compaction resume", async () => {
+		memoryStore(cwd).set({ title: "Parser rewrite plan", body: "tokens first", author: "agent" });
+		const pin = memoryStore(cwd).set({ title: "Reply in short sentences", pinned: true, author: "user" }).memory.id;
+		const host = setup();
+		// A machine-written wake that names the memory's words recalls nothing by them: only the unseen pin comes.
+		const woke = (await host.fire("before_agent_start", notice("parser rewrite plan finished"), ctxFor())) as any;
+		expect(woke.message.details.ids).toEqual([pin]);
+		const child = setup({ isSubagent: true, goal: "parser rewrite" });
+		expect(await child.fire("before_agent_start", notice("parser rewrite plan finished"), ctxFor())).toBeUndefined();
+		// The user's prompt recalls by its words.
+		const asked = (await host.fire(
+			"before_agent_start",
+			{ prompt: "how is the parser rewrite going?" },
+			ctxFor(),
+		)) as any;
+		expect(asked.message.details.ids).toContain(1);
+	});
+
+	it("keeps the whole injected message, header and held-back note included, within the total budget", () => {
+		const store = memoryStore(cwd);
+		const names = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"];
+		for (const name of names)
+			store.set({ title: `Pin ${name} ${name}`, body: `${name} `.repeat(60), pinned: true, author: "user" });
+		for (const name of names)
+			store.set({ title: `Parser ${name} rewrite`, body: `parser rewrite ${name} `.repeat(30), author: "user" });
+		const injection = selectInjection(store, { query: "parser rewrite note", scope: "all", seen: new Set(), topK: 10 });
+		expect(injection?.content).toContain("more pinned memories");
+		expect(injection!.content.length).toBeLessThanOrEqual(TOTAL_BUDGET);
+	});
+});
+
 describe("subagent recall", () => {
 	const brief = "You are a subagent. Shared context about teammates, scratch folders and reports.";
 
@@ -167,6 +205,83 @@ describe("subagent recall", () => {
 		memoryStore(cwd).set({ title: "Parser rewrite plan", body: "tokens first", author: "agent" });
 		const main = setup({ goal: "parser rewrite" });
 		expect(await main.fire("before_agent_start", { prompt: brief }, ctxFor())).toBeUndefined();
+	});
+
+	// Owner decision, 2026-11-11: a subagent's pins are the pinned preferences; every other pinned kind stays out.
+	const seedPins = () => {
+		const store = memoryStore(cwd);
+		const pin = (title: string, kind: "preference" | "fact" | "decision" | "gotcha") =>
+			store.set({ title, kind, pinned: true, author: "user" }).memory.id;
+		return {
+			preference: pin("Reply in short sentences", "preference"),
+			fact: pin("Deploys run on Tuesdays", "fact"),
+			decision: pin("Queue stays on SQLite", "decision"),
+			gotcha: pin("Clock skew breaks leases", "gotcha"),
+			unpinned: store.set({ title: "Tabs over spaces", kind: "preference", author: "user" }).memory.id,
+		};
+	};
+
+	it("gives a subagent a pinned preference and no pinned fact, decision or other kind", async () => {
+		const ids = seedPins();
+		const child = setup({ isSubagent: true });
+		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		expect(result.message.details.ids).toEqual([ids.preference]);
+		expect(result.message.content).toContain("Reply in short sentences");
+		expect(result.message.content).not.toContain("Deploys run on Tuesdays");
+		// The other pinned kinds are not waiting for a later prompt either: nothing is announced as held back.
+		expect(result.message.content).not.toContain("more pinned memor");
+	});
+
+	it("leaves the main session's pins unchanged: every pinned kind, no unpinned note without a hit", async () => {
+		const ids = seedPins();
+		const main = setup();
+		const result = (await main.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		expect([...result.message.details.ids].sort((x: number, y: number) => x - y)).toEqual([
+			ids.preference,
+			ids.fact,
+			ids.decision,
+			ids.gotcha,
+		]);
+	});
+
+	it("holds a subagent's pinned preferences to the pinned budget and counts only preferences as held back", async () => {
+		const store = memoryStore(cwd);
+		for (const name of ["alpha", "beta", "gamma", "delta"])
+			store.set({
+				title: `Style ${name}`,
+				body: `${name} `.repeat(100),
+				kind: "preference",
+				pinned: true,
+				author: "user",
+			});
+		store.set({ title: "Pinned fact", body: "omega ".repeat(100), pinned: true, author: "user" });
+		const child = setup({ isSubagent: true });
+		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const lines = (result.message.content as string).split("\n");
+		const pins = lines.filter((line) => line.includes('"Style '));
+		expect(pins).toHaveLength(2);
+		expect(pins.join("\n").length + pins.length).toBeLessThanOrEqual(PINNED_BUDGET);
+		expect(result.message.content).not.toContain("Pinned fact");
+		expect(lines.at(-1)).toBe('[2 more pinned memories did not fit here; call memory with op "list" to read them.]');
+		// The same selection without the kind filter is the main session's: the fact competes for the same budget.
+		const all = selectInjection(store, { query: "", scope: "all", seen: new Set(), topK: 3 });
+		expect(all?.content.split("\n").at(-1)).toContain("3 more pinned memories");
+	});
+
+	it("still ranks a subagent's hits across every kind, beside its pinned preference", async () => {
+		const ids = seedPins();
+		const child = setup({ isSubagent: true, goal: "deploys tuesdays" });
+		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		// The pinned fact arrives as a relevant hit for this goal, not as a pin.
+		expect(result.message.details.ids).toEqual([ids.preference, ids.fact]);
+	});
+
+	it("gives a lean child no memory notes: its automatic-memory switch is off", async () => {
+		seedPins();
+		// A lean child's process is started with `OCTOCODE_MEMORY_AUTO=0` (asserted in subagent-tiers.test.ts).
+		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "0");
+		const lean = setup({ isSubagent: true, goal: "deploys tuesdays" });
+		expect(await lean.fire("before_agent_start", { prompt: brief }, ctxFor())).toBeUndefined();
 	});
 });
 

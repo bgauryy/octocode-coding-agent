@@ -27,7 +27,7 @@ it.each([true, false])("dispatches Claude failure hooks only for failed results 
 	);
 	const f = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	registerHooks(f.api, {}, home);
+	registerHooks(f.api, { env: {}, home });
 	await f.fire("session_start", { reason: "startup" }, ctx);
 	const content = [{ type: "text", text: "missing executable" }];
 	const results = await f.emit(

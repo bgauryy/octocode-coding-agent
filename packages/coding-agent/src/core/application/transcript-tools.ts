@@ -1,5 +1,37 @@
 import type { ApplicationTool } from "@octocodeai/octocode-contracts";
 import type { ApplicationAssets } from "./assets.ts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
+import { recordJsonLength } from "./json-length.ts";
+
+/** The result a tool's displayed data was last built from. */
+export interface ToolSource {
+	value: unknown;
+	owner: string;
+	streaming: boolean;
+}
+
+/** The members of a result that its displayed data is built from. */
+const RESULT_MEMBERS = ["content", "structuredContent", "details", "usage", "progress"] as const;
+
+/**
+ * Whether `tool` already shows the result that the tool-result message `message` carries: the tool finished with the
+ * same outcome, from a result (`source`) whose displayed members are the message's own objects. The agent builds the
+ * message from the result it has just reported, so normalizing the message again would rebuild the same state. Any
+ * difference (a hook that replaced the content, another name, a missing duration) makes it a new result.
+ */
+export function showsToolResult(
+	tool: ApplicationTool | undefined,
+	source: ToolSource | undefined,
+	message: Record<string, unknown>,
+	toolName: string,
+): boolean {
+	if (!tool || !source || source.streaming || source.owner !== toolName || tool.toolName !== toolName) return false;
+	if (tool.status !== (message.isError === true ? "failed" : "completed")) return false;
+	if (typeof message.durationMs === "number" && message.durationMs !== tool.durationMs) return false;
+	const result = asRecord(source.value);
+	if ((result.isError === true) !== (message.isError === true)) return false;
+	return RESULT_MEMBERS.every((member) => result[member] === message[member]);
+}
 
 /** The largest serialized tool display the transcript keeps inline; a larger one moves to an asset. */
 const TOOL_CHARS = 60000;
@@ -11,7 +43,7 @@ export function spillToolData(
 	assets: ApplicationAssets,
 	streaming: boolean,
 ): Partial<ApplicationTool> {
-	if (JSON.stringify(data).length <= TOOL_CHARS) return data;
+	if (recordJsonLength(data) <= TOOL_CHARS) return data;
 	data.full = assets.put(
 		JSON.stringify(data),
 		"application/json",
@@ -36,7 +68,7 @@ export function spillToolData(
 
 /** Move an oversized tool state into an asset and leave a placeholder; a running tool keeps one asset slot. */
 export function spillTool(tool: ApplicationTool, assets: ApplicationAssets, completed: boolean): ApplicationTool {
-	if (JSON.stringify(tool).length <= TOOL_CHARS) return tool;
+	if (recordJsonLength(tool) <= TOOL_CHARS) return tool;
 	tool.full = assets.put(
 		JSON.stringify(tool),
 		"application/json",

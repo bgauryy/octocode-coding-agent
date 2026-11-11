@@ -1,7 +1,6 @@
 import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { renderHintLine } from "../hint-bar.ts";
-import { keyHint, keyText } from "../keybinding-hints.ts";
+import { keyHint, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
 import type { SessionScope } from "./types.ts";
 

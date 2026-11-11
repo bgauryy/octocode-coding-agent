@@ -4,6 +4,7 @@ import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
 import { identifier, inert, literal } from "./schema-nodes.ts";
 import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
+import { escapeRegExp } from "../../../common/src/regexp.ts";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/gi;
 
@@ -39,8 +40,6 @@ function requiredKeys(
 		} else requiredKeys(value as JsonSchema, out, conditional, seen);
 	}
 }
-
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Property names and enum/const values that must appear in a tool's rendered block. */
 function requiredTokens(schema: JsonSchema | undefined, out: Set<string>, seen = new Set<unknown>()): void {

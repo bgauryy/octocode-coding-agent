@@ -7,6 +7,8 @@ import {
 	agents,
 	backlog,
 	commands,
+	correspondence,
+	deliveries,
 	leases,
 	meta,
 	sessionLinks,
@@ -177,6 +179,47 @@ describe("backlog", () => {
 		backlog.addNote(agent.db, rowId, 1, "agent", "note", "hello");
 		backlog.addNote(agent.db, rowId, 2, "agent", "change", "moved");
 		expect(backlog.commentsOf(agent.db, rowId).map((row) => row.text)).toEqual(["hello"]);
+	});
+});
+
+describe("message traffic", () => {
+	const send = (team: string, from: string, to: string[], at: number) => {
+		const id = deliveries.insertMessage(agent.db, team, "r", from, `from ${from}`, true, undefined, at);
+		for (const recipient of to) deliveries.insertDelivery(agent.db, { message: id, recipient, wake: 0 });
+		return id;
+	};
+	const state = (recipient: string, delivered: number | null, completed: number | null) => ({
+		recipient,
+		delivered_at: delivered,
+		completed_at: completed,
+		dead_at: null,
+		relay_to: null,
+	});
+
+	it("lists each message with its deliveries' state by recipient, for an agent and for a team", () => {
+		const first = send("t", "a", ["c", "b"], 10);
+		const second = send("t", "x", ["a"], 20);
+		send("t", "x", ["y"], 30);
+		send("other", "z", ["a"], 40);
+		deliveries.markDelivered(agent.db, "b", [first], 11);
+		deliveries.complete(agent.db, first, "b", 12);
+
+		const involving = correspondence.involving(agent.db, ["a"], 15);
+		expect(involving.map(({ message }) => message.id)).toEqual([second, second + 2]);
+		expect(involving[0]?.deliveries).toEqual([state("a", null, null)]);
+		expect(correspondence.involving(agent.db, ["a"], 0)[0]?.deliveries).toEqual([
+			state("b", 11, 12),
+			state("c", null, null),
+		]);
+		expect(correspondence.involving(agent.db, [], 0)).toEqual([]);
+
+		const traffic = deliveries.recentTraffic(agent.db, "t", 10, 2);
+		expect(traffic.map(({ message }) => message.sender)).toEqual(["x", "x"]);
+		expect(traffic.map((entry) => entry.deliveries.map((row) => row.recipient))).toEqual([["y"], ["a"]]);
+		expect(deliveries.recentTraffic(agent.db, "t", 0, 5).at(-1)?.deliveries).toEqual([
+			state("b", 11, 12),
+			state("c", null, null),
+		]);
 	});
 });
 

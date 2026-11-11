@@ -40,7 +40,7 @@ describe("documented hook discovery and controls", () => {
 
 	it.each(["enable", "off"])("does not pretend /harness hooks %s changes execution", async (argument) => {
 		const { api } = fakeHost();
-		const hooks = registerHooks(api, { OCTOCODE_SUBAGENT: "1" }, tmp());
+		const hooks = registerHooks(api, { env: { OCTOCODE_SUBAGENT: "1" }, home: tmp() });
 		const commands = new Subcommands();
 		registerHarnessCommand(commands, hooks, api);
 		const notify = vi.fn();
@@ -147,7 +147,7 @@ describe("documented hook discovery and controls", () => {
 		expect(off.switchedOff).toBe(2);
 		const start = async (settings: Record<string, unknown>) => {
 			const fake = fakeHost(settings);
-			registerHooks(fake.api, {}, home);
+			registerHooks(fake.api, { env: {}, home });
 			const ctx = fakeCtx({ cwd, hasUI: false });
 			await fake.fire("session_start", { reason: "startup" }, ctx);
 			// The first prompt waits for the SessionStart hooks.

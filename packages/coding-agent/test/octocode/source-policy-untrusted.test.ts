@@ -41,7 +41,7 @@ function setup(shape: Shape, local: (outside: string) => object, user?: object) 
 	if (shape === "empty-index-git") execFileSync("git", ["init", "-q"], { cwd });
 	fs.writeFileSync(path.join(cwd, ".claude", "settings.local.json"), JSON.stringify(local(outside)));
 	if (user) fs.writeFileSync(path.join(home, "settings.json"), JSON.stringify(user));
-	return { cwd, home, outside, owner: registerSourcePolicy(fakeHost().api, home) };
+	return { cwd, home, outside, owner: registerSourcePolicy(fakeHost().api, { home }) };
 }
 
 const shell = (command: string) => ({ active: true, toolCallId: "x", toolName: "bash", input: { command } });

@@ -20,12 +20,8 @@ const FREE_FORM = new Map<string, string>([
 	["agent.resultSchema", "user-supplied JSON Schema for a child's structured result"],
 	// Batch entries are plain objects so every request stays small (about 150 characters instead of 550-700 for spelled-out
 	// entries); each entry is validated in code against the single call's own schema, so none goes unchecked.
+	// `backlogPlan.items` is not here: its entries are typed, so strict mode constrains them like any other field.
 	["agent.tasks", "batch entries, each validated against the single task call's schema (agent-batch.ts)"],
-	["backlog.items", "batch entries, each validated against the single add's schema (checkedEntry in tool-schema.ts)"],
-	[
-		"backlog.updates",
-		"batch entries, each validated against the single update's schema (checkedEntry in tool-schema.ts)",
-	],
 ]);
 
 type Node = Record<string, unknown>;
@@ -111,7 +107,9 @@ describe("native tool schemas are strict-eligible", () => {
 	for (const subagent of [false, true]) {
 		it(`every declared tool converts in strict mode (${subagent ? "subagent" : "main session"})`, async () => {
 			if (subagent) process.env.OCTOCODE_SUBAGENT = "1";
-			const fake = fakeHost();
+			// Every tool declared in full: a deferred declaration (`mcpExposure: "recent"`) carries only its top-level field
+			// names, by design open, and the schema checked here is the one a used tool declares.
+			const fake = fakeHost({ mcpExposure: "direct" });
 			Object.assign(fake.api, { getSessionName: () => undefined });
 			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: !subagent });

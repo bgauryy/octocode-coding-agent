@@ -21,7 +21,6 @@ const deps = (own: Pick<ConditionDeps, "reservation" | "context">): ConditionDep
 	blockers: () => undefined,
 	agentEnd: () => undefined,
 	watchDatabase: () => () => undefined,
-	roots: (cwd) => [cwd],
 	judge: async () => ({ verdict: "skipped", reason: "no judge in this test" }),
 	...own,
 });

@@ -4,17 +4,12 @@ import type { ExtensionContext } from "../../../core/features/index.ts";
 /** Characters of a check's output kept on the row and shown on wake. */
 const OUTPUT_CAP = 2000;
 
-export const FILE_STATES = ["exists", "absent", "changed"] as const;
-export type FileState = (typeof FILE_STATES)[number];
-
 /** A condition code decides: the closed list. A new kind is one `ConditionSpec` in `conditions/` and one entry in `index.ts`. */
 export type BaseCondition =
 	| { kind: "command"; command: string }
 	| { kind: "unlocked"; path: string }
-	| { kind: "file"; path: string; is: FileState }
 	| { kind: "item"; ref: string; state: string }
-	| { kind: "agent"; name: string }
-	| { kind: "port"; port: number; host: string };
+	| { kind: "agent"; name: string };
 
 /** A fuzzy condition: `on` is the deterministic trigger, and the small model judges `question` only after `on` fires. */
 export type CheckCondition = { kind: "check"; question: string; on: BaseCondition };
@@ -22,7 +17,7 @@ export type CheckCondition = { kind: "check"; question: string; on: BaseConditio
 export type TimerCondition = BaseCondition | CheckCondition;
 
 /** A check of a condition: met, not yet, or not possible (refused or unrunnable: the timer fails). */
-export type CheckOutcome = TimerResult & { met: boolean; refused?: string; evidence?: string };
+export type CheckOutcome = TimerResult & { met: boolean; refused?: string };
 
 /** What a condition may read from the host. */
 export interface ConditionDeps {
@@ -40,19 +35,14 @@ export interface ConditionDeps {
 	watchDatabase(poke: () => void): () => void;
 	/** One model judgment of a `check`, gated and capped by the host (`judge.ts`). */
 	judge(request: JudgeRequest): Promise<JudgeOutcome>;
-	/** Files and paths a `file` condition may stat: the workspace root and its Octocode state folder. */
-	roots(cwd: string): string[];
 }
 
-/** One check's surroundings: where it runs, what was recorded when the timer was set, and the host. */
+/** One check's surroundings: where it runs, and the host. */
 export interface RunEnv {
 	cwd: string;
-	baseline: string | undefined;
 	deps: ConditionDeps;
 	/** The timer row, for a `check`'s budget. */
 	row?: { id: number; checks: number; spentUsd: number; sessionId: string };
-	/** Gather the evidence a `check` shows the model (a file's tail); off for a plain wait, which reads nothing but stats. */
-	evidence?: boolean;
 }
 
 /** How a kind parses, stores, checks and (when it has an event source) watches its condition. */
@@ -63,13 +53,11 @@ export interface ConditionSpec<C extends TimerCondition> {
 	/** The text stored in `timers.condition`. */
 	encode(condition: C): string;
 	decode(text: string): C | undefined;
-	/** A few words for the notice and `list`: `src/a.ts changed`. */
+	/** A few words for the notice and `list`: `B4 is done`. */
 	describe(condition: C): string;
 	/** Poll interval in ms when an event source is live (the safety net), and when none is. */
 	safetyMs: number;
 	pollMs: number;
-	/** The value compared against later checks, recorded when the timer is set. */
-	baseline?(condition: C, cwd: string, deps: ConditionDeps): string | undefined;
 	check(condition: C, env: RunEnv): Promise<CheckOutcome>;
 	/** An event source: calls `poke` to say "check now" (the check stays the one source of truth); returns the unsubscribe. */
 	watch?(condition: C, env: RunEnv, poke: () => void, failed: () => void): () => void;

@@ -12,6 +12,7 @@ import { errorSignature } from "../../src/octocode/history/errors.ts";
 import { classifyError, commandProgram } from "../../src/octocode/history/errors-signature.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { encodeSessionLines } from "../../src/core/session-manager/codec.ts";
 import { tmp } from "./helpers.ts";
 
 const why = { reason: "the user asked which tool errors keep happening" };
@@ -60,9 +61,18 @@ const bashCall = (day: string, id: string, command: string) => ({
 });
 
 /** A session of `cwd`'s repository whose record names a transcript of `entries` at `transcript`. */
-function session(id: string, cwd: string, transcript: string, entries: unknown[], mirrored = true): void {
+function session(
+	id: string,
+	cwd: string,
+	transcript: string,
+	entries: unknown[],
+	mirrored = true,
+	encoded = false,
+): void {
 	fs.mkdirSync(path.dirname(transcript), { recursive: true });
-	fs.writeFileSync(transcript, entries.map((line) => JSON.stringify(line)).join("\n") + "\n");
+	// `encoded`: as the session codec writes a file now (bash outputs as spans, system parts by reference).
+	const lines = encoded ? encodeSessionLines(entries as object[]).lines : entries.map((line) => JSON.stringify(line));
+	fs.writeFileSync(transcript, lines.join("\n") + "\n");
 	if (mirrored) {
 		const workspaceId = registeredWorkspace(cwd).id;
 		const db = sharedAgentDb();
@@ -72,9 +82,14 @@ function session(id: string, cwd: string, transcript: string, entries: unknown[]
 				db.db,
 				id,
 				transcript,
-				{ type: "session", id, cwd },
+				JSON.stringify({ type: "session", id, cwd }),
 				getFileStamp(transcript),
-				entries as Parameters<typeof transcripts.save>[5],
+				(entries as { id: string; parentId?: string; type: string }[]).map((entry) => ({
+					id: entry.id,
+					parentId: entry.parentId ?? null,
+					type: entry.type,
+					json: JSON.stringify(entry),
+				})),
 				0,
 			);
 		});
@@ -463,5 +478,51 @@ describe("errorSignature", () => {
 		expect(commandProgram("for f in a b; do oxlint $f; done")).toBe("oxlint");
 		expect(commandProgram('echo "a && b" ; ./test.sh')).toBe("test.sh");
 		expect(commandProgram("cd /x")).toBeUndefined();
+	});
+});
+
+describe("transcripts in the session codec's format", () => {
+	it("finds a bash error whose output the file stores as a span of its text", async () => {
+		const cwd = repo();
+		const output = `cat: illegal option -- A\n${"usage: cat [-belnstuv] [file ...] ".repeat(4)}`;
+		const text = `[exit 1 · 0s · 2 lines · 80 B]\n${output}`;
+		const failed = result(early, "bash", text, true, "toolu_codec");
+		const message = failed.message as Record<string, unknown>;
+		message.details = { output, exitCode: 1 };
+		message.structuredContent = { output, exit_code: 1 };
+		const prompt = "system prompt ".repeat(60);
+		const system = {
+			type: "message",
+			id: "s0",
+			timestamp: `${early}T09:00:00.000Z`,
+			message: { role: "system", content: prompt },
+		};
+		const compaction = (id: string) => ({
+			type: "compaction",
+			id,
+			parentId: null,
+			timestamp: `${early}T09:30:00.000Z`,
+			summary: `summary ${id}`,
+			firstKeptEntryId: "s0",
+			tokensBefore: 100,
+			systemMessage: { role: "system", content: prompt },
+		});
+		const transcript = path.join(cwd, ".octocode", "code", "temp", "agents", "z", "session", "z.jsonl");
+		const entries = [
+			model("kimi"),
+			system,
+			compaction("c1"),
+			compaction("c2"),
+			bashCall(early, "toolu_codec", "cat -A x"),
+			failed,
+		];
+		session("z", cwd, transcript, entries, true, true);
+		// The file really is in the new format: the output is a span and the second compaction's prompt a reference.
+		const stored = fs.readFileSync(transcript, "utf8");
+		expect(stored).toContain('"outputAt"');
+		expect(stored).toContain('"$ref"');
+		const found = await tool(cwd)({ ...why, op: "search", errors: true });
+		expect(found.text).toContain("cat: illegal option -- A");
+		expect(found.details).toMatchObject({ hits: 1 });
 	});
 });

@@ -13,7 +13,9 @@ type Result = { message: { content: Array<{ text: string }>; structuredContent?:
 /** Fire the events the agent loop sends for one top-level call: start, the executed result unless `blocked`, then the message. */
 function guard() {
 	const fake = fakeHost();
-	registerLoopGuard(fake.api);
+	// The `loop` step, run on `tool_call` as the pipeline runs it first (`tool-gates.ts`).
+	const loop = registerLoopGuard(fake.api);
+	fake.api.on("tool_call", (event, ctx) => loop(event, ctx));
 	const ctx = fakeCtx({ cwd: "/repo" });
 	let id = 0;
 	return {
@@ -115,12 +117,19 @@ describe("repeated-call loop guard", () => {
 
 	it("exempts messaging and bookkeeping tools, nested calls and waiting shell commands", async () => {
 		const { call } = guard();
-		for (const tool of ["agent", "askUser", "backlog", "coordinate"])
+		for (const tool of ["agent", "askUser", "backlog", "backlogPlan", "coordinate"])
 			for (let i = 0; i < 6; i++) expect(await call(tool, { op: "list" })).toBeUndefined();
 		for (let i = 0; i < 6; i++) expect(await call("bash", { command: "sleep 30; tail -n 5 job.log" })).toBeUndefined();
 		for (let i = 0; i < 6; i++) expect(await call("bash", { command: "tail -f job.log" })).toBeUndefined();
 		for (let i = 0; i < 6; i++)
 			expect(await call("web", { url: "n" }, "same", { parentToolCallId: "p" })).toBeUndefined();
+	});
+
+	it("counts repeated calls to the removed steps tool like any other unknown call", async () => {
+		const { call } = guard();
+		const refusal = "Tool steps not found: it was removed.";
+		for (let i = 0; i < 2; i++) await call("steps", { op: "list" }, refusal, { isError: true });
+		expect(noteOf(await call("steps", { op: "list" }, refusal, { isError: true }))).toContain("3 times");
 	});
 
 	it("ignores the reworded reason of a retried call, at any depth", async () => {

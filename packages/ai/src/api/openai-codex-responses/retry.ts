@@ -12,13 +12,18 @@ export function isRetryableError(status: number, errorText: string): boolean {
 	return /rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused/i.test(errorText);
 }
 
-/** A final HTTP error from the Codex SSE endpoint, with its status (a 413 still reads as context overflow). */
+/**
+ * A final HTTP error from the Codex SSE endpoint, with its status (a 413 still reads as context overflow) and
+ * headers (a `Retry-After` reaches the error message as `retryAfterMs`).
+ */
 export class CodexHttpError extends Error {
 	readonly status: number;
-	constructor(message: string, status: number) {
+	readonly headers: Headers;
+	constructor(message: string, status: number, headers: Headers) {
 		super(message);
 		this.name = "CodexHttpError";
 		this.status = status;
+		this.headers = headers;
 	}
 }
 

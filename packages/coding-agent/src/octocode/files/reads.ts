@@ -2,7 +2,10 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { partText } from "../shared/util.ts";
+import { appliedFileOutcomes } from "../shared/file-outcomes.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
+
+export { appliedFileOutcomes };
 import { type LineRange, mergeRanges, type ReadView, readView } from "./coverage.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 
@@ -175,7 +178,9 @@ export function seenFiles(
 			}
 			continue;
 		}
-		if (!isRecord(message) || message.role !== "toolResult" || message.isError === true) continue;
+		// A `file` batch in which a query failed is an error result whose details still name the changes it applied.
+		if (!isRecord(message) || message.role !== "toolResult") continue;
+		if (message.isError === true && message.toolName !== "file") continue;
 		const unchangedOf = isRecord(message.details) ? message.details.unchangedOf : undefined;
 		if (cleared.has(String(message.toolCallId)) || (typeof unchangedOf === "string" && !shown.has(unchangedOf)))
 			continue;
@@ -239,18 +244,6 @@ interface ChangedFile {
 	file: string;
 	line: number | undefined;
 	edit?: { lineDelta?: number };
-}
-
-/**
- * The outcomes of a `file` result that changed a file: each applied (`ok`) outcome with the path it names, whether the
- * call used `queries` or `patch`. The one rule for which paths a `file` call changed.
- */
-export function appliedFileOutcomes(details: unknown): Array<Record<string, unknown> & { path: string }> {
-	const outcomes = isRecord(details) && Array.isArray(details.outcomes) ? details.outcomes : [];
-	return outcomes.filter(
-		(outcome): outcome is Record<string, unknown> & { path: string } =>
-			isRecord(outcome) && outcome.ok === true && typeof outcome.path === "string",
-	);
 }
 
 /** The files a `file` result changed, each with the first line its diff shows changed (`+12 …` or `-12 …`). */

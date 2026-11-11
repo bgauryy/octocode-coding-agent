@@ -128,7 +128,7 @@ beforeAll(async () => {
 			hooks: { PreToolUse: entry("Bash"), PostToolUse: entry("Bash"), SessionStart: entry("startup") },
 		}),
 	);
-	// A Octocode-protected resource, so Octocode resolves project trust without /trust.
+	// An Octocode-protected resource, so Octocode resolves project trust without /trust.
 	fs.mkdirSync(path.join(cwd, ".octocode"), { recursive: true });
 	fs.writeFileSync(path.join(cwd, ".octocode", "settings.json"), "{}");
 	fs.writeFileSync(path.join(cwd, "app.ts"), "export const answer = 41;\n");
@@ -202,7 +202,7 @@ afterAll(async () => {
 describe("Native features through the SDK", () => {
 	it("registers every tool and command, keeps the banner out of the session and picks up ~/.claude skills", async () => {
 		const [turn] = await run("hello", [say("ready")]);
-		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "archive"])
+		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "backlogPlan", "archive"])
 			expect(turn.tools).toContain(name);
 		// Browsing is the browser MCP server's; no native `browser` tool is registered.
 		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("browser");
@@ -486,30 +486,32 @@ describe("Native features through the SDK", () => {
 	it("tracks backlog items and memories with the tools, refuses secrets, and recalls memories in later prompts", async () => {
 		const t = await run("track work", [
 			calls(
-				nativeCall("backlog", {
+				nativeCall("backlogPlan", {
 					op: "add",
-					title: "Raise the answer to 43",
-					goal: "The answer constant is 43; tests pass.",
-					why: "app.ts holds it",
-					priority: "p1",
+					items: [
+						{
+							title: "Raise the answer to 43",
+							goal: "The answer constant is 43; tests pass.",
+							why: "app.ts holds it",
+							priority: "p1",
+						},
+					],
 				}),
 			),
-			calls(nativeCall("backlog", { op: "list", states: ["backlog"] })),
+			calls(nativeCall("backlogPlan", { op: "list", states: ["backlog"] })),
 			calls(
 				nativeCall("backlog", {
-					op: "update",
+					op: "claim",
 					id: "B1",
-					state: "ongoing",
 					why: "Keep the answer correct",
 					goal: "The answer constant is 43; tests pass.",
 				}),
 			),
-			calls(nativeCall("backlog", { op: "update", id: "B1", state: "done" })),
+			calls(nativeCall("backlog", { op: "done", id: "B1" })),
 			calls(
 				nativeCall("backlog", {
-					op: "update",
+					op: "done",
 					id: "B1",
-					state: "done",
 					completion: {
 						summary: "Changed app.ts; verified by reading it back.",
 						files: [{ path: "app.ts", role: "changed" }],
@@ -519,9 +521,7 @@ describe("Native features through the SDK", () => {
 				}),
 			),
 			calls(
-				nativeCall("archive", {
-					source: "memories",
-					goal: "remember the answer",
+				nativeCall("memory", {
 					op: "set",
 					title: "The answer constant lives in app.ts",
 					body: "Exported as answer from app.ts at the repository root.",
@@ -529,17 +529,13 @@ describe("Native features through the SDK", () => {
 				}),
 			),
 			calls(
-				nativeCall("archive", {
-					source: "memories",
-					goal: "remember the answer",
+				nativeCall("memory", {
 					op: "search",
 					keywords: "answer constant",
 				}),
 			),
 			calls(
-				nativeCall("archive", {
-					source: "memories",
-					goal: "remember the answer",
+				nativeCall("memory", {
 					op: "set",
 					title: "Deploy token",
 					body: `use ghp_${"a".repeat(36)}`,

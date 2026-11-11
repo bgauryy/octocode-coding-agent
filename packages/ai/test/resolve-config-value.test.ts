@@ -106,6 +106,55 @@ describe("resolveConfigValue", () => {
 		}
 	});
 
+	test("refreshes a cached result in the background in its last minute instead of making a request wait", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			const counterFile = join(tempDir, "refresh-counter");
+			writeFileSync(counterFile, "0");
+			const escapedPath = counterFile.replace(/\\/g, "/").replace(/"/g, '\\"');
+			const command = `!sh -c 'count=$(cat "${escapedPath}"); echo $((count + 1)) > "${escapedPath}"; echo token-$((count + 1))'`;
+			expect(resolveConfigValue(command)).toBe("token-1");
+			vi.setSystemTime(Date.now() + 4.5 * 60_000);
+			// Served from the cache at once; the command runs again without blocking.
+			expect(resolveConfigValue(command)).toBe("token-1");
+			expect(readFileSync(counterFile, "utf-8").trim()).toBe("1");
+			expect(resolveConfigValue(command)).toBe("token-1");
+			await vi.waitFor(() => expect(resolveConfigValue(command)).toBe("token-2"), { timeout: 5_000 });
+			// One background run for the window, and the new result is cached for a full lifetime.
+			expect(readFileSync(counterFile, "utf-8").trim()).toBe("2");
+			vi.setSystemTime(Date.now() + 3 * 60_000);
+			expect(resolveConfigValue(command)).toBe("token-2");
+			expect(readFileSync(counterFile, "utf-8").trim()).toBe("2");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test("keeps a cached result until it expires when its background refresh fails", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			const flag = join(tempDir, "fail-now");
+			const counterFile = join(tempDir, "fail-counter");
+			writeFileSync(counterFile, "0");
+			const escapedFlag = flag.replace(/\\/g, "/").replace(/"/g, '\\"');
+			const escapedCounter = counterFile.replace(/\\/g, "/").replace(/"/g, '\\"');
+			const command = `!sh -c 'count=$(cat "${escapedCounter}"); echo $((count + 1)) > "${escapedCounter}"; test -f "${escapedFlag}" && exit 1; echo token-$((count + 1))'`;
+			expect(resolveConfigValue(command)).toBe("token-1");
+			writeFileSync(flag, "");
+			vi.setSystemTime(Date.now() + 4.5 * 60_000);
+			expect(resolveConfigValue(command)).toBe("token-1");
+			await vi.waitFor(() => expect(readFileSync(counterFile, "utf-8").trim()).toBe("2"), { timeout: 5_000 });
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			expect(resolveConfigValue(command)).toBe("token-1");
+			// Expired: resolved again on the request path, and the failure is not cached.
+			rmSync(flag);
+			vi.setSystemTime(Date.now() + 60_000);
+			expect(resolveConfigValue(command)).toBe("token-3");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	test("does not cache environment values", () => {
 		process.env.TEST_CONFIG_DYNAMIC = "first";
 		try {

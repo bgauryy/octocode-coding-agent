@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { fenceUntrustedResults } from "../shared/untrusted-results.ts";
+import { fenceUntrustedResults } from "./untrusted-results.ts";
 import { applyClearedResults } from "./clearing.ts";
 
 /**

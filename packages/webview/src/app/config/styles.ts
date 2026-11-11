@@ -17,6 +17,12 @@ export const CONFIG_CSS = `/* Settings view */
 .config-edit select, .panel-header select { padding: 6px 10px; max-width: 100%; }
 .config-edit > p { flex-basis: 100%; margin: 0; }
 .config-methods { margin: 0; font-size: 12px; }
+.config-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.config-table th, .config-table td { padding: 6px 16px; text-align: start; vertical-align: top; border-bottom: 1px solid var(--border-soft); overflow-wrap: anywhere; }
+.config-table thead th { font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
+.config-table tbody tr:last-child > * { border-bottom: 0; }
+.config-table select { padding: 4px 8px; max-width: 100%; }
+.config-note { padding: 8px 16px 0; }
 .config-signin { display: grid; gap: 6px; }
 .config-signin-live { display: grid; gap: 6px; }
 .config-signin p { margin: 0; overflow-wrap: anywhere; }

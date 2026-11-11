@@ -8,25 +8,15 @@ The protocol client can run without an agent session and uses the official `@mod
 
 The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp` and `/mcp/oauth`; the testing helpers do not ship. Internal workspace exports resolve directly to source.
 
+coding-agent imports this workspace only through `src/api.ts`; a host file that needs another name adds it there. Other workspaces import the package `exports` by name. `yarn run check:mcp-boundary` fails on any other import into `src/` from outside it (tests may import private modules).
+
 The package provides a transport-neutral client core, stdio and Streamable HTTP transports, and an in-memory testing transport.
 
 The official SDK owns JSON-RPC validation, serialization, handshake, dispatch and Streamable HTTP framing. The stdio adapter retains host process supervision so environment isolation, bounded output and whole-process-group cleanup continue to work. HTTP wrappers enforce redirect and credential boundaries, body limits and cancellation. Legacy SSE configuration (`type: "sse"`) is rejected; use a Streamable HTTP endpoint.
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [configuration](../coding-agent/docs/configuration.md#where-each-configuration-belongs) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
-How tools reach the model (`declared`, `compact`, `json`), exposure and assignment are documented for users in the [MCP guide](../coding-agent/docs/mcp.md) and [MCP reference](../coding-agent/docs/mcp-reference.md#presentation-modes). Compact overrides apply only in `compact` mode; the `browser` preset ships optional ones (`src/presets/browser/compact-overrides.json`) and the research preset (`src/recommended/octocode.json`) ships none.
-
-### Preset overrides and the generate:compact command
-
-Each override is keyed on the upstream text it replaces: the server text on the hash of the instructions, a tool's description and trigger on the hash of its description, and every field on the hash of its description at a stable dotted path (`queries.limit`; array items and union variants are transparent). The hash covers that text only, so a rebuild of the server that reformats the schema, reorders fields, adds `$defs` or documents other fields leaves every override in force. An override whose upstream text changed, or whose tool or field is gone, is dropped for that field alone and the server's own text shows; `presetStatus` names it as `<tool>.<field>`, and the drift tests (`test/mcp-octocode-override-drift.test.ts`, `test/mcp-browser-override-drift.test.ts`) fail with that list. Overrides are optional: no test requires a tool to have one, only that none is stale and that every tool gets a valid one-line trigger (authored, or the first sentence of the server's description, as the runtime derives it). `octocode mcp compact apply` stores a server's own overrides in this same form, so the one resolver (`resolveServerFile`) reads both, the stored ones over the preset's, entry by entry.
-
-After the linked sibling `octocode-mcp` or the browser server is rebuilt, run one command:
-
-```sh
-yarn workspace @octocodeai/octocode-mcp run generate:compact [--drop-stale] [--accept <tool.field>]... [--accept-all] [--check]
-```
-
-It reads the catalogs the servers send (an empty home, with and without a classification key, as the drift tests read them), refreshes the Octocode catalog fixtures in `test/fixtures/compact/`, and prints each stale override with its upstream text before (from the previous fixtures) and after. `--drop-stale` is the default response to drift: it deletes every stale override (a stale description takes its trigger with it) and rewrites nothing, so the server's own text applies; external text is never re-worded to keep coverage. Read each one first if you want to keep it: if the override is still true, `--accept <tool.field>` re-points its hash; if the upstream meaning changed, edit its `text` in the JSON first, then accept it. `--accept-all` re-points every stale override and drops those whose field is gone; `--check` changes no file (with `--drop-stale` it lists what would go). The command exits 1 while an override stays stale. Then run `yarn run generate:prompts` in `packages/coding-agent`, which rewrites the rendered agent contexts, and check that `rendered/README.md` shows the `mcps` size and that the e2e prompt-size ceiling holds. Authoring new override text still goes through the `octocode-context-optimization` skill and `octocode mcp compact preset`, which prints the per-field form.
+How tools reach the model (`declared`, `compact`, `json`), exposure and assignment are documented for users in the [MCP guide](../coding-agent/docs/mcp.md) and [MCP reference](../coding-agent/docs/mcp-reference.md#presentation-modes). Octocode ships no description overrides: the model reads each server's own text. In `compact` mode a user can store overrides for their own servers (`octocode mcp compact apply`, the `octocode-context-optimization` skill); each is keyed on the hash of the upstream text it replaces, applies only while that text is unchanged and otherwise fails open to the server's text (`resolveServerFile`).
 
 ## Usage
 
@@ -150,10 +140,12 @@ An MCP transport owns framing and I/O. It delivers individual JSON-RPC messages 
 - stdio shutdown per the spec (close stdin, then SIGTERM, then SIGKILL), applied to the server's whole process group
 - server `ping` and `roots/list` requests
 - logging and tool-list-change notifications through the generic notification API
+- paginated `resources/list` and `resources/templates/list`, and `resources/read`, when the server declares `resources`
+- paginated `prompts/list` and `prompts/get`, when the server declares `prompts`
 - OAuth protected-resource and authorization-server discovery
 - PKCE authorization code flow, dynamic client registration, token refresh (one refresh shared by concurrent 401s), and step-up authorization for `insufficient_scope`
 
-The stateless `2026-07-28` protocol is not implemented. Batch JSON-RPC messages, server implementation, prompt discovery, sampling, elicitation, resources, annotations, and tasks are outside this client's supported surface. The coding-agent host's [MCP reference](../coding-agent/docs/mcp.md#host-and-protocol-support) describes its exposed features and conformance limits.
+The stateless `2026-07-28` protocol is not implemented. Batch JSON-RPC messages, server implementation, resource subscriptions, sampling, elicitation, annotations, and tasks are outside this client's supported surface. The coding-agent host's [MCP reference](../coding-agent/docs/mcp.md#host-and-protocol-support) describes its exposed features and conformance limits.
 
 ## Testing
 

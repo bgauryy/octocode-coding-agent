@@ -6,7 +6,7 @@ import { identityBlock } from "../../src/octocode/instructions/task.ts";
 import { shortPath } from "../../src/utils/display-path.ts";
 import { IDENTITY_ENTRY } from "../../src/octocode/subagents/identity-reminder.ts";
 import type { Identity } from "../../src/octocode/subagents/process/env.ts";
-import { reportStatus } from "../../src/octocode/subagents/report.ts";
+import { reportStatus } from "../../src/octocode/subagents/report-outcome.ts";
 import { admitResultSchema } from "../../src/octocode/subagents/result-schema.ts";
 import { type Fixture, fixture } from "./agent-context/capture.ts";
 import { assign, long, longTask, runChild } from "./agent-context/child-run.ts";

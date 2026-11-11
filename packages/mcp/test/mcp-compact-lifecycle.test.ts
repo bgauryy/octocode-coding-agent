@@ -9,7 +9,6 @@ import {
 	type CompactToolInput,
 	generatedDir,
 	mergeOverrides,
-	parsePresetOverrides,
 	presetOverridesFor,
 	readGenerated,
 	renderServer,
@@ -68,11 +67,18 @@ describe("generated file lifecycle", () => {
 	});
 
 	it("drops only the override that fails its check, never the others", () => {
-		const preset = {
+		const own = {
 			server: "Short server text.",
 			tools: { a: "Rewritten a.", b: "See https://example.invalid for b." },
 		};
-		const file = resolveServerFile(generatedDir(tmp()), "s", input, { preset });
+		const dir = generatedDir(tmp());
+		writeGenerated(dir, "s", renderServer(input, own), {
+			hash: "another catalog",
+			generatorVersion: COMPACT_GENERATOR_VERSION,
+			authored: toPresetOverrides(own, input),
+			generatedAt: "2026-10-28T00:00:00.000Z",
+		});
+		const file = resolveServerFile(dir, "s", input);
 		expect(file.meta.overrides).toEqual({ server: "Short server text.", tools: { a: "Rewritten a." } });
 		expect(file.text).toContain("Rewritten a.");
 		expect(file.text).not.toContain("example.invalid");
@@ -132,28 +138,6 @@ describe("generated file lifecycle", () => {
 		expect(back.meta.overrides).toEqual(overrides);
 	});
 
-	it("lets a new preset reach every entry the stored overrides do not replace", () => {
-		const dir = generatedDir(tmp());
-		const own = { tools: { a: "Writer a." } };
-		writeGenerated(dir, "s", renderServer(input, own), {
-			hash: catalogHash(input),
-			generatorVersion: COMPACT_GENERATOR_VERSION,
-			overrides: own,
-			authored: toPresetOverrides(own, input),
-			generatedAt: "2026-10-28T00:00:00.000Z",
-		});
-		const old = { tools: { a: "Old a.", b: "Old b." } };
-		expect(resolveServerFile(dir, "s", input, { preset: old }).meta.overrides?.tools).toEqual({
-			a: "Writer a.",
-			b: "Old b.",
-		});
-		const next = { tools: { a: "New a.", b: "New b." } };
-		expect(resolveServerFile(dir, "s", input, { preset: next }).meta.overrides?.tools).toEqual({
-			a: "Writer a.",
-			b: "New b.",
-		});
-	});
-
 	it("keys the overrides of a file written before they were keyed, by its tool and instruction hashes", () => {
 		const dir = generatedDir(tmp());
 		const legacy = {
@@ -177,45 +161,41 @@ describe("generated file lifecycle", () => {
 		expect(resolveServerFile(dir, "s", catalog([tool("a"), tool("c")])).meta.overrides).toBeUndefined();
 	});
 
-	it("renders again when the preset's overrides change for an unchanged catalog", () => {
-		const dir = generatedDir(tmp());
-		const preset = (text: string) => ({ tools: { a: text } });
-		expect(resolveServerFile(dir, "s", input, { preset: preset("Preset a one.") }).text).toContain(
-			"/** Preset a one. */",
-		);
-		const changed = resolveServerFile(dir, "s", input, { preset: preset("Preset a two.") });
-		expect(changed.rendered).toBe(true);
-		expect(changed.text).toContain("/** Preset a two. */");
-		expect(changed.meta.overrides).toEqual(preset("Preset a two."));
-		expect(resolveServerFile(dir, "s", input, { preset: preset("Preset a two.") }).rendered).toBe(false);
-	});
-
-	it("replaces a file an earlier release rendered from its preset alone", () => {
-		const dir = generatedDir(tmp());
+	// Contract change: Octocode ships no overrides, so a file an earlier release rendered with its own is rendered again
+	// from the server's text.
+	it("replaces a file an earlier release rendered from the overrides it shipped", () => {
 		const old = { tools: { a: "Old preset a." } };
-		writeGenerated(dir, "s", renderServer(input, old), {
-			hash: catalogHash(input),
-			generatorVersion: COMPACT_GENERATOR_VERSION,
-			overrides: old,
-			optimizedBy: { model: "preset", at: "2026-10-28T00:00:00.000Z" },
-			generatedAt: "2026-10-28T00:00:00.000Z",
-		});
-		const file = resolveServerFile(dir, "s", input, { preset: { tools: { a: "New preset a." } } });
-		expect(file.meta.overrides).toEqual({ tools: { a: "New preset a." } });
-		expect(file.text).not.toContain("Old preset a.");
+		const optimizedBy = { model: "preset", at: "2026-10-28T00:00:00.000Z" };
+		for (const marks of [{ presetHash: "abc", optimizedBy }, { optimizedBy }]) {
+			const dir = generatedDir(tmp());
+			writeGenerated(dir, "s", renderServer(input, old), {
+				hash: catalogHash(input),
+				generatorVersion: COMPACT_GENERATOR_VERSION,
+				overrides: old,
+				generatedAt: "2026-10-28T00:00:00.000Z",
+				...marks,
+			});
+			const file = resolveServerFile(dir, "s", input);
+			expect(file.rendered).toBe(true);
+			expect(file.text).toBe(renderServer(input));
+			expect(file.meta.overrides).toBeUndefined();
+			expect(file.meta.presetHash).toBeUndefined();
+			expect(file.meta.optimizedBy).toBeUndefined();
+			expect(resolveServerFile(dir, "s", input).rendered).toBe(false);
+		}
 	});
 
-	it("keeps stored overrides a writer made over a changed preset", () => {
+	it("keeps the overrides a writer stored in a file an earlier release rendered with shipped ones too", () => {
 		const dir = stored(input);
-		const file = resolveServerFile(dir, "s", input, {
-			preset: { server: "Preset server.", tools: { a: "Preset a." } },
-		});
+		const before = readGenerated(dir, "s")!;
+		writeGenerated(dir, "s", before.text, { ...before.meta, presetHash: "abc" });
+		const file = resolveServerFile(dir, "s", input);
 		expect(file.rendered).toBe(true);
 		expect(file.meta.overrides).toEqual(overrides);
 		expect(file.meta.optimizedBy?.model).toBe("writer");
 	});
 
-	it("puts stored overrides over the preset's, entry by entry", () => {
+	it("merges overrides entry by entry, the later ones on top", () => {
 		expect(
 			mergeOverrides(
 				{ tools: { a: "Preset a.", b: "Preset b." }, fields: { a: { text: "Preset." } } },
@@ -235,16 +215,22 @@ describe("triggers", () => {
 	});
 
 	it("become the description of the thin declaration, else the rewritten first sentence", () => {
-		const presentation = new McpPresentation({
-			agentDir: tmp,
-			mode: () => "compact",
-			presetOverrides: () => ({ tools: { a: "Rewritten a. More.", b: "Rewritten b." }, triggers: { a: "Use for a." } }),
-		});
-		presentation.sync("s", "s", undefined, [
+		const agentDir = tmp();
+		const tools = [
 			{ name: "a", description: "Source a.", inputSchema: { type: "object" } },
 			{ name: "b", description: "Source b.", inputSchema: { type: "object" } },
 			{ name: "c", description: "Source c. More.", inputSchema: { type: "object" } },
-		]);
+		];
+		// The overrides the user stored for the server (`octocode mcp compact apply`).
+		const own = { tools: { a: "Rewritten a. More.", b: "Rewritten b." }, triggers: { a: "Use for a." } };
+		writeGenerated(generatedDir(agentDir), "s", "", {
+			hash: "another catalog",
+			generatorVersion: COMPACT_GENERATOR_VERSION,
+			authored: toPresetOverrides(own, { server: "s", tools }),
+			generatedAt: "2026-10-28T00:00:00.000Z",
+		});
+		const presentation = new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" });
+		presentation.sync("s", "s", undefined, tools);
 		presentation.describe("s", ["a", "b", "c"], undefined, true);
 		expect(presentation.summary("s", "a")).toBe("Use for a.");
 		expect(presentation.summary("s", "b")).toBe("Rewritten b.");
@@ -265,7 +251,7 @@ describe("triggers", () => {
 	});
 });
 
-describe("preset overrides", () => {
+describe("stored overrides", () => {
 	const input = catalog([tool("a"), tool("b")]);
 
 	it("round-trip through the per-field form and keep the overrides of unchanged texts only", () => {
@@ -277,22 +263,6 @@ describe("preset overrides", () => {
 			tools: { a: "Rewritten a." },
 			triggers: { a: "Use to do a; for b use b." },
 			fields: { a: { text: "The a text." } },
-		});
-	});
-
-	it("reject unknown keys and malformed entries", () => {
-		expect(parsePresetOverrides({ catalogHash: "x" })).toEqual({ error: "unknown key catalogHash" });
-		expect(parsePresetOverrides({ tools: { a: { description: "No hash." } } })).toEqual({
-			error: 'tools.a: needs a "descriptionHash" string',
-		});
-		expect(parsePresetOverrides({ tools: { a: { fields: { text: { text: "No hash." } } } } })).toEqual({
-			error: 'tools.a.fields.text: needs "upstream" hash(es) and a "text" string',
-		});
-		expect(parsePresetOverrides({ server: { text: "No hash." } })).toEqual({
-			error: '"server" needs "instructionsHash" and "text" strings',
-		});
-		expect(parsePresetOverrides(toPresetOverrides(overrides, input))).toEqual({
-			overrides: toPresetOverrides(overrides, input),
 		});
 	});
 });

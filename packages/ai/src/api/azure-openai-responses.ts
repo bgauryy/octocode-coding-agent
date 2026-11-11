@@ -3,7 +3,6 @@ import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -22,16 +21,15 @@ import {
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { resolveOpenAIResponsesCacheFields } from "./openai-prompt-cache.ts";
 import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
-import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
+import { assertStreamCompleted, stripStreamScratch } from "./stream-finalize.ts";
 import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "./openai-responses-shared/messages.ts";
 import { processResponsesStream } from "./openai-responses-shared/stream-processing.ts";
 import { convertResponsesTools, getResponsesToolSupport } from "./openai-responses-shared/tools.ts";
+import { OPENAI_RESPONSES_MIN_OUTPUT_TOKENS } from "./openai-responses-shared/types.ts";
 import type { ResponsesRequest } from "./openai-responses/types.ts";
-import { buildBaseOptions, resolveSamplingParams } from "./simple-options.ts";
+import { buildBaseOptions, requestedReasoningEffort, resolveSamplingParams } from "./simple-options.ts";
 
 const AZURE_TOOL_CALL_PROVIDERS = new Set([...RESPONSES_TOOL_CALL_PROVIDERS, "azure"]);
-// OpenAI Responses rejects max_output_tokens below 16.
-const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 function formatAzureOpenAIError(error: unknown): string {
 	return formatProviderError(normalizeProviderError(error), "Azure OpenAI API error");
@@ -89,12 +87,12 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 				grammarToolInputProperties,
 			});
 
-			assertResponsesStreamCompleted(output, options?.signal, "Azure OpenAI Responses");
+			assertStreamCompleted(output, options?.signal, "Azure OpenAI Responses");
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			stripResponsesStreamScratch(output);
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatAzureOpenAIError(error);
 			const retryAfterMs = retryAfterMsFromError(error);
@@ -121,8 +119,7 @@ export const streamSimple: StreamFunction<"azure-openai-responses", SimpleStream
 		...buildBaseOptions(model, context, options, apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies AzureOpenAIResponsesOptions;
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	const reasoningEffort = requestedReasoningEffort(model, options);
 
 	return stream(model, context, {
 		...base,
@@ -200,7 +197,9 @@ function buildParams(
 		// Microsoft documents the breakpoint as `{"mode": "explicit"}` with the TTL set request-wide; 30m is the default.
 		omitBreakpointTtl: true,
 		instructionCacheBoundary: options?.instructionCacheBoundary,
+		instructionVolatileBoundary: options?.instructionVolatileBoundary,
 		grammarToolInputProperties,
+		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
 		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
 		supportsAdditionalTools,
 		supportsToolSearch,

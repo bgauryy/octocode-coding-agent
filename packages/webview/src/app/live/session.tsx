@@ -255,7 +255,16 @@ export function LiveProvider({
 				.getState()
 				.accept({ ...merged, events: interner.intern(latestProgress(settleToolStarts(merged.events))) });
 		};
-		const publish = frameScheduler(() => publishNow(live.session.getState().application?.sessionId));
+		// The newest application state that has not reached the session store yet. Every frame is projected at once, so
+		// first-seen times (thinking time, row order) stay exact; only the store update, and the React work it starts,
+		// waits for the next animation frame.
+		let pending: { application: ApplicationSnapshot | undefined } | undefined;
+		const publish = frameScheduler(() => {
+			const next = pending;
+			pending = undefined;
+			publishNow(next ? next.application?.sessionId : live.session.getState().application?.sessionId);
+			if (next) live.session.setState({ application: next.application, run: projection.run });
+		});
 		const connection = new BrowserConnection(access, {
 			workspace: (snapshot) => {
 				const applicationSessionId = live.session.getState().application?.sessionId;
@@ -278,8 +287,7 @@ export function LiveProvider({
 			},
 			status: (text) => live.session.setState({ status: { tone: connectionTone(text), text } }),
 			application: (stream, frame) => {
-				if (frame.type === "snapshot" || (frame.type === "event" && frame.event.type === "session.reset"))
-					live.session.setState((state) => ({ historyRevision: state.historyRevision + 1 }));
+				const reset = frame.type === "snapshot" || (frame.type === "event" && frame.event.type === "session.reset");
 				const application = stream.snapshot;
 				projected = projection.update(application, stream.at);
 				if (application && domain.sessionId !== application.sessionId) {
@@ -289,7 +297,17 @@ export function LiveProvider({
 							: { sessionId: application.sessionId, agents: [], traffic: [], events: [], receipts: [] };
 					pendingDomain = undefined;
 				}
-				if (application && live.workspace.getState().snapshot?.sessionId !== application.sessionId) {
+				const switching =
+					application !== undefined && live.workspace.getState().snapshot?.sessionId !== application.sessionId;
+				if (!reset && !switching) {
+					// Token deltas and tool progress coalesce into one store update per frame.
+					pending = { application };
+					publish.schedule();
+					return;
+				}
+				pending = undefined;
+				if (reset) live.session.setState((state) => ({ historyRevision: state.historyRevision + 1 }));
+				if (switching) {
 					// Clear the previous session's drafts before its replacement composer becomes available.
 					// Delaying this reset until the next frame can erase text typed into that new composer.
 					publish.cancel();

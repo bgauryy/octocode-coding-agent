@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { isLoopbackHostname } from "../shared/net.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import type { BacklogWeb, OpenBacklogWeb } from "./context.ts";
 import { acquireRegistryLock } from "./shared-web-lock.ts";
@@ -36,8 +37,7 @@ function extractAccessToken(url: string): string | undefined {
 function isLoopbackUrl(url: string): boolean {
 	try {
 		const u = new URL(url);
-		if (u.protocol !== "http:") return false;
-		return u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]" || u.hostname === "::1";
+		return u.protocol === "http:" && isLoopbackHostname(u.hostname);
 	} catch {
 		return false;
 	}

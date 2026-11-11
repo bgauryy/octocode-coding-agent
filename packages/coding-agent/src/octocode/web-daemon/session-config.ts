@@ -2,9 +2,10 @@ import { randomBytes } from "node:crypto";
 import type { SessionConfig } from "../workspace/server.ts";
 import { createConfigRoutes } from "./config-factory.ts";
 import { handleConfigRequest } from "./config-routes.ts";
+import type { NativeToolsLive } from "./tool-exposure.ts";
 
 /** The one repository id the per-session page offers; the webview sends it back as `repoId`. */
-const SESSION_REPO_ID = "session";
+export const SESSION_REPO_ID = "session";
 
 /**
  * Settings routes for the per-session `/web` page. The page's single token is the launch capability, so the server
@@ -13,9 +14,15 @@ const SESSION_REPO_ID = "session";
 export function createSessionConfig(
 	repo: { name: string; root: string },
 	env: NodeJS.ProcessEnv = process.env,
+	/** This session's native tools, which the Tools panel lists with what the session declared of each. */
+	nativeTools?: () => NativeToolsLive,
 ): SessionConfig {
 	const nonce = randomBytes(4).toString("hex");
-	const { routes, signIns } = createConfigRoutes({ env, actor: () => `web:${nonce}` });
+	const { routes, signIns } = createConfigRoutes({
+		env,
+		actor: () => `web:${nonce}`,
+		...(nativeTools ? { nativeTools } : {}),
+	});
 	const catalog = {
 		resolve: (id: string) =>
 			id === SESSION_REPO_ID ? { id, name: repo.name, root: repo.root, sessions: 1 } : undefined,

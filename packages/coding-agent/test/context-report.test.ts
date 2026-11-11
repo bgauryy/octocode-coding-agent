@@ -146,6 +146,7 @@ it("suggests /context all only while contributors are folded into 'Other contrib
 			estimatedTotal: 10,
 			difference: 0,
 			note: "n",
+			warnings: [],
 			contributors: Array.from({ length: count }, (_, index) => ({ name: `part ${index}`, tokens: index + 1 })),
 		}) as never;
 	expect(renderContextReport(report(12))).toContain("Use /context all");
@@ -166,6 +167,7 @@ it("leads with the total in use, free space and distance to compaction, and tota
 		catalogCapacity: 200_000,
 		difference: 0,
 		note: "n",
+		warnings: [],
 		contributors: [
 			{ name: "System instructions", tokens: 10_000 },
 			{ name: "user messages", tokens: 40_000 },
@@ -193,4 +195,47 @@ it("leads with the total in use, free space and distance to compaction, and tota
 	expect(renderContextReport({ ...base, currentTokens: 180_000 })).toContain(
 		"Above the compaction threshold (175,000 tokens): the next request may compact eligible history first.",
 	);
+});
+
+it("warns when one MCP server's instructions or the context files pass 1% of the window, and cuts nothing", async () => {
+	const harness = await createHarness();
+	try {
+		const { session, sessionManager } = harness;
+		const block = (name: string, body: string) => `<mcp name="${name}" tools="mcp__${name}__*">\n${body}\n</mcp>`;
+		const typed = `/** ${"i".repeat(900)} */\ndeclare namespace typed {\n/** ${"d".repeat(5_000)} */\nfunction t(): void;\n}`;
+		const mcps = [
+			"Each block is one MCP server's instructions.",
+			block("big", "b".repeat(801)),
+			block("fits", "f".repeat(800)),
+			// A block with typed functions counts its instructions only.
+			block("typed", typed),
+			block("typed-small", typed.replace("i".repeat(900), "short")),
+		].join("\n");
+		const projectContext = "c".repeat(1_200);
+		sessionManager.appendMessage({
+			role: "system",
+			content: "base",
+			sections: { mcps, project_context: projectContext, policy: "p".repeat(5_000) },
+			timestamp: 1,
+		});
+		// A 20,000-token window: 1% is 200 tokens, 800 characters.
+		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 20_000 });
+		const report = contextReport(session);
+		expect(report.warnings).toEqual([
+			"MCP server typed instructions over budget: 900 chars > 800 budget (1% of the context window). Nothing is cut. Shorten them in the server, or override them for this install (`octocode mcp compact --help`).",
+			"MCP server big instructions over budget: 801 chars > 800 budget (1% of the context window). Nothing is cut. Shorten them in the server, or override them for this install (`octocode mcp compact --help`).",
+			"Context files over budget: 1200 chars > 800 budget (1% of the context window). Nothing is cut. Keep the rules every task needs, and move the rest into files the agent reads when it needs them.",
+		]);
+		const text = renderContextReport(report);
+		expect(text.split("\n\n")[1]).toBe(report.warnings.map((warning) => `Warning: ${warning}`).join("\n"));
+		// The report only measures: the sections are counted whole, as before.
+		expect(report.contributors.find((row) => row.name === "Instruction section: mcps")?.tokens).toBeGreaterThan(1_500);
+
+		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 200_000 });
+		const roomy = contextReport(session);
+		expect(roomy.warnings).toEqual([]);
+		expect(renderContextReport(roomy)).not.toContain("Warning:");
+	} finally {
+		harness.cleanup();
+	}
 });

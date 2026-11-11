@@ -22,21 +22,26 @@ import { readPaths } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
+import { cachePrices, clearingPays, expectedRemainingRequests } from "./clearing-cost.ts";
 
 /**
- * Clearing old tool results after the prompt cache went cold.
+ * Clearing old tool results when that costs less than re-sending them.
  *
- * Clearing a result while the cache is warm makes the next request rewrite the whole cache entry. After an idle gap
- * longer than the entry's lifetime the next request rewrites it anyway, so clearing then costs nothing and shrinks every
- * later request. So before a request, whether it starts a run or follows a long tool inside one, when the cache was
- * last used (the last reply, or a refresh by Octocode's warmer) longer ago than its lifetime, the old results of tools whose
- * output can be fetched again are replaced by a placeholder, keeping the newest `KEEP_RECENT_RESULTS`, and only when
- * that frees at least `CLEAR_AT_LEAST_TOKENS`. Once the request is made the cache is warm again, so the same check
- * clears nothing more until the next gap. A repeated-read note (`files/dedupe`) that points at a cleared
- * result gets the same placeholder, so it never points "above" at text that is gone.
+ * Before every request, whether it starts a run or follows a tool inside one, the old results of tools whose output can
+ * be fetched again are replaced by a placeholder, keeping the newest `KEEP_RECENT_RESULTS`, when they total at least
+ * `CLEAR_AT_LEAST_TOKENS` and either:
  *
- * Nothing is lost: each result's whole text is saved first and the placeholder names the file (a `bash` result already
- * has one: Octocode's spill file of the command's whole output); a result that cannot be saved stays. The decision is a session entry (`CLEARED_RESULTS_TYPE`) that every request applies the same way
+ * - the request rewrites the cache anyway: it was last used (the last reply, or a refresh by Octocode's warmer) longer
+ *   ago than its lifetime, the model changed, or a system update folds into the leading prompt; or
+ * - clearing pays while the cache is warm: the cost of re-sending the old results over the requests still expected
+ *   exceeds the one-time cache write clearing causes (`clearing-cost.ts` holds the formula and its inputs).
+ *
+ * A repeated-read note (`files/dedupe`) that points at a cleared result gets the same placeholder, so it never points
+ * "above" at text that is gone.
+ *
+ * Nothing is lost: each result's whole text is saved first and the placeholder names the file (a `bash` result whose
+ * output Octocode spilled already has one, holding the command's whole output); a result that cannot be saved stays.
+ * The decision is a session entry (`CLEARED_RESULTS_TYPE`) that every request applies the same way
  * (`applyClearedResults`), so the prompt stays byte-stable between requests and survives a resume, reload or fork.
  */
 
@@ -47,8 +52,8 @@ export const CLEAR_AT_LEAST_TOKENS = 20_000;
 
 /**
  * `web` and every MCP tool result (`isMcpToolName`): its whole text is saved to a file before it is cleared, and the
- * placeholder names that file. Never `file` or `agent`; `bash` only for a read-only command whose output was spilled to a
- * file (`spilledBash`).
+ * placeholder names that file. Never `file` or `agent`; `bash` only for a read-only command (`readOnlyBash`), saved the
+ * same way unless Octocode already spilled its whole output to a file.
  * `read`, `grep`, `find` and `ls` are no longer Octocode tools; they stay for resumed transcripts of other hosts that
  * hold their results, and for custom tools that still use those names.
  */
@@ -58,15 +63,20 @@ const PLACEHOLDER_START = "[Old tool result cleared";
 
 /** What stands for a cleared result; `saved` is where `saveContentCopy` put its whole text. */
 function clearedPlaceholder(saved: string): string {
-	return `${PLACEHOLDER_START} after the prompt cache expired. Full output: ${saved}. Read that file, or run the call again.]`;
+	return `${PLACEHOLDER_START} to save context. Full output: ${saved}. Read that file, or run the call again.]`;
 }
+
+/** About what one placeholder costs in tokens (its saved path is not known before the decision). */
+const PLACEHOLDER_TOKENS = Math.ceil(clearedPlaceholder("x".repeat(120)).length / CHARS_PER_TOKEN);
 
 interface Candidate {
 	id: string;
 	tool: string;
 	text: string;
-	/** Where the whole text is saved already (a `bash` result's spill file); otherwise it is saved when cleared. */
-	saved?: string;
+	/** The result's position in the context's messages. */
+	index: number;
+	/** A `bash` result's spill file, when Octocode saved its whole output; otherwise the text is saved when cleared. */
+	spilled?: string;
 }
 
 /** The repeated-read note behind a result (`details.unchangedOf`: the call it points at), if it is one. */
@@ -75,29 +85,29 @@ function noteOf(message: Record<string, unknown>): string | undefined {
 	return typeof unchangedOf === "string" ? unchangedOf : undefined;
 }
 
-/**
- * The file holding the whole output of a `bash` result, when the result may be cleared: its command is read-only
- * (`readOnlyCommand`, so repeating it is harmless) and Octocode spilled its output to a file that still exists. A result
- * with no saved file keeps its text: clearing it would drop the only copy.
- */
-function spilledBash(
-	message: Record<string, unknown>,
-	calls: ReadonlyMap<string, Record<string, unknown>>,
-): string | undefined {
-	const command = calls.get(String(message.toolCallId))?.command;
-	const spilled = isRecord(message.details) ? message.details.fullOutputPath : undefined;
-	return typeof command === "string" &&
-		readOnlyCommand(command) &&
-		typeof spilled === "string" &&
-		fs.existsSync(spilled)
-		? shortPath(spilled)
-		: undefined;
+/** Commands already judged by `readOnlyCommand`, which parses the shell line: every request asks again for the same calls. */
+const readOnlyJudged = new Map<string, boolean>();
+const JUDGED_LIMIT = 4_096;
+
+/** Whether a `bash` call may be cleared: its command is read-only (`readOnlyCommand`), so repeating it is harmless. */
+function readOnlyBash(args: Record<string, unknown> | undefined): boolean {
+	const command = args?.command;
+	if (typeof command !== "string") return false;
+	const shell = args?.type === "powershell" ? "powershell" : "bash";
+	const key = `${shell}\0${command}`;
+	let judged = readOnlyJudged.get(key);
+	if (judged === undefined) {
+		if (readOnlyJudged.size >= JUDGED_LIMIT) readOnlyJudged.clear();
+		judged = readOnlyCommand(command, shell);
+		readOnlyJudged.set(key, judged);
+	}
+	return judged;
 }
 
 /** Successful results of clearable tools that show only text and are not placeholders or repeated-read notes, oldest first. */
 function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 	const calls = toolCallArguments(messages);
-	return messages.flatMap(({ message }) => {
+	return messages.flatMap(({ message }, index) => {
 		if (
 			!isRecord(message) ||
 			message.role !== "toolResult" ||
@@ -107,30 +117,25 @@ function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 		)
 			return [];
 		const tool = String(message.toolName);
-		const saved = tool === "bash" ? spilledBash(message, calls) : undefined;
-		const text =
-			CLEARABLE_TOOLS.has(tool) || isMcpToolName(tool) || saved !== undefined ? plainText(message.content) : undefined;
-		return text !== undefined && !text.startsWith(PLACEHOLDER_START)
-			? [{ id: message.toolCallId, tool, text, ...(saved === undefined ? {} : { saved }) }]
-			: [];
+		const bash = tool === "bash" && readOnlyBash(calls.get(message.toolCallId));
+		const text = CLEARABLE_TOOLS.has(tool) || isMcpToolName(tool) || bash ? plainText(message.content) : undefined;
+		if (text === undefined || text.startsWith(PLACEHOLDER_START)) return [];
+		const spilled = bash && isRecord(message.details) ? message.details.fullOutputPath : undefined;
+		return [{ id: message.toolCallId, tool, text, index, ...(typeof spilled === "string" ? { spilled } : {}) }];
 	});
 }
 
-/** The results to clear: all but the newest `KEEP_RECENT_RESULTS` not yet cleared, if they total `CLEAR_AT_LEAST_TOKENS`. */
+/** All but the newest `KEEP_RECENT_RESULTS` results not yet cleared. */
 function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<string, string>): Candidate[] {
 	const open = candidates.filter((candidate) => !cleared.has(candidate.id));
-	const older = open.slice(0, Math.max(open.length - KEEP_RECENT_RESULTS, 0));
-	return older.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN >= CLEAR_AT_LEAST_TOKENS
-		? older
-		: [];
+	return open.slice(0, Math.max(open.length - KEEP_RECENT_RESULTS, 0));
 }
 
-/**
- * Share of the working context past which a request that rewrites the prefix anyway (a model switch, a cold cache, or
- * a system update that the model's transcript folds into the leading prompt) clears old results first: the rewrite is paid regardless, so the clearing costs nothing extra, and the
- * smaller history is read back cheaper on every request that follows.
- */
-const CLEAR_ABOVE_CONTEXT_SHARE = 0.5;
+/** Where a result's whole text is: Octocode's spill file of a `bash` command when it still exists, else a copy saved now. */
+function savedCopy(candidate: Candidate): string | undefined {
+	if (candidate.spilled !== undefined && fs.existsSync(candidate.spilled)) return shortPath(candidate.spilled);
+	return saveContentCopy(candidate.text, `cleared-${candidate.tool}`);
+}
 
 /**
  * Whether the request about to be made rewrites the history's cache entry anyway: the way the model's transcript is
@@ -154,21 +159,23 @@ export function prefixRewritten(
 	return false;
 }
 
-/** What else, besides a cold cache, lets a request clear old results: see `clearStaleResults`. */
+/** What the request about to be made tells the clearing decision besides the cache clock: see `clearStaleResults`. */
 export interface ClearingOccasion {
 	/** The request rewrites the prefix anyway (`prefixRewritten`). */
 	rewrite?: boolean;
 	/** The working context in tokens (the model's window after the session's context budget). */
 	contextWindow?: number;
+	/** The context's size in tokens as the last reply reported it; else estimated from the messages. */
+	contextTokens?: number;
 }
 
 /**
- * Clears the old results when the cache lifetime `ttlMs` has passed since the cache was last used (`now`), or when the
- * request rewrites the prefix anyway (`occasion.rewrite`) and the context is past `CLEAR_ABOVE_CONTEXT_SHARE` of its
- * window: saves each, records the decision with `api.appendEntry`, and makes the file guard forget the files whose read
- * was cleared and that no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a
- * resume). Does nothing when neither applies, the session has no reply yet, or less than `CLEAR_AT_LEAST_TOKENS` would
- * be freed.
+ * Clears the old results when the request rewrites the cache anyway (the lifetime `ttlMs` has passed since the cache
+ * was last used at `now`, or `occasion.rewrite`), or when clearing pays while it is warm (`clearingPays`): saves each,
+ * records the decision with `api.appendEntry`, and makes the file guard forget the files whose read was cleared and that
+ * no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a resume). Does nothing
+ * when neither applies, the session has no reply yet, the model's cache lifetime is unknown and nothing rewrites the
+ * cache, or less than `CLEAR_AT_LEAST_TOKENS` would be freed.
  */
 export function clearStaleResults(
 	api: Pick<ExtensionAPI, "appendEntry">,
@@ -179,26 +186,34 @@ export function clearStaleResults(
 	now = Date.now(),
 ): void {
 	if (cacheClock(ctx.sessionManager).useAt === undefined) return;
-	const cold = cacheCold(ctx.sessionManager, ttlMs, now);
+	const rewriteAnyway = cacheCold(ctx.sessionManager, ttlMs, now) || occasion.rewrite === true;
+	// Without a known lifetime there is no cache to price: only a rewrite that happens anyway clears.
+	if (ttlMs === undefined && !rewriteAnyway) return;
 	const messages = contextMessages(ctx);
-	const crowded =
-		occasion.rewrite === true &&
-		occasion.contextWindow !== undefined &&
-		messages.reduce((sum, { message }) => sum + estimateTokens(message as never), 0) >
-			occasion.contextWindow * CLEAR_ABOVE_CONTEXT_SHARE;
-	if (!cold && !crowded) return;
 	const older = olderResults(clearableResults(messages), sessionCleared(ctx.sessionManager));
-	if (older.length === 0) return;
+	const tokensOf = (list: readonly Candidate[]) =>
+		list.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN;
+	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
+	if (tokensOf(older) < CLEAR_AT_LEAST_TOKENS) return;
+	const tokens = messages.map(({ message }) => estimateTokens(message as never));
+	const requests = messages.filter(({ message }) => isRecord(message) && message.role === "assistant").length;
+	const contextTokens = occasion.contextTokens ?? tokens.reduce((sum, each) => sum + each, 0);
+	const prices = cachePrices(ctx.model, ttlMs ?? 0);
+	const remainingRequests = expectedRemainingRequests(requests, contextTokens, occasion.contextWindow);
+	const pays = (list: readonly Candidate[]): boolean => {
+		const oldTokens = tokensOf(list);
+		if (list.length === 0 || oldTokens < CLEAR_AT_LEAST_TOKENS) return false;
+		const suffix = tokens.slice(list[0].index).reduce((sum, each) => sum + each, 0);
+		const suffixTokensAfter = Math.max(0, suffix - oldTokens) + list.length * PLACEHOLDER_TOKENS;
+		return clearingPays({ oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway });
+	};
+	if (!pays(older)) return;
 	const saved = older.flatMap((candidate) => {
-		const file = candidate.saved ?? saveContentCopy(candidate.text, `cleared-${candidate.tool}`);
+		const file = savedCopy(candidate);
 		return file ? [{ candidate, file }] : [];
 	});
-	// Results that could not be saved stay; too few left to matter leaves the saved copies unused.
-	if (
-		saved.reduce((chars, { candidate }) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN <
-		CLEAR_AT_LEAST_TOKENS
-	)
-		return;
+	// Results that could not be saved stay; if what is left no longer pays, the saved copies stay unused.
+	if (!pays(saved.map(({ candidate }) => candidate))) return;
 	const results = saved.map(({ candidate, file }) => ({ id: candidate.id, saved: file }));
 	// Notes pointing at a result cleared now or earlier take that result's placeholder.
 	const savedOf = new Map([

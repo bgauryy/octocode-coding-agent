@@ -142,6 +142,16 @@ export class SessionRegistry {
 		return link?.client?.connected ? { record: link.record, client: link.client } : undefined;
 	}
 
+	/**
+	 * Tells every attached session of the repository `repoKey` that the daemon changed its board, so each repaints its
+	 * footer counts. Fire and forget: a session that does not answer (an older build) keeps its counts until its next run.
+	 */
+	boardChanged(repoKey: string): void {
+		for (const link of this.links.values())
+			if (link.client?.connected && link.record.repo.key === repoKey)
+				void link.client.boardChanged().catch(() => undefined);
+	}
+
 	/** Sessions with a live attach connection: the ones that need the user first, then the busy ones, newest first. */
 	list(): DaemonSession[] {
 		return [...this.links.values()]

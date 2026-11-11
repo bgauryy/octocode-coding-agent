@@ -4,7 +4,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { openFile } from "./open.ts";
+import { openTarget } from "../../../../common/src/open-target.ts";
 import { processAlive } from "../shared/process.ts";
 
 /** Prefix of every temporary browser profile; the stale cleanup removes only directories that carry it. */
@@ -222,7 +222,7 @@ export function createAppWindow(options: AppWindowOptions = {}): AppWindow {
 
 	return {
 		async open(url) {
-			const openDefault = options.openDefault ?? openFile;
+			const openDefault = options.openDefault ?? openTarget;
 			if ((options.mode?.() ?? "app") === "browser") {
 				await openDefault(url);
 				return undefined;

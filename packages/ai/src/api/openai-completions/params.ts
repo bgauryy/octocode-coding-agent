@@ -14,7 +14,7 @@ import {
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
 import { isOpenAIExplicitCacheModel } from "../../utils/cache-capabilities.ts";
-import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { promptCacheKeyRule } from "../../models/capabilities.ts";
 import { matchesHost } from "../../utils/provider-host.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
@@ -157,7 +157,11 @@ export function buildParams(
 	if (cacheControl || instructionCacheControl) {
 		const initialSystemMessage = getInitialSystemMessage(context.messages);
 		const splitSystem = initialSystemMessage
-			? splitSystemMessageAtBoundary(initialSystemMessage, options?.instructionCacheBoundary)
+			? splitSystemMessageIntoBlocks(
+					initialSystemMessage,
+					options?.instructionCacheBoundary,
+					options?.instructionVolatileBoundary,
+				)
 			: undefined;
 		applyAnthropicCacheControl(messages, params.tools, cacheControl, instructionCacheControl, splitSystem);
 	}

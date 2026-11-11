@@ -5,7 +5,7 @@ import { withIdentity } from "../instructions/task.ts";
 import type { Permission } from "../permission/ask.ts";
 import { assignmentText, parentArchive } from "./identity-reminder.ts";
 import { modelLookup, textResult } from "../shared/util.ts";
-import { getMcpSessionHandoff } from "../../../../mcp/src/session-servers.ts";
+import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import { checkGoal } from "../team/identity.ts";
 import { launchOverlap } from "../team/overlap.ts";
 import { type AgentRuns, claimRun, planRun, type Run } from "./claim.ts";
@@ -15,7 +15,7 @@ import type { SubagentOutcome } from "./process/outcome.ts";
 import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
 import { type AgentProfile, askSpawn } from "./profiles.ts";
 import { startGate } from "./rate-gate.ts";
-import { staggeredLaunch } from "./stagger.ts";
+import { type StaggerTurn, staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, waitingText } from "./reservation.ts";
@@ -27,6 +27,7 @@ import { resumableChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
+import { delegatedCostNote } from "./delegated-cost.ts";
 import { itemLink } from "./item-link.ts";
 import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
@@ -178,7 +179,14 @@ export async function spawnAgent(
 		claimed = claimRun(
 			runs,
 			plan,
-			{ ...params, goal, name: resumed?.child.id, sessionId: resumed?.session.id },
+			{
+				...params,
+				goal,
+				name: resumed?.child.id,
+				sessionId: resumed?.session.id,
+				// A resumed child keeps the hook mode its earlier call named unless this call names one.
+				hooks: params.hooks ?? resumed?.child.hooks,
+			},
 			ctx,
 			refs,
 			undefined,
@@ -200,7 +208,9 @@ export async function spawnAgent(
 			.then((note) => {
 				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
 				if (params.background && linked?.notice) runs.graph?.mark(run.identity.id, linked.notice);
-				return `${note}${lateNote}`;
+				// A run that reported may take delegated cost past a new multiple of this session's own: its report says so.
+				const cost = outcome ? delegatedCostNote(runs, ctx.sessionManager.getEntries(), outcome.usage.cost.total) : "";
+				return `${note}${lateNote}${cost}`;
 			})
 			.finally(() => {
 				runs.live.delete(run.identity.id);
@@ -221,7 +231,8 @@ export async function spawnAgent(
 		run.identity.skillsInTask = skillPlan.inTask;
 		run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
 		// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
-		const { servers: addedServers, stopped } = getMcpSessionHandoff(api.events);
+		const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.events);
+		if (recent) run.identity.mcpRecent = recent;
 		const inherited = taskServers?.servers ?? addedServers;
 		if (Object.keys(inherited).length > 0) run.identity.mcpServers = inherited;
 		if (stopped.length > 0) run.identity.mcpStopped = stopped;
@@ -263,29 +274,44 @@ export async function spawnAgent(
 			const own = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
 			run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
 			const task = own;
-			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, warm?: () => void) => {
+			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, turn: StaggerTurn) => {
 				const tracked = track(update);
 				const progress: typeof tracked = (change) => {
-					if (change.responding) warm?.();
+					if (change.responding) turn.warm();
 					tracked(change);
 				};
+				// A runner waits whole for its turn; an Octocode child boots at once and holds back only its task (`turn.ready`).
+				const onRunner = async (name: string) => {
+					await turn.ready();
+					const outcome = await runRunnerChild(env.runners!, {
+						runner: name,
+						model: params.model,
+						// Referenced messages and reports, and the result contract, travel in the text: the runner reads nothing here.
+						task: childTaskInput(params.task, { referenced, browserMode: undefined, skillText: "", resultContract }),
+						cwd,
+						identity: run.identity,
+						signal: runSignal,
+						onProgress: progress,
+						onSpawn,
+						ctx,
+					});
+					details.billing = outcome.billing;
+					return outcome;
+				};
 				const work = runner
-					? runRunnerChild(env.runners!, {
-							runner,
-							model: params.model,
-							// Referenced messages and reports, and the result contract, travel in the text: the runner reads nothing here.
-							task: childTaskInput(params.task, { referenced, browserMode: undefined, skillText: "", resultContract }),
+					? onRunner(runner)
+					: runSubagent({
+							task,
+							args,
 							cwd,
+							profile: run.profile,
 							identity: run.identity,
 							signal: runSignal,
 							onProgress: progress,
 							onSpawn,
-							ctx,
-						}).then((outcome) => {
-							details.billing = outcome.billing;
-							return outcome;
-						})
-					: runSubagent(task, args, cwd, run.profile, run.identity, runSignal, progress, onSpawn, undefined, host);
+							host,
+							ready: turn.ready,
+						});
 				return env.record(run, details, session, work);
 			};
 			return {

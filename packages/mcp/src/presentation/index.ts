@@ -3,13 +3,14 @@
  * description and schema, in one block of the system prompt (`describe`). Every server takes the same path. The
  * notation is a generated TypeScript file per server (see `../compact`), rendered when the server's catalog changes and
  * stored under `<agentDir>/context-optimization/mcp/` (a workspace-defined server: the project's folder,
- * `serverGeneratedDir`); a preset's overrides refine its wording, nothing more. A tool whose block fails the fidelity
+ * `serverGeneratedDir`); only overrides the user stored for the server (`octocode mcp compact apply`) change its wording:
+ * Octocode ships none, so without them the model reads the server's own text. A tool whose block fails the fidelity
  * check (`checkToolBlock`: a part the renderer cannot express), and every tool when the mode is `json`, is described
  * in plain form instead: the server's description and JSON Schema as sent (`jsonToolBlock`). Providers get thin tool
  * declarations in both forms; calls are still validated against the server's own JSON Schema.
  *
  * In `declared` mode (the default) no file is rendered: a tool is declared with the server's own description and full
- * input schema, and the block holds the server's instructions (plus an index line per deferred tool). Preset
+ * input schema, and the block holds the server's instructions (plus an index line per deferred tool). Stored
  * overrides do not apply there; the server's text reaches the model verbatim.
  *
  * Two copies of a server's file exist per session. The `latest` one follows the server (validation hints read it). The
@@ -21,6 +22,9 @@
  * model as one patch of the section with the changed tool thin again in the same request. What the model already
  * has is the transcript's business: the prompt sections are diffed against the replayed ones, so the patch is sent
  * once and holds across compaction, resume and fork.
+ *
+ * A deferred tool in `declared` mode can be declared in full later in the session (`load`, see `../redeclare.ts`). The
+ * block keeps its line for the tool, so only the tool's declaration changes.
  */
 
 import type { Tool as McpTool } from "../client/index.ts";
@@ -49,8 +53,6 @@ export interface McpPresentationOptions {
 	/** The folder of a server's generated file, by configured name (`serverGeneratedDir`); defaults to the user folder. */
 	dir?: (name: string) => string;
 	mode: () => McpPresentationMode;
-	/** Overrides shipped with the server's preset that describe this catalog (see `McpServerPreset.compactOverrides`). */
-	presetOverrides?: (name: string, input: CompactServerInput) => DescriptionOverrides | undefined;
 }
 
 interface GeneratedServer {
@@ -100,6 +102,8 @@ export class McpPresentation {
 	readonly #options: McpPresentationOptions;
 	readonly #latest = new Map<string, GeneratedServer>();
 	readonly #frozen = new Map<string, Described>();
+	/** Deferred tools declared in full for the rest of the session (`load`), as `<server>\0<tool>`. */
+	readonly #loaded = new Set<string>();
 
 	constructor(options: McpPresentationOptions) {
 		this.#options = options;
@@ -163,9 +167,7 @@ export class McpPresentation {
 				// The stored files are a cache for the next session and for tooling; this session reads the text from memory,
 				// so a failed write changes nothing here.
 				const dir = this.#options.dir?.(name) ?? generatedDir(this.#options.agentDir());
-				const file = resolveServerFile(dir, name, input, {
-					preset: this.#options.presetOverrides?.(name, input),
-				});
+				const file = resolveServerFile(dir, name, input);
 				text = file.text;
 				overrides = file.meta.overrides;
 				// The plain render is checked too: a tool it cannot express is described in plain form (see `describe`).
@@ -208,6 +210,23 @@ export class McpPresentation {
 	reset(): void {
 		this.#latest.clear();
 		this.#frozen.clear();
+		this.#loaded.clear();
+	}
+
+	/**
+	 * Declare a described, deferred tool in full from now on (`declared` mode only: elsewhere the block carries the
+	 * contract). True when this changes its declaration; the block is not changed.
+	 */
+	load(name: string, tool: string): boolean {
+		const key = `${name}\0${tool}`;
+		if (!this.declared || this.#loaded.has(key) || !this.#frozen.get(name)?.deferred.has(tool)) return false;
+		this.#loaded.add(key);
+		return true;
+	}
+
+	/** Forget which tools were loaded: the session moved to another branch, whose transcript says what it declares. */
+	forgetLoaded(): void {
+		this.#loaded.clear();
 	}
 
 	/** Renew every description from the latest files: the loadout is being rebuilt, so the prompt is rebuilt anyway. */
@@ -290,6 +309,8 @@ export class McpPresentation {
 				const call = generated.toolNames[tool]?.startsWith(prefix)
 					? generated.toolNames[tool].slice(prefix.length)
 					: tool;
+				// `declared`: the tool's declaration already carries its whole description.
+				if (declared) return deferredLine(call, undefined);
 				const shown = shownDescription(generated.tools.get(tool) as McpTool);
 				return deferredLine(
 					call,
@@ -349,15 +370,16 @@ export class McpPresentation {
 	isThin(name: string, tool: McpTool): boolean {
 		const described = this.#frozen.get(name);
 		if (!described || !described.tools.has(tool.name)) return false;
-		// `declared`: only a deferred tool is thin; every other tool carries its full declaration.
-		if (this.declared ? !described.deferred.has(tool.name) : !described.contract) return false;
+		// `declared`: only a deferred tool not loaded since is thin; every other tool carries its full declaration.
+		const full = !described.deferred.has(tool.name) || this.#loaded.has(`${name}\0${tool.name}`);
+		if (this.declared ? full : !described.contract) return false;
 		const before = described.generated?.tools.get(tool.name);
 		return before !== undefined && sameContract(before, tool);
 	}
 
 	/**
-	 * The description of a thin declaration of the tool, from the frozen file: the tool's authored trigger, else the
-	 * first sentence of its rewritten description. Undefined without either; the declaration then uses the first
+	 * The description of a thin declaration of the tool, from the frozen file: the trigger the user stored for it, else
+	 * the first sentence of the description the user stored. Undefined without either; the declaration then uses the first
 	 * sentence of the server's description.
 	 */
 	summary(name: string, tool: string): string | undefined {

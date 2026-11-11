@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { decodePastedControlKeys } from "../src/bracketed-paste.ts";
+import { decodePastedControlKeys } from "../src/paste-control-keys.ts";
 import {
 	detectMultiplexer,
 	hasTmuxSession,

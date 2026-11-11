@@ -93,13 +93,13 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd });
 	ctx.sessionManager.getSessionId = () => "actual-child";
-	const view = registerHooks(
-		fake.api,
-		child ? { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" } : {},
+	const view = registerHooks(fake.api, {
+		env: child
+			? { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" }
+			: {},
 		home,
-		undefined,
-		() => ({ agentName: "stale-worker", agentType: "reviewer" }),
-	);
+		metadata: () => ({ agentName: "stale-worker", agentType: "reviewer" }),
+	});
 	try {
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await view.preToolUse(
@@ -161,16 +161,14 @@ it("snapshots identity and metadata before queued async launch", async () => {
 	const ctx = fakeCtx({ cwd, model: { id: "original-model" } });
 	ctx.sessionManager.getSessionId = () => sessionId;
 	ctx.getTurnId = () => "original-turn";
-	const view = registerHooks(
-		fake.api,
-		{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" },
+	const view = registerHooks(fake.api, {
+		env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "1", OCTOCODE_PARENT_SESSION: "parent-session" },
 		home,
-		undefined,
-		() => {
+		metadata: () => {
 			calls++;
 			return { agentName: "worker", agentType, permissionMode };
 		},
-	);
+	});
 	try {
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const before = calls;
@@ -250,17 +248,15 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 	ctx.sessionManager.getSessionId = () => "child-session";
 	ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";
 	ctx.getTurnId = () => "current-turn";
-	registerHooks(
-		fake.api,
-		{
+	registerHooks(fake.api, {
+		env: {
 			OCTOCODE_SUBAGENT: "1",
 			OCTOCODE_SUBAGENT_HOOKS: "1",
 			OCTOCODE_PARENT_SESSION: "parent-session",
 		},
 		home,
-		undefined,
-		() => ({ agentName: "native-child", agentType: "reviewer" }),
-	);
+		metadata: () => ({ agentName: "native-child", agentType: "reviewer" }),
+	});
 	try {
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await fake.fire("session_before_compact", { reason: "manual", signal: new AbortController().signal }, ctx);

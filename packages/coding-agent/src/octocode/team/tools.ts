@@ -32,6 +32,7 @@ import {
 	POWERSHELL_HELD,
 } from "./tools/held-text.ts";
 import { namedReservation } from "./tools/named-reservation.ts";
+import { onlyAllowedReaders } from "./reservation-readers.ts";
 import { registerTeamEvents } from "./tools/events.ts";
 import { type PeerRoute, registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
 import { registerRecordedSpend } from "./tools/spend.ts";
@@ -58,6 +59,23 @@ interface CoordinateParams {
 	limit?: number;
 	requests?: number;
 	reason?: string;
+}
+
+/** One-line `coordinate` call summary: action, id, requests, path target and goal. */
+function coordinateSummary(args: Record<string, unknown>, paths: string[]): string {
+	const { action, id, goal, requests } = args as Partial<CoordinateParams>;
+	return [
+		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+		String(action ?? ""),
+		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+		id === undefined ? "" : String(id),
+		requests === undefined ? "" : `+${String(requests)}`,
+		paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? ""),
+		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
+		goal ? `"${String(goal)}"` : "",
+	]
+		.filter(Boolean)
+		.join(" ");
 }
 
 /**
@@ -128,8 +146,11 @@ export function registerCollab(
 			const verdict = await confineNode(command, process.env, async (text) =>
 				parse ? ((await parse(text)) ?? null) : undefined,
 			);
-			if (verdict && "refusal" in verdict && !verdict.refusal.interpreter)
+			if (verdict && "refusal" in verdict && !verdict.refusal.interpreter) {
+				// A line of readers with no write form runs even with a computed word (`rg foo "$dir"`).
+				if (onlyAllowedReaders(parse ? await parse(command) : undefined)) return undefined;
 				return { block: true, reason: `${NOT_CHECKED_HELD(verdict.refusal)} ${held}` };
+			}
 			const named = verdict
 				? namedReservation(command, ctx.cwd, (absolute, display) => team.reservation(absolute, display))
 				: undefined;
@@ -323,18 +344,7 @@ function registerCoordinateTool(
 			display(input) {
 				const { args } = input;
 				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
-				const { id, goal, requests } = args as Partial<CoordinateParams>;
-				const summary = [
-					/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
-					String(args.action ?? ""),
-					id === undefined ? "" : String(id),
-					requests === undefined ? "" : `+${String(requests)}`,
-					paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? ""),
-					goal ? `"${String(goal)}"` : "",
-					/* oxlint-enable typescript/no-unnecessary-type-conversion */
-				]
-					.filter(Boolean)
-					.join(" ");
+				const summary = coordinateSummary(args, paths);
 				const stated = isRecord(input.result?.details) && typeof input.result.details.summary === "string";
 				return textResultDisplay(
 					{
@@ -350,20 +360,7 @@ function registerCoordinateTool(
 			},
 			renderCall(args, theme, context) {
 				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
-				const target = paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? "");
-				const { id, goal, requests } = args as Partial<CoordinateParams>;
-				const summary = [
-					/* oxlint-disable typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders */
-					String(args.action ?? ""),
-					id === undefined ? "" : String(id),
-					requests === undefined ? "" : `+${String(requests)}`,
-					target,
-					goal ? `"${String(goal)}"` : "",
-					/* oxlint-enable typescript/no-unnecessary-type-conversion */
-				]
-					.filter(Boolean)
-					.join(" ");
-				return toolHeader(theme, context, "Coordinate", summary);
+				return toolHeader(theme, context, "Coordinate", coordinateSummary(args, paths));
 			},
 			renderResult(result, _options, theme, context) {
 				const body = contentText(result.content);

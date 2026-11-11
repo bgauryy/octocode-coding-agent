@@ -1,5 +1,5 @@
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { fence, fieldOf, headerField, oneLine, readHeader } from "./text.ts";
@@ -141,6 +141,58 @@ export function writeSessionRecord(record: SessionRecord, env: NodeJS.ProcessEnv
 	const file = path.join(sessionOutputDir("archive", env), RECORD_FILE);
 	atomicWriteFileSync(file, renderRecord(record), { mode: PRIVATE_FILE_MODE });
 	return file;
+}
+
+/** Per record file: the text on disk, the text being written, and the newest text still to write. */
+interface RecordWrites {
+	written?: string;
+	writing?: string;
+	queued?: string;
+	flight?: Promise<void>;
+}
+const recordWrites = new Map<string, RecordWrites>();
+
+/**
+ * Writes the current session's record in the background, after each run: the text it renders unchanged since the
+ * last write is not written again, and records rendered while a write is in flight collapse into one write of the
+ * newest. Derived from the transcript and rewritten after the next run, so it is not flushed to disk (a reader still
+ * never sees a torn file). The promise settles once the newest text is written, or with the write's error.
+ */
+export function scheduleSessionRecord(record: SessionRecord, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+	const file = path.join(sessionOutputDir("archive", env), RECORD_FILE);
+	const text = renderRecord(record);
+	const state = recordWrites.get(file) ?? {};
+	recordWrites.set(file, state);
+	if ((state.queued ?? state.writing ?? state.written) === text) return state.flight ?? Promise.resolve();
+	state.queued = text;
+	state.flight ??= drainRecord(file, state);
+	return state.flight;
+}
+
+/** Writes until nothing is queued. The flight ends in the same step as the last check, so no record is left queued. */
+async function drainRecord(file: string, state: RecordWrites): Promise<void> {
+	try {
+		for (let text = state.queued; text !== undefined; text = state.queued) {
+			state.queued = undefined;
+			state.writing = text;
+			await atomicWriteFile(file, text, undefined, { mode: PRIVATE_FILE_MODE, durability: "none" });
+			state.written = text;
+			state.writing = undefined;
+		}
+	} catch (error) {
+		// The next run renders and writes it again.
+		state.writing = undefined;
+		state.queued = undefined;
+		throw error;
+	} finally {
+		state.flight = undefined;
+	}
+}
+
+/** Waits for the records still being written (on shutdown, so none is left half way); errors were reported already. */
+export async function flushSessionRecords(): Promise<void> {
+	const flights = [...recordWrites.values()].flatMap((state) => (state.flight ? [state.flight] : []));
+	await Promise.all(flights.map((flight) => flight.catch(() => undefined)));
 }
 
 /** The header of the record in archive `folder`; undefined when it has none or it cannot be read. */

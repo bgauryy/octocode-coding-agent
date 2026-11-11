@@ -29,7 +29,7 @@ async function gate(script: string, extra: Record<string, unknown> = {}) {
 	);
 	const { api, fire } = fakeHost(HOOK_SETTINGS);
 	const audit = vi.fn();
-	const hooks = registerHooks(api, {}, home, audit);
+	const hooks = registerHooks(api, { env: {}, home, onFailure: audit });
 	const ctx = {
 		cwd: tmp(),
 		hasUI: false,

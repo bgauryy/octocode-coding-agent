@@ -97,7 +97,7 @@ async function fixture(patch: string, mode = "full", once = false, claudeGate: b
 				api.on("session_start", async (_event, ctx) => permission.start(ctx));
 				api.registerTool(createReadToolDefinition(process.cwd()));
 				registerFileTool(api, guard, permission, checkpoints);
-				const hooks = registerHooks(api, {}, home);
+				const hooks = registerHooks(api, { env: {}, home });
 				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
 		],

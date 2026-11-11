@@ -1,4 +1,4 @@
-import type { McpReloadResult, McpSwitch } from "../../../mcp/src/switch.ts";
+import type { McpReloadResult, McpSwitch } from "../../../mcp/src/api.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 
 /**

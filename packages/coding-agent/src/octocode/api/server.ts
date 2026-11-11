@@ -1,7 +1,7 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import { sameSecret } from "../../../../common/src/env.ts";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { EventLog } from "./events.ts";
@@ -192,9 +192,7 @@ export class ApiServer {
 	private authorized(req: http.IncomingMessage): boolean {
 		const host = (req.headers.host ?? "").replace(/:\d+$/, "");
 		if (!isLoopbackHostname(host) || req.headers.origin !== undefined) return false;
-		const supplied = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer /i, ""));
-		const expected = Buffer.from(this.token);
-		return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+		return sameSecret(this.token, (req.headers.authorization ?? "").replace(/^Bearer /i, ""));
 	}
 
 	private async request(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

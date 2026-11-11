@@ -13,7 +13,7 @@ import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintText, keyHint, keyText } from "./keybinding-hints.ts";
+import { hintText, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
 
 // Preview line limit when not expanded (matches tool execution behavior)
 const PREVIEW_LINES = 20;

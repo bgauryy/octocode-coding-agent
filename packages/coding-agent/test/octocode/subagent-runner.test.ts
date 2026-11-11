@@ -71,7 +71,13 @@ describe("the runner field of agent tasks", () => {
 		const declared = (runners?: Runners) => {
 			const f = fakeHost();
 			const modes = agentModes();
-			registerAgentTool(f.api, () => new Map(), new Team(f.api), fakePermission(), undefined, modes.collect, runners);
+			registerAgentTool(f.api, {
+				profiles: () => new Map(),
+				team: new Team(f.api),
+				permission: fakePermission(),
+				registerTool: modes.collect,
+				runners,
+			});
 			modes.register(f.api);
 			return f.tools.get("agent");
 		};
@@ -89,7 +95,7 @@ describe("a task run by an external runner", () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
 		const { runners, prompts } = scriptedRunners();
-		registerAgentTool(f.api, () => new Map(), team, fakePermission(), undefined, undefined, runners);
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission(), runners });
 		const cwd = tmp("octocode-runner-cwd-");
 		const ctx = fakeCtx({ cwd, hasUI: true });
 		team.start(ctx);
@@ -122,7 +128,12 @@ describe("a task run by an external runner", () => {
 	it("refuses fields only an Octocode child takes, and a runner that is not connected", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
-		registerAgentTool(f.api, () => new Map(), team, fakePermission(), undefined, undefined, scriptedRunners().runners);
+		registerAgentTool(f.api, {
+			profiles: () => new Map(),
+			team,
+			permission: fakePermission(),
+			runners: scriptedRunners().runners,
+		});
 		const ctx = fakeCtx({ cwd: tmp("octocode-runner-refuse-"), hasUI: true });
 		team.start(ctx);
 		const run = (params: Record<string, unknown>) =>

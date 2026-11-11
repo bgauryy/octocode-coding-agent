@@ -1,7 +1,7 @@
 /** `octocode mcp login`: the OAuth sign-in through the browser, with a pasted redirect URL as fallback. */
 
 import { createInterface } from "node:readline/promises";
-import { openBrowser } from "../../../common/src/open-browser.ts";
+import { openTarget } from "../../../common/src/open-target.ts";
 import type { McpServerEntry } from "../config.ts";
 import { type McpOAuthCredentialStore, McpSignInCancelledError, signInMcpServer } from "../oauth.ts";
 import type { McpServerConnection } from "../runtime.ts";
@@ -31,7 +31,13 @@ export async function login(
 		}
 	}
 
-	const openUrl = options.openUrl ?? openBrowser;
+	// The URL is printed first, so a browser that cannot start leaves the sign-in to that link and the pasted redirect.
+	const openUrl =
+		options.openUrl ??
+		((target: string) =>
+			void openTarget(target).catch((openError: unknown) =>
+				error(`Could not open a browser (${errorMessage(openError)}); open the link above.`),
+			));
 	const interactive = process.stdin.isTTY && options.openUrl === undefined;
 	try {
 		await signInMcpServer({

@@ -28,7 +28,7 @@ import {
 	changePurpose,
 	type FileQuery,
 	type FileReplacementOwner,
-	formatOutcomes,
+	batchText,
 	Params,
 	type PreparedChange,
 	renameReasoning,
@@ -95,14 +95,12 @@ export function registerFileTool(
 						? patchChanges(params.patch!, params.reason ?? "Apply patch")
 						: // `renameReasoning` gave every query a reason (its own, else the call's).
 							(params.queries as FileQuery[]);
-					if (!queries.length) {
-						if (canonical)
-							return {
-								content: [{ type: "text" as const, text: "No files changed." }],
-								details: { outcomes: [] },
-							};
-						throw new Error("No queries: pass at least one edit, write or delete query.");
-					}
+					if (!queries.length)
+						throw new Error(
+							canonical
+								? "Empty patch: it changes no file. Put at least one `*** Add File:`, `*** Update File:` or `*** Delete File:` section between `*** Begin Patch` and `*** End Patch`."
+								: "No queries: pass at least one edit, write or delete query.",
+						);
 					// Octocode's own state folder is never changed: refused in every mode before any dialog asks for it.
 					for (const query of queries) {
 						const refusal = stateFolderRefusal(
@@ -295,10 +293,14 @@ export function registerFileTool(
 						if (canonical && !outcomes.at(-1)!.ok) break;
 					}
 					const receipts = outcomes.flatMap((outcome) => (outcome.receipt ? [outcome.receipt] : []));
-					const isError = (canonical && !outcomes.at(-1)!.ok) || outcomes.every((outcome) => !outcome.ok);
-					if (isError && !receipts.length) throw new Error(formatOutcomes(outcomes));
+					// Any failed query makes the result an error. Its `details.outcomes` still name what was applied
+					// (`appliedFileOutcomes`), which is what a consumer reads, not the error flag.
+					const failed = outcomes.filter((outcome) => !outcome.ok).length;
+					const isError = failed > 0;
+					const text = batchText(outcomes, failed, canonical ? undefined : queries.length);
+					if (isError && !receipts.length) throw new Error(text);
 					return {
-						content: [{ type: "text" as const, text: formatOutcomes(outcomes) }],
+						content: [{ type: "text" as const, text }],
 						details: { outcomes, receipts },
 						...(isError ? { isError: true } : {}),
 					};

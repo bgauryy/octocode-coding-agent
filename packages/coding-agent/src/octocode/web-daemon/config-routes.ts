@@ -7,12 +7,14 @@ import {
 	HarnessSwitchCommandSchema,
 	SignInCommandSchema,
 	SignInStateSchema,
+	ToolPinCommandSchema,
 	type ConfigCredentialCommand,
 	type ConfigProviderCommand,
 	type ConfigSettingCommand,
 	type HarnessSwitchCommand,
 	type SignInCommand,
 	type SignInState,
+	type ToolPinCommand,
 } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
@@ -20,6 +22,7 @@ import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { ConfigWriteError } from "./config-write.ts";
 import { readJsonBody, type Reply, type TokenAccess } from "./http-util.ts";
 import type { RepoCatalog } from "./repos.ts";
+import type { LiveTools } from "./session-tools.ts";
 
 type Repo = { root?: string } | undefined;
 
@@ -39,6 +42,13 @@ export interface ConfigRoutes {
 	harness?: (repo: Repo) => Promise<unknown>;
 	/** Switches one Harness row and returns the fresh list; throws `ConfigWriteError` for a refusal. */
 	writeHarness?: (command: HarnessSwitchCommand, repo: Repo) => Promise<unknown>;
+	/**
+	 * Lists the Tools panel's rows (each tool's exposure state and pin) for the workspace; the caller validates its shape.
+	 * `live` is what the running session declares, when the page belongs to one.
+	 */
+	tools?: (repo: Repo, live?: LiveTools) => Promise<unknown>;
+	/** Pins or unpins one tool and returns the fresh list; throws `ConfigWriteError` for a refusal. */
+	writeTools?: (command: ToolPinCommand, repo: Repo, live?: LiveTools) => Promise<unknown>;
 	/**
 	 * Records a credential request refused before `writeCredential` ran (`invalid` body, `forbidden` capability). Receives
 	 * a fixed code only: never the body, a provider id from it or a token. It must not throw. Requests without a valid
@@ -137,40 +147,77 @@ async function handleSignIn(req: http.IncomingMessage, routes: ConfigRoutes, rep
 	}
 }
 
-/** `GET` and `POST /api/admin/config/harness`: rows carry ids with file paths, so both are launch-capability only. */
-async function handleHarness(
+/** One launch-only panel: `GET` lists its rows for a workspace, `POST` applies one validated change and answers with the fresh list. */
+interface AdminPanel<Command extends { repoId?: string }> {
+	list?: (repo: Repo) => Promise<unknown>;
+	write?: (command: Command, repo: Repo) => Promise<unknown>;
+	isCommand: (body: unknown) => body is Command;
+	/** Fixed words for the replies: what cannot be listed or changed, an invalid body, a failed save. */
+	words: { list: string; write: string; invalid: string; failed: string };
+}
+
+const HARNESS_PANEL = (routes: ConfigRoutes): AdminPanel<HarnessSwitchCommand> => ({
+	list: routes.harness,
+	write: routes.writeHarness,
+	isCommand: (body): body is HarnessSwitchCommand => Value.Check(HarnessSwitchCommandSchema, body),
+	words: {
+		list: "This daemon cannot list harness switches.",
+		write: "This daemon cannot change harness switches.",
+		invalid: "Invalid switch change",
+		failed: "The switch could not be saved.",
+	},
+});
+
+const TOOLS_PANEL = (routes: ConfigRoutes): AdminPanel<ToolPinCommand> => ({
+	list: routes.tools,
+	write: routes.writeTools,
+	isCommand: (body): body is ToolPinCommand => Value.Check(ToolPinCommandSchema, body),
+	words: {
+		list: "This daemon cannot list tool states.",
+		write: "This daemon cannot pin tools.",
+		invalid: "Invalid tool pin",
+		failed: "The pin could not be saved.",
+	},
+});
+
+/**
+ * `GET` and `POST` of `/api/admin/config/harness` and `/api/admin/config/tools`: rows carry ids with file paths or the
+ * names of configured servers, so both methods are launch-capability only.
+ */
+async function handlePanel<Command extends { repoId?: string }>(
 	req: http.IncomingMessage,
 	url: URL,
 	access: TokenAccess,
-	routes: ConfigRoutes,
+	catalog: ConfigRoutes["catalog"],
+	panel: AdminPanel<Command>,
 	reply: Reply,
 ): Promise<void> {
 	// The admin prefix already refused other tokens; this keeps it true if the prefix gate moves.
 	if (!canWrite(access))
 		return reply(403, { error: "This link cannot change settings. Use the page opened from the Octocode terminal." });
 	if (req.method === "GET") {
-		if (!routes.harness) return reply(501, { error: "This daemon cannot list harness switches." });
+		if (!panel.list) return reply(501, { error: panel.words.list });
 		const repoParam = url.searchParams.get("repoId");
-		const repo = repoParam ? routes.catalog.resolve(repoParam) : undefined;
+		const repo = repoParam ? catalog.resolve(repoParam) : undefined;
 		if (repoParam && !repo) return reply(404, { error: "Unknown repository" });
 		try {
-			return reply(200, await routes.harness(repo));
+			return reply(200, await panel.list(repo));
 		} catch (error) {
 			return reply(500, { error: redactSecrets(errorMessage(error)).slice(0, 500) });
 		}
 	}
 	if (req.method !== "POST") return reply(405, { error: "Method not allowed" });
-	if (!routes.writeHarness) return reply(501, { error: "This daemon cannot change harness switches." });
+	if (!panel.write) return reply(501, { error: panel.words.write });
 	const body = await readJsonBody(req, reply);
 	if (body === undefined) return;
-	if (!Value.Check(HarnessSwitchCommandSchema, body)) return reply(400, { error: "Invalid switch change" });
-	const repo = body.repoId ? routes.catalog.resolve(body.repoId) : undefined;
+	if (!panel.isCommand(body)) return reply(400, { error: panel.words.invalid });
+	const repo = body.repoId ? catalog.resolve(body.repoId) : undefined;
 	if (body.repoId && !repo) return reply(404, { error: "Unknown repository" });
 	try {
-		reply(200, await routes.writeHarness(body, repo));
+		reply(200, await panel.write(body, repo));
 	} catch (error) {
 		if (error instanceof ConfigWriteError) return reply(error.status, { error: error.message });
-		reply(500, { error: "The switch could not be saved." });
+		reply(500, { error: panel.words.failed });
 	}
 }
 
@@ -194,7 +241,11 @@ export async function handleConfigRequest(
 		return true;
 	}
 	if (url.pathname === DAEMON_ROUTES.configHarness) {
-		await handleHarness(req, url, access, routes, reply);
+		await handlePanel(req, url, access, routes.catalog, HARNESS_PANEL(routes), reply);
+		return true;
+	}
+	if (url.pathname === DAEMON_ROUTES.configTools) {
+		await handlePanel(req, url, access, routes.catalog, TOOLS_PANEL(routes), reply);
 		return true;
 	}
 	const isCredentialRoute =

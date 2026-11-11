@@ -40,7 +40,7 @@ describe("source SessionEnd hooks", () => {
 		);
 		const f = fakeHost(HOOK_SETTINGS);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-		registerHooks(f.api, { OCTOCODE_SUBAGENT: subagent ? "1" : "0" }, home);
+		registerHooks(f.api, { env: { OCTOCODE_SUBAGENT: subagent ? "1" : "0" }, home });
 		await f.fire("session_start", { reason: "startup" }, ctx);
 		await f.fire("session_shutdown", { reason }, ctx);
 		if (expected)
@@ -89,7 +89,7 @@ describe("source SessionEnd hooks", () => {
 		const f = fakeHost(HOOK_SETTINGS);
 		f.api.getSettings = () => ({ plugins: [{ path: plugin, protocol: "claude" }] });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-		registerHooks(f.api, {}, home);
+		registerHooks(f.api, { env: {}, home });
 		await f.fire("session_start", { reason: "startup" }, ctx);
 		await f.fire("session_shutdown", { reason: "quit" }, ctx);
 		expect(fs.readFileSync(marker, "utf8")).toBe("done");

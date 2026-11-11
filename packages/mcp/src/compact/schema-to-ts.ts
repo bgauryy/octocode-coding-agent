@@ -1,4 +1,4 @@
-import { countRefs, resolveLocalRef } from "./schema-refs.ts";
+import { countRefs, derefNode, resolveLocalRef } from "./schema-refs.ts";
 import { SHAPE_KEYS, UNSUPPORTED_SHAPE } from "./schema-keywords.ts";
 import { createNotes } from "./schema-notes.ts";
 import {
@@ -12,6 +12,7 @@ import {
 	oneLine,
 	shapeOnly,
 } from "./schema-nodes.ts";
+import { requiredOf, sharedUnionKeys } from "./schema-union.ts";
 import type { JsonSchema } from "./types.ts";
 
 const MAX_DEPTH = 400;
@@ -73,17 +74,7 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 				? id[0].toUpperCase() + id.slice(1)
 				: `T${id.replace(/\W/g, "_")}`);
 	const refTarget = (ref: unknown) => resolveLocalRef(rootNode, ref);
-	/** A `$ref` node with its target's keywords merged under its own (siblings of `$ref` win). */
-	const deref = (schema: unknown): unknown => {
-		let current = schema;
-		for (let hops = 0; isNode(current) && current.$ref !== undefined && hops < 20; hops++) {
-			const target = refTarget(current.$ref);
-			if (!target || !isNode(target[1])) return current;
-			const { $ref: _ref, ...rest } = current;
-			current = { ...target[1], ...rest };
-		}
-		return current;
-	};
+	const deref = (schema: unknown): unknown => derefNode(rootNode, schema);
 	const { notes, alternativesNote } = createNotes(deref);
 	const docText = (schema: unknown, path: string) => {
 		const node = deref(schema);
@@ -223,30 +214,9 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 			return parts.length ? parts.join(" | ") : "unknown";
 		}
 		const sharedProperties = shared.properties as Node;
-		const requiredOf = (node: unknown) =>
-			new Set(isNode(node) && Array.isArray(node.required) ? node.required.map(String) : []);
 		const parentRequired = requiredOf(shared);
 		const branches = live.map(deref);
-		const objectBranches = branches.filter(
-			(node): node is Node => isNode(node) && !node.anyOf && !node.oneOf && isNode(node.properties),
-		);
-		// A key every branch requires is required on the shared part, even when the parent's own `required` omits it.
-		const requiredEverywhere = Object.keys(sharedProperties).filter(
-			(key) =>
-				parentRequired.has(key) ||
-				(objectBranches.length === live.length &&
-					objectBranches.length > 0 &&
-					objectBranches.every((node) => requiredOf(node).has(key))),
-		);
-		// A shapeless shared field a branch types (`operation: unknown` beside `operation: "resolve"`) is a placeholder: the
-		// branches carry its type and doc, so it records none of its own.
-		const placeholders = new Set(
-			Object.keys(sharedProperties).filter(
-				(key) =>
-					isShapeless(sharedProperties[key]) &&
-					branches.some((node) => isNode(node) && isNode(node.properties) && !isShapeless(node.properties[key])),
-			),
-		);
+		const { requiredEverywhere, placeholders } = sharedUnionKeys(shared, branches);
 		const base = renderObject(
 			{ type: "object", properties: sharedProperties, required: requiredEverywhere },
 			indent,

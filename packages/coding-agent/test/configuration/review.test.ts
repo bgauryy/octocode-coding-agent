@@ -1,10 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import "../../src/octocode/mcp-host/core-install.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { requestMcpReload } from "../../../mcp/src/switch.ts";
-import { CONFIG_DIR_NAME } from "../../src/config.ts";
+import { CONFIG_DIR_NAME, getOctocodeSkillsDir } from "../../src/config.ts";
 import { coerceSettingValue, findLeaf } from "../../src/configuration/settings-leaves.ts";
 import { parseConfigWords, runConfigWords, splitConfigWords } from "../../src/configuration/command.ts";
 import { applyRunFlags } from "../../src/configuration/run-flags.ts";
@@ -143,21 +143,55 @@ describe("value messages", () => {
 
 describe("core skills", () => {
 	it("switches a core skill through the global skills pattern and refuses the project scope", async () => {
+		// A core skill the Octocode collection has no copy of: a same-named collection row would take the id.
 		const listed = await configuration(sandbox).list({ kinds: ["skill"] });
-		const core = listed.find((entry) => entry.id === "skill:octocode-debugging");
+		const core = listed.find((entry) => entry.id === "skill:resume-external-harness");
 		expect(core, "the core skill is listed").toBeDefined();
-		expect((await run("disable skill:octocode-debugging")).ok).toBe(true);
+		expect((await run("disable skill:resume-external-harness")).ok).toBe(true);
 		expect(readJson(globalSettingsFile(sandbox))?.skills?.some((pattern: string) => pattern.startsWith("-"))).toBe(
 			true,
 		);
 		const off = (await configuration(sandbox).list({ kinds: ["skill"] })).find((entry) => entry.id === core!.id);
 		expect(off?.value).toBe(false);
-		expect((await run("enable skill:octocode-debugging")).ok).toBe(true);
+		expect((await run("enable skill:resume-external-harness")).ok).toBe(true);
 		const on = (await configuration(sandbox).list({ kinds: ["skill"] })).find((entry) => entry.id === core!.id);
 		expect(on?.value).toBe(true);
-		const project = await run("disable skill:octocode-debugging --local");
+		const project = await run("disable skill:resume-external-harness --local");
 		expect(project.ok).toBe(false);
 	});
+});
+
+const collection = getOctocodeSkillsDir();
+const collectionHasDebugging =
+	collection !== undefined && existsSync(join(collection, "octocode-debugging", "SKILL.md"));
+
+describe("a core skill the Octocode collection also ships", () => {
+	it.skipIf(!collectionHasDebugging)(
+		"lists the core copy, which loads, under the name, and the collection copy as shadowed",
+		async () => {
+			const listed = (await configuration(sandbox).list({ kinds: ["skill"] })).filter(
+				(entry) => entry.label === "octocode-debugging",
+			);
+			expect(listed).toHaveLength(2);
+			const loaded = listed.find((entry) => entry.id === "skill:octocode-debugging");
+			expect(loaded?.detail).toContain("native-skills");
+			expect(loaded?.detail).not.toMatch(/^shadowed/);
+			const shadowed = listed.find((entry) => entry !== loaded);
+			expect(shadowed?.id).toMatch(/^skill:.*octocode-debugging[/\\]SKILL\.md$/);
+			expect(shadowed?.detail).toMatch(/^shadowed: skill:octocode-debugging loads instead · /);
+			// `disable skill:<name>` switches the copy that loads: the core skill's global pattern.
+			expect((await run("disable skill:octocode-debugging")).ok).toBe(true);
+			expect(readJson(globalSettingsFile(sandbox))?.skills).toEqual(["-octocode-debugging/SKILL.md"]);
+			const after = (await configuration(sandbox).list({ kinds: ["skill"] })).filter(
+				(entry) => entry.label === "octocode-debugging",
+			);
+			// The pattern is relative to each skills folder, so it matches the collection copy too: the name is off.
+			expect(after.find((entry) => entry.id === "skill:octocode-debugging")).toMatchObject({ value: false });
+			expect(after.find((entry) => entry.id === "skill:octocode-debugging")?.detail).toContain("native-skills");
+			expect(after.map((entry) => entry.value)).toEqual([false, false]);
+			expect(after.some((entry) => entry.detail?.startsWith("shadowed"))).toBe(false);
+		},
+	);
 });
 
 describe("project overrides cycle", () => {

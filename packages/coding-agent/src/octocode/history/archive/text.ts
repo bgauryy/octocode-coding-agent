@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import { headerText } from "../../shared/fence.ts";
 import { visibleControls } from "../../../../../common/src/sanitize.ts";
-import { escapeRegExp } from "../../shared/util.ts";
+import { escapeRegExp } from "../../../../../common/src/regexp.ts";
 
 /** How archived message text may appear in a file: one line, fenced, or an inline code span, controls made visible. */
 

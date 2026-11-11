@@ -114,7 +114,12 @@ async function executeToolCallsSequential(
 				isError: preparation.isError,
 			};
 		} else {
-			const executed = await executePreparedToolCall(preparation, signal, emitToolExecutionUpdate(toolCall, emit));
+			const executed = await executePreparedToolCall(
+				preparation,
+				signal,
+				emitToolExecutionUpdate(toolCall, emit),
+				config.onListenerError,
+			);
 			finalized = await finalizeExecutedToolCall(
 				currentContext,
 				assistantMessage,
@@ -256,7 +261,12 @@ async function runPreparedToolCall(
 		await emitToolExecutionEnd(finalized, emit);
 		return finalized;
 	}
-	const executed = await executePreparedToolCall(preparation, signal, emitToolExecutionUpdate(toolCall, emit));
+	const executed = await executePreparedToolCall(
+		preparation,
+		signal,
+		emitToolExecutionUpdate(toolCall, emit),
+		config.onListenerError,
+	);
 	const finalized = await finalizeExecutedToolCall(
 		currentContext,
 		assistantMessage,

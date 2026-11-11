@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../mcp/src/section.ts";
-import { findInstructionCacheBoundary } from "../src/core/model-runtime/instruction-boundary.ts";
+import {
+	findInstructionCacheBoundary,
+	findInstructionVolatileBoundary,
+} from "../src/core/model-runtime/instruction-boundary.ts";
 import { buildSystemPromptSections, diffSystemPromptSections } from "../src/core/system-prompt.ts";
 import { SYSTEM_PROMPT_SECTIONS, systemPromptSectionSpec } from "../src/core/system-prompt-spec.ts";
 import { leanPromptSections } from "../src/octocode/instructions/lean.ts";
@@ -18,10 +21,11 @@ describe("system prompt section spec", () => {
 			"docs:base:drop",
 			"mcps:base:keep",
 			"addendum:session:keep",
-			"cwd:session:keep",
 			"work:session:keep",
 			"research:session:keep",
 			"delegation:session:keep",
+			"children:session:keep",
+			"coordinator:session:keep",
 			"safety:session:keep",
 			"communication:session:keep",
 			"lean:session:keep",
@@ -30,6 +34,7 @@ describe("system prompt section spec", () => {
 			"hooks:session:keep",
 			"role:session:keep",
 			"harnesses:session:keep",
+			"cwd:volatile:keep",
 			"environment:volatile:keep",
 			"planning:volatile:keep",
 			"mcp_status:volatile:keep",
@@ -84,9 +89,9 @@ describe("system prompt section spec", () => {
 			"tools",
 			"rules",
 			MCPS_SECTION,
-			"cwd",
 			"work",
 			"skills",
+			"cwd",
 			"environment",
 			MCP_STATUS_SECTION,
 		]);
@@ -102,7 +107,20 @@ describe("system prompt section spec", () => {
 			sections: { work: "Work." },
 		});
 		const message = { role: "system", content: "", sections, timestamp: 0 };
-		expect(findInstructionCacheBoundary([message])).toBe("cwd");
+		expect(findInstructionCacheBoundary([message])).toBe("work");
+	});
+
+	test("the volatile block starts at `cwd`, after every session section", () => {
+		const sections = buildSystemPromptSections({
+			cwd: "/tmp",
+			selectedTools: [],
+			baseSections: { [MCPS_SECTION]: "servers" },
+			sections: { work: "Work.", extension: "Extension.", [MCP_STATUS_SECTION]: "- docs: connecting" },
+			environment: "Date: 2026-10-31",
+		});
+		expect(Object.keys(sections).slice(-4)).toEqual(["extension", "cwd", "environment", MCP_STATUS_SECTION]);
+		const message = { role: "system", content: "", sections, timestamp: 0 };
+		expect(findInstructionVolatileBoundary([message])).toBe("cwd");
 	});
 
 	test("a resumed session with the old MCP sections migrates by the section diff", () => {

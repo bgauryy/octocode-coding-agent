@@ -6,19 +6,20 @@ A coding agent forked from [Pi](https://github.com/earendil-works/pi). `../octoc
 
 | Path | Owns | Must not |
 | --- | --- | --- |
-| `coding-agent/src/core/` | sessions, resource loading, prompt assembly; `application/` serves terminal and web | |
-| `coding-agent/src/octocode/` | native tools, permissions, subagents, team, memory, hooks, recovery; `index.ts` composes | |
+| `coding-agent/src/core/` | sessions, resource loading, prompt assembly; `application/` serves terminal and web; session lines go through `session-manager/codec.ts` | |
+| `coding-agent/src/octocode/` | native tools, permissions, subagents, team, memory, hooks, recovery; `index.ts` composes (later features through `composedLater`, never by reordering); `/web` is the web daemon, `workspace/server.ts` only its fallback | |
 | `coding-agent/src/octocode/instructions/` | agent prose as Markdown (its README maps sections to files) | put prose in `.ts`: `policy.ts`, `lean.ts`, `task.ts` only render |
 | `db/src/` | schema, connections, `queries/` (one module per table family), retention; `api.ts` is the only import | |
 | `agent/` | agent loop, tool execution, events | hold app configuration or UI policy |
 | `ai/` | providers, model data, auth primitives | |
-| `tui/` | terminal components, input, rendering | depend on the app |
-| `mcp/src/` | the only MCP owner: `client/`, config, registry, lifecycle, exposure; `recommended/` and `presets/browser/` are data | open their own connections |
+| `tui/` | terminal components, input, rendering, the `@` file index | depend on the app |
+| `mcp/src/` | the only MCP owner: `client/`, config, registry, lifecycle, exposure; `recommended/` and `presets/browser/` are data; `api.ts` is coding-agent's only import | open their own connections |
 | `acp/src/` | ACP `server/` and `client/`, host reached through `host.ts` ports | import coding-agent |
 | `terminal/src/` | shell completion for `!` lines: completion shells and their drivers, line parsing, history ranking, model-suggestion cache | read settings, history storage or models itself: `coding-agent/src/octocode/terminal/` passes them in |
 | `common/src/` | host-free utilities (JSON, env names, atomic writes, paths, sanitizing, redaction, web guard) | import coding-agent, mcp or acp |
-| `contracts/`, `telemetry/` | serializable contracts and schemas | hold DB, provider, DOM or permission code |
+| `contracts/`, `telemetry/` | serializable contracts and schemas; telemetry adds the no-op and a test recorder | hold DB, provider, DOM or permission code |
 | `webview/` | browser state, transport, rendering | execute, authenticate or authorize |
+| `coding-agent/src/theme/` | theme tokens and the shared terminal UI kit | import `modes/` or `octocode/` features |
 
 Paths are under `packages/`. Docs: the [docs index](packages/coding-agent/docs/index.md) (configuration: `docs/configuration.md`), package READMEs for public API, `docs/FEATURES.md` for cross-package designs.
 
@@ -39,7 +40,7 @@ Node 24.15+ (Node 24 line); setup and model-data hydration per [DEVELOPMENT.md](
 
 | Command | Does |
 | --- | --- |
-| `yarn run check` | typecheck, Oxlint, Oxfmt check, boundaries and architecture, DB boundary, bundle freshness, Knip; rewrites nothing |
+| `yarn run check` | typecheck, Oxlint, Oxfmt check, boundaries and architecture, DB and MCP boundaries, bundle freshness, Knip; rewrites nothing |
 | `yarn oxfmt <files>` | formats those files; `yarn run format` and an empty list format the whole repo |
 | `yarn vitest run --config vitest.octocode.config.ts [paths]` (in `packages/coding-agent`) | native suite; `yarn run test:changed` runs only tests for changed files |
 | `yarn workspace @octocodeai/octocodecode run test:e2e` | real sessions on a scripted model, no network; holds the prompt-size ceilings |
@@ -58,7 +59,7 @@ Change the generator, never its output (`yarn workspace @octocodeai/octocodecode
 
 - `generate:schemas`, `generate:references`, `generate:casefold`; `generate:vendor` after bumping `marked` or `highlight.js-browser`; `yarn run install-lock:coding-agent`.
 - `generate:prompts` (also run by every build) writes each agent's exact prompt to `.octocode/tmp/agent-prompts/`: read it after changing a prompt, tool description or MCP preset.
-- After rebuilding the sibling `octocode-mcp` or browser server: `yarn workspace @octocodeai/octocode-mcp run generate:compact` (`--check`, `--drop-stale`, `--accept <tool.field>`), then `generate:prompts`. Overrides never rewrite upstream text to fit a size limit.
+- After rebuilding the sibling `octocode-mcp` or browser server: `generate:prompts`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
 
 `@octocodeai/octocodecode` is the only public package; every other workspace is bundled into it. Its `link:` dependencies and `octocodeRelease` in `packages/coding-agent/package.json` tie it to the sibling `octocode` repository. `yarn run publish` (`publish:dry` rehearses) writes the manifest only into the tarball and publishes after that tarball installs and runs a real session.
 

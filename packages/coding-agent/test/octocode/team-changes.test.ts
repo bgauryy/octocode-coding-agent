@@ -84,6 +84,8 @@ describe("recent changes by agent", () => {
 					],
 				},
 			},
+			// A batch in which a query failed is an error result (RFC core-tools F1); its applied change is still recorded.
+			true,
 		);
 		await wrote(b, path.join(cwd, "src/b.ts"));
 		await wrote(b, "docs/c.md", false);

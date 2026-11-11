@@ -72,11 +72,12 @@ describe("declared MCP presentation", () => {
 	});
 
 	it("keeps deferred tools thin with an index line, and the rest of the server full", async () => {
-		const { h } = host([entry("docs", { toolExposure: { shout: "deferred" } })]);
+		const { h } = host([entry("docs", { toolExposure: { shout: "deferred" } })], { exposure: "direct" });
 		await h.start();
 		const { mcps } = await h.prompt();
-		expect(mcps).toContain("\n- shout: Uppercase the given text\n");
-		expect(mcps).not.toContain("- pick:");
+		// The declaration carries the server's whole description, so the index line is the name alone.
+		expect(mcps).toContain("\n- shout\n");
+		expect(mcps).not.toContain("- pick");
 		const server = h.state.findServer("docs")!.connection!;
 		const pick = server.tools.find((tool) => tool.name === "pick")!;
 		expect(JSON.stringify(h.tools.get("mcp__docs__pick")!.parameters)).toBe(JSON.stringify(pick.inputSchema));

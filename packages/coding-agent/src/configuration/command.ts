@@ -1,4 +1,4 @@
-import { parseMcpAddArgs } from "../../../mcp/src/cli/edit.ts";
+import { parseMcpAddArgs } from "../../../mcp/src/api.ts";
 import type { ConfigCatalog } from "./catalog.ts";
 import type { AppliesWhen, ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "./types.ts";
 

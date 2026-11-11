@@ -1,10 +1,10 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@octocodeai/octocode-ai";
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
-import { openBrowser } from "../../../../../common/src/open-browser.ts";
+import { openTarget } from "../../../../../common/src/open-target.ts";
 import { theme } from "../../../theme/theme.ts";
 import { AuthUrlComponent } from "./auth-url.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintLine, keyText } from "./keybinding-hints.ts";
+import { hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
 
 /**
  * Login dialog component - replaces editor during OAuth login flow
@@ -113,7 +113,8 @@ export class LoginDialogComponent extends Container implements Focusable {
 			this.contentContainer.addChild(new Text(theme.fg("warning", instructions), 1, 0));
 		}
 
-		openBrowser(url);
+		// Best effort: the URL is on screen to open by hand when no browser starts.
+		void openTarget(url).catch(() => undefined);
 		this.tui.requestRender();
 	}
 

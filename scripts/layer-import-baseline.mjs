@@ -18,7 +18,7 @@ export const LAYER_RULES = [
 		name: "core-must-not-import-octocode",
 		from: "coding-agent/src/core/",
 		to: "coding-agent/src/octocode/",
-		baseline: ["coding-agent/src/core/agent-session.ts", "coding-agent/src/core/resource-loader/builtins.ts"],
+		baseline: ["coding-agent/src/core/resource-loader/builtins.ts"],
 	},
 	{
 		name: "core-must-not-import-mcp",

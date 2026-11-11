@@ -1,7 +1,5 @@
 import { mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { join } from "node:path";
-import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { getAgentDir } from "../config.ts";
 import type { Settings } from "./settings-schema.ts";
 
 export type {
@@ -98,13 +96,8 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		agentDir: string = getAgentDir(),
 		options: SettingsManagerCreateOptions = {},
 	): SettingsManager {
-		const resolvedCwd = resolvePath(cwd);
-		const resolvedAgentDir = resolvePath(agentDir);
-		const storage = new FileSettingsStorage(resolvedCwd, resolvedAgentDir);
-		return SettingsManager.fromStorageWithPaths(storage, options, {
-			global: join(resolvedAgentDir, "settings.json"),
-			project: join(resolvedCwd, CONFIG_DIR_NAME, "settings.json"),
-		});
+		const storage = new FileSettingsStorage(cwd, agentDir);
+		return SettingsManager.fromStorageWithPaths(storage, options, storage.paths);
 	}
 
 	static fromStorage(storage: SettingsStorage, options: SettingsManagerCreateOptions = {}): SettingsManager {

@@ -1,9 +1,9 @@
+import { BEGIN_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
 import { isImageLine } from "../terminal-image.ts";
 import { trimTrailingBlanks } from "../tui/trailing-blanks.ts";
 import { getKittyImageReservedRows } from "./kitty-images.ts";
 import type { BoundedTerminalWriter } from "./terminal-writer.ts";
 
-const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
 /** tmux ends a synchronized update one second after it begins; renewing this often keeps a long replay inside one. */
 export const SYNC_RENEW_INTERVAL_CHARS = 16 * 1024;
 

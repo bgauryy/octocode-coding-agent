@@ -23,7 +23,7 @@ import { nativeCall } from "./e2e-calls.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// Hermetic: a run from inside a Octocode subagent inherits its identity and settings, which change the prompt, tools and limits.
+// Hermetic: a run from inside an Octocode subagent inherits its identity and settings, which change the prompt, tools and limits.
 // OCTOCODE_HOME and OCTOCODE_AGENT_DB stay: setup-env.ts points them at this worker's sandbox, and without them the
 // agent database (trust grants included) resolves to the developer's real ~/.octocode.
 for (const key of [
@@ -372,7 +372,9 @@ describe("with Octocode MCP (default)", () => {
 		const [afterRead, afterBatch, afterDelete] = turns.slice(-3);
 		expect(afterRead.lastResults[0].text).toContain("export const answer = 41");
 		const batch = afterBatch.lastResults[0];
-		expect(batch.isError).toBe(false);
+		// One of three queries is refused below, so the batch reads as a failure and names how many failed.
+		expect(batch.isError).toBe(true);
+		expect(batch.text).toMatch(/^1 of 3 failed/);
 		expect(batch.text).toMatch(/1\. OK edit app\.ts/);
 		expect(batch.text).toMatch(/2\. OK write NOTES\.md/);
 		// An existing file never read in this session is refused; the rest of the batch still applies.
@@ -540,9 +542,20 @@ describe("with another MCP server and Octocode disabled", () => {
 
 	it("keeps Octocode read, leaves MCP to Octocode, and drops the Octocode research line", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
-		for (const name of ["read", "file", "bash", "web", "agent", "askUser", "backlog", "archive", "mcp__echo__shout"])
+		for (const name of [
+			"read",
+			"file",
+			"bash",
+			"web",
+			"agent",
+			"askUser",
+			"backlog",
+			"backlogPlan",
+			"archive",
+			"mcp__echo__shout",
+		])
 			expect(turn.tools).toContain(name);
-		// `steps` is registered but not in the default list.
+		// The removed `steps` tool is never declared.
 		expect(turn.tools).not.toContain("steps");
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
@@ -928,13 +941,29 @@ describe("a subagent session with MCP enabled", () => {
 		expect(turn.tools.filter((name) => name.includes("cua"))).toEqual([]);
 		expect(turn.tools).toContain("agent");
 		expect(turn.tools).not.toContain("askUser");
-		expect(turn.toolContracts.find((tool) => tool.name === "archive")?.parameters).toMatchObject({
+		// A child reads memories and history; saving, deleting and the diagnostics are the main session's.
+		expect(turn.toolContracts.find((tool) => tool.name === "memory")?.parameters).toMatchObject({
 			properties: { op: { enum: ["search", "get", "list"] } },
 		});
+		// `archive` is deferred until this folder calls it (the default `mcpExposure`): the declaration names its fields, and
+		// the child's own schema, without the main session's ops, comes back with a call it rejects.
+		const archive = turn.toolContracts.find((tool) => tool.name === "archive")?.parameters as {
+			properties: Record<string, { enum?: string[] }>;
+		};
+		expect(Object.keys(archive.properties)).toEqual(expect.arrayContaining(["op", "source"]));
+		expect(archive.properties).not.toHaveProperty("errors");
+		const refused = (await s.run("errors", [calls(nativeCall("archive", { op: "errors" })), say("ok")])).at(
+			-1,
+		)!.lastResults;
+		const schema = refused.find((result) => result.toolName === "archive")?.text ?? "";
+		expect(schema).toContain('"enum":["list","search","get"]');
+		expect(schema).toContain('"enum":["all","sessions","compactions","agents"]');
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
-			properties: { op: { enum: ["list", "get", "add", "update"] } },
+			properties: { op: { enum: ["get", "claim", "note", "done", "close"] } },
 		});
-		for (const name of ["agent", "backlog", "archive"]) expect(turn.tools).toContain(name);
+		for (const name of ["agent", "backlog", "archive", "memory"]) expect(turn.tools).toContain(name);
+		// Planning stays with the coordinator: a child works the item its task names.
+		expect(turn.tools).not.toContain("backlogPlan");
 		expect(turn.tools).not.toContain("steps");
 		expect(turn.systemPrompt).toContain("You are a subagent");
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();

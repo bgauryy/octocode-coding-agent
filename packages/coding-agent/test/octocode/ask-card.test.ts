@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIDialogOptions } from "../../src/core/features/types.ts";
-import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/index.ts";
+import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/extension-selector.ts";
 import { askInTerminal } from "../../src/modes/interactive/interactive-mode/extension-ask.ts";
 import type { SelectorCard } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { renderAskCard } from "../../src/octocode/ask/card.ts";

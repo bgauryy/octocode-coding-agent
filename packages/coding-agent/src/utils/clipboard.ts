@@ -11,8 +11,8 @@ const MAX_OSC52_ENCODED_LENGTH = 100_000;
 
 /**
  * Remote sessions also emit OSC 52 so the client terminal receives the copy. OCTOCODE_CLIPBOARD_OSC52=1
- * covers remote clients that leave no SSH markers, such as multiplexer attaches (#10114, #10835)
- * or IDE daemons (#10826).
+ * covers remote clients that leave no SSH markers, such as multiplexer attaches
+ * or IDE daemons.
  */
 function isRemoteSession(env: NodeJS.ProcessEnv): boolean {
 	return Boolean(env.SSH_CONNECTION || env.SSH_CLIENT || env.MOSH_CONNECTION || env.OCTOCODE_CLIPBOARD_OSC52 === "1");
@@ -56,7 +56,7 @@ async function copyViaWindowsClipboard(text: string): Promise<boolean> {
 
 export async function readClipboardText(): Promise<string | null> {
 	const commands: [string, string[]][] = [];
-	// Termux reports platform "android", not "linux" (#10391).
+	// Termux reports platform "android", not "linux".
 	if (process.env.TERMUX_VERSION) commands.push(["termux-clipboard-get", []]);
 	if (platform() === "linux") {
 		if (process.env.WAYLAND_DISPLAY) commands.push(["wl-paste", ["--no-newline", "--type", "text"]]);
@@ -123,7 +123,7 @@ export async function copyToClipboard(text: string): Promise<void> {
 		copied = osc52Emitted || (await copyViaWindowsClipboard(text));
 	}
 	// OSC 52 cannot be verified, so a desktop session with a display reports the failure
-	// instead (#9618). Without a display the terminal is the only clipboard route (containers,
+	// instead. Without a display the terminal is the only clipboard route (containers,
 	// WSL without WSLg), and remote sessions always emit it to reach the client clipboard.
 	const headless = p === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY && !env.TERMUX_VERSION;
 	let oversized = false;

@@ -23,6 +23,7 @@ import {
 	writeRawStdout,
 } from "../../core/output-guard.ts";
 import { createEventOutput, waitForEventBackpressure } from "../event-output.ts";
+import { headlessCommandActions } from "../headless-actions.ts";
 import { handleTerminationSignals } from "../termination-signals.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
@@ -86,27 +87,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 				void checkShutdownRequested();
 			}
 		});
-		unsubscribeBackpressure = session.agent.subscribe((event) => waitForEventBackpressure(event));
+		unsubscribeBackpressure = session.agent.subscribe(waitForEventBackpressure);
 		await session.bindExtensions({
 			uiContext: options.noDialogs
 				? undefined
 				: createExtensionUIContext(output, pendingExtensionRequests, { ask: options.rpcAsk === true }),
 			mode: "rpc",
 			commandContextActions: {
-				waitForIdle: () => session.waitForIdle(),
+				...headlessCommandActions(() => session),
 				...createSessionControls(runtimeHost, acpOwnsSession),
-				navigateTree: async (targetId, options) => {
-					const result = await session.navigateTree(targetId, {
-						summarize: options?.summarize,
-						customInstructions: options?.customInstructions,
-						replaceInstructions: options?.replaceInstructions,
-						label: options?.label,
-					});
-					return { cancelled: result.cancelled };
-				},
-				reload: async () => {
-					await session.reload();
-				},
 			},
 			shutdownHandler: () => {
 				shutdownRequested = true;

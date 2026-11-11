@@ -73,28 +73,106 @@ async function summarize(streamFn: never, previousSummary?: string, messages: Ag
 }
 
 describe("summarization retries on context overflow", () => {
-	it("drops the oldest messages and keeps the previous summary and newest message", async () => {
-		const { streamFn, prompts } = fakeStream(1);
-		const result = await summarize(streamFn, "PREVIOUS-SUMMARY");
+	it("summarizes the older part on its own and feeds that summary in as the previous summary of the rest", async () => {
+		const prompts: string[] = [];
+		const answers = [overflow(), response({ content: [{ type: "text", text: "OLDER-SUMMARY" }] }), response({})];
+		const streamFn = vi.fn(async (_model: unknown, context: { messages: Array<{ content: unknown }> }) => {
+			prompts.push(JSON.stringify(context.messages.at(-1)?.content));
+			const result = answers[prompts.length - 1];
+			return { result: async () => result } as never;
+		});
+		const result = await summarize(streamFn as never, "PREVIOUS-SUMMARY");
 		expect(result.text).toBe("summary");
-		expect(prompts).toHaveLength(2);
+		// Both parts are billed: the older part's summary and the final one.
+		expect(result.usage).toMatchObject({ input: 2, output: 2, totalTokens: 4 });
+		expect(prompts).toHaveLength(3);
 		expect(prompts[0]).toContain("OLDEST");
-		expect(prompts[1]).not.toContain("OLDEST");
-		expect(prompts[1]).not.toContain("second");
-		expect(prompts[1]).toContain("third");
-		expect(prompts[1]).toContain("NEWEST");
+		expect(prompts[0]).toContain("NEWEST");
+		// The older part, with the summary the conversation already had.
+		expect(prompts[1]).toContain("OLDEST");
 		expect(prompts[1]).toContain("PREVIOUS-SUMMARY");
-		// The summarizer is told what it does not see, so its summary does not claim to cover it.
-		expect(prompts[0]).not.toContain("did not fit this request");
-		expect(prompts[1]).toContain("the 2 oldest messages of this conversation did not fit this request");
+		expect(prompts[1]).not.toContain("NEWEST");
+		// The rest updates the older part's summary, which carries the earlier one.
+		expect(prompts[2]).toContain("NEWEST");
+		expect(prompts[2]).not.toContain("OLDEST");
+		expect(prompts[2]).toContain("<previous-summary>\\nOLDER-SUMMARY\\n</previous-summary>");
+		expect(prompts[2]).toContain("NEW messages to incorporate into the existing summary");
+		expect(prompts[2]).not.toContain("PREVIOUS-SUMMARY");
+		// Every message reached the summarizer in one of the two parts, and nothing was left out.
+		for (const text of ["OLDEST", "second", "third", "fourth", "NEWEST"])
+			expect(prompts.slice(1).filter((prompt) => prompt.includes(text))).toHaveLength(1);
+		for (const prompt of prompts) expect(prompt).not.toContain("did not fit this request");
 	});
 
-	it("gives up after three trims and reports the overflow", async () => {
+	it("starts a first summary from the older part when the conversation had none", async () => {
+		const { streamFn, prompts } = fakeStream(1);
+		await summarize(streamFn);
+		expect(prompts).toHaveLength(3);
+		expect(prompts[1]).not.toContain("<previous-summary>");
+		expect(prompts[2]).toContain("<previous-summary>\\nsummary\\n</previous-summary>");
+	});
+
+	it("splits by size, not by count, and never parts a tool result from its call", async () => {
+		const big = user(`BIG ${"x".repeat(40_000)}`);
+		const { streamFn, prompts } = fakeStream(1);
+		await summarize(streamFn, undefined, [big, user("small one"), user("small two"), user("NEWEST")]);
+		// The one large message is the older half on its own.
+		expect(prompts[1]).toContain("BIG");
+		expect(prompts[1]).not.toContain("small one");
+		expect(prompts[2]).toContain("small one");
+		expect(prompts[2]).toContain("NEWEST");
+
+		const call = {
+			role: "assistant",
+			content: [{ type: "toolCall", id: "t1", name: "read", arguments: { path: "CALLFILE" } }],
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+			usage,
+			stopReason: "toolUse",
+			timestamp: 1,
+		} as AssistantMessage;
+		const toolResult = {
+			role: "toolResult",
+			toolCallId: "t1",
+			toolName: "read",
+			content: [{ type: "text", text: "RESULTTEXT" }],
+			isError: false,
+			timestamp: 1,
+		} as AgentMessage;
+		const paired = fakeStream(1);
+		await summarize(paired.streamFn, undefined, [user(`FIRST ${"y".repeat(400)}`), call, toolResult, user("NEWEST")]);
+		const withCall = paired.prompts.slice(1).filter((prompt) => prompt.includes("CALLFILE"));
+		expect(withCall).toHaveLength(1);
+		expect(withCall[0]).toContain("RESULTTEXT");
+	});
+
+	it("drops the oldest messages of a part that still does not fit, and says so", async () => {
+		const prompts: string[] = [];
+		// The whole request and the older part overflow; the older part fits once its oldest quarter is dropped.
+		const streamFn = vi.fn(async (_model: unknown, context: { messages: Array<{ content: unknown }> }) => {
+			prompts.push(JSON.stringify(context.messages.at(-1)?.content));
+			const result = prompts.length <= 2 ? overflow() : response({});
+			return { result: async () => result } as never;
+		});
+		const result = await summarize(streamFn as never, "PREVIOUS-SUMMARY", longHistory);
+		expect(result.text).toBe("summary");
+		expect(prompts).toHaveLength(4);
+		expect(prompts[1]).toContain("OLDEST");
+		expect(prompts[2]).not.toContain("OLDEST");
+		expect(prompts[2]).toContain("PREVIOUS-SUMMARY");
+		expect(prompts[2]).toContain("oldest messages of this conversation did not fit this request");
+		expect(prompts[3]).toContain("NEWEST");
+		expect(prompts[3]).not.toContain("did not fit this request");
+	});
+
+	it("gives up after three trims of the older part and reports the overflow", async () => {
 		const { streamFn, calls } = fakeStream("always");
 		await expect(summarize(streamFn, undefined, longHistory)).rejects.toThrow(
 			/Summarization failed: prompt is too long/,
 		);
-		expect(calls).toHaveBeenCalledTimes(4);
+		// The whole request, then the older part and its three trims.
+		expect(calls).toHaveBeenCalledTimes(5);
 	});
 
 	it("never drops the last message", async () => {

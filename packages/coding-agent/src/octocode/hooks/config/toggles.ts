@@ -8,7 +8,7 @@ import {
 } from "../../../core/extensibility/toggles.ts";
 import { vendorDefaultOn } from "../../../core/discovery/vendors/switch.ts";
 import { vendorToggleId } from "../../../core/discovery/vendors/types.ts";
-import { tildePath } from "../../shared/home.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import { HOOK_EVENTS, type HookEvent } from "../catalog.ts";
 import type { HookConfig, HookHandler } from "../contracts.ts";
 import { hookIdentity } from "./calls.ts";
@@ -23,7 +23,7 @@ const hookVendor = (hook: HookHandler): "claude" | "codex" | undefined =>
  */
 export function hookToggleIds(event: HookEvent, matcher: string, hook: HookHandler, home?: string): string[] {
 	const host = hook.protocol ?? "octocode";
-	const source = tildePath(hook.source, home);
+	const source = homeTilde(hook.source, home);
 	const vendor = hookVendor(hook);
 	return [
 		hookToggleId(source, event, matcher, hookIdentity(hook)),

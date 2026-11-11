@@ -1,6 +1,6 @@
 import { animationClock, Container, rgbColor, styleText } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
-import { AssistantMessageComponent } from "../../src/modes/interactive/components/index.ts";
+import { AssistantMessageComponent } from "../../src/modes/interactive/components/assistant-message.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { toolHeader } from "../../src/octocode/render/tool.ts";
 import {

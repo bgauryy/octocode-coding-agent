@@ -83,11 +83,16 @@ export async function runBatch(
 			content: [{ type: "text", text: [...latest].map(([index, text]) => `#${index + 1} ${text}`).join("\n") }],
 			details: { agentType: "task", batch: [] },
 		});
+	// Each entry's goal, its own or the batch default: a row names it whether the entry ran, was refused or crashed.
+	const goals = tasks.map((entry) => {
+		const goal = { ...defaults, ...entry }.goal;
+		return typeof goal === "string" ? goal : "(no goal)";
+	});
 	const runs = tasks.map(async (entry, index): Promise<Outcome> => {
 		const merged = { ...defaults, ...entry };
-		const goal = typeof merged.goal === "string" ? merged.goal : "(no goal)";
+		const goal = goals[index] ?? "(no goal)";
 		const foreign = Object.keys(entry).filter((field) => !allowed.has(field));
-		if (foreign.length > 0) throw Object.assign(new Error(`does not take ${foreign.join(", ")}.`), { goal });
+		if (foreign.length > 0) throw new Error(`does not take ${foreign.join(", ")}.`);
 		const own = agentCall({ type: "task", ...merged }).input;
 		if (reason !== undefined && own.reason === undefined && declaresReason(tool.parameters)) own.reason = reason;
 		const entryId = `${id}#${index + 1}`;
@@ -98,7 +103,7 @@ export async function runBatch(
 				{ type: "toolCall", id: entryId, name: "agent task", arguments: own as JsonObject },
 			);
 		} catch (error) {
-			throw Object.assign(new Error(`Invalid agent task call. ${errorMessage(error)}`), { goal });
+			throw new Error(`Invalid agent task call. ${errorMessage(error)}`, { cause: error });
 		}
 		const result = await tool.execute(
 			entryId,
@@ -115,11 +120,9 @@ export async function runBatch(
 		return { goal, ok: true, text: textOf(result), details: result.details };
 	});
 	const settled = await Promise.allSettled(runs);
-	const outcomes = settled.map((each): Outcome => {
+	const outcomes = settled.map((each, index): Outcome => {
 		if (each.status === "fulfilled") return each.value;
-		const goal =
-			(isRecord(each.reason) && typeof each.reason.goal === "string" ? each.reason.goal : undefined) ?? "(no goal)";
-		return { goal, ok: false, text: errorMessage(each.reason) };
+		return { goal: goals[index] ?? "(no goal)", ok: false, text: errorMessage(each.reason) };
 	});
 	const text = outcomes
 		.map((each, index) => `#${index + 1} ${rowLabel(each)}: ${each.goal}\n${each.text}`)

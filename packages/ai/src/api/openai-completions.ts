@@ -1,9 +1,9 @@
 import { createAbortError } from "../utils/abort.ts";
+import { stripStreamScratch } from "./stream-finalize.ts";
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type OpenAI from "openai";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, ThinkingContent } from "../types.ts";
 import { formatProviderError, normalizeProviderError, redactProviderText } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -22,7 +22,7 @@ import {
 } from "./openai-completions/reasoning-details.ts";
 import { createCompletionsChunkProcessor } from "./openai-completions/stream-events.ts";
 import type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, requestedReasoningEffort } from "./simple-options.ts";
 
 export { convertMessages } from "./openai-completions/messages.ts";
 export type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
@@ -123,12 +123,8 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				if (block.type === "thinking") {
 					applyStreamedReasoningDetails(block);
 				}
-				delete (block as { index?: number }).index;
-				// Streaming scratch buffers are only used during parsing; never persist them.
-				delete (block as { partialArgs?: string }).partialArgs;
-				delete (block as { customInput?: unknown }).customInput;
-				delete (block as { streamIndex?: number }).streamIndex;
 			}
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
@@ -161,8 +157,7 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
 		...buildBaseOptions(model, context, options, options?.apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies OpenAICompletionsOptions;
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	const reasoningEffort = requestedReasoningEffort(model, options);
 
 	return stream(model, context, {
 		...base,

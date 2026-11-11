@@ -27,6 +27,7 @@ import {
 	migrateToCurrentVersion,
 	parseSessionEntryLine,
 } from "./entries.ts";
+import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
 /** Offset just past the last newline of `fd` (0 when there is none), reading backwards in blocks. */
@@ -138,7 +139,7 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 	if (header.type !== "session" || typeof (header as { id?: unknown }).id !== "string") {
 		return [];
 	}
-	return entries;
+	return decodeSessionRecords(entries);
 }
 
 /**
@@ -268,17 +269,25 @@ export function findMostRecentForCwd(cwd: string, sessionDir?: string): string |
 	return best?.path ?? null;
 }
 
-/** Create a session file that must not exist yet, writing every entry and syncing before close. */
-export function writeNewSessionFile(sessionFile: string, fileEntries: readonly FileEntry[]): void {
+/**
+ * Create a session file that must not exist yet, writing every entry and syncing before close. Returns the lines
+ * written and the codec that stored them, which the session keeps for its next appends.
+ */
+export function writeNewSessionFile(
+	sessionFile: string,
+	fileEntries: readonly FileEntry[],
+): { lines: string[]; codec: SessionCodec } {
+	const encoded = encodeSessionLines(fileEntries);
 	const fd = openSync(sessionFile, "wx", 0o600);
 	try {
-		for (const e of fileEntries) {
-			writeFileSync(fd, `${JSON.stringify(e)}\n`);
+		for (const line of encoded.lines) {
+			writeFileSync(fd, `${line}\n`);
 		}
 		fsyncSync(fd);
 	} finally {
 		closeSync(fd);
 	}
+	return encoded;
 }
 
 /** Resolved arguments for opening a specific session file. */
@@ -340,7 +349,9 @@ export function forkSessionFile(
 		sourceEntries =
 			onDisk[0]?.type === "session" && onDisk[0].id === sourcePath.storedId
 				? onDisk
-				: transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry);
+				: decodeSessionRecords(
+						transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry),
+					);
 	}
 	const resolvedTargetCwd = resolvePath(targetCwd);
 	if (sourceEntries.length === 0) {
@@ -373,8 +384,8 @@ export function forkSessionFile(
 	// The copy is written whole to a temporary sibling and renamed into place, so a failure leaves no partial fork.
 	const newHeader = createSessionHeader(newSessionId, timestamp, resolvedTargetCwd, resolvedSourcePath);
 	if (typeof sourcePath !== "string") newHeader.parentSessionId = sourcePath.storedId;
-	const content = [newHeader, ...sourceEntries.filter((entry) => entry.type !== "session")]
-		.map((entry) => `${JSON.stringify(entry)}\n`)
+	const content = encodeSessionLines([newHeader, ...sourceEntries.filter((entry) => entry.type !== "session")])
+		.lines.map((line) => `${line}\n`)
 		.join("");
 	if (existsSync(newSessionFile)) throw new Error(`Cannot fork: session file already exists: ${newSessionFile}`);
 	atomicWriteFileSync(newSessionFile, content, { mode: 0o600 });

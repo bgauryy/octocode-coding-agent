@@ -22,7 +22,7 @@ import type {
 } from "../../types.ts";
 import { fastHash } from "../../utils/hash.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
-import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { type InstructionBlocks, splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
 import { resolveTranscript, resolveTranscriptTools } from "../../utils/transcript.ts";
 import { getGrammarToolInput } from "../constrained-sampling.ts";
@@ -77,6 +77,26 @@ export const RESPONSES_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
 	"opencode",
 	"opencode-go",
 ]);
+
+/**
+ * The leading instructions as content parts: each cached block through `cachedPart`, which adds the breakpoint, and
+ * the volatile block as plain text. `suffix` (text that follows the system prompt) joins the last part.
+ */
+function instructionParts<TPart extends ResponseInputText>(
+	blocks: InstructionBlocks,
+	suffix: string,
+	cachedPart: (text: string) => TPart,
+): ResponseInputText[] {
+	if (blocks.volatile === undefined) {
+		return blocks.cached.map((text, index) =>
+			cachedPart(index === blocks.cached.length - 1 ? `${text}${suffix}` : text),
+		);
+	}
+	return [
+		...blocks.cached.map(cachedPart),
+		{ type: "input_text", text: sanitizeSurrogates(`${blocks.volatile}${suffix}`) },
+	];
+}
 
 export function convertResponsesMessages<TApi extends Api>(
 	model: Model<TApi>,
@@ -173,8 +193,7 @@ export function convertResponsesMessages<TApi extends Api>(
 			reasoning: { effort: effort as NonNullable<ResponseConfigurationUpdateItemParam.Reasoning["effort"]> },
 		} satisfies ResponseConfigurationUpdateItemParam);
 	};
-	const compat = model.compat as { supportsDeveloperRole?: boolean } | undefined;
-	const instructionRole = model.reasoning && compat?.supportsDeveloperRole !== false ? "developer" : "system";
+	const instructionRole = model.reasoning && (options?.supportsDeveloperRole ?? true) ? "developer" : "system";
 
 	let msgIndex = 0;
 	let sourceIndex = 0;
@@ -206,16 +225,21 @@ export function convertResponsesMessages<TApi extends Api>(
 						text: sanitizeSurrogates(blockText),
 						prompt_cache_breakpoint: breakpoint,
 					});
-					// A named section starts a second block with its own breakpoint; the blocks join to the same text.
+					// A named section starts a second block with its own breakpoint, and another the trailing block
+					// without one; the blocks join to the same text.
 					const fullText = getSystemMessageText(msg);
 					const split =
 						isLeadingSystemMessage && ttl && text.startsWith(fullText)
-							? splitSystemMessageAtBoundary(msg, options?.instructionCacheBoundary)
+							? splitSystemMessageIntoBlocks(
+									msg,
+									options?.instructionCacheBoundary,
+									options?.instructionVolatileBoundary,
+								)
 							: undefined;
 					messages.push({
 						role: instructionRole,
 						content: split
-							? [block(split[0]), block(`${split[1]}${text.slice(fullText.length)}`)]
+							? instructionParts(split, text.slice(fullText.length), block)
 							: isLeadingSystemMessage && ttl
 								? [block(text)]
 								: sanitizeSurrogates(text),

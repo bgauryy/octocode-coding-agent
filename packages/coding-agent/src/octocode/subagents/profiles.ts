@@ -12,6 +12,7 @@ import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "..
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { globalPaths } from "../shared/home.ts";
+import { HOOK_MODES, type HookMode } from "../shared/hook-mode.ts";
 import { CORE_TOOLS, DEFAULT_CHILD_TOOLS, localResearchTools, MCP_ACCESS_TOOLS, SHELL_TOOLS } from "./core-tools.ts";
 import {
 	isRelative,
@@ -23,7 +24,7 @@ import {
 	toolList,
 	withCoreTools,
 } from "./profile-tools.ts";
-import { MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/deferral.ts";
+import { MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/api.ts";
 import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
 
 export interface AgentProfile {
@@ -45,8 +46,11 @@ export interface AgentProfile {
 	mcpDefer?: McpDeferRole[];
 	/** Legacy opt-out, rejected because specialists require local research. */
 	mcp?: false;
-	/** True: the child runs the user's command hooks (`OCTOCODE_SUBAGENT_HOOKS`); by default subagents do not. */
-	hooks?: true;
+	/**
+	 * How much of the user's hooks the child runs (`hooks:` front matter: `false`/`off`, `decisions`, `true`/`all`). Absent:
+	 * the task's `hooks` field decides, else none run. `off` forbids them whatever the task asks (`childHookMode`).
+	 */
+	hooks?: HookMode;
 	/**
 	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
 	 * permission gate enforces it in every mode (`permission/read-only-role.ts`): `file` writes are refused outside its
@@ -162,6 +166,7 @@ export function parseProfile(
 		throw new Error(`${key} must be true or false, not ${JSON.stringify(value)}`);
 	};
 	const lean = flag("lean") === true;
+	const hooks = hookModeOf(frontmatter.hooks);
 	const skills = skillNames(frontmatter.skills);
 	// A bad `tools` selector fails the profile when it is loaded, not when it first runs.
 	const selected = selectedTools(tools);
@@ -189,12 +194,21 @@ export function parseProfile(
 		...(headless === undefined ? {} : { headless }),
 		...(requests === undefined ? {} : { maxRequests: requests }),
 		...(linger === undefined ? {} : { linger }),
-		...(flag("hooks") === true ? { hooks: true as const } : {}),
+		...(hooks ? { hooks } : {}),
 		...(flag("readOnly") === true ? { readOnly: true as const } : {}),
 		...(declared.length > 0 ? { permissions: declared } : {}),
 		...(ignored.length > 0 ? { ignoredPermissions: ignored } : {}),
 		hash: shortHash(text),
 	};
+}
+
+/** `hooks:` front matter: `true` is `all` and `false` is `off`; any other value fails the profile. */
+function hookModeOf(value: unknown): HookMode | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value === "boolean") return value ? "all" : "off";
+	const mode = HOOK_MODES.find((each) => each === value);
+	if (mode) return mode;
+	throw new Error(`hooks must be false, off, decisions, true or all, not ${JSON.stringify(value)}`);
 }
 
 /** `mcpDefer:` front matter: a role name or a list of them (`none` or empty: nothing deferred); an unknown role fails the profile. */

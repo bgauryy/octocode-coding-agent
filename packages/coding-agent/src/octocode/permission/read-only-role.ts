@@ -1,4 +1,4 @@
-import { archiveMutation } from "../shared/archive-operation.ts";
+import { memoryMutation } from "../shared/archive-operation.ts";
 import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
@@ -85,7 +85,7 @@ export function readOnlyRoleRefusal(
 ): string | undefined {
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
-	if (event.toolName === "archive" && archiveMutation(input)) return refusal("Saving shared memory");
+	if (event.toolName === "memory" && memoryMutation(input)) return refusal("Saving shared memory");
 	if (browserMcpTool(event.toolName) !== undefined) {
 		const { control, outside } = browserEscalations(event.toolName, input, cwd);
 		const first =

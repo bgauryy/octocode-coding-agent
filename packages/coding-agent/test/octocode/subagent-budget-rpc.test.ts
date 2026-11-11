@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { MAX_REQUESTS_ENV } from "../../src/octocode/subagents/budget.ts";
+import { finalMessage, MAX_REQUESTS_ENV } from "../../src/octocode/subagents/budget.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import { tmp } from "./helpers.ts";
@@ -63,7 +63,15 @@ describe("a subagent child over its request budget", () => {
 		const args = buildAgentArgs(undefined, undefined, session);
 		const spawned = vi.fn();
 		const launch = (signal?: AbortSignal) =>
-			runSubagent("budget loop 40", args, workspace, undefined, { id: session.id }, signal, () => undefined, spawned);
+			runSubagent({
+				task: "budget loop 40",
+				args,
+				cwd: workspace,
+				identity: { id: session.id },
+				signal,
+				onProgress: () => undefined,
+				onSpawn: spawned,
+			});
 		await expect(launch(AbortSignal.abort())).rejects.toThrow("Subagent cancelled");
 		expect(fs.existsSync(session.dir)).toBe(false);
 		fs.writeFileSync(session.dir, "not a directory");
@@ -84,76 +92,69 @@ describe("a subagent child over its request budget", () => {
 		const workspace = tmp();
 		const session = { dir: path.join(workspace, "session"), id: "a-resumed-budget" };
 		const args = buildAgentArgs(undefined, undefined, session);
-		const first = await runSubagent(
-			"budget loop 0",
+		const first = await runSubagent({
+			task: "budget loop 0",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id },
-			undefined,
-			() => undefined,
-		);
+			cwd: workspace,
+			identity: { id: session.id },
+			onProgress: () => undefined,
+		});
 		expect(first.outcome).toBe("done");
 		const progress: number[] = [];
-		const resumed = await runSubagent(
-			"budget loop 40",
+		const resumed = await runSubagent({
+			task: "budget loop 40",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id, parentSession: "forked-parent", scratch: path.join(workspace, "new-parent") },
-			undefined,
-			(update) => {
+			cwd: workspace,
+			identity: { id: session.id, parentSession: "forked-parent", scratch: path.join(workspace, "new-parent") },
+			onProgress: (update) => {
 				if (update.requests !== undefined) progress.push(update.requests);
 			},
-		);
-		// One saved reply, under the soft limit: this run shares the first run's budget and stops at its hard limit.
+		});
+		// One saved reply, under the soft limit: this run shares the first run's budget and stops at its hard limit. The fifth
+		// reply is the last request, which still asked for tools (this child ignores the tool choice) and so ended the run.
 		expect(resumed.budget).toEqual({ requests: 5, limit: 3 });
-		expect(progress).toEqual([1, 2, 3, 4]);
-		expect(resumed.usage.totalTokens).toBe(480);
+		expect(progress).toEqual([1, 2, 3, 4, 5]);
+		expect(resumed.usage.totalTokens).toBe(600);
 		expect(
 			lines()
 				.filter((line) => line.startsWith("prompt "))
 				.at(-1),
 		).not.toContain("Your coordinator continued you");
-		// At the hard limit: a whole allowance from there, where it used to return without running.
+		// Past the hard limit (six saved replies): a whole allowance from there, where it used to return without running.
 		const spawned = vi.fn();
 		const continued: number[] = [];
-		const again = await runSubagent(
-			"budget loop 40",
+		const again = await runSubagent({
+			task: "budget loop 40",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id },
-			undefined,
-			(update) => {
+			cwd: workspace,
+			identity: { id: session.id },
+			onProgress: (update) => {
 				if (update.requests !== undefined) continued.push(update.requests);
 			},
-			spawned,
-		);
-		expect(again.budget).toEqual({ requests: 10, limit: 8 });
-		expect(continued).toEqual([1, 2, 3, 4, 5]);
+			onSpawn: spawned,
+		});
+		expect(again.budget).toEqual({ requests: 11, limit: 9 });
+		expect(continued).toEqual([1, 2, 3, 4, 5, 6]);
 		expect(spawned).toHaveBeenCalledTimes(1);
 		expect(
 			lines()
 				.filter((line) => line.startsWith("prompt "))
 				.at(-1),
 		).toContain(
-			"Your coordinator continued you after 5 model requests; the run is stopped at 10. Do this task and report before that:",
+			"Your coordinator continued you after 6 model requests; the run is stopped at 11. Do this task and report before that:",
 		);
 		// A peer's relayed message is no grant: past the hard limit it runs nothing, and the report says how to continue.
 		const transcript = fs.readFileSync(childSessionFile(session)!, "utf8");
 		const notSpawned = vi.fn();
-		const exhausted = await runSubagent(
-			"budget loop 40",
+		const exhausted = await runSubagent({
+			task: "budget loop 40",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id, peerResumed: true },
-			undefined,
-			() => undefined,
-			notSpawned,
-		);
-		expect(exhausted.budget).toEqual({ requests: 10, limit: 3 });
+			cwd: workspace,
+			identity: { id: session.id, peerResumed: true },
+			onProgress: () => undefined,
+			onSpawn: notSpawned,
+		});
+		expect(exhausted.budget).toEqual({ requests: 12, limit: 3 });
 		expect(exhausted.usage.totalTokens).toBe(0);
 		expect(exhausted.text).toContain(`\`resume: ${session.id}\``);
 		expect(notSpawned).not.toHaveBeenCalled();
@@ -161,15 +162,13 @@ describe("a subagent child over its request budget", () => {
 		const fresh = { dir: session.dir, id: "a-new-budget" };
 		expect(
 			(
-				await runSubagent(
-					"budget loop 2",
-					buildAgentArgs(undefined, undefined, fresh),
-					workspace,
-					undefined,
-					{ id: fresh.id },
-					undefined,
-					() => undefined,
-				)
+				await runSubagent({
+					task: "budget loop 2",
+					args: buildAgentArgs(undefined, undefined, fresh),
+					cwd: workspace,
+					identity: { id: fresh.id },
+					onProgress: () => undefined,
+				})
 			).outcome,
 		).toBe("done");
 	});
@@ -198,33 +197,36 @@ describe("a subagent child over its request budget", () => {
 				.join("\n") + "\n",
 		);
 		const args = buildAgentArgs(undefined, undefined, session);
-		const outcome = await runSubagent(
-			"budget loop 1",
+		const outcome = await runSubagent({
+			task: "budget loop 1",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id },
-			undefined,
-			() => undefined,
-		);
+			cwd: workspace,
+			identity: { id: session.id },
+			onProgress: () => undefined,
+		});
 		expect(outcome.outcome).toBe("done");
 		expect(outcome.budget).toBeUndefined();
 		expect(outcome.usage.totalTokens).toBe(240);
 		// The three saved replies, then two: a resume at the soft limit counts all of them and starts its allowance there.
-		const stopped = await runSubagent(
-			"budget loop 40",
+		const stopped = await runSubagent({
+			task: "budget loop 40",
 			args,
-			workspace,
-			undefined,
-			{ id: session.id },
-			undefined,
-			() => undefined,
-		);
+			cwd: workspace,
+			identity: { id: session.id },
+			onProgress: () => undefined,
+		});
 		expect(stopped.budget).toEqual({ requests: 10, limit: 8 });
 		process.env[MAX_REQUESTS_ENV] = "0";
 		expect(
-			(await runSubagent("budget loop 6", args, workspace, undefined, { id: session.id }, undefined, () => undefined))
-				.outcome,
+			(
+				await runSubagent({
+					task: "budget loop 6",
+					args,
+					cwd: workspace,
+					identity: { id: session.id },
+					onProgress: () => undefined,
+				})
+			).outcome,
 		).toBe("done");
 	});
 
@@ -233,21 +235,21 @@ describe("a subagent child over its request budget", () => {
 		const lines = childLog();
 		let pid = 0;
 		const progress: Array<number | undefined> = [];
-		const outcome = await runSubagent(
-			"budget loop 40",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-budget" },
-			undefined,
-			(update) => progress.push(update.requests),
-			(spawned) => {
+		const outcome = await runSubagent({
+			task: "budget loop 40",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-budget" },
+			onProgress: (update) => progress.push(update.requests),
+			onSpawn: (spawned) => {
 				pid = spawned;
 			},
-		);
+		});
 		const log = lines();
 		const steers = log.filter((line) => line.startsWith("steer "));
-		expect(steers).toHaveLength(1);
+		// The soft limit's steer, then the hard limit's last request without tools.
+		expect(steers).toHaveLength(2);
+		expect(steers[1]).toBe(`steer ${finalMessage(5)}`);
 		// No parent in this identity: the child cannot be answered, so it is told to say so in its report.
 		expect(steers[0]).toBe(
 			"steer You have used 3 of 3 model requests; the run stops at 5. Finish the check in progress.",
@@ -272,31 +274,31 @@ describe("a subagent child over its request budget", () => {
 	it("takes the soft limit from the profile before the environment", async () => {
 		process.env[MAX_REQUESTS_ENV] = "100";
 		const lines = childLog();
-		const outcome = await runSubagent(
-			"budget loop 40",
-			[],
-			tmp(),
-			{ name: "limited", description: "", prompt: "", maxRequests: 2 },
-			{ id: "a-profile" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "budget loop 40",
+			args: [],
+			cwd: tmp(),
+			profile: { name: "limited", description: "", prompt: "", maxRequests: 2 },
+			identity: { id: "a-profile" },
+			onProgress: () => undefined,
+		});
 		expect(outcome.budget).toEqual({ requests: 3, limit: 2 });
-		expect(lines().filter((line) => line.startsWith("steer "))).toHaveLength(1);
+		expect(lines().filter((line) => line.startsWith("steer "))).toEqual([
+			expect.stringContaining("steer You have used 2 of 2 model requests"),
+			`steer ${finalMessage(3)}`,
+		]);
 	});
 
 	it("leaves a child alone when the budget is off, however many requests it makes", async () => {
 		process.env[MAX_REQUESTS_ENV] = "0";
 		const lines = childLog();
-		const outcome = await runSubagent(
-			"budget loop 12",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-off" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "budget loop 12",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-off" },
+			onProgress: () => undefined,
+		});
 		expect(lines().some((line) => line.startsWith("steer ") || line === "abort")).toBe(false);
 		expect(outcome.budget).toBeUndefined();
 		expect(outcome.outcome).toBe("done");
@@ -306,15 +308,13 @@ describe("a subagent child over its request budget", () => {
 	it("does not stop a child that finishes within the hard limit", async () => {
 		process.env[MAX_REQUESTS_ENV] = "5";
 		const lines = childLog();
-		const outcome = await runSubagent(
-			"budget loop 6",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-fits" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent({
+			task: "budget loop 6",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-fits" },
+			onProgress: () => undefined,
+		});
 		expect(lines().filter((line) => line.startsWith("steer "))).toHaveLength(1);
 		expect(lines()).not.toContain("abort");
 		expect(outcome.outcome).toBe("done");

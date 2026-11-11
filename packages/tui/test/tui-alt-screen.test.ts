@@ -4,7 +4,7 @@ import {
 	AltScreenSearchComponent,
 	AltScreenSearchIndex,
 	findAltScreenSearchMatches,
-} from "../src/alt-screen-search.ts";
+} from "../src/tui-alt-screen/search-index.ts";
 import { HStack } from "../src/components/h-stack.ts";
 import { Image } from "../src/components/image.ts";
 import { MouseRegion } from "../src/components/mouse-region.ts";

@@ -1,7 +1,6 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
@@ -12,12 +11,12 @@ import { requestJsonEventStream } from "../utils/json-event-stream.ts";
 import { retryAfterMsFromError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
+import { assertStreamCompleted, stripStreamScratch } from "./stream-finalize.ts";
 import { processResponsesStream } from "./openai-responses-shared/stream-processing.ts";
 import { getCompat, getConfigurationUpdateEffort } from "./openai-responses/compat.ts";
 import { applyServiceTierPricing, buildParams, createRequestHeaders } from "./openai-responses/request.ts";
 import type { OpenAIResponsesOptions, ResponsesRequest } from "./openai-responses/types.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, requestedReasoningEffort } from "./simple-options.ts";
 
 export type { OpenAIResponsesOptions } from "./openai-responses/types.ts";
 
@@ -74,11 +73,14 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			assertImageRequestPayload(model, params);
 			const url = new URL(model.baseUrl);
 			url.pathname = `${url.pathname.replace(/\/$/, "")}/responses`;
-			const request = await retryProviderRequest(() => requestJsonEventStream(url, params, headers, options), {
-				maxRetries: options?.maxRetries,
-				maxRetryDelayMs: options?.maxRetryDelayMs,
-				signal: options?.signal,
-			});
+			const request = await retryProviderRequest(
+				() => requestJsonEventStream(url, params, headers, { ...options, label: "OpenAI Responses" }),
+				{
+					maxRetries: options?.maxRetries,
+					maxRetryDelayMs: options?.maxRetryDelayMs,
+					signal: options?.signal,
+				},
+			);
 			try {
 				await options?.onResponse?.(
 					{ status: request.response.status, headers: headersToRecord(request.response.headers) },
@@ -96,12 +98,12 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				request.dispose();
 			}
 
-			assertResponsesStreamCompleted(output, options?.signal, "OpenAI Responses");
+			assertStreamCompleted(output, options?.signal, "OpenAI Responses");
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			stripResponsesStreamScratch(output);
+			stripStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			const errorMessage = formatProviderError(
 				normalizeProviderError(error),
@@ -132,8 +134,7 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
 		...buildBaseOptions(model, context, options, options?.apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies OpenAIResponsesOptions;
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
-	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+	const reasoningEffort = requestedReasoningEffort(model, options);
 
 	return stream(model, context, {
 		...base,

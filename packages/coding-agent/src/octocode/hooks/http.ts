@@ -9,6 +9,7 @@ import {
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { isLinkLocalIp, isLoopbackIp, isMetadataIp } from "../../../../common/src/ip-address.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { escapeRegExp } from "../../../../common/src/regexp.ts";
 import { bareHostname, pinnedFetch } from "../../../../common/src/web-guard.ts";
 
 const RESPONSE_LIMIT = HOOK_OUTPUT_MAX_BYTES;
@@ -94,10 +95,7 @@ function canonicalPattern(value: string): string {
 	);
 }
 function matchesUrl(url: string, pattern: string): boolean {
-	const escaped = canonicalPattern(pattern)
-		.split("*")
-		.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-		.join(".*");
+	const escaped = canonicalPattern(pattern).split("*").map(escapeRegExp).join(".*");
 	return new RegExp(`^${escaped}$`).test(canonicalPattern(url));
 }
 

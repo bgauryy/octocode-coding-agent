@@ -3,6 +3,7 @@ import type { ReportStatus } from "../../instructions/report.ts";
 import type { WatchdogLimits } from "../events.ts";
 import type { StructuredResultV1 } from "../result-schema.ts";
 import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";
+import type { OutcomeSource } from "../report-outcome.ts";
 
 /** How long a stopped subagent gets to exit after SIGTERM before it is killed (a session shutdown, a permission change, a stall). */
 export const SUBAGENT_STOP_GRACE_MS = 5_000;
@@ -38,8 +39,8 @@ export interface SubagentOutcome {
 	structured?: StructuredResultV1;
 	reportArtifact?: ReportArtifact;
 	outcome?: ReportStatus;
-	/** Where the report named `outcome`: its first word or a labelled last line. */
-	outcomeSource?: "first" | "last";
+	/** Where the report named `outcome`: its first word, a labelled last line, or the answer to the one question about it. */
+	outcomeSource?: OutcomeSource;
 	usage: Usage;
 	/** Set when the child's model call failed (stopReason error/aborted). */
 	error?: string;

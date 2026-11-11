@@ -20,7 +20,7 @@ import { grantedSource, isGranted, sourceGrant } from "./provenance/grant.ts";
 import { credentialAsk, credentialHit } from "./credential-store.ts";
 import { args, callRequest, classify, reasonPurpose } from "./gate/classify.ts";
 import { prepareReplacement, type ReplacementOwner } from "./gate/replacement.ts";
-import { decide, type Decision, type GateVerdict, type PermissionStepBodies } from "./judge.ts";
+import { runPermissionSteps, type Decision, type GateVerdict, type PermissionStepBodies } from "./judge.ts";
 
 /**
  * The permission step of the `tool_call` pipeline, after the invariants and the PreToolUse hooks. A provenance hit
@@ -245,7 +245,7 @@ export function permissionGate(options: PermissionGateOptions) {
 		let active = true;
 		try {
 			const isActive = () => active;
-			return await decide(steps, {
+			return await runPermissionSteps(steps, {
 				event,
 				ctx,
 				input: event.input,

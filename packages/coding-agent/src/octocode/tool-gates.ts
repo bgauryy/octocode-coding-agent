@@ -27,6 +27,8 @@ import type { registerActivity } from "./ui/activity.ts";
 
 /** What the tool-call pipeline needs from the features `index.ts` composed before it. */
 export interface ToolGatesOptions {
+	/** The loop guard's step (`loop-guard.ts` through `registerRunGuards`): it refuses a call repeated past its limit. */
+	loop: Gate;
 	planning?: { gate(event: ToolCallEvent): GateVerdict | undefined };
 	permission: Permission;
 	provenance: ReturnType<typeof createProvenance>;
@@ -34,7 +36,7 @@ export interface ToolGatesOptions {
 	hooks: ReturnType<typeof registerHooks>;
 	sourcePolicy: ReturnType<typeof registerSourcePolicy>;
 	activity: ReturnType<typeof registerActivity>;
-	/** Local-read snapshots by tool call id, for the `tool_result` handler in `index.ts`. */
+	/** Local-read snapshots by tool call id, for the `tool_result` handler in `files/read-receipts.ts`. */
 	localReads: Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>;
 	/** Says whether this process is a subagent in the shared tree (`permission/git-state.ts`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
@@ -77,6 +79,7 @@ const asBash =
 export function registerToolGates(
 	api: ExtensionAPI,
 	{
+		loop,
 		permission,
 		provenance,
 		collab,
@@ -105,6 +108,9 @@ export function registerToolGates(
 				);
 			return verdict;
 		};
+	// A registered tool by name, and a tool's annotations (the option's, else the registered tool's own).
+	const toolDefinition = (name: string) => api.getAllTools().find((tool) => tool.name === name);
+	const annotationsOf = annotations ?? ((name: string) => toolDefinition(name)?.annotations);
 	// Only an isolated run's parent hands its child the team workspace (`subagents/tool.ts` `Isolation`): its cwd is a private worktree.
 	const scope = env ?? process.env;
 	const sharedTree = gitStateGate({
@@ -136,15 +142,16 @@ export function registerToolGates(
 			permission,
 			provenance,
 			network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
-			annotations: annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations),
+			annotations: annotationsOf,
 			protectedBranch,
 			replacement: {
-				definition: (name) => api.getAllTools().find((tool) => tool.name === name),
+				definition: toolDefinition,
 				refresh: (ctx) => sourcePolicy.refresh(ctx),
 				reserved: invariants,
 			},
 		})(timerOperation(agentOperation(event)), ctx, prior, event);
 	const bodies: GateStepBodies = {
+		loop,
 		"plan-mode": async (event) => planning?.gate(event),
 		"git-state": gitState,
 		reservation,
@@ -233,9 +240,7 @@ export function registerToolGates(
 		const event = { type: "tool_call" as const, ...call } as ToolCallEvent;
 		if (planning?.gate(event)) return false;
 		if (hooks.hasPreToolUse(call.toolName, call.input, ctx.cwd)) return false;
-		const toolAnnotations = (
-			annotations ?? ((name) => api.getAllTools().find((tool) => tool.name === name)?.annotations)
-		)(call.toolName);
+		const toolAnnotations = annotationsOf(call.toolName);
 		const request = classify(event, { cwd: ctx.cwd }, false, toolAnnotations);
 		// Anything else may change state or open a dialog the gate never sees (`ask`): the call may not start.
 		const { action, also, reasons } = request ?? {};

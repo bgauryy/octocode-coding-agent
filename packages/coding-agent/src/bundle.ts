@@ -1,7 +1,8 @@
 /**
  * The entry of the one-file Node bundle (`dist/bundle/octocode.js`): the package exports, the MCP subpaths, the commands
- * and the image worker. The small launchers beside it choose a command. Everything that loads the session runtime stays
- * behind a dynamic import, so importing this file starts nothing and each command keeps its own start order.
+ * and the image worker. The small launchers beside it choose a command; the database writer's worker is its own file
+ * beside it (`db/src/writer/client.ts`). Everything that loads the session runtime stays behind a dynamic import, so
+ * importing this file starts nothing and each command keeps its own start order.
  */
 import { isMainThread, workerData } from "node:worker_threads";
 import type { PrintModeOptions } from "./modes/print-mode.ts";

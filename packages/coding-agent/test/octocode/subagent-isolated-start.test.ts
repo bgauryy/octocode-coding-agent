@@ -46,13 +46,12 @@ describe("an isolated background start", () => {
 	it("names the child's worktree and the ref its result lands on", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);
-		const control = registerAgentTool(
-			f.api,
-			() => new Map(),
+		const control = registerAgentTool(f.api, {
+			profiles: () => new Map(),
 			team,
-			fakePermission(),
-			() => new Map(),
-		);
+			permission: fakePermission(),
+			refused: () => new Map(),
+		});
 		const ctx = fakeCtx({ cwd: repo(), hasUI: true });
 		// The parent asks "Trust new worktree?" and the user says yes.
 		Object.assign(ctx.ui, { confirm: async () => true });

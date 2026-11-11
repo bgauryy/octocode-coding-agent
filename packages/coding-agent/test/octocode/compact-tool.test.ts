@@ -66,6 +66,13 @@ describe("compact tool", () => {
 		expect(host(true).fake.tools.has(COMPACT_TOOL)).toBe(false);
 	});
 
+	it("refuses a focus over the limit whole, queuing nothing", async () => {
+		const { ctx, call, settle } = host();
+		await expect(call("x".repeat(16_001))).rejects.toThrow(/focus is 16001 characters, over the limit of 16000/);
+		await settle();
+		expect(ctx.compact).not.toHaveBeenCalled();
+	});
+
 	it("queues the request and runs it with the focus only after the run settles", async () => {
 		const { fake, ctx, call, settle } = host();
 		const result = await call("  keep the plan  ");

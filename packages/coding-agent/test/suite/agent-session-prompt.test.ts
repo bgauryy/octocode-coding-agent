@@ -561,7 +561,7 @@ describe("AgentSession prompt characterization", () => {
 		await expect(harness.session.prompt("hi")).rejects.toThrow(`No API key found for ${harness.getModel().provider}.`);
 	});
 
-	// Issue #10267, #5581: a run started by sendMessage(..., { triggerTurn: true }) skipped
+	// A run started by sendMessage(..., { triggerTurn: true }) skipped
 	// before_agent_start, so its second request patched away the sections handlers had added.
 	describe("runs started by a custom message", () => {
 		it("keeps the same system prompt for every request of the run", async () => {

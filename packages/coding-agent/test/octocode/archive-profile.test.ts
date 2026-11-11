@@ -118,10 +118,10 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-async function profile(params: Record<string, unknown>): Promise<string> {
+async function profileResult(params: Record<string, unknown>) {
 	const fake = fakeHost();
 	registerArchiveTool(fake.api);
-	const out = await fake.tools
+	return fake.tools
 		.get("archive")
 		.execute(
 			"t1",
@@ -130,7 +130,10 @@ async function profile(params: Record<string, unknown>): Promise<string> {
 			undefined,
 			fakeCtx({ cwd: root }),
 		);
-	return out.content[0].text as string;
+}
+
+async function profile(params: Record<string, unknown>): Promise<string> {
+	return (await profileResult(params)).content[0].text as string;
 }
 
 describe("archive tool, source profile", () => {
@@ -156,18 +159,27 @@ describe("archive tool, source profile", () => {
 		setCurrentSession("sess-main");
 		const list = await profile({ agentId: "steady-main" });
 		expect(list).toMatch(/^steady-main: 2 requests/);
-		const one = await profile({ agentId: "steady-main", line: 1 });
+		const one = await profile({ agentId: "steady-main", request: 1 });
 		expect(one).toMatch(/^#1 /);
 		expect(one).toMatch(/STATE\s+KIND\s+LAYER\s+TOKENS/);
-		const paged = await profile({ agentId: "steady-main", limit: 1 });
-		expect(paged).toContain("Page 1 of 2; continue with page.");
+		// A call recorded before `request` named the request with `line`.
+		expect(await profile({ agentId: "steady-main", line: 1 })).toBe(one);
+		const paged = await profileResult({ agentId: "steady-main", limit: 1 });
+		const first = paged.content[0].text as string;
+		expect(first).toContain("Page 1 of 2.");
+		expect(first).toContain(
+			`More remains: call again with cursor ${paged.details.nextCursor} and the same other arguments.`,
+		);
+		const next = await profileResult({ agentId: "steady-main", limit: 1, cursor: paged.details.nextCursor });
+		expect(next.content[0].text).toContain("Page 2 of 2.");
+		expect(next.details.nextCursor).toBeUndefined();
 		setCurrentSession(undefined);
 	});
 
 	it("names an unknown session, agent or request", async () => {
 		await expect(profile({ sessionId: "nope" })).rejects.toThrow("No session nope.");
 		await expect(profile({ sessionId: "sess-main", agentId: "ghost" })).rejects.toThrow("No agent ghost");
-		await expect(profile({ sessionId: "sess-main", agentId: "steady-main", line: 9 })).rejects.toThrow(
+		await expect(profile({ sessionId: "sess-main", agentId: "steady-main", request: 9 })).rejects.toThrow(
 			"has no request 9",
 		);
 	});

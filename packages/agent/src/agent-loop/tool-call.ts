@@ -9,6 +9,7 @@ import type {
 	AgentToolResult,
 } from "../types.ts";
 import type { ToolUpdateSink } from "./events.ts";
+import { type ListenerErrorReporter, reportListenerErrorToStderr } from "../listener-errors.ts";
 import { AgentToolExecutionError } from "../tool-error.ts";
 
 export type PreparedToolCall = {
@@ -35,7 +36,10 @@ export type ExecutedToolCallOutcome = {
 };
 
 /** The `beforeToolCall`, `afterToolCall` and `unknownToolMessage` hooks of {@link AgentLoopConfig}. */
-export type ToolCallHooks = Pick<AgentLoopConfig, "beforeToolCall" | "afterToolCall" | "unknownToolMessage">;
+export type ToolCallHooks = Pick<
+	AgentLoopConfig,
+	"beforeToolCall" | "afterToolCall" | "unknownToolMessage" | "onListenerError"
+>;
 
 function prepareToolCallArguments(tool: AgentTool<any>, toolCall: AgentToolCall): AgentToolCall {
 	if (!tool.prepareArguments) {
@@ -179,7 +183,12 @@ export async function runToolCall(toolCall: AgentToolCall, options: RunToolCallO
 	if (preparation.kind === "immediate") {
 		return { toolCall, result: preparation.result, isError: preparation.isError };
 	}
-	const executed = await executePreparedToolCall(preparation, signal, options.onUpdate ?? (() => {}));
+	const executed = await executePreparedToolCall(
+		preparation,
+		signal,
+		options.onUpdate ?? (() => {}),
+		options.onListenerError,
+	);
 	return finalizeExecutedToolCall(context, assistantMessage, preparation, executed, options, signal);
 }
 
@@ -240,6 +249,7 @@ export async function executePreparedToolCall(
 	prepared: PreparedToolCall,
 	signal: AbortSignal | undefined,
 	onUpdate: ToolUpdateSink,
+	report: ListenerErrorReporter = reportListenerErrorToStderr,
 ): Promise<ExecutedToolCallOutcome> {
 	const updateEvents = new Set<Promise<void>>();
 	let acceptingUpdates = true;
@@ -248,7 +258,7 @@ export async function executePreparedToolCall(
 	// A listener that fails must cost neither the tool's result nor the process: the promise is held unobserved until
 	// the tool ends, so an unhandled rejection would fire while it runs, and a live view is not worth a tool's work.
 	const reportUpdateFailure = (error: unknown) => {
-		process.stderr.write(`Tool update listener error (${prepared.toolCall.name}): ${String(error)}\n`);
+		report(`Tool update listener error (${prepared.toolCall.name}): ${String(error)}`, error);
 	};
 
 	try {

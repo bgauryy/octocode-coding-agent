@@ -1,4 +1,4 @@
-import { CURSOR_MARKER, renderFakeCursor } from "../../tui.ts";
+import { CURSOR_MARKER, renderFakeCursor } from "../../tui/cursor.ts";
 import { truncateToWidth } from "../../utils/truncate.ts";
 import { sliceByColumn } from "../../utils/columns.ts";
 import { getGraphemeSegmenter, visibleWidth } from "../../utils/width.ts";

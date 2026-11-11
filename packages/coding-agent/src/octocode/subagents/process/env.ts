@@ -13,6 +13,7 @@ import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BACKLOG_ITEM_ENV,
 	MCP_DEFER_ROLES_ENV,
+	MCP_RECENT_TOOLS_ENV,
 	CACHE_RETENTION_ENV,
 	SUBAGENT_HOOKS_ENV,
 	READ_ONLY_ENV,
@@ -32,6 +33,7 @@ import {
 	TEAM_WORKSPACE_ENV,
 } from "../../../../../common/src/env.ts";
 import { outputDir } from "../../shared/home.ts";
+import { childHookMode, type HookMode } from "../../shared/hook-mode.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import {
@@ -43,6 +45,7 @@ import {
 	PARENT_WAITS_ENV,
 } from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
+import { DEFAULT_MAX_REQUESTS } from "../budget.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
@@ -51,17 +54,51 @@ import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 /** Asks the Anthropic API for its cache-miss reason (`ai/src/api/anthropic-messages/cache-diagnostics.ts`). */
 const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";
 
+/** A task's cache tier for the child's conversation history: the provider's short tier, or the session's longest. */
+export const CACHE_CHOICES = ["short", "long"] as const;
+export type CacheChoice = (typeof CACHE_CHOICES)[number];
+
+/** What decides a task's default cache tier: whether the child is expected to sit idle past the short window. */
+export interface TaskShape {
+	/** A finished run of it stays reachable for a follow-up message (`linger`: a background run that is not isolated). */
+	lingers?: boolean;
+	/** It continues an earlier run's saved conversation (`resume`): it was messaged after a pause and may be again. */
+	resumed?: boolean;
+	/** Its model thinking level (`low` in `p/m:low`), when the route names one. */
+	thinking?: string;
+	/** Its soft request limit (`budget.ts` `maxRequests`); 0 means none. */
+	requests?: number;
+}
+
+const LONG_THINKING = new Set(["high", "xhigh", "max"]);
+
 /**
- * The retention a child starts with. A child's median gap between requests is seconds, so the 5-minute history entry
- * outlives it and the 1-hour write premium buys nothing; its instructions stay long because siblings of a role share
- * them for longer. Only the shipped default changes: a user's setting (file, provider, model, environment) wins as
- * configured, and a child that lingers or resumes keeps the long history because its next request may follow a pause.
+ * The tier of a task that names none. `short` for a child that works without pauses: measured child requests follow
+ * each other after 0 s at the median and 100 s at the 99th percentile, well inside the short window, and a long write
+ * costs more (2x against 1.25x input on Anthropic, docs/prompt-caching.md). `long` when the child is expected to idle
+ * past the short window and come back to its history: it lingers for a follow-up or is resumed (a message from its
+ * coordinator or a peer), it thinks at `high` or above, or its request budget is off or above the default (a long
+ * task). Running in the background or in a worktree says nothing about pauses; a coordinator that knows its child will
+ * wait on a timer, a background job or a message sets `cache: "long"` on the task.
+ */
+export function defaultTaskCache(shape: TaskShape): CacheChoice {
+	const longBudget = shape.requests !== undefined && (shape.requests === 0 || shape.requests > DEFAULT_MAX_REQUESTS);
+	const long =
+		shape.lingers === true || shape.resumed === true || LONG_THINKING.has(shape.thinking ?? "") || longBudget;
+	return long ? "long" : "short";
+}
+
+/**
+ * The retention a child starts with, from the policy resolved for its model. A retention the user configured (settings
+ * file, provider or model entry, environment) reaches the child as resolved, whatever the task chose. Otherwise `choice`
+ * (the task's `cache` field, else `defaultTaskCache`) sets the history tier alone: the instruction blocks keep the
+ * session's tier in both cases, so siblings of a role that chose differently still write and read one instruction entry.
  */
 export function childCachePreferences(
 	policy: { options: CachePreferences; sources: Partial<Record<keyof CachePreferences, string>> },
-	lingers: boolean,
+	choice: CacheChoice,
 ): CachePreferences {
-	if (lingers || policy.sources.cacheRetention !== "defaults") return policy.options;
+	if (policy.sources.cacheRetention !== "defaults" || choice === "long") return policy.options;
 	return { cacheRetention: "short", instructionCacheRetention: policy.options.instructionCacheRetention };
 }
 
@@ -73,11 +110,15 @@ export interface Identity {
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	/** Servers the parent stopped for this session only: the child leaves them out unless its tool selection names them. */
 	mcpStopped?: readonly string[];
+	/** The MCP tools the parent counts as in use (`mcpExposure: "recent"`): the child defers the same ones, so both share a cached prefix. */
+	mcpRecent?: readonly string[];
 	/** The configured servers the task gave the child (`mcp` on the task, plus those its tools name): any other stays out. */
 	mcpOnly?: readonly string[];
 	/** The servers the task named: their tools are added to the child's selection, so a server that is not active by default still starts. */
 	mcpNamed?: readonly string[];
 	cachePreferences?: CachePreferences;
+	/** How much of the user's hooks it runs (`childHookMode`); a follow-up to the same child keeps it. Absent: none. */
+	hooks?: HookMode;
 	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
 	cacheTtlMs?: number;
 	/** Shared cache group; transport sessions remain unique to each child. */
@@ -125,8 +166,9 @@ export interface Identity {
 
 /**
  * Child environment. `nonceFile` holds the child's own secret (`PERMISSION_NONCE_FILE_ENV`; the secret itself never goes in an environment). A browser profile with headless=false gets visible Chrome on the persistent profile. The user's
- * command hooks stay off in children unless the profile sets `hooks: true`: a hook meant for the main session (a
- * Stop hook that runs the tests, a notifier) would otherwise fire once per subagent.
+ * hooks stay off in a child unless its hook mode says otherwise (`identity.hooks`, else the profile's; `SUBAGENT_HOOKS_ENV`
+ * carries `decisions` or `all`): a hook meant for the main session (a Stop hook that runs the tests, a notifier) would
+ * otherwise fire once per subagent.
  */
 export function subagentProcessEnv(
 	profile: AgentProfile | undefined,
@@ -138,6 +180,7 @@ export function subagentProcessEnv(
 	mcpServersFile?: string,
 ): NodeJS.ProcessEnv {
 	const inherited = { ...base };
+	const hooks = identity?.hooks ?? childHookMode(profile?.hooks);
 	// User settings survive; run identity, permissions and browser mode belong to this child (trust comes from the shared trust store).
 	for (const key of [...CHILD_OWNED_ENV, PERMISSION_ENV]) delete inherited[key];
 	return {
@@ -151,8 +194,9 @@ export function subagentProcessEnv(
 			: {}),
 		// Children ask the provider why a request missed the cache (Anthropic API only) so a cold start can be attributed; a user value wins.
 		[CACHE_DIAGNOSTICS_ENV]: inherited[CACHE_DIAGNOSTICS_ENV] ?? "on",
-		...(profile?.hooks ? { [SUBAGENT_HOOKS_ENV]: "1" } : {}),
+		...(hooks === "off" ? {} : { [SUBAGENT_HOOKS_ENV]: hooks }),
 		...(profile?.mcpDefer?.length ? { [MCP_DEFER_ROLES_ENV]: profile.mcpDefer.join(",") } : {}),
+		...(identity?.mcpRecent ? { [MCP_RECENT_TOOLS_ENV]: JSON.stringify(identity.mcpRecent) } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),

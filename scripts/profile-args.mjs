@@ -21,7 +21,7 @@ Options:
   --label <name>         Profile name prefix (default: <mode>-startup)
   --runtime <name>       node, bun, or auto (default: auto)
   --agent-dir <dir>      Use a specific OCTOCODE_CODING_AGENT_DIR for the benchmark run
-  --isolated-agent-dir   Use a fresh temporary agent dir instead of the normal one
+  --isolated-agent-dir   Use a fresh temporary agent dir, Octocode home and agent database
   --no-offline           Do not force OCTOCODE_OFFLINE=1 / OCTOCODE_SKIP_VERSION_CHECK=1
   --skip-build           Reuse the existing bundle without rebuilding first (Node only)
   --cpu-profile          Write CPU profiles for benchmark runs

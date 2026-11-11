@@ -9,7 +9,6 @@ export interface BaseSpecs {
 	check(condition: BaseCondition, env: Parameters<ConditionSpec<BaseCondition>["check"]>[1]): Promise<CheckOutcome>;
 	watch: NonNullable<ConditionSpec<BaseCondition>["watch"]>;
 	hasWatch(condition: BaseCondition): boolean;
-	baseline: NonNullable<ConditionSpec<BaseCondition>["baseline"]>;
 }
 
 /**
@@ -43,16 +42,15 @@ export function checkSpec(base: BaseSpecs): ConditionSpec<CheckCondition> {
 		// Timing and event source are those of `on` (`conditionTiming`); a trigger without one has nothing to watch.
 		safetyMs: 30_000,
 		pollMs: 15_000,
-		baseline: (condition, cwd, deps) => base.baseline(condition.on, cwd, deps),
 		async check(condition, env) {
-			const outcome = await base.check(condition.on, { ...env, evidence: true });
+			const outcome = await base.check(condition.on, env);
 			if (outcome.refused || !outcome.met || !env.row) return { ...outcome, met: false };
 			const verdict = await env.deps.judge({
 				id: env.row.id,
 				sessionId: env.row.sessionId,
 				question: condition.question,
 				trigger: base.describe(condition.on),
-				evidence: outcome.evidence ?? outcome.output,
+				evidence: outcome.output,
 				checks: env.row.checks,
 				spentUsd: env.row.spentUsd,
 			});

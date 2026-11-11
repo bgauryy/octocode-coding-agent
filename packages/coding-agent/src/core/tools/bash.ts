@@ -12,14 +12,12 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "./bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./bash/header.ts";
 import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
+import { STRUCTURED_OUTPUT_MAX_BYTES } from "./bash/stored-result.ts";
 
 export { createLocalBashOperations } from "./bash/local-operations.ts";
 export { maxOutputTokensParameter } from "./bash/schema.ts";
 export type { BashOperations } from "./bash/types.ts";
 export { type BashToolDetails } from "./bash/outcome.ts";
-
-/** Output limit of `structuredContent.output`, which programmatic callers such as programmatic tool callers receive. */
-const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 
 export const bashToolSystemPromptContribution = {
 	get snippet(): string {

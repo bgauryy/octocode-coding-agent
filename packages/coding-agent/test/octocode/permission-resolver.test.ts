@@ -42,6 +42,21 @@ it("never borrows mismatched, tool-less, or expired execution identity", async (
 	});
 	expect(resolver).toHaveBeenCalledTimes(1);
 });
+it("does not let a plain hook allow skip a forcing reason: provenance hits and hook asks still need a person", async () => {
+	const { permission, ctx } = setup();
+	const resolver = vi.fn(async () => ({ decision: "allow" as const }));
+	permission.setResolver(resolver);
+	const invocation = captureToolInvocation("one", "bash", { command: "true" })!;
+	const copied = { ...ctx, invocation };
+	for (const reasons of [["provenance"], ["hook.ask"]] as const)
+		expect(await permission.check(copied, { ...request, reasons: [...reasons] })).toMatchObject({
+			allowed: false,
+			via: "headless",
+		});
+	expect(resolver).toHaveBeenCalledTimes(2);
+	// Without a forcing reason the same answer approves the call.
+	expect(await permission.check(copied, request)).toMatchObject({ allowed: true, via: "hook", lasts: "call" });
+});
 it("records denial before stopping and cancellation wins over late allow", async () => {
 	const { permission, ctx, fake } = setup();
 	const invocation = captureToolInvocation("one", "bash", {})!;

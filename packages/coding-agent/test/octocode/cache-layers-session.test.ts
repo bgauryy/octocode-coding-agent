@@ -94,22 +94,25 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 	return [captured[0], captured[1]];
 }
 
-/** The leading system prompt split where the second instruction cache block starts. */
+/** The leading system prompt split where the second instruction cache block and the volatile block start. */
 function layers({ context, options }: Captured) {
 	const initial = getInitialSystemMessage(context.messages);
 	const sections = initial?.sections ?? {};
 	const names = Object.keys(sections);
 	const boundary = options?.instructionCacheBoundary;
+	const volatileBoundary = options?.instructionVolatileBoundary;
 	const split = boundary ? names.indexOf(boundary) : -1;
+	const tail = volatileBoundary ? names.indexOf(volatileBoundary) : names.length;
 	const first = names.slice(0, split);
+	const text = (part: string[]) => part.map((name) => sections[name] ?? "").join("");
 	return {
 		boundary,
+		volatileBoundary,
 		firstNames: first,
 		first: first.map((name) => sections[name]).join(""),
-		second: names
-			.slice(split)
-			.map((name) => sections[name] ?? "")
-			.join(""),
+		second: text(names.slice(split, tail)),
+		volatileNames: names.slice(tail),
+		volatile: text(names.slice(tail)),
 		// Tools reach the provider as the leading system message's declarations.
 		toolNames: (initial?.toolsAdded ?? []).map((tool) => tool.name),
 		tools: JSON.stringify(initial?.toolsAdded ?? []),
@@ -147,10 +150,16 @@ it("sends byte-identical tools and first instruction block from different projec
 	expect(a.firstNames).toContain("mcps");
 	expect(a.toolNames).toContain("mcp__echo__shout");
 	expect(a.toolNames.some((name) => name.startsWith("mcp__browser__"))).toBe(false);
-	// The first session-tier section starts the second block; `project_context` now follows the policy (`system-prompt-spec.ts`).
-	expect(a.boundary).toBe("cwd");
+	// The first session-tier section starts the second block; `project_context` follows the policy (`system-prompt-spec.ts`).
+	expect(a.boundary).toBe("work");
 	expect(a.first).not.toMatch(/project-a|Date: /);
 	expect(a.second).toContain("Rules that only project-a has.");
+	// The directory and the date sit in the third block, which has no breakpoint: neither cached block names them.
+	expect(a.volatileBoundary).toBe("cwd");
+	expect(a.volatileNames.slice(0, 2)).toEqual(["cwd", "environment"]);
+	expect(a.volatile).toMatch(/project-a/);
+	expect(a.volatile).toMatch(/Date: /);
+	expect(a.second).not.toMatch(/<cwd>|Date: /);
 	// Everything the provider caches ahead of the project is the same in both projects.
 	expect(b.tools).toBe(a.tools);
 	expect(b.firstNames).toEqual(a.firstNames);

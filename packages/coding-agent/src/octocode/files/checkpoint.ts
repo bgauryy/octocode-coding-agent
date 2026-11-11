@@ -94,6 +94,8 @@ export class Checkpoints {
 	private made = false;
 	/** Blobs captures are storing now, by digest, with how many: not yet referenced by an entry, but not garbage. */
 	private readonly storing = new Map<string, number>();
+	/** Blob paths this process wrote or read back whole: their bytes match their digest. */
+	private readonly verified = new Set<string>();
 
 	/** Bind to a session's checkpoint directory, loading what an earlier run of the session recorded. */
 	open(dir: string): void {
@@ -290,19 +292,20 @@ export class Checkpoints {
 	}
 
 	/**
-	 * Content-addressed: an existing blob of the right size already holds these bytes (blobs are written by temp file
-	 * and rename, and /rewind verifies the digest before restoring), so it is not read again.
+	 * Content-addressed and not flushed to disk: a crash can lose a blob or leave it zeroed at its full length. A blob
+	 * this process did not write is reused only after its bytes are read back and match the digest, once per process;
+	 * otherwise it is written again, so a capture never leans on a corrupt blob (/rewind also verifies before restoring).
 	 */
 	private async storeBlob(state: CurrentContent): Promise<void> {
 		const blob = this.blob(state.sha256);
-		const size = await fs.promises.stat(blob).then(
-			(stat) => stat.size,
-			() => -1,
-		);
-		if (size === state.data.length) return;
+		if (this.verified.has(blob) || (await blobHolds(blob, state))) {
+			this.verified.add(blob);
+			return;
+		}
 		privateDir(path.dirname(blob));
 		this.made = true;
-		await atomicWriteFile(blob, state.data, undefined, { mode: PRIVATE_FILE_MODE });
+		await atomicWriteFile(blob, state.data, undefined, { mode: PRIVATE_FILE_MODE, durability: "none" });
+		this.verified.add(blob);
 	}
 
 	/** Keep within the caps by dropping the oldest turns, never the in-flight one. Returns whether anything was dropped. */
@@ -333,8 +336,12 @@ export class Checkpoints {
 		// (dot names) belong to a storeBlob in flight.
 		const live = (blob: string) =>
 			blob.startsWith(".") || this.storing.has(blob) || this.entries.some((entry) => entry.before === blob);
-		for (const blob of blobs)
-			if (!live(blob)) await fs.promises.rm(path.join(this.dir, "blobs", blob), { force: true });
+		for (const blob of blobs) {
+			if (live(blob)) continue;
+			const file = path.join(this.dir, "blobs", blob);
+			this.verified.delete(file);
+			await fs.promises.rm(file, { force: true });
+		}
 	}
 
 	/** One settled change: a single appended line (a crash can tear only this line, which the next open drops). */
@@ -365,6 +372,16 @@ export class Checkpoints {
 	private blob(digest: string): string {
 		return path.join(this.dir ?? "", "blobs", digest);
 	}
+}
+
+/** Whether the blob on disk holds exactly `state`'s bytes: the size first, then the digest. */
+async function blobHolds(blob: string, state: CurrentContent): Promise<boolean> {
+	const size = await fs.promises.stat(blob).then(
+		(stat) => stat.size,
+		() => -1,
+	);
+	if (size !== state.data.length) return false;
+	return (await sha256File(blob)) === state.sha256;
 }
 
 /** The id of the latest user message on the session branch: the turn's anchor for fork restores. */

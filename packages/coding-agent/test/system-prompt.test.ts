@@ -310,7 +310,6 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 
-	// #10343
 	describe("hidden tools", () => {
 		const build = (hiddenTools: string[]) =>
 			buildSystemPrompt({
@@ -453,9 +452,9 @@ describe("base sections", () => {
 			"mcps",
 			"other_base",
 			"addendum",
-			"cwd",
 			"project_context",
 			"octocode",
+			"cwd",
 			"environment",
 		]);
 		expect(buildSystemPromptSections(base).mcps).toBe("<mcps>\nservers\n</mcps>");

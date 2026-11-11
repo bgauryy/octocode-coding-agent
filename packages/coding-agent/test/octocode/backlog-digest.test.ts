@@ -9,6 +9,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BACKLOG_DIGEST_TYPE } from "../../src/octocode/backlog/digest.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { backlogToolName } from "./backlog-fixture.ts";
 
 const READY = { goal: "Result can be checked", why: "Users need it" };
 
@@ -36,7 +37,7 @@ function setup(isSubagent = false) {
 	const ctx = fakeCtx({ cwd });
 	const backlog = async (params: Record<string, unknown>) => {
 		const result = (await fake.tools
-			.get("backlog")
+			.get(backlogToolName(params.op))
 			.execute("id", { reason: "test", ...params }, undefined, undefined, ctx)) as { content: Array<{ text: string }> };
 		return result.content[0].text;
 	};
@@ -58,11 +59,11 @@ function setup(isSubagent = false) {
 describe("backlog session-start digest", () => {
 	it("gives a fresh main session its claims, stale claims, counts and top open titles once", async () => {
 		const t = setup();
-		await t.backlog({ op: "add", ...READY, title: "Mine", state: "ongoing" });
-		await t.backlog({ op: "add", ...READY, title: "Urgent accepted", state: "todo", priority: "p0" });
-		await t.backlog({ op: "add", ...READY, title: "Plain accepted", state: "todo" });
-		await t.backlog({ op: "add", ...READY, title: "Urgent idea", priority: "p1" });
-		await t.backlog({ op: "add", ...READY, title: "Someday idea", priority: "p3" });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Mine", state: "ongoing" }] });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Urgent accepted", state: "todo", priority: "p0" }] });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Plain accepted", state: "todo" }] });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Urgent idea", priority: "p1" }] });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Someday idea", priority: "p3" }] });
 		t.abandoned(50, "Left behind");
 		await t.start("startup");
 		const result = await t.prompt();
@@ -78,7 +79,7 @@ describe("backlog session-start digest", () => {
 
 	it("stays quiet on resume, in a subagent and on an empty board", async () => {
 		const t = setup();
-		await t.backlog({ op: "add", ...READY, title: "Accepted", state: "todo" });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Accepted", state: "todo" }] });
 		await t.start("resume");
 		expect(await t.prompt()).toBeUndefined();
 		const child = setup(true);
@@ -97,14 +98,14 @@ describe("backlog list default", () => {
 		const t = setup();
 		t.abandoned(90, "Left behind");
 		for (let i = 0; i < 16; i++)
-			await t.backlog({ op: "add", ...READY, title: `Idea ${i}`, priority: i === 15 ? "p0" : "p2" });
+			await t.backlog({ op: "add", items: [{ ...READY, title: `Idea ${i}`, priority: i === 15 ? "p0" : "p2" }] });
 		const first = await t.backlog({ op: "list" });
 		const lines = first.split("\n");
 		expect(lines[0]).toBe("B90 [ongoing p2] Left behind (@ended-session) (stale: holder ended)");
 		expect(lines[1]).toMatch(/^B106 \[backlog p0\] Idea 15/);
 		expect(lines.filter((line) => /^B\d+ /.test(line))).toHaveLength(15);
 		expect(lines).toContain("2 more.");
-		expect(lines.at(-1)).toMatch(/^Next: backlog .*"offset":15/);
+		expect(lines.at(-1)).toMatch(/^Next: backlogPlan .*"offset":15/);
 		expect(await t.backlog({ op: "list", states: ["backlog"], limit: 20 })).not.toContain("more.");
 	});
 });

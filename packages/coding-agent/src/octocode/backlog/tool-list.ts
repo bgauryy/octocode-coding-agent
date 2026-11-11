@@ -1,5 +1,5 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
-import type { BacklogRef, ItemType } from "@octocodeai/octocode-contracts/backlogs";
+import { type BacklogRef, ITEM_TYPES, type ItemType } from "@octocodeai/octocode-contracts/backlogs";
 import { LIST_STATES, type ListState } from "@octocodeai/octocode-contracts/snapshot";
 import path from "node:path";
 import { Type } from "typebox";
@@ -21,30 +21,83 @@ function repoRelative(entry: string, root: string): string {
 		: relative || ".";
 }
 
-export const DEFAULT_LIST_LIMIT = 20;
+const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 200;
 /** Rows a list without states, ids or limit shows: the open work (ongoing, todo and proposed), most important first. */
 const DEFAULT_OPEN_LIMIT = 15;
 const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo", "backlog"];
 
 /**
- * The fields only `list` reads. `list` also filters by fields other operations write (`id`, `title`, `type`,
- * `parentId`, `priority`, `tags`, `paths`, `dependsOn`, `from`); their descriptions say so beside the write meaning.
+ * The filters `list` reads, each under its own name: none is a field `add` or `edit` writes (those live inside an
+ * `items` entry), so no field of `backlogPlan` has two meanings. `FILTER_FIELDS` names the item field each one reads.
+ * A filter whose name says what it matches has no description: the declaration is sent on every request.
  */
 export const listFields = {
-	ids: Type.Optional(Type.Array(Type.String(), { description: "get/list: several item ids" })),
+	states: Type.Optional(Type.Array(StringEnum(LIST_STATES), { description: "default ongoing, todo, backlog" })),
+	query: Type.Optional(Type.String({ description: "text in any field, or a whole tag" })),
+	ids: Type.Optional(Type.Array(Type.String())),
+	inTitle: Type.Optional(Type.String()),
+	ofType: Type.Optional(StringEnum(ITEM_TYPES)),
+	underEpic: Type.Optional(Type.String()),
+	dependingOn: Type.Optional(Type.Array(Type.String())),
+	touchingPaths: Type.Optional(Type.Array(Type.String())),
+	priorityAtLeast: Type.Optional(StringEnum(PRIORITIES)),
+	anyTag: Type.Optional(Type.Array(Type.String())),
+	derivedFrom: Type.Optional(Type.String()),
 	since: Type.Optional(
-		Type.String({ description: "list: updated (with sort created: created) since an ISO time or age (2h, 7d)" }),
+		Type.String({ description: "updated (with sort created: created) since an ISO time or age (2h, 7d)" }),
 	),
-	sort: Type.Optional(
-		StringEnum(queries.ITEM_SORTS, { description: "list: board (default), or newest updated/created first" }),
-	),
+	sort: Type.Optional(StringEnum(queries.ITEM_SORTS)),
+	limit: Type.Optional(Type.Integer({ description: `≤${MAX_LIST_LIMIT}, default 15` })),
+	offset: Type.Optional(Type.Integer()),
 };
 
+/** The item field each renamed filter reads (`ListParams` keeps the item's names; the store query is unchanged). */
+const FILTER_FIELDS = {
+	inTitle: "title",
+	ofType: "type",
+	underEpic: "parentId",
+	dependingOn: "dependsOn",
+	touchingPaths: "paths",
+	priorityAtLeast: "priority",
+	anyTag: "tags",
+	derivedFrom: "from",
+} as const;
+
+type Filter = keyof typeof FILTER_FIELDS;
+const FILTER_NAMES = Object.fromEntries(
+	Object.entries(FILTER_FIELDS).map(([filter, field]) => [field, filter]),
+) as Record<string, Filter>;
+
+/** The filter that reads item field `field` (`tags` → `anyTag`, `id` → `ids`), or undefined when `list` has none for it. */
+export const filterFor = (field: string): string | undefined => (field === "id" ? "ids" : FILTER_NAMES[field]);
+
+/** A `list` call as the model writes it. */
+export type ListArguments = Pick<
+	ListParams,
+	"states" | "query" | "ids" | "since" | "sort" | "limit" | "offset" | "assignee" | "blocked" | "createdSince"
+> & {
+	inTitle?: string;
+	ofType?: ItemType;
+	underEpic?: string;
+	dependingOn?: string[];
+	touchingPaths?: string[];
+	priorityAtLeast?: string;
+	anyTag?: string[];
+	derivedFrom?: string;
+};
+
+/** A `list` call's arguments under the item's field names, as `runList` reads them. */
+export function listParams(args: ListArguments): ListParams {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(args))
+		if (value !== undefined) out[key in FILTER_FIELDS ? FILTER_FIELDS[key as Filter] : key] = value;
+	return out;
+}
+
 /**
- * List filters the declaration no longer shows, still accepted so calls recorded in the old shape (a resumed session,
- * an RPC caller, a Next line printed before) validate and run: `createdSince` is `since` with sort created, and
- * `assignee` and `blocked` had no callers in recorded sessions. (`id` with several comma-separated ids also still runs.)
+ * List filters the declaration does not show, still accepted: `createdSince` is `since` with sort created, and
+ * `assignee` and `blocked` have no declared form.
  */
 export const legacyListFields = {
 	assignee: Type.Optional(Type.String()),
@@ -52,12 +105,12 @@ export const legacyListFields = {
 	createdSince: Type.Optional(Type.String()),
 };
 
-/** What a list call may carry; the write fields it shares with add/update keep their declared types. */
-export interface ListParams {
+/** A list call under the item's field names (`listParams` maps the tool's filters onto it). */
+interface ListParams {
 	states?: ListState[];
 	query?: string;
 	from?: string;
-	/** list: one id, or (older calls) several separated by commas or spaces. */
+	/** One id, or several separated by commas or spaces. */
 	id?: string;
 	ids?: string[];
 	title?: string;
@@ -92,14 +145,14 @@ function sinceTime(since: string | undefined, now: number, field = "since"): str
 /** A list argument with entries, else undefined: an empty list filters nothing, like an omitted one. */
 const entries = <T>(values: readonly T[] | undefined): T[] | undefined => (values?.length ? [...values] : undefined);
 
-/** The ids a call names: the `ids` list and `id` (older calls: comma- or space-separated). */
+/** The ids a call names: the `ids` list and `id` (comma- or space-separated). */
 function givenIds(params: ListParams): string[] | undefined {
 	return entries([...(params.id?.split(/[\s,]+/).filter(Boolean) ?? []), ...(params.ids ?? [])]);
 }
 
 /** The filters of a call as it may repeat them: empty lists dropped and an age made a fixed time, so Next pages the same set. */
 function givenFilters(params: ListParams, now: number): Partial<ListParams> {
-	if (params.parentId === null) throw new Error("list: parentId takes an item id, e.g. B3.");
+	if (params.parentId === null) throw new Error("list: underEpic takes an item id, e.g. B3.");
 	const filters: Partial<ListParams> = {
 		query: params.query || undefined,
 		from: params.from || undefined,
@@ -172,16 +225,19 @@ export function runList(
 		return why ? `${line} — matched: ${visibleControls(why)}` : line;
 	});
 	if (lines.length === 0) {
-		const others = Object.keys(filters).filter((key) => !["query", "from", "sort"].includes(key));
+		const others = Object.keys(filters)
+			.filter((key) => !["query", "from", "sort"].includes(key))
+			.map((key) => filterFor(key) ?? key);
 		lines.push(
 			`No ${states.join("/")} items${filters.query ? ` matching "${visibleControls(filters.query)}"` : ""}${filters.from ? ` from ${visibleControls(filters.from)}` : ""}${others.length ? ` (filters: ${others.join(", ")})` : ""}.`,
 		);
 	}
 	if (total > offset + items.length) {
 		lines.push(`${total - offset - items.length} more.`);
-		lines.push(
-			`Next: backlog ${JSON.stringify({ op: "list", states, ...filters, limit, offset: offset + items.length })}`,
-		);
+		const { id: _ids, ...rest } = filters;
+		const named = Object.fromEntries(Object.entries(rest).map(([key, value]) => [filterFor(key) ?? key, value]));
+		const next = { op: "list", states, ...(ids ? { ids } : {}), ...named, limit, offset: offset + items.length };
+		lines.push(`Next: backlogPlan ${JSON.stringify(next)}`);
 	}
 	const triage = states.includes("backlog") ? 0 : store.counts().items.backlog;
 	if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);

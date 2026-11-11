@@ -37,8 +37,10 @@ export function mcpHost(
 		},
 		...options,
 	});
+	// As the host does: `session_start`, then resource discovery, which lets the startup connections launch.
 	const start = async (context: ExtensionContext = ctx) => {
 		await fake.fire("session_start", {}, context);
+		await fake.fire("resources_discover", { type: "resources_discover", cwd: context.cwd, reason: "startup" }, context);
 	};
 	const prompt = async (context: ExtensionContext = ctx) => {
 		const event = {

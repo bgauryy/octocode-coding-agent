@@ -9,6 +9,8 @@ import { stageRegistryManifest } from "./registry-release.mjs";
 const DEVELOPMENT_FIELDS = ["devDependencies", "scripts", "overrides", "octocodeRelease"];
 /** Where the repository's `docs/` go in the package, beside the package's own docs. */
 const PROJECT_DOCS = "docs/project";
+/** The bundle's code files; every other `.js` beside them is a launcher (`build-coding-agent.mjs`). */
+const BUNDLE_CODE_FILES = new Set(["octocode.js", "db-writer-worker.js"]);
 /** Dated reviews, evidence and RFCs: a record of how the project got here, not guidance for someone who installed it. */
 const INTERNAL_DOC = /^(?:RFC_.+|.+_(?:REVIEW|AUDIT|VALIDATION|COVERAGE|ASSESSMENT|CONFORMANCE|ROLLOUT))\.md$/;
 
@@ -163,6 +165,7 @@ export function findPackageProblems(packageDirectory) {
 		"README.md",
 		PROJECT_DOCS,
 		"dist/bundle/octocode.js",
+		"dist/bundle/db-writer-worker.js",
 		"dist/licenses/THIRD_PARTY_NOTICES.md",
 	]) {
 		if (!existsSync(join(packageDirectory, required))) problems.push(`missing ${required}`);
@@ -182,8 +185,10 @@ export function findPackageProblems(packageDirectory) {
 	if (existsSync(bundleDirectory)) {
 		if (existsSync(join(bundleDirectory, "chunks"))) problems.push("the bundle has chunks; it must be one file");
 		for (const entry of javascript(bundleDirectory)) {
-			// Launchers only choose a command; anything larger means code escaped the one bundle file.
-			if (entry.name !== "octocode.js" && statSync(join(bundleDirectory, entry.name)).size > 1024)
+			// Launchers only choose a command; anything larger means code escaped the one bundle file. The database
+			// writer's worker is its own file by design (`build-coding-agent.mjs`).
+			if (BUNDLE_CODE_FILES.has(entry.name)) continue;
+			if (statSync(join(bundleDirectory, entry.name)).size > 1024)
 				problems.push(`more than one code file in the bundle: ${entry.name}`);
 		}
 	}

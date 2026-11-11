@@ -1,4 +1,5 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import type { UiState } from "../model/ui-state.ts";
 import type { FeedEvent } from "./application-projection.ts";
@@ -36,11 +37,6 @@ const LABELS: Record<string, string> = {
 };
 const FAILED_STATUSES = ["failed", "error", "blocked"];
 
-/** The value as a plain object, or an empty object when it is not one. */
-export function record(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
 /** A detail that reads as text; an object or array has no readable string form. */
 function scalarText(value: unknown): string | undefined {
 	return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
@@ -50,16 +46,16 @@ function scalarText(value: unknown): string | undefined {
 
 /** A tool whose model response failed before it ran: neither a success nor a failure of its own. */
 function isNotRun(event: WorkspaceEvent): boolean {
-	return record(event.details).status === "not_run";
+	return asRecord(event.details).status === "not_run";
 }
 
 function isFailed(event: WorkspaceEvent): boolean {
-	return event.outcome === "failed" || FAILED_STATUSES.includes(String(record(event.details).status));
+	return event.outcome === "failed" || FAILED_STATUSES.includes(String(asRecord(event.details).status));
 }
 
 /** A reply the user cut short or the run abandoned: stopped, not a failure and not a normal answer. */
 function isStopped(event: WorkspaceEvent): boolean {
-	return event.type === "message" && ["aborted", "interrupted"].includes(String(record(event.details).status));
+	return event.type === "message" && ["aborted", "interrupted"].includes(String(asRecord(event.details).status));
 }
 
 /** The shape a card shows: running until its result arrives, then done, failed or stopped. */
@@ -69,14 +65,14 @@ function cardState(
 ): UiState | undefined {
 	if (failed) return "failed";
 	if (notRun || stopped) return "stopped";
-	if (record(event.details).status === "streaming") return "running";
+	if (asRecord(event.details).status === "streaming") return "running";
 	if (event.type === "tool.start" || event.type === "agent.start" || event.type === "agent.progress") return "running";
 	return event.type.endsWith(".result") || event.type === "agent.settled" ? "done" : undefined;
 }
 
 /** How one feed event reads: agent results use their structured summary; tool output splits its first line off as a title. */
 export function activityCard(event: FeedEvent): ActivityCard {
-	const details = record(event.details);
+	const details = asRecord(event.details);
 	const failed = isFailed(event);
 	const notRun = isNotRun(event);
 	const stopped = isStopped(event);
@@ -296,11 +292,11 @@ function displayToolName(name: string): string {
 
 /** The host's argument label: on the event itself, or in a workspace-path start's details. */
 function hintOf(event: FeedEvent): string {
-	const hint = event.hint ?? record(event.details).hint;
+	const hint = event.hint ?? asRecord(event.details).hint;
 	return typeof hint === "string" ? hint : "";
 }
 
-const fromWorkspacePath = (event: WorkspaceEvent) => !("toolCallId" in record(event.details));
+const fromWorkspacePath = (event: WorkspaceEvent) => !("toolCallId" in asRecord(event.details));
 /**
  * The workspace path publishes a call's start and result as two events with no shared id. Each result settles the
  * oldest unsettled start of the same tool, and settled starts are dropped, so a finished call appears once and only
@@ -333,7 +329,7 @@ export function settleToolStarts(events: readonly FeedEvent[]): FeedEvent[] {
  */
 export function latestProgress(events: readonly WorkspaceEvent[]): WorkspaceEvent[] {
 	const keyOf = (event: WorkspaceEvent) => {
-		const id = record(event.details).id;
+		const id = asRecord(event.details).id;
 		return typeof id === "string" ? id : "";
 	};
 	const latest = new Map<string, number>();

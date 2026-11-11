@@ -5,7 +5,7 @@ import { graphNotice } from "../backlog/graph-notice.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { noteSavedRef } from "./ref-link.ts";
-import { reportChecks } from "./report.ts";
+import { reportChecks } from "./report-outcome.ts";
 
 /** A child's backlog item: its ref for the child's identity, and the note its report leaves on the item. */
 export interface ItemLink {

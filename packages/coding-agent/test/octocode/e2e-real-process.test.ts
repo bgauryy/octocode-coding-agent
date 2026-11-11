@@ -56,11 +56,13 @@ describe("plan mode through the real tool registry", () => {
 			read("bash", { command: "ls" }),
 			read("askUser", { questions: [{ question: "Which?", options: [{ label: "a" }, { label: "b" }] }] }),
 			read("archive", { op: "list" }),
+			read("memory", { op: "list" }),
 			read("skill", { name: "no-such-skill" }),
 			// Loopback, so this never leaves the machine; the gate is what is under test, not what `web` answers.
 			read("web", { url: endpoint.url }),
 			read("mcp", { intent: "list" }),
 			read("mcp", { intent: "stop", server: "octocode" }),
+			read("memory", { op: "set", title: "A plan-mode save" }),
 			read("file", { queries: [{ type: "write", path: "written.txt", content: "x" }] }),
 			read("bash", { command: "echo x > redirected.txt" }),
 			read("agent", { type: "task", goal: "no delegation", task: "no" }),
@@ -70,13 +72,13 @@ describe("plan mode through the real tool registry", () => {
 		const { code } = await run.exited;
 		expect(code).toBe(0);
 		const results = lastResults(steps);
-		expect(results).toHaveLength(10);
+		expect(results).toHaveLength(12);
 		// `ls` really ran: its listing is the result.
 		expect(results[0]).toContain("a.txt");
-		for (const [index, name] of ["bash", "askUser", "archive", "skill", "web", "mcp list"].entries())
+		for (const [index, name] of ["bash", "askUser", "archive", "memory", "skill", "web", "mcp list"].entries())
 			expect(results[index], name).not.toContain("Plan mode blocks");
-		for (const [index, name] of ["mcp stop", "file", "bash redirect", "agent"].entries())
-			expect(results[index + 6], name).toContain("Plan mode blocks");
+		for (const [index, name] of ["mcp stop", "memory set", "file", "bash redirect", "agent"].entries())
+			expect(results[index + 7], name).toContain("Plan mode blocks");
 		expect(fs.existsSync(path.join(project, "written.txt"))).toBe(false);
 		expect(fs.existsSync(path.join(project, "redirected.txt"))).toBe(false);
 		expect(run.stdout()).toContain("the plan");

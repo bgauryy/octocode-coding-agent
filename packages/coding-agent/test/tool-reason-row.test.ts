@@ -44,4 +44,16 @@ describe("reasonRow", () => {
 			setItemTitles(new Map());
 		}
 	});
+	it("returns the same rows for the same width until it is invalidated, and new ones for another width", () => {
+		const row = reasonRow("bash", { command: "ls", reason: "a reason long enough to be cut at a narrow width" })!;
+		const wide = row.render(80);
+		expect(row.render(80)).toBe(wide);
+		const narrow = row.render(20);
+		expect(narrow).not.toBe(wide);
+		expect(narrow[0]).not.toBe(wide[0]);
+		row.invalidate();
+		const again = row.render(20);
+		expect(again).not.toBe(narrow);
+		expect(again).toEqual(narrow);
+	});
 });

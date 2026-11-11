@@ -9,7 +9,7 @@ import {
 	POINTER_SEGMENTS,
 	summaryLabel,
 } from "../../src/octocode/compaction/archive.ts";
-import { registerArchiveCommand } from "../../src/octocode/compaction/archive-command.ts";
+import { registerArchiveCommand } from "../../src/octocode/archive/command.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";

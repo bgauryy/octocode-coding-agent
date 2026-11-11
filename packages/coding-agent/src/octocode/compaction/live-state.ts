@@ -22,7 +22,7 @@ const TITLE_CHARS = 100;
 /** The held items as `B7 ongoing "title"`, the first `MAX_ITEMS`, then how many more. */
 function itemsText(rows: ReadonlyArray<{ seq: number; title: string }>): string {
 	const named = rows.slice(0, MAX_ITEMS).map((row) => `B${row.seq} ongoing "${shownLine(row.title, TITLE_CHARS)}"`);
-	if (rows.length > MAX_ITEMS) named.push(`${rows.length - MAX_ITEMS} more (backlog list shows them)`);
+	if (rows.length > MAX_ITEMS) named.push(`${rows.length - MAX_ITEMS} more (backlogPlan list shows them)`);
 	return named.join("; ");
 }
 

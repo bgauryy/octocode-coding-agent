@@ -14,6 +14,7 @@ export {
 	setCurrentSession,
 } from "../../storage/runtime-paths.ts";
 import { privateDir } from "../../../../common/src/file-mode.ts";
+import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -149,12 +150,6 @@ export function projectAgentDirs(cwd: string): string[] {
 	return [workspacePaths(cwd).agents];
 }
 
-/** `file` with the home directory shown as `~`. */
-export function tildePath(file: string, home = os.homedir()): string {
-	const relative = path.relative(home, file);
-	return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? `~${path.sep}${relative}` : file;
-}
-
 /**
  * One line per config file for a status report: `✓` when it exists, `·` when not; files missing from `userFiles` are
  * project files.
@@ -163,7 +158,7 @@ export function configFileLines(files: string[], userFiles: string[], home = os.
 	const user = new Set(userFiles);
 	return [...new Set(files)].map((file) => {
 		const note = user.has(file) ? "" : " (project)";
-		return `  ${fs.existsSync(file) ? "✓" : "·"} ${tildePath(file, home)}${note}`;
+		return `  ${fs.existsSync(file) ? "✓" : "·"} ${homeTilde(file, home)}${note}`;
 	});
 }
 

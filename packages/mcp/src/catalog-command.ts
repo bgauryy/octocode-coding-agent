@@ -26,6 +26,7 @@ export async function catalogCommand(state: McpExtensionState, args: string, ctx
 	const [action, server, prompt, ...rest] = commandWords(args);
 	if (!server || (action === "prompt" ? !prompt : prompt !== undefined))
 		return say(ctx, `Usage: ${CATALOG_USAGE}`, "warning");
+	state.startupGate.open();
 	await state.pending;
 	try {
 		if (action === "resources") return say(ctx, await resourceListing(state, server), "info");

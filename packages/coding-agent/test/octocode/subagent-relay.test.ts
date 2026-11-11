@@ -90,18 +90,16 @@ async function relay(
 		limits?: { idleMs: number; busyMs: number };
 	} = {},
 ) {
-	const outcome = await runSubagent(
-		`relay ${JSON.stringify({ requests, hold: options.hold })}`,
-		[],
-		tmp(),
-		undefined,
-		options.identity ?? IDENTITY,
-		options.signal,
-		options.onProgress ?? (() => undefined),
-		undefined,
-		options.limits,
+	const outcome = await runSubagent({
+		task: `relay ${JSON.stringify({ requests, hold: options.hold })}`,
+		args: [],
+		cwd: tmp(),
+		identity: options.identity ?? IDENTITY,
+		signal: options.signal,
+		onProgress: options.onProgress ?? (() => undefined),
+		limits: options.limits,
 		host,
-	);
+	});
 	const [, relayed, nonce, file, mode, gone, leaked, answers] =
 		/^RELAYED relay=(\S*) nonce=(\S*) file=(\S*) mode=(\S*) gone=(\S*) leaked=(\S*) (.*)$/.exec(outcome.text)!;
 	return { relayed, nonce, file, mode, gone, leaked, answers: JSON.parse(answers) as Array<Record<string, unknown>> };
@@ -689,8 +687,15 @@ describe("subagent dialogs relayed to the parent", () => {
 	it("removes a nonce file the child never took when the run ends, and gives the environment a path only", async () => {
 		const dir = sessionOutputDir("output");
 		const before = fs.readdirSync(dir).filter((name) => name.startsWith("nonce-"));
-		await runSubagent("echo task", [], tmp(), undefined, IDENTITY, undefined, () => undefined, undefined, undefined, {
-			permission: parent("manual").permission,
+		await runSubagent({
+			task: "echo task",
+			args: [],
+			cwd: tmp(),
+			identity: IDENTITY,
+			onProgress: () => undefined,
+			host: {
+				permission: parent("manual").permission,
+			},
 		});
 		expect(fs.readdirSync(dir).filter((name) => name.startsWith("nonce-"))).toEqual(before);
 		const env = subagentProcessEnv(undefined, { [PERMISSION_NONCE_FILE_ENV]: "/inherited" }, { id: "a" });

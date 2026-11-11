@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { CommandSelectorComponent } from "../src/modes/interactive/components/command-selector.ts";
-import { fitHints, HintBar, type RankedHint } from "../src/modes/interactive/components/hint-bar.ts";
+import { fitHints, HintBar, type RankedHint } from "../src/theme/theme-tui-helpers.ts";
 import { QueueListComponent } from "../src/modes/interactive/components/queue-list.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

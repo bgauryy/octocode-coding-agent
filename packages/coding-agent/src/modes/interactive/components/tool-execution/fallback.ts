@@ -1,7 +1,7 @@
 import { type Component, Container, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { keyHint } from "../keybinding-hints.ts";
+import { keyHint } from "../../../../theme/theme-tui-helpers.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 

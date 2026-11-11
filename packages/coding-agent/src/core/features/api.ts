@@ -4,7 +4,7 @@ import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
-import { validateMcpServerConfig } from "../../../../mcp/src/servers.ts";
+import { validateMcpServerConfig } from "../../../../mcp/src/api.ts";
 import { type McpServerChange, type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { SessionNameSource } from "../session-manager.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../virtual-models.ts";

@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { type Component, ELLIPSIS, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
@@ -14,20 +14,15 @@ import { cachedPercent, formatCost, formatTokens } from "../../../octocode/share
 import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
-import { styledLine } from "./styled-line.ts";
+import { styledLine } from "../../../../../common/src/sanitize.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 
-	const resolvedCwd = resolve(cwd);
-	const resolvedHome = resolve(home);
-	const relativeToHome = relative(resolvedHome, resolvedCwd);
-	const isInsideHome =
-		relativeToHome === "" ||
-		(relativeToHome !== ".." && !relativeToHome.startsWith(`..${sep}`) && !isAbsolute(relativeToHome));
-
-	if (!isInsideHome) return cwd;
-	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
+	const resolved = resolve(cwd);
+	const shown = homeTilde(resolved, resolve(home));
+	return shown === resolved ? cwd : shown;
 }
 
 interface SessionStats {

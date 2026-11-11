@@ -17,11 +17,11 @@ const until = async (check: () => boolean, ms = 5_000) => {
 	}
 };
 
-const setup = () => {
+const setup = (shell: { backgroundAfterSeconds?: number } = {}) => {
 	const { api, tools, sent, fire } = fakeHost();
 	const commands = new Subcommands();
 	const jobs = new BashJobs(tmp());
-	registerBashTool(api, commands, jobs, () => ({}));
+	registerBashTool(api, commands, jobs, () => shell);
 	const cwd = tmp();
 	return { tool: tools.get("bash"), commands, jobs, sent, fire, ctx: fakeCtx({ cwd }) };
 };
@@ -59,9 +59,10 @@ describe.runIf(process.platform !== "win32")("background job intent", () => {
 	});
 
 	it("keeps the why of a foreground command that moved to the background", async () => {
-		const { tool, jobs, ctx } = setup();
+		// The threshold moves it: a call with its own timeout is stopped then instead (RFC core-tools B1).
+		const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 1 });
 		const reason = "Wait for the dev server to settle.";
-		await tool.execute("t1", { command: "echo up; sleep 30", timeout: 1, reason }, undefined, undefined, ctx);
+		await tool.execute("t1", { command: "echo up; sleep 30", reason }, undefined, undefined, ctx);
 		expect(jobs.jobs.get("bash-1")!.reason).toBe(reason);
 		await jobs.stopAll("session end");
 	});

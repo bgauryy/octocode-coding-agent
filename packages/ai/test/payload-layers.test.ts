@@ -108,6 +108,44 @@ describe("describePayloadLayers", () => {
 		expect(trace?.cacheMode).toBe("key");
 	});
 
+	it("records each breakpoint's own TTL, not only the first marker's", () => {
+		// Long instructions, short history: `cacheMode` names the first marker; the history layer keeps its 5m.
+		const trace = describePayloadLayers("anthropic-messages", anthropicPayload());
+		expect(trace?.layers.filter((layer) => layer.breakpoint).map(({ kind, ttl }) => ({ kind, ttl }))).toEqual([
+			{ kind: "tools", ttl: "1h" },
+			{ kind: "system", ttl: "1h" },
+			{ kind: "message", ttl: "5m" },
+		]);
+		expect(trace?.layers.filter((layer) => !layer.breakpoint).every((layer) => layer.ttl === undefined)).toBe(true);
+	});
+
+	it("records an OpenAI explicit breakpoint's TTL, inherited from the request when it names none", () => {
+		const input = (breakpoint: Record<string, unknown>) => [
+			{ role: "developer", content: [{ type: "input_text", text: "rules", prompt_cache_breakpoint: breakpoint }] },
+			{ role: "user", content: [{ type: "input_text", text: "hi" }] },
+		];
+		const ttls = (payload: Record<string, unknown>) =>
+			describePayloadLayers("openai-responses", payload)
+				?.layers.filter((layer) => layer.breakpoint)
+				.map((layer) => layer.ttl);
+		expect(ttls({ input: input({ mode: "explicit", ttl: "12h" }), prompt_cache_options: { ttl: "30m" } })).toEqual([
+			"12h",
+		]);
+		expect(ttls({ input: input({ mode: "explicit" }), prompt_cache_options: { ttl: "12h" } })).toEqual(["12h"]);
+		expect(ttls({ input: input({ mode: "explicit" }) })).toEqual(["30m"]);
+	});
+
+	it("records a Bedrock cache point's TTL on the layer it ends", () => {
+		const trace = describePayloadLayers("bedrock-converse-stream", {
+			system: [{ text: "base" }, { cachePoint: { type: "default", ttl: "1h" } }],
+			messages: [{ role: "user", content: [{ text: "hi" }, { cachePoint: { type: "default" } }] }],
+		});
+		expect(trace?.layers.map(({ kind, ttl }) => ({ kind, ttl }))).toEqual([
+			{ kind: "system", ttl: "1h" },
+			{ kind: "message", ttl: "5m" },
+		]);
+	});
+
 	it("returns undefined for an unknown API or a non-object payload", () => {
 		expect(describePayloadLayers("google-generative-ai", { contents: [] })).toBeUndefined();
 		expect(describePayloadLayers("anthropic-messages", "text")).toBeUndefined();

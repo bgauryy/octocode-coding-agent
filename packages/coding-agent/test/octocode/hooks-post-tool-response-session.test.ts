@@ -49,7 +49,7 @@ it("sends Claude PostToolUse the structured result, keeps its text, and test-run
 		tools: [tool],
 		extensionFactories: [
 			(api) => {
-				view = registerHooks(api, {}, home);
+				view = registerHooks(api, { env: {}, home });
 				api.on("session_start", async (_event, ctx) => {
 					context = ctx;
 				});

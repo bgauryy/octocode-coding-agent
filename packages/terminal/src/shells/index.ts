@@ -1,4 +1,5 @@
-import { findExecutable, loginShellName } from "../executables.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
+import { loginShellName } from "../executables.ts";
 import type { ShellName, ShellSetting } from "../types.ts";
 import { bashSpec } from "./bash.ts";
 import { fishSpec } from "./fish.ts";
@@ -16,11 +17,11 @@ export interface ResolvedShell {
 
 function locate(spec: ShellSpec, env: NodeJS.ProcessEnv, preferred?: string): ResolvedShell | undefined {
 	if (preferred) {
-		const found = findExecutable(preferred, env);
+		const found = findOnPath(preferred, env);
 		if (found) return { spec, binary: found };
 	}
 	for (const name of [spec.binary].flat()) {
-		const found = findExecutable(name, env);
+		const found = findOnPath(name, env);
 		if (found) return { spec, binary: found };
 	}
 	return undefined;

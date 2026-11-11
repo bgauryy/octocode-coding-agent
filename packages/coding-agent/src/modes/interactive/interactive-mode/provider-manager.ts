@@ -2,8 +2,8 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { describeProviderSources } from "../../../core/provider-sources/index.ts";
 import type { ProviderSourceEnvironment } from "../../../core/provider-sources/types.ts";
-import { keyText } from "../components/keybinding-hints.ts";
-import type { PageRow, PageSection } from "../components/manage-page.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import type { PageRow, PageSection } from "../../../theme/manage-page.ts";
 import {
 	claudeSubscriptionRefusal,
 	credentialSource,

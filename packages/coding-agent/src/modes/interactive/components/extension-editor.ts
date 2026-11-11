@@ -18,7 +18,7 @@ import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { editInExternalEditor } from "../external-editor.ts";
 import { getEditorTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 
 interface ExtensionEditorOptions extends EditorOptions {
 	description?: string;

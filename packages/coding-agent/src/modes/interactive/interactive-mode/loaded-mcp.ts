@@ -3,7 +3,7 @@
 import { ELLIPSIS, GLYPH, SEPARATOR, type StateSource, type UiState } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
+import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/api.ts";
 import { getAgentDir, getLegacyConfigDirs } from "../../../config.ts";
 import { buildContextView, sourceSummary } from "../../../core/discovery/context-view.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";

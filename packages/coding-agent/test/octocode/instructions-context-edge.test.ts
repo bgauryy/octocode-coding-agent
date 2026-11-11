@@ -32,22 +32,23 @@ describe("instruction context edges", () => {
 		});
 		expect(sections.harnesses).toContain("Harnesses: Octocode on.");
 		expect(systemPromptSectionSpec("harnesses")).toMatchObject({ name: "harnesses", tier: "session" });
-		// The declared order keeps the prompt byte for byte: after role, before the volatile environment.
+		// The declared order keeps the prompt byte for byte: after role, before the volatile tier, which `cwd` opens.
 		const order = SYSTEM_PROMPT_SECTIONS.map((spec) => spec.name);
 		expect(order.indexOf("harnesses")).toBe(order.indexOf("role") + 1);
-		expect(Object.keys(sections).slice(-3)).toEqual(["role", "harnesses", "environment"]);
+		expect(order.indexOf("cwd")).toBe(order.indexOf("harnesses") + 1);
+		expect(Object.keys(sections).slice(-4)).toEqual(["role", "harnesses", "cwd", "environment"]);
 	});
 
 	it("asks the main session once to say what it waits for before ending a turn", () => {
 		// The main session is the one that can delegate (`policyFlags`: main = canDelegate), so it has both sections.
 		for (const research of [FAKE_RESEARCH, undefined]) {
 			const root = octocodePrompt({ research, profiles: [], canDelegate: true });
-			expect(root.match(/say once what you wait for|and say which\./g) ?? []).toHaveLength(1);
+			expect(root.match(/say once what you wait for|say which\./g) ?? []).toHaveLength(1);
 			// The delegation rule keeps what only it says: the coordinator owns the result and does not predict it.
 			expect(root).toContain("you own the result: never predict a pending result.");
 			// Waiting on a peer session it messaged is a licensed end of turn too, announced like a child or a job.
 			expect(root).toContain(
-				"end a turn only when the next step needs the user, a running child or job, or a peer session you messaged, and say which.",
+				"End a turn only when it needs the user, a running child/job or a peer you messaged; say which.",
 			);
 		}
 	});
@@ -66,7 +67,9 @@ describe("instruction context edges", () => {
 		const snippet = renderInstruction("tools/timer/snippet.md", {});
 		expect(snippet).toContain("never sleep, poll or `tail -f`");
 		for (const research of [FAKE_RESEARCH, undefined]) {
-			const delegation = octocodePromptSections({ research, profiles: [], canDelegate: true }).delegation ?? "";
+			// The waiting rule is in the `children` section, sent once the session waits on an agent.
+			const sections = octocodePromptSections({ research, profiles: [], canDelegate: true, childStarted: true });
+			const delegation = `${sections.delegation}\n${sections.children}`;
 			expect(delegation).toContain("wait on a peer's or a dependency's backlog item with `timer` `until item`");
 			expect(delegation).not.toMatch(/\bpoll/);
 		}

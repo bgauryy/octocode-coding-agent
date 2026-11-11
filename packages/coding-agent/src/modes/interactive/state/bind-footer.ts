@@ -18,3 +18,13 @@ export function bindFooterState(host: BindFooterHost): () => void {
 		() => host.ui.requestRender(),
 	);
 }
+
+/** Follows the footer data for the host's lifetime, as the store binders do: the host's `stop()` ends it. */
+export function bindFooterUntilStop(host: BindFooterHost & Pick<InteractiveModeHost, "stop">): void {
+	const stopFooterState = bindFooterState(host);
+	const stopHost = host.stop;
+	host.stop = (fullscreenExitOutput) => {
+		stopFooterState();
+		stopHost(fullscreenExitOutput);
+	};
+}

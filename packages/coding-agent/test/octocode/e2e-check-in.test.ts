@@ -120,7 +120,9 @@ describe("the subagent check-in", () => {
 		expect(text).toContain("`blocked`");
 		expect(text).toContain("only with it");
 		// Its own message says the same in its result, and reaches the parent along with the report.
-		expect(requestsOf(child).at(-1)!.toolResults.at(-1)).toContain("do not wait for an answer");
+		expect(requestsOf(child).at(-1)!.toolResults.at(-1)).toContain(
+			"it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report",
+		);
 		expect(requestsOf(parent)).toHaveLength(2);
 		expect(
 			requestsOf(parent)

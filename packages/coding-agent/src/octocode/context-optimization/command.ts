@@ -9,14 +9,19 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { generatedDir, readGenerated } from "../../../../mcp/src/compact/index.ts";
-import { withPluginServers } from "../../../../mcp/src/cli/plugins.ts";
-import { hostTrust } from "../../../../mcp/src/host.ts";
-import { loadMcpConfig } from "../../../../mcp/src/config.ts";
-import { presetEntries } from "../../../../mcp/src/preset.ts";
-import { browserPreset } from "../../../../mcp/src/presets/browser/index.ts";
-import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
+import {
+	generatedDir,
+	readGenerated,
+	withPluginServers,
+	hostTrust,
+	loadMcpConfig,
+	presetEntries,
+	browserPreset,
+	recommendedPresets,
+} from "../../../../mcp/src/api.ts";
 import { APP_NAME } from "../../config.ts";
+import { contextSizeWarnings, generatedInstructionChars } from "../../core/context-budget.ts";
+import { loadProjectContextFiles } from "../../core/resource-loader/context-files.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { contextOptimizationDirs } from "../shared/home.ts";
 import {
@@ -86,7 +91,14 @@ function configuredServerStems(options: ContextCommandOptions): Set<string> {
 function mcpFiles(
 	dir: string,
 	configured: ReadonlySet<string>,
-): Array<{ server: string; chars: number; optimized: boolean; generatedAt: string; stale: boolean }> {
+): Array<{
+	server: string;
+	chars: number;
+	instructionChars: number;
+	optimized: boolean;
+	generatedAt: string;
+	stale: boolean;
+}> {
 	let names: string[] = [];
 	try {
 		names = readdirSync(dir).filter((file) => file.endsWith(".json"));
@@ -103,12 +115,41 @@ function mcpFiles(
 			{
 				server,
 				chars: generated.text.length,
+				instructionChars: generatedInstructionChars(generated.text),
 				optimized: overrides !== undefined,
 				generatedAt,
 				stale: !configured.has(server),
 			},
 		];
 	});
+}
+
+/**
+ * What a session in this folder would be warned about in `/context`: a configured server whose recorded instructions,
+ * or the project's context files together, pass 1% of the default window. The project's record of a server comes
+ * first, as a session reads it. A folder that cannot be read warns about nothing.
+ */
+function sizeWarnings(options: ContextCommandOptions): string[] {
+	try {
+		const configured = configuredServerStems(options);
+		const servers = new Map<string, number>();
+		for (const scope of scopes(options)) {
+			const dir = scope.name === "user" ? generatedDir(options.agentDir) : join(scope.dir, "mcp");
+			for (const file of mcpFiles(dir, configured))
+				if (!file.stale && !servers.has(file.server)) servers.set(file.server, file.instructionChars);
+		}
+		const files = loadProjectContextFiles({
+			cwd: options.cwd,
+			agentDir: options.agentDir,
+			projectTrusted: hostTrust().folderTrusted(options.cwd),
+		});
+		return contextSizeWarnings({
+			servers: [...servers].map(([server, chars]) => ({ server, chars })),
+			contextFilesChars: files.reduce((sum, file) => sum + file.content.length, 0),
+		});
+	} catch {
+		return [];
+	}
 }
 
 function skillRows(store: SkillsStore) {
@@ -220,6 +261,8 @@ export async function runContextCommand(args: readonly string[], options: Contex
 			const chars = description.trim().length;
 			log(`  ${scope.name} ${name}  ${source} → ${chars}${chars > source ? "  (longer than the source)" : ""}`);
 		}
+		// Sizes are told, never enforced: a warning is no problem and does not change the exit code.
+		for (const warning of sizeWarnings(options)) log(`Warning: ${warning}`);
 		if (problems.length) {
 			for (const problem of problems) error(problem);
 			error(
