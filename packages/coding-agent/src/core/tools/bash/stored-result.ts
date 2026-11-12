@@ -29,13 +29,48 @@ function savedOutput(path: string): string | undefined {
 	}
 }
 
-/** Structured contents whose `output` is read from the saved file when first read, with that file's path. */
-const savedOutputs = new WeakMap<object, string>();
+/**
+ * Structured contents known to hold what a saved output file reads back as, by that file's path: one the bash tool
+ * built from the file (`output` is the text it read), or one whose `output` is read from the file when first read
+ * (no `output` here). Storing either needs no read of the file.
+ */
+const savedOutputs = new WeakMap<object, { path: string; output?: string }>();
 
-/** Copy of `record` with the key `from` renamed to `to` and given `value`, in the same place. */
-function replaceKey(record: Record_, from: string, to: string, value: unknown): Record_ {
-	return Object.fromEntries(Object.entries(record).map(([key, old]) => (key === from ? [to, value] : [key, old])));
+/** Remember that `structured.output` is what the file at `path` reads back as (`readSavedOutput`), as just read. */
+export function rememberSavedOutput(structured: { output?: unknown }, path: string): void {
+	if (typeof structured.output === "string") savedOutputs.set(structured, { path, output: structured.output });
 }
+
+/**
+ * Carry what `rememberSavedOutput` knows about `structured` to `next`, a copy with other fields changed, holding the
+ * same output, whose file is now at `path` (moved) or where it was.
+ */
+export function carrySavedOutput(structured: unknown, next: object, path?: string): void {
+	const saved = isRecord(structured) ? savedOutputs.get(structured) : undefined;
+	if (saved?.output === undefined || (next as Record_).output !== saved.output) return;
+	savedOutputs.set(next, { path: path ?? saved.path, output: saved.output });
+}
+
+/** The saved file `structured` holds the output of, when known without reading it; else undefined. */
+function knownSavedPath(structured: Record_): string | undefined {
+	const saved = savedOutputs.get(structured);
+	if (!saved) return undefined;
+	// A remembered output changed in place since is no longer the file's text.
+	if (saved.output !== undefined && structured.output !== saved.output) return undefined;
+	return saved.path;
+}
+
+/**
+ * Copy of `record` with the key `from` renamed to `to` and given `value`, in the same place. `from` is never read, so
+ * an `output` still to be read from its file stays unread.
+ */
+function replaceKey(record: Record_, from: string, to: string, value: unknown): Record_ {
+	const copy: Record_ = {};
+	for (const key of Object.keys(record)) copy[key === from ? to : key] = key === from ? value : record[key];
+	return copy;
+}
+
+const isBashResult = (message: Record_): boolean => message.role === "toolResult" && message.toolName === "bash";
 
 /** The one text block of a result's content, which every bash result has. */
 function contentText(message: Record_): string | undefined {
@@ -52,14 +87,17 @@ function spanOf(text: string | undefined, output: unknown): [number, number] | u
 }
 
 function storedStructured(structured: Record_, text: string | undefined, fullOutputPath: unknown): Record_ {
-	const saved = savedOutputs.get(structured);
+	const saved = knownSavedPath(structured);
 	if (saved !== undefined) return replaceKey(structured, "output", "outputFile", saved);
 	const span = spanOf(text, structured.output);
 	if (span) return replaceKey(structured, "output", "outputAt", span);
 	if (typeof fullOutputPath === "string" && typeof structured.output === "string") {
-		// Only when the file reads back as exactly this text, so reading the result later restores it.
-		if (savedOutput(fullOutputPath) === structured.output)
+		// Only when the file reads back as exactly this text, so reading the result later restores it. Remembered,
+		// so storing this result again (a rewrite of the whole file) does not read the file again.
+		if (savedOutput(fullOutputPath) === structured.output) {
+			rememberSavedOutput(structured, fullOutputPath);
 			return replaceKey(structured, "output", "outputFile", fullOutputPath);
+		}
 	}
 	return structured;
 }
@@ -94,23 +132,57 @@ function lazyOutput(structured: Record_, path: string): Record_ {
 			restored[key] = value;
 			continue;
 		}
-		const settle = (value: string | undefined) => {
+		// Read from the file, the value is still the file's text; assigned, it is not.
+		const settle = (value: string | undefined, read: boolean) => {
 			Object.defineProperty(restored, "output", { value, enumerable: true, writable: true, configurable: true });
-			savedOutputs.delete(restored);
+			if (read && value !== undefined) savedOutputs.set(restored, { path, output: value });
+			else savedOutputs.delete(restored);
 		};
 		Object.defineProperty(restored, "output", {
 			enumerable: true,
 			configurable: true,
 			get: () => {
 				const value = savedOutput(path);
-				settle(value);
+				settle(value, true);
 				return value;
 			},
-			set: settle,
+			set: (value: string | undefined) => {
+				settle(value, false);
+			},
 		});
 	}
-	savedOutputs.set(restored, path);
+	savedOutputs.set(restored, { path });
 	return restored;
+}
+
+/** The released form of each structured content `savedOutputTwin` was asked for: one per original, so views can match them. */
+const twins = new WeakMap<object, Record_>();
+
+/**
+ * `structured` with its `output` read from its saved file when first read, as on resume (`restoreBashResult` of a stored
+ * `outputFile`): the same object for the same `structured`. Undefined unless `rememberSavedOutput` knows the output is
+ * that file's text; `structured` itself is unchanged, so whoever already holds it keeps its value.
+ */
+export function savedOutputTwin(structured: unknown): Record_ | undefined {
+	if (!isRecord(structured)) return undefined;
+	const known = twins.get(structured);
+	if (known) return known;
+	const saved = savedOutputs.get(structured);
+	if (saved?.output === undefined || knownSavedPath(structured) === undefined) return undefined;
+	const twin = lazyOutput(replaceKey(structured, "output", "outputFile", saved.path), saved.path);
+	twins.set(structured, twin);
+	return twin;
+}
+
+/**
+ * Once a bash call has returned, its result message holds `savedOutputTwin` of its structured content: the output (up
+ * to 1 MiB) for programmatic callers is read from its saved file only when something reads it. The tool's end event
+ * already carried the value.
+ */
+export function releaseSavedOutput(message: Record_): void {
+	if (!isBashResult(message)) return;
+	const twin = savedOutputTwin(message.structuredContent);
+	if (twin) message.structuredContent = twin;
 }
 
 /** The bash tool result message a stored one describes: every `output` back in its place. */

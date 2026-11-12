@@ -55,6 +55,15 @@ export class Container implements Component {
 		this.children = [];
 	}
 
+	/**
+	 * Drop this container's own copy of its children's rows, keeping theirs: a frame that draws the children one by one
+	 * (a virtualized scroll view) never reads it, and it would hold a second array of every row in the transcript.
+	 */
+	releaseRenderCache(): void {
+		this.renderCache = undefined;
+		this.mouseLayout = undefined;
+	}
+
 	invalidate(): void {
 		this.renderCache = undefined;
 		for (const child of this.children) {
@@ -108,7 +117,10 @@ export class Container implements Component {
 		for (let i = 0; i < count; i++) {
 			const child = children[i];
 			const leavesBefore = layout?.leaves.length ?? 0;
-			if (layout) layout.base = base + offset;
+			if (layout) {
+				layout.base = base + offset;
+				layout.starts.set(child, base + offset);
+			}
 			const childLines = renderIsolated(child, width);
 			// A child that reported no leaf of its own is a leaf itself.
 			if (layout) {

@@ -151,6 +151,7 @@ export function applyRuntimeSettings(host: SessionBindingHost): void {
 	if (host.renderer instanceof TuiAltScreen) {
 		host.renderer.setCopyOnSelect(host.settingsManager.getFullscreenCopyOnSelect());
 		host.renderer.setWheelScrollLines(host.settingsManager.getFullscreenWheelScrollLines());
+		host.renderer.setFrameOutputCap(host.settingsManager.getFullscreenFrameQueueLimitBytes());
 	}
 	host.footer.setSession(host.session);
 	host.footer.setAutoCompactEnabled(host.session.autoCompactionEnabled);

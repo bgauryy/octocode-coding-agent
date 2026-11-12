@@ -11,8 +11,8 @@ import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "./bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./bash/header.ts";
-import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
-import { STRUCTURED_OUTPUT_MAX_BYTES } from "./bash/stored-result.ts";
+import { BashExecutionError, type BashToolDetails, truncationFacts } from "./bash/outcome.ts";
+import { rememberSavedOutput, STRUCTURED_OUTPUT_MAX_BYTES } from "./bash/stored-result.ts";
 
 export { createLocalBashOperations } from "./bash/local-operations.ts";
 export { maxOutputTokensParameter } from "./bash/schema.ts";
@@ -171,7 +171,7 @@ function createShellToolDefinition(
 					content: [{ type: "text", text: snapshot.content || "" }],
 					details: {
 						output: snapshot.content,
-						truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
+						truncation: snapshot.truncation.truncated ? truncationFacts(snapshot.truncation) : undefined,
 						fullOutputPath: snapshot.fullOutputPath,
 					},
 				});
@@ -223,7 +223,10 @@ function createShellToolDefinition(
 			const formatOutput = (snapshot: Awaited<ReturnType<typeof finishOutput>>) => {
 				const details: BashToolDetails = { output: snapshot.content };
 				if (snapshot.truncation.truncated) {
-					Object.assign(details, { truncation: snapshot.truncation, fullOutputPath: snapshot.fullOutputPath });
+					Object.assign(details, {
+						truncation: truncationFacts(snapshot.truncation),
+						fullOutputPath: snapshot.fullOutputPath,
+					});
 				}
 				return { body: snapshot.content, details };
 			};
@@ -303,6 +306,8 @@ function createShellToolDefinition(
 					total_lines: snapshot.truncation.totalLines,
 					total_bytes: snapshot.truncation.totalBytes,
 				};
+				// Known now, so storing the result need not read the 1 MiB back to prove it (`stored-result.ts`).
+				if (fullOutput.path) rememberSavedOutput(structuredContent, fullOutput.path);
 				const text = withHeader(snapshot, body, { kind: "exit", code: exitCode, seconds: wallTimeSeconds });
 				return {
 					content: [{ type: "text", text }],

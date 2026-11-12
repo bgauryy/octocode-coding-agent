@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { vi } from "vitest";
+import { testCompileCacheDir } from "../helpers/compile-cache.ts";
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and settings: start from none, so results never depend on who ran the tests.
 for (const name of Object.keys(process.env)) if (name.startsWith("OCTOCODE_")) delete process.env[name];
@@ -39,7 +40,7 @@ process.env.OCTOCODE_MCP = "0";
 // Every process a test starts boots the CLI from TypeScript source, about 2 s of CPU each with nothing cached. Node's compile
 // cache (keyed by file content and Node version, so a changed file is never served stale) halves that, and the folder sits
 // beside the per-run temporary directory so later runs start warm too. Processes read it from the environment they are given.
-process.env.NODE_COMPILE_CACHE = path.join(path.dirname(os.tmpdir()), "octocode-test-compile-cache");
+process.env.NODE_COMPILE_CACHE = testCompileCacheDir();
 // No models.dev requests from tests; the catalog is tested with an injected fetch.
 process.env.OCTOCODE_MODELS_DEV = "0";
 

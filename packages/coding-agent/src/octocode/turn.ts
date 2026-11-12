@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../core/features/index.ts";
+import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import type { Skill } from "../core/skills.ts";
 import { currentEnvironment, linkedWorktreeFact } from "../core/system-prompt.ts";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
@@ -70,9 +70,9 @@ export function registerTurnSetup(
 				? { prefix: roles.prefix, reader: roles.reader, search: roles.search }
 				: undefined;
 		const profiles = [...options.profiles().values()];
-		const current = coordinates(selected) ? currentRouting(ctx, profiles) : undefined;
-		const routes = routing.prompt(current);
-		const notice = routing.notice(current);
+		const reading = coordinates(selected) ? currentRouting(ctx, profiles) : undefined;
+		const routes = routing.prompt(reading?.facts, reading?.catalog);
+		const notice = ownsPrompt(ctx) ? undefined : routing.notice(reading?.facts, reading);
 		// A child whose profile declares `browser.control` and that holds the browser server drives its own isolated
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
@@ -174,8 +174,9 @@ export function registerTurnSetup(
 
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
 	api.on("turn_end", (_event, ctx) => {
-		if (!coordinates(api.getActiveTools())) return;
-		const notice = routing.notice(currentRouting(ctx, options.profiles().values()));
+		if (!coordinates(api.getActiveTools()) || ownsPrompt(ctx)) return;
+		const reading = currentRouting(ctx, options.profiles().values());
+		const notice = routing.notice(reading.facts, reading);
 		if (notice)
 			void api.sendMessage({ customType: ROUTING_NOTICE_ID, content: notice, display: false }, { triggerTurn: false });
 	});
@@ -191,6 +192,14 @@ export function registerTurnSetup(
 		},
 	};
 }
+
+/**
+ * Whether the session's model runs in its vendor's own CLI (Claude Code as the session's model): that CLI keeps its own
+ * system prompt, so Octocode's `<delegation>` never reaches it and a routing notice would amend text it never saw. The
+ * notice waits, unspent, for the next model that reads Octocode's prompt.
+ */
+const ownsPrompt = (ctx: Pick<ExtensionContext, "model" | "modelRegistry">): boolean =>
+	ctx.model !== undefined && ctx.modelRegistry.getProviderKind(ctx.model.provider) === "CLI";
 
 /** Whether an `agent` call starts something the session then waits on: a child, or a message to a peer or an outside agent. Only `coordinate` does not. */
 const waitsOnAnAgent = (args: unknown): boolean => agentCall(args).type !== "coordinate";

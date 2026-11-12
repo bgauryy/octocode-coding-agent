@@ -245,6 +245,16 @@ Inline images are on when the terminal supports them; `/configuration` (**Interf
 
 Detection recognizes Kitty (`TERM=xterm-kitty`) and queries interactive terminals at startup; a negative reply falls back to text, silence keeps the environment-based choice. `terminal.images` set to `"kitty"` or `"iterm2"` forces a protocol, `false` disables graphics, and beats `OCTOCODE_IMAGE_PROTOCOL` (`kitty`, `iterm2`, `none`, `auto`). In tmux, Kitty images are enabled only for a Kitty or Ghostty client with `allow-passthrough` on and 24-bit colour reaching the client; other tmux sessions, screen and Rex stay off. iTerm2 images work in regular mode; fullscreen uses text placeholders.
 
+## Terminal output and pacing
+
+Octocode asks the terminal at startup whether it supports synchronized output (mode 2026). When it confirms, each fullscreen frame is shown whole and pointer scrolling paints up to 120 frames a second; when it does not answer (Terminal.app), frames are written without the markers and paced to one per 60 Hz refresh, the rate such a terminal paints.
+
+A terminal that stops reading (a paused tmux pane, a stalled SSH link) would otherwise collect every frame painted meanwhile. Once more than `fullscreenFrameQueueLimitKiB` (default 512) is queued, new fullscreen frames are dropped and the screen is repainted whole when the terminal reads again; mode, restore and status bytes are always written, and regular mode never drops output because its rows become scrollback. `0` keeps every frame.
+
+```json
+{ "fullscreenFrameQueueLimitKiB": 512 }
+```
+
 ## No color
 
 A non-empty `NO_COLOR` or `TERM=dumb` removes every ANSI color sequence (foreground, background, tints, diff tints, shimmer); bold, dim, underline and inverse stay. An empty `NO_COLOR` is ignored. It does not reduce motion. `terminal.trueColor` and `OCTOCODE_TRUE_COLOR` choose only the color depth. HTML exports made with these set are plain text on the themed page.
@@ -297,15 +307,15 @@ Session writers keep JSONL transcripts and mirror the header and ordered entries
 
 Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a subdirectory uses the nearest declaration, a new Git worktree gets its own, names are display labels that may repeat, a same-filesystem rename keeps the id, and copying a marker cannot claim another database's records.
 
-| Location                                                  | Contents                                                                     |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `<octocode home>/agent/workspaces.db`                     | All registered workspaces                                                    |
-| `.octocode/code/sessions/`                                | Default JSONL transcripts (explicit session directories win)                 |
-| `.octocode/code/session-data/<session>/`                  | Per-session artifacts: compaction archives, checkpoints                      |
-| `.octocode/code/temp/`                                    | Scratch, tool output, child handoffs                                         |
-| `.octocode/code/agents.txt`, `backlog.md`, `backlog.html` | Generated activity and exported backlog snapshots                            |
-| `<octocode home>/child-credentials/`, `agent/job-owners/` | Child credentials, background process ownership; job output stays in scratch |
-| `<octocode home>/archive/`                                | Gzip JSONL history archives (below)                                          |
+| Location                                                  | Contents                                                                                                                    |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `<octocode home>/agent/workspaces.db`                     | All registered workspaces                                                                                                   |
+| `.octocode/code/sessions/`                                | Default JSONL transcripts (explicit session directories win)                                                                |
+| `.octocode/code/session-data/<session>/`                  | Per-session artifacts: compaction archives, checkpoints                                                                     |
+| `.octocode/code/temp/`                                    | Scratch, tool output, child handoffs                                                                                        |
+| `.octocode/code/agents.txt`, `backlog.md`, `backlog.html` | Generated activity and exported backlog snapshots                                                                           |
+| `<octocode home>/child-credentials/`, `agent/job-owners/` | Child credentials, background process ownership; job output stays in scratch                                                |
+| `<octocode home>/archive/`                                | Gzip JSONL history archives (below)                                                                                         |
 | `<octocode home>/web/`                                    | Web daemon: its record, and one owner-only attach record per running session ([web workspace](web-workspace.md#web-daemon)) |
 
 Sessions written before the move live in `<octocode home>/sessions/--<working directory>--/`; `/resume`, `--continue` and `--session <id>` still list those whose header names the current directory (`/resume all` lists every such folder), and opening one keeps writing beside it. `octocode --fork <full-session-id>` recreates a session in the current workspace from stored entries when its file is gone. Team coordination and project-scoped memories span linked worktrees; backlogs and workspace memories belong to one workspace. The catalog keeps entries after a checkout is removed.

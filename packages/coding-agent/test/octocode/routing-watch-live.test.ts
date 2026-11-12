@@ -8,6 +8,7 @@ import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { providerSourceGate, watchProviderSettings } from "../../src/core/provider-sources/index.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
+import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
 import { ROUTING_NOTICE_ID } from "../../src/octocode/subagents/routing-watch.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
@@ -109,5 +110,57 @@ describe("a provider another process disables", () => {
 		const after = await listed();
 		expect(after).toMatch(/^ {2}groq · /m);
 		expect(after).not.toMatch(/^ {2}cerebras · /m);
+	});
+});
+
+describe("Claude Code as the session's model", () => {
+	it("gets no routing notice, since its prompt never states Octocode's routes; the next native model gets it", async () => {
+		const agentDir = join(home, "agent");
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(
+			join(agentDir, "auth.json"),
+			JSON.stringify({ cerebras: { type: "api_key", key: "k" }, groq: { type: "api_key", key: "k" } }),
+		);
+		const runtime = await ModelRuntime.create({
+			authPath: join(agentDir, "auth.json"),
+			modelsPath: null,
+			modelsStore: new InMemoryModelsStore(),
+			allowModelNetwork: false,
+		});
+		// Building the backend starts nothing: Claude Code runs only when a request streams.
+		runtime.registerNativeProvider(createClaudeCodeBackend({ command: "unused", args: [], cli: "unused" }).provider);
+		await runtime.refresh({ allowNetwork: false });
+		const registry = new ModelRegistry(runtime);
+		const claudeCode = registry.find("claude-code", "opus");
+		const groq = registry.getAvailable().find((model) => model.provider === "groq");
+		expect(claudeCode && registry.getProviderKind("claude-code")).toBe("CLI");
+		expect(groq).toBeDefined();
+
+		const fake = fakeHost();
+		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
+		fake.api.setActiveTools(["bash", "file", "agent"]);
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		const turn = async (model: typeof groq) => {
+			const ctx = { hasUI: true, model, modelRegistry: registry };
+			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
+			const [result] = (await fake.emit("before_agent_start", event, ctx)) as Array<
+				{ message?: { customType: string; content: string } } | undefined
+			>;
+			await fake.emit("turn_end", {}, ctx);
+			return result?.message;
+		};
+
+		expect(await turn(claudeCode)).toBeUndefined();
+		runtime.setDisabledProviders(["cerebras"]);
+		expect(await turn(claudeCode)).toBeUndefined();
+		expect(fake.sent).toEqual([]);
+
+		// The switch to a model that reads Octocode's prompt hears of the change, once.
+		const notice = await turn(groq);
+		expect(notice).toMatchObject({ customType: ROUTING_NOTICE_ID });
+		expect(notice?.content).toContain("(no longer available: `cerebras`)");
+		expect(notice?.content).toContain("You run `groq/");
+		expect(await turn(groq)).toBeUndefined();
+		expect(fake.sent).toEqual([]);
 	});
 });

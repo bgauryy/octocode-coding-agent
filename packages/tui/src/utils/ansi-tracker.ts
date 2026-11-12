@@ -59,6 +59,24 @@ export function getActiveOsc8Close(prefix: string): string {
 }
 
 /**
+ * SGR parameter lists by code. Styled output repeats a handful of codes thousands of times, and matching and splitting
+ * each occurrence was most of what tracking cost while wrapping. A bare reset (`ESC[m`) is `["0"]`.
+ */
+const sgrParameterCache = new Map<string, readonly string[] | null>();
+const SGR_PARAMETER_CACHE_LIMIT = 512;
+
+function sgrParameters(ansiCode: string): readonly string[] | null {
+	const known = sgrParameterCache.get(ansiCode);
+	if (known !== undefined) return known;
+	// Extract the parameters between \x1b[ and m; they can be semicolon-separated.
+	const match = ansiCode.match(/\x1b\[([\d;]*)m/);
+	const parts = match ? (match[1] === "" ? ["0"] : match[1].split(";")) : null;
+	if (sgrParameterCache.size >= SGR_PARAMETER_CACHE_LIMIT) sgrParameterCache.clear();
+	sgrParameterCache.set(ansiCode, parts);
+	return parts;
+}
+
+/**
  * Track active ANSI SGR codes to preserve styling across line breaks.
  */
 export class AnsiCodeTracker {
@@ -90,18 +108,8 @@ export class AnsiCodeTracker {
 			return;
 		}
 
-		// Extract the parameters between \x1b[ and m
-		const match = ansiCode.match(/\x1b\[([\d;]*)m/);
-		if (!match) return;
-
-		const params = match[1];
-		if (params === "" || params === "0") {
-			this.reset();
-			return;
-		}
-
-		// Parse parameters (can be semicolon-separated)
-		const parts = params.split(";");
+		const parts = sgrParameters(ansiCode);
+		if (!parts) return;
 		let i = 0;
 		while (i < parts.length) {
 			const code = Number.parseInt(parts[i], 10);

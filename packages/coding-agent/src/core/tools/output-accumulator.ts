@@ -50,6 +50,8 @@ interface FullOutput {
 	content: string;
 	/** Whether `content` omits part of the output. */
 	truncated: boolean;
+	/** The saved file `content` was read from (`readSavedOutput`), when the output spilled to one. */
+	path?: string;
 }
 
 function byteLength(text: string): number {
@@ -242,7 +244,11 @@ export class OutputAccumulator {
 			return { content: new TextDecoder().decode(Buffer.concat(this.rawChunks)), truncated: false };
 		}
 		const saved = readSavedOutput(this.tempFilePath, maxBytes);
-		return { content: saved.content, truncated: saved.truncated || this.spillDroppedBytes > 0 };
+		return {
+			content: saved.content,
+			truncated: saved.truncated || this.spillDroppedBytes > 0,
+			path: this.tempFilePath,
+		};
 	}
 
 	/** Bytes of the last line: the unterminated one, else the newest one that ended with a newline. */

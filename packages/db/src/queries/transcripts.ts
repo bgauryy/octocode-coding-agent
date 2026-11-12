@@ -188,9 +188,7 @@ export function storedPrefix(
 	if (own) db.exec("BEGIN");
 	try {
 		const saved = stamp(db, sessionId);
-		const range = db
-			.prepare("SELECT COUNT(*) AS n, MAX(position) AS last FROM session_entries WHERE session_id=?")
-			.get(sessionId) as { n: number; last: number | null };
+		const range = storedRange(db, sessionId);
 		const stored = range.n;
 		if (!saved || stored === 0 || range.last !== stored - 1) return { stamp: saved, stored, common: 0 };
 		let common = 0;
@@ -199,6 +197,35 @@ export function storedPrefix(
 			common += 1;
 		}
 		return { stamp: saved, stored, common };
+	} finally {
+		if (own) db.exec("COMMIT");
+	}
+}
+
+/** How many entries a transcript stores, the highest position and the id of the entry there. */
+function storedRange(db: DatabaseSync, sessionId: string): { n: number; last: number | null; lastId: string | null } {
+	return db
+		.prepare(`SELECT COUNT(*) AS n, MAX(position) AS last,
+		(SELECT entry_id FROM session_entries WHERE session_id=?1 ORDER BY position DESC LIMIT 1) AS lastId
+		FROM session_entries WHERE session_id=?1`)
+		.get(sessionId) as { n: number; last: number | null; lastId: string | null };
+}
+
+/**
+ * The transcript's stamp, how many entries are stored (positions `0..stored-1`; 0 when the range has a gap) and the id
+ * of the last of them, read from one snapshot: where a writer that holds the same file can continue the mirror.
+ */
+export function storedTail(
+	db: DatabaseSync,
+	sessionId: string,
+): { stamp: TranscriptStamp | undefined; stored: number; lastId: string | undefined } {
+	const own = !db.isTransaction;
+	if (own) db.exec("BEGIN");
+	try {
+		const saved = stamp(db, sessionId);
+		const range = storedRange(db, sessionId);
+		const whole = range.n > 0 && range.last === range.n - 1;
+		return { stamp: saved, stored: whole ? range.n : 0, lastId: whole ? (range.lastId ?? undefined) : undefined };
 	} finally {
 		if (own) db.exec("COMMIT");
 	}

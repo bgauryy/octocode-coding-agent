@@ -23,8 +23,9 @@ export function isImageLine(line: string): boolean {
 	}
 	// Slow path: sequence elsewhere (multi-row images have cursor-up prefix)
 	if (line.includes(KITTY_PREFIX) || line.includes(ITERM2_PREFIX)) return true;
-	// Placeholder rows are cells, not sequences; they only count where tmux placeholders are in use.
-	return isKittyPlaceholderLine(line) && kittyPlaceholderMode();
+	// Placeholder rows are cells, not sequences; they only count where tmux placeholders are in use. The mode check is
+	// a cached flag and the pattern scans the row's leading blanks and styles, so the flag goes first.
+	return kittyPlaceholderMode() && isKittyPlaceholderLine(line);
 }
 
 /** Emit one Kitty APC, wrapped in tmux passthrough when images run under tmux. */

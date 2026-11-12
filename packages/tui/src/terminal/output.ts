@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import { resolveWriteLogPath } from "./environment.ts";
-import type { OutputTelemetry } from "./types.ts";
+import type { OutputKind, OutputTelemetry } from "./types.ts";
 
 /**
  * Longest the exit restore writes together wait for a terminal that has stopped reading (a hidden or paused pane).
@@ -15,7 +15,14 @@ function pause(ms: number): void {
 }
 
 function emptyTelemetry(): OutputTelemetry {
-	return { writtenBytes: 0, writeCalls: 0, maxWriteBytes: 0, backpressuredWrites: 0, maxQueuedBytes: 0 };
+	return {
+		writtenBytes: 0,
+		writeCalls: 0,
+		maxWriteBytes: 0,
+		backpressuredWrites: 0,
+		maxQueuedBytes: 0,
+		droppedFrameBytes: 0,
+	};
 }
 
 /** Node makes POSIX TTY writes blocking by default; libuv must queue them so input and health timers can run. */
@@ -26,10 +33,28 @@ export function setTerminalOutputBlocking(blocking: boolean): void {
 }
 
 /**
+ * Queued bytes past which a frame is dropped instead of queued, by default: the render loop's output gate holds
+ * scheduled frames at 256 KiB, so only frames painted around the gate (input, resize) can reach it. Measured on an owned
+ * PTY that stopped reading; Terminal.app's queue peaked at 13 KB in normal use.
+ */
+const DEFAULT_FRAME_OUTPUT_CAP = 512 * 1024;
+/** UTF-8 encodes one UTF-16 code unit in at most three bytes. */
+const MAX_UTF8_BYTES_PER_UNIT = 3;
+
+/**
  * Rendered output to stdout: reports the queue so the render loop can gate frames on it, counts
  * bytes when telemetry is on, and copies output to the write log when `OCTOCODE_TUI_WRITE_LOG` is set.
+ *
+ * A terminal that stops reading (a paused tmux pane, a stalled SSH link) would otherwise collect every frame painted in
+ * the meantime. A frame only replaces the one before it, so once the queue passes the frame cap new frames are dropped,
+ * never mode, restore, status or scrollback bytes (`essential`, the default). When the queue drains after a drop, the
+ * recovery callback repaints the screen whole.
  */
 export class TerminalOutput {
+	private frameCap: number | undefined = DEFAULT_FRAME_OUTPUT_CAP;
+	private framesDropped = false;
+	private awaitingDrain = false;
+	private recover: (() => void) | undefined;
 	private decorativePressureThreshold: number | undefined;
 	private telemetryEnabled = false;
 	private telemetry: OutputTelemetry = emptyTelemetry();
@@ -80,6 +105,16 @@ export class TerminalOutput {
 		});
 	}
 
+	/** Queued bytes past which frames are dropped; undefined keeps every frame. */
+	setFrameCap(bytes: number | undefined): void {
+		this.frameCap = bytes !== undefined && Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes) : undefined;
+	}
+
+	/** What repaints the screen whole once the queue drains after frames were dropped. */
+	setRecovery(recover: (() => void) | undefined): void {
+		this.recover = recover;
+	}
+
 	setDecorativePressureThreshold(bytes: number | undefined): void {
 		this.decorativePressureThreshold = bytes;
 	}
@@ -120,7 +155,15 @@ export class TerminalOutput {
 		}
 	}
 
-	write(data: string): void {
+	write(data: string, kind: OutputKind = "essential"): void {
+		if (kind === "frame" && this.frameCap !== undefined) {
+			const pending = this.pendingBytes;
+			// Measured only near the cap: a frame far below it is queued without counting its bytes.
+			if (pending + data.length * MAX_UTF8_BYTES_PER_UNIT > this.frameCap) {
+				const bytes = Buffer.byteLength(data);
+				if (pending + bytes > this.frameCap) return this.dropFrame(bytes);
+			}
+		}
 		const accepted = process.stdout.write(data);
 		if (this.telemetryEnabled) {
 			const bytes = Buffer.byteLength(data);
@@ -137,5 +180,20 @@ export class TerminalOutput {
 				// Ignore logging errors
 			}
 		}
+	}
+
+	/** Count a dropped frame and repaint once everything queued before it has reached the terminal. */
+	private dropFrame(bytes: number): void {
+		this.telemetry.droppedFrameBytes += bytes;
+		this.framesDropped = true;
+		if (this.awaitingDrain) return;
+		this.awaitingDrain = true;
+		// An empty write's callback runs once every byte queued before it has been written.
+		process.stdout.write("", () => {
+			this.awaitingDrain = false;
+			if (!this.framesDropped) return;
+			this.framesDropped = false;
+			this.recover?.();
+		});
 	}
 }

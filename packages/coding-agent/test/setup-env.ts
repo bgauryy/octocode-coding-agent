@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testCompileCacheDir } from "./helpers/compile-cache.ts";
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and
 // settings (OCTOCODE_SUBAGENT, OCTOCODE_CACHE_RETENTION, ...): drop them so results never depend on who ran the tests.
@@ -19,3 +20,6 @@ process.env.USERPROFILE = home;
 delete process.env.CLAUDE_CONFIG_DIR;
 delete process.env.CODEX_HOME;
 process.on("exit", () => rmSync(home, { recursive: true, force: true }));
+// Every CLI process a test starts compiles its TypeScript source through Node's compile cache and writes what was missing
+// when it exits; a cache in the per-run temporary directory is cold every run (see helpers/compile-cache.ts).
+process.env.NODE_COMPILE_CACHE = testCompileCacheDir();

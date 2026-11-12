@@ -8,7 +8,12 @@ import {
 	type ContentAnnotation,
 } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
-import { DISPLAY_OUTPUT_MAX_BYTES, readOutputFile } from "../../utils/output-files.ts";
+import {
+	DISPLAY_OUTPUT_MAX_BYTES,
+	outputFileReadable,
+	readOutputFile,
+	readOutputFileEnds,
+} from "../../utils/output-files.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
 import { rememberJsonLength } from "./json-length.ts";
@@ -134,20 +139,43 @@ export function normalizeApplicationContent(
 	});
 }
 
+/** Each end of a spilled shell output a projection reads; a longer output's middle is read only by a view that asks. */
+const SHELL_END_BYTES = 64 * 1024;
+
+/** A shell output's displayed text, and for a long spill the file a view reads it whole from, with its size. */
+type ShellOutput = { text: string; file?: { path: string; size: number } };
+
 /**
  * The complete output of a truncated user shell command: what an older session recorded, else this process's own spill.
  * A path from a transcript grants no read authority (`readOutputFile`), so after a restart only the trimmed output shows.
+ * A long spill (up to `DISPLAY_OUTPUT_MAX_BYTES`) is shown by its ends, read in bounded parts: `previewText` of the
+ * whole needs only its first and last characters, and the whole stays in the file for a view that reads it.
  */
-function completeShellOutput(source: Record<string, unknown>): string | undefined {
+function completeShellOutput(source: Record<string, unknown>): ShellOutput | undefined {
 	const recorded = string(source.fullOutput);
-	if (recorded !== undefined || source.truncated !== true) return recorded;
+	if (recorded !== undefined || source.truncated !== true)
+		return recorded === undefined ? undefined : { text: recorded };
 	const file = string(source.fullOutputPath);
 	try {
-		return file ? readOutputFile(file, DISPLAY_OUTPUT_MAX_BYTES)?.replace(/\r/g, "") : undefined;
+		if (!file || !outputFileReadable(file, DISPLAY_OUTPUT_MAX_BYTES)) return undefined;
+		const ends = readOutputFileEnds(file, SHELL_END_BYTES, SHELL_END_BYTES);
+		if (!ends) return undefined;
+		const head = ends.head.replace(/\r/g, "");
+		const tail = ends.tail.replace(/\r/g, "");
+		if (!tail) return { text: head };
+		const shown = previewText(head + tail);
+		// Ends long enough to hold the preview's parts give the preview of the whole; otherwise read it whole.
+		if (head.length >= PREVIEW_PART_CHARS && tail.length >= PREVIEW_PART_CHARS && shown.previewed)
+			return { text: shown.text, file: { path: file, size: ends.size } };
+		const whole = readOutputFile(file, DISPLAY_OUTPUT_MAX_BYTES)?.replace(/\r/g, "");
+		return whole === undefined ? undefined : { text: whole };
 	} catch {
 		return undefined;
 	}
 }
+
+/** More than either part `previewText` keeps of a long text's start and end. */
+const PREVIEW_PART_CHARS = 2000;
 
 export function normalizeApplicationMessage(value: unknown, id: string, assets: ApplicationAssets): ApplicationMessage {
 	const source = asRecord(value);
@@ -156,7 +184,7 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 		source.role === "bashExecution"
 			? [
 					{ type: "text", text: `$ ${string(source.command) ?? ""}` },
-					{ type: "text", text: fullOutput ?? string(source.output) ?? "" },
+					{ type: "text", text: fullOutput?.text ?? string(source.output) ?? "" },
 					...(source.truncated === true && fullOutput === undefined
 						? [
 								{
@@ -186,6 +214,10 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 		assets,
 		source.stopReason === "pending",
 	);
+	// The output block of a long spill already holds the preview; its whole text is read from the file when asked for.
+	const spill = fullOutput?.file;
+	if (spill && content[1]?.type === "text")
+		content[1] = { ...content[1], full: assets.putOutputFile(spill.path, spill.size, `${id}:shell-output`) };
 	const stopReason = string(source.stopReason);
 	const complete = stopReason !== "pending";
 	const message: ApplicationMessage = {

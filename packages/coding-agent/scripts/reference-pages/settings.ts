@@ -104,6 +104,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"fullscreenScrollbar",
 			"fullscreenCopyOnSelect",
 			"fullscreenWheelScrollLines",
+			"fullscreenFrameQueueLimitKiB",
 			"terminal",
 			"images",
 			"hideThinkingBlock",

@@ -208,6 +208,24 @@ describe("stored session format", () => {
 		expect(full.after).toBeLessThan(full.before / 4);
 	});
 
+	it("shares unchanged layer objects between consecutive live traces once they are stored", () => {
+		const session = SessionManager.create(cwd, scratch);
+		record(session, 6);
+		const traces = session
+			.getEntries()
+			.flatMap((entry) => (entry.type === "message" && entry.message.role === "assistant" ? [entry.message] : []))
+			.map((message) => message.requestTrace!);
+		const copies = JSON.parse(JSON.stringify(traces)) as typeof traces;
+		const [previous, current] = traces.slice(-2);
+		// Tools and system are unchanged; the message layers before the moved cache marker too.
+		expect(current.layers[0]).toBe(previous.layers[0]);
+		expect(current.layers[1]).toBe(previous.layers[1]);
+		expect(current.layers[2]).toBe(previous.layers[2]);
+		expect(current.layers.at(-1)).not.toBe(previous.layers.at(-1));
+		// Sharing changes no value.
+		expect(JSON.parse(JSON.stringify(traces))).toEqual(copies);
+	});
+
 	it("reads a spilled structured output back from the saved file, and only then", () => {
 		const saved = join(scratch, "spill.log");
 		const fullText = Array.from({ length: 5000 }, (_, i) => `raw line ${i}`).join("\n");

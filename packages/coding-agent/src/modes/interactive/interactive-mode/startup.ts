@@ -248,10 +248,11 @@ export async function init(host: StartupHost): Promise<void> {
 
 	host.updateAvailableProviderCount();
 
-	// Flush the completed startup state before loading the remaining syntax grammars.
+	// Flush the completed startup state before loading the remaining syntax grammars. Re-render (a full transcript
+	// replay in regular mode) only when code already shown named a language that has just loaded.
 	host.ui.renderNow();
-	void loadAllHighlightLanguages().then(() => {
-		if (!host.isInitialized) return;
+	void loadAllHighlightLanguages().then((changed) => {
+		if (!changed || !host.isInitialized) return;
 		host.ui.invalidate();
 		host.ui.requestRender();
 	});

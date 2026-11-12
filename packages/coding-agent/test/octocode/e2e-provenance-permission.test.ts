@@ -21,7 +21,7 @@ import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/e
 import { createTestSession } from "../helpers/session.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { fakeCtx } from "./fake-host.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 
 /**
  * The provenance tripwire (`src/octocode/permission/provenance.ts`, `docs/permissions.md`) through the real Octocode runtime with
@@ -91,7 +91,7 @@ async function interactive(
 	git("init", "-q", "-b", "main");
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
 
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(
 		process.env,
 		{

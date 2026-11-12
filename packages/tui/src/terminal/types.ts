@@ -19,7 +19,11 @@ export interface Terminal {
 	/** Flush queued output before exit; false after the deadline or a stream error. */
 	drainOutput?(maxMs?: number): Promise<boolean>;
 
-	write(data: string): void;
+	/**
+	 * Queue output. A `frame` replaces what the screen shows and may be dropped while the terminal is not reading; the
+	 * default, `essential`, is always written (modes, restoration, status, scrollback).
+	 */
+	write(data: string, kind?: OutputKind): void;
 	/** Synchronous mode restoration on process exit, bypassing any unfinished stdout queue. */
 	writeOnExit?(data: string): void;
 
@@ -27,6 +31,12 @@ export interface Terminal {
 	readonly pendingOutputBytes?: number;
 	/** Optional hint to omit decorative progress keepalives while scheduled frames are pressure-gated. */
 	setDecorativeOutputPressureThreshold?(bytes: number | undefined): void;
+	/**
+	 * Queued bytes past which frames are dropped (undefined keeps them all), and what repaints the screen whole once the
+	 * queue drains after a drop.
+	 */
+	setFrameOutputCap?(bytes: number | undefined): void;
+	setOutputRecovery?(recover: (() => void) | undefined): void;
 	/** Optional aggregate output counters; no rendered text is retained. */
 	setOutputTelemetryEnabled?(enabled: boolean): void;
 	getOutputTelemetry?(): Readonly<OutputTelemetry>;
@@ -35,6 +45,11 @@ export interface Terminal {
 	get rows(): number;
 
 	get kittyProtocolActive(): boolean;
+	/**
+	 * Whether the terminal confirmed synchronized output (mode 2026) through DECRQM. Absent or false: frames are paced
+	 * to the display and written without begin/end markers.
+	 */
+	readonly synchronizedOutput?: boolean;
 
 	// Cursor positioning (relative to current position)
 	moveBy(lines: number): void; // Move cursor up (negative) or down (positive) by N lines
@@ -58,10 +73,15 @@ export interface Terminal {
 	setProgramStatus(status: ProgramStatus): void;
 }
 
+/** What a write holds: a replaceable frame, or bytes that must reach the terminal. */
+export type OutputKind = "frame" | "essential";
+
 export interface OutputTelemetry {
 	writtenBytes: number;
 	writeCalls: number;
 	maxWriteBytes: number;
 	backpressuredWrites: number;
 	maxQueuedBytes: number;
+	/** Bytes of frames dropped because the terminal was not reading. */
+	droppedFrameBytes: number;
 }

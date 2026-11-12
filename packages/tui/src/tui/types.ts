@@ -25,6 +25,12 @@ export interface TUI extends Component {
 	setShowHardwareCursor(enabled: boolean): void;
 	getClearOnShrink(): boolean;
 	setClearOnShrink(enabled: boolean): void;
+	/**
+	 * Whether `component` started above the viewport in the last frame, in the scrollback the terminal owns (regular
+	 * mode). A change there costs a replay of the whole transcript, so view toggles leave such components alone.
+	 * Fullscreen redraws any row freely and answers false.
+	 */
+	isAboveViewport?(component: Component): boolean;
 	setFocus(component: Component | null): void;
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
 	hideOverlay(): void;

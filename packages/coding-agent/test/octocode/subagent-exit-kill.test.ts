@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 /** Every way the coordinator exits takes its subagents' process groups along, and nothing stays stale. */
 
@@ -21,7 +21,7 @@ let dir = "";
 
 beforeAll(() => {
 	dir = tmp("octocode-exit-kill-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(dir, "home"),
 		OCTOCODE_AGENT_DB: path.join(dir, "team", "team.sqlite"),

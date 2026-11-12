@@ -123,6 +123,7 @@ describe("render pacing", () => {
 				maxWriteBytes: 4,
 				backpressuredWrites: 1,
 				maxQueuedBytes: process.stdout.writableLength,
+				droppedFrameBytes: 0,
 			});
 		} finally {
 			process.stdout.write = originalWrite;

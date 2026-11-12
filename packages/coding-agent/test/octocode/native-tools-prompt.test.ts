@@ -4,7 +4,7 @@ import { buildSystemPromptSections } from "../../src/core/system-prompt.ts";
 import { defaultToolNames } from "../../src/core/native-tools.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 type Registered = { name: string; promptSnippet?: string; defaultActive?: boolean };
 
@@ -12,7 +12,7 @@ let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
 	saved = { ...process.env };
 	// Hermetic: a run inside an Octocode agent inherits its identity, which changes the registered tools.
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	process.env.OCTOCODE_HOME = tmp();
 });
 afterEach(() => {

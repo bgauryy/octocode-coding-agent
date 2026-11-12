@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type * as NativeConfig from "../../src/config.ts";
 import { MAX_REQUESTS_ENV } from "../../src/octocode/subagents/budget.ts";
 import { childSessionFile, type ChildSession } from "../../src/octocode/subagents/process/session.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 import { setup } from "./subagent-record-fixture.ts";
 
 vi.mock("../../src/config.ts", async (original) => ({
@@ -16,7 +16,7 @@ const savedArgv = process.argv[1];
 const savedEnv = { ...process.env };
 beforeAll(() => {
 	const root = tmp("octocode-agent-budget-continuation-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),

@@ -7,7 +7,7 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 /** A start whose paths only running children of this session hold waits for their release. */
 
@@ -17,7 +17,7 @@ const savedEnv = { ...process.env };
 
 beforeAll(() => {
 	const root = tmp("octocode-agent-queue-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team", "team.sqlite"),

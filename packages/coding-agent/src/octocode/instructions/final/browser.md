@@ -17,7 +17,6 @@ You are a coding assistant operating inside Octocode, a coding agent harness: yo
 - memory: Before recalling preferences and decisions
 - agent: Reserve files others may edit (coordinate), message a teammate (message)
 - skill: To load a skill listed in <available_skills>
-{{MCP_TOOL_SUMMARIES}}
 </tools>
 
 <rules>

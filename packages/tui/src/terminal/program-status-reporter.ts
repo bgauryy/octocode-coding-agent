@@ -54,6 +54,14 @@ export class ProgramStatusReporter {
 		}
 	}
 
+	/**
+	 * Clear a reported status when the process ends without stop(), through `write` (the synchronous exit writer), so a
+	 * crash does not leave the terminal showing the program as working.
+	 */
+	restoreOnExit(write: (sequence: string) => void): void {
+		if (this.supported && this.status) write(formatProgramStatus({ state: "clear" }));
+	}
+
 	/** Remove the status while stopped, for example after exit or while suspended. start() reports it again. */
 	stop(): void {
 		if (this.supported && this.status) {

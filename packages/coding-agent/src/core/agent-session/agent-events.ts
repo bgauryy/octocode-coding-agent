@@ -13,6 +13,7 @@ import type {
 	ToolExecutionUpdateEvent,
 	TurnStartEvent,
 } from "../features/index.ts";
+import { releaseSavedOutput } from "../tools/bash/stored-result.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
@@ -44,6 +45,10 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 		run.overflowRecoveryAttempted = false;
 		host.inputs.consumeQueuedUserMessage(event.message);
 	}
+
+	// The call has returned and its end event carried the result: from here a bash result's copy of its output for
+	// programmatic callers (up to 1 MiB) is read from its saved file when read, as after a resume.
+	if (event.type === "message_start" && event.message.role === "toolResult") releaseSavedOutput(event.message);
 
 	// Emit to extensions first, then notify public listeners.
 	await host.emitExtensionEvent(event);

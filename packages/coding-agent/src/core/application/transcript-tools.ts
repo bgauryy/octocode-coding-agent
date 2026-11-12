@@ -2,12 +2,23 @@ import type { ApplicationTool } from "@octocodeai/octocode-contracts";
 import type { ApplicationAssets } from "./assets.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { recordJsonLength } from "./json-length.ts";
+import { savedOutputTwin } from "../tools/bash/stored-result.ts";
 
 /** The result a tool's displayed data was last built from. */
 export interface ToolSource {
 	value: unknown;
 	owner: string;
 	streaming: boolean;
+}
+
+/**
+ * The source the transcript keeps of a finished result: a bash result's structured data in its released form
+ * (`savedOutputTwin`), the one its message will hold, so the 1 MiB output for programmatic callers is read from its
+ * saved file only when a reprojection reads it, and the message still matches (`showsToolResult`).
+ */
+export function keptToolSource(value: unknown, owner: string, streaming: boolean): ToolSource {
+	const twin = streaming ? undefined : savedOutputTwin(asRecord(value).structuredContent);
+	return { value: twin ? { ...asRecord(value), structuredContent: twin } : value, owner, streaming };
 }
 
 /** The members of a result that its displayed data is built from. */

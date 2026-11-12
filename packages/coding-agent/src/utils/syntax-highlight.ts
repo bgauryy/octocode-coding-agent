@@ -68,17 +68,37 @@ for (const [name, language] of Object.entries(eagerLanguages)) {
 	hljs.registerLanguage(name, language);
 }
 
-let allLanguagesPromise: Promise<void> | undefined;
+let allLanguagesPromise: Promise<boolean> | undefined;
+let allLanguagesLoaded = false;
+/** Language names asked for before the full set loaded and not registered then (bounded: past the cap, assume a change). */
+const unresolvedBeforeLoad = new Set<string>();
+const UNRESOLVED_NAMES_MAX = 64;
+let unresolvedOverflow = false;
 
-export function loadAllHighlightLanguages(): Promise<void> {
+function noteUnresolved(name: string): void {
+	if (allLanguagesLoaded || unresolvedOverflow) return;
+	if (unresolvedBeforeLoad.size >= UNRESOLVED_NAMES_MAX) unresolvedOverflow = true;
+	else unresolvedBeforeLoad.add(name);
+}
+
+/**
+ * Register every highlight.js language (once, on a later turn of the event loop). Resolves true when a language name
+ * that was asked for before, and fell back to plain text, is now registered: only then can rendered code look different.
+ */
+export function loadAllHighlightLanguages(): Promise<boolean> {
 	allLanguagesPromise ??= new Promise((resolve) => {
 		setImmediate(() => {
+			// A failed import keeps the eager languages and the plain-text fallback, so nothing rendered changes.
+			const settle = (loaded: boolean) => {
+				allLanguagesLoaded = true;
+				const changed =
+					loaded && (unresolvedOverflow || [...unresolvedBeforeLoad].some((name) => hljs.getLanguage(name)));
+				unresolvedBeforeLoad.clear();
+				resolve(changed);
+			};
 			void import("highlight.js").then(
-				() => resolve(),
-				() => {
-					// Eager languages and plaintext fallback remain available.
-					resolve();
-				},
+				() => settle(true),
+				() => settle(false),
 			);
 		});
 	});
@@ -255,7 +275,9 @@ export function resolveLanguage(name: string | undefined): string | undefined {
 		return undefined;
 	}
 	const mapped = LANGUAGE_ALIASES[first] ?? first;
-	return hljs.getLanguage(mapped) ? mapped : undefined;
+	if (hljs.getLanguage(mapped)) return mapped;
+	noteUnresolved(mapped);
+	return undefined;
 }
 
 /** Highlighting is skipped above these sizes: hljs runs synchronously on every render of a growing block. */

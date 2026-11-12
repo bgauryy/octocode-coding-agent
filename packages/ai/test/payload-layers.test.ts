@@ -59,6 +59,13 @@ describe("describePayloadLayers", () => {
 		]);
 	});
 
+	it("keeps the hash written by earlier versions, so stored traces still compare", () => {
+		const trace = describePayloadLayers("anthropic-messages", {
+			messages: [{ role: "user", content: [{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }] }],
+		});
+		expect(trace?.layers[0].hash).toBe("3337894a614ebbe1");
+	});
+
 	it("marks a breakpoint on a message whose last content part carries cache_control", () => {
 		const payload = anthropicPayload();
 		payload.messages[0].content = [

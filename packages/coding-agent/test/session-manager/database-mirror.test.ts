@@ -171,8 +171,12 @@ describe("durable workspace transcripts", () => {
 			`${JSON.stringify({ type: "custom", customType: "direct", id: "direct01", parentId: session.getLeafId(), timestamp: new Date(0).toISOString() })}\n`,
 		);
 		let saves = 0;
+		// A repair is a whole-file save, or a continuation from the stored rows, which re-sends the record they lack.
+		const repairs = (command: Parameters<typeof submit>[0]) =>
+			command.kind === "save" ||
+			(command.kind === "sync" && command.entries?.some((entry) => entry.record.id === "direct01") === true);
 		const refused = vi.spyOn(writer, "submit").mockImplementation((command) => {
-			if (command.kind !== "save") return submit(command);
+			if (!repairs(command)) return submit(command);
 			saves += 1;
 			return Promise.reject(new DbWriterCommandError("database is busy", true));
 		});

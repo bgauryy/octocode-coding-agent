@@ -7,6 +7,9 @@ export interface ScrollShift {
 	sequence: string;
 	/** What the screen holds after the sequence runs: the rows the frame is compared against. */
 	basis: string[];
+	/** First and last row of the scrolled region, 0-based and inclusive. */
+	top: number;
+	bottom: number;
 }
 
 const MIN_SAVED_ROWS = 3;
@@ -26,16 +29,17 @@ function trimRows(rows: readonly string[], knownRows: readonly string[], knownTr
  * Find the row shift that lets the terminal scroll a region of the previous screen into place, so only
  * the rows the shift does not explain are rewritten. Rows compare by what they paint after an erase.
  * Returns undefined when it would not save rows or when images are involved (their placements do not
- * scroll with text). `memo` only saves trimming work; each screen passes its own.
+ * scroll with text); a caller that already scanned the rows for images passes `hasImages`. `memo` only
+ * saves trimming work; each screen passes its own.
  */
 export function planScrollShift(
 	screenRows: readonly string[],
 	previousRows: readonly string[],
 	memo = new TrimmedRowsMemo(),
+	hasImages = screenRows.some(isImageLine) || previousRows.some(isImageLine),
 ): ScrollShift | undefined {
 	const height = screenRows.length;
-	if (height < 6 || previousRows.length !== height) return undefined;
-	if (screenRows.some(isImageLine) || previousRows.some(isImageLine)) return undefined;
+	if (height < 6 || previousRows.length !== height || hasImages) return undefined;
 	const previous = trimRows(previousRows, memo.rows, memo.trimmed);
 	const screen = trimRows(screenRows, previousRows, previous);
 	memo.rows = screenRows.slice();
@@ -80,5 +84,5 @@ export function planScrollShift(
 		basis[row] = source >= top && source <= bottom ? (previousRows[source] ?? "") : "";
 	}
 	const scroll = shift > 0 ? `\x1b[${shift}S` : `\x1b[${-shift}T`;
-	return { sequence: `\x1b[0m\x1b[${top + 1};${bottom + 1}r${scroll}\x1b[r`, basis };
+	return { sequence: `\x1b[0m\x1b[${top + 1};${bottom + 1}r${scroll}\x1b[r`, basis, top, bottom };
 }

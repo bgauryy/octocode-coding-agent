@@ -25,6 +25,18 @@ export function trustFolder(dir: string, env: NodeJS.ProcessEnv = process.env): 
 	grantFolder(dir, "folder", { source: "command", surface: "cli" }, { env });
 }
 
+/** The worker's `OCTOCODE_*` sandbox (`setup-env.ts`): temporary home and agent folder, MCP off, models.dev off. */
+const SANDBOX_ENV = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith("OCTOCODE_")));
+
+/**
+ * Drops the `OCTOCODE_*` values an earlier test set and restores the sandbox the suite started with, so one test's
+ * settings never reach the next and none removes the suite's isolation. Set a test's own values after calling it.
+ */
+export function resetOctocodeEnv(): void {
+	for (const name of Object.keys(process.env)) if (name.startsWith("OCTOCODE_")) delete process.env[name];
+	Object.assign(process.env, SANDBOX_ENV);
+}
+
 const created: string[] = [];
 
 /** A fresh temporary directory, removed when the test process exits. */

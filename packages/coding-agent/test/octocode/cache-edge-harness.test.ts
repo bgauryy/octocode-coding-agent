@@ -29,7 +29,6 @@ import { parseArgs } from "../../src/cli/args.ts";
 import { createCliRuntimeFactory } from "../../src/main/runtime-factory.ts";
 import { tmp } from "./helpers.ts";
 import { baseEnv, captureChild, fixture, withEnv, type AgentContext } from "./agent-context/capture.ts";
-import { declaration, isMcpTool } from "./agent-context/analyze.ts";
 import { instructionBlocks, toolsText } from "./agent-context/fingerprint.ts";
 
 /**
@@ -52,27 +51,13 @@ describe("children of different bundled roles", () => {
 		expect(general.tools.length).toBeGreaterThan(5);
 		expect(instructionBlocks(general).base.length).toBeGreaterThan(2_000);
 		for (const other of others) {
-			// The implementer defers the MCP tools its servers list under the readOnly role (`mcpDefer: readOnly`): they stay
-			// callable through `mcp` but are declared as short stubs, so only those MCP declarations may differ.
-			if (other.role === "implementer") {
-				expect(other.tools.map((tool) => tool.name)).toEqual(general.tools.map((tool) => tool.name));
-				const differing = general.tools.filter((tool, index) => declaration(tool) !== declaration(other.tools[index]));
-				expect(differing.length).toBeGreaterThan(0);
-				for (const tool of differing) {
-					const stub = other.tools.find((candidate) => candidate.name === tool.name);
-					expect(isMcpTool(tool.name), `${tool.name} differs`).toBe(true);
-					expect(declaration(stub!).length, `${tool.name} stub`).toBeLessThan(declaration(tool).length);
-				}
-			} else {
-				expect({ role: other.role, tools: toolsText(other) }).toEqual({ role: other.role, tools: toolsText(general) });
-			}
-			// The deferred stubs also list their servers' tools in the base block's `<mcps>` part, so for the implementer
-			// the base block is identical up to it.
-			const upTo = (base: string) => (other.role === "implementer" ? base.slice(0, base.indexOf("<mcps>")) : base);
+			// Every role declares the MCP tools the same way (deferred until used), the implementer included, so all roles
+			// send one byte-identical tool array and share its cache.
+			expect({ role: other.role, tools: toolsText(other) }).toEqual({ role: other.role, tools: toolsText(general) });
 			expect(instructionBlocks(general).base).toContain("<mcps>");
-			expect({ role: other.role, base: upTo(instructionBlocks(other).base) }).toEqual({
+			expect({ role: other.role, base: instructionBlocks(other).base }).toEqual({
 				role: other.role,
-				base: upTo(instructionBlocks(general).base),
+				base: instructionBlocks(general).base,
 			});
 		}
 	}, 120_000);

@@ -677,7 +677,8 @@ describe("the Octocode research tools against the real server", () => {
 	const failing: { tool: string; index: number }[] = [];
 
 	beforeAll(async () => {
-		box = repository();
+		// Every research tool rendered in full: the default defers a tool this folder never called.
+		box = repository({ mcpPresentation: "compact", mcpExposure: "direct" });
 		steps = [];
 		for (const [tool, rows] of Object.entries(LOCAL_ROWS)) {
 			for (const [value, one] of Object.entries(rows)) {
@@ -1153,7 +1154,8 @@ describe("the browser, for real: headless Chrome on an isolated profile against 
 describe("the real research server, declared", () => {
 	it("carries each tool's full description and schema in its declaration, and its instructions in the block", async () => {
 		const steps: Step[] = [{ text: "declared-done" }];
-		const run = repository({}).start(["-p", script(steps)]);
+		// Declared presentation (the default) with every tool direct: the default exposure defers an unused tool.
+		const run = repository({ mcpExposure: "direct" }).start(["-p", script(steps)]);
 		expect((await run.exited).code).toBe(0);
 		const first = requestsOf(steps)[0];
 		const tools = Object.keys(first.declarations).filter((name) => name.startsWith("mcp__octocode__"));

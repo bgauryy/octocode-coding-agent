@@ -93,6 +93,47 @@ describe("database mirror delivery", () => {
 		expect(rows(oldId)).toEqual(lines(oldFile));
 	});
 
+	it("continues a mirror that holds a prefix of the file from its last stored row, without saving it all again", async () => {
+		const session = SessionManager.create(cwd);
+		for (let n = 0; n < 5; n++) session.appendMessage(message(`turn ${n}`));
+		expect(await sessionMirrorSettled()).toBe(true);
+		const writer = sharedAgentDbWriter();
+		const sent: string[] = [];
+		const submit = writer.submit.bind(writer);
+		vi.spyOn(writer, "submit").mockImplementation((command) => {
+			sent.push(command.kind === "sync" && command.entries ? `append@${command.entries[0]?.position}` : command.kind);
+			return submit(command);
+		});
+		// Another writer's record: this append's delta finds the mirror behind it, and the repair continues from the
+		// stored rows instead of encoding every record again.
+		foreignRecord(session);
+		session.appendMessage(message("after the other writer"));
+		expect(await sessionMirrorSettled()).toBe(true);
+		expect(sent).toEqual(["append@6", "append@5"]);
+		expect(rows(session.getSessionId())).toEqual(lines(session.getSessionFile()!));
+		expect(notices).toEqual([]);
+	});
+
+	it("saves everything when the stored rows do not end with the entry the file holds there", async () => {
+		const session = SessionManager.create(cwd);
+		for (let n = 0; n < 3; n++) session.appendMessage(message(`turn ${n}`));
+		expect(await sessionMirrorSettled()).toBe(true);
+		// The stored last row no longer names the entry at its position.
+		sharedAgentDb().db.prepare("UPDATE session_entries SET entry_id='elsewhere' WHERE position=2").run();
+		const writer = sharedAgentDbWriter();
+		const sent: string[] = [];
+		const submit = writer.submit.bind(writer);
+		vi.spyOn(writer, "submit").mockImplementation((command) => {
+			sent.push(command.kind === "sync" && command.entries ? "append" : command.kind);
+			return submit(command);
+		});
+		foreignRecord(session);
+		session.appendMessage(message("after the other writer"));
+		expect(await sessionMirrorSettled()).toBe(true);
+		expect(sent).toEqual(["append", "save"]);
+		expect(rows(session.getSessionId())).toEqual(lines(session.getSessionFile()!));
+	});
+
 	it("records a fork edge when the first try is lost with the worker", async () => {
 		const root = SessionManager.create(cwd);
 		root.materialize();

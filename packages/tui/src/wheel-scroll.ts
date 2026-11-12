@@ -9,12 +9,18 @@ const GESTURE_GAP_MS = 200;
 // Average event gap that maps to one line per event. Faster events scale up proportionally.
 const REFERENCE_GAP_MS = 100;
 const MAX_AUTO_LINES = 6;
-// On a terminal that already sends one event per accelerated line, a hard flick still arrives as a long run of events
-// a few milliseconds apart, and at one line each the view trails the hand. A run this dense and this long moves two
-// lines per event, a longer one three. Slow and medium scrolling never reaches it and stays one line per event.
-const FLICK_GAP_MS = 8;
-const FLICK_RUN_FOR_TWO = 8;
-const FLICK_RUN_FOR_THREE = 24;
+// On a terminal that already sends one event per accelerated line (local macOS: Terminal.app sends about 120 events a
+// second during a hard flick, 8 ms apart), one line per event trails the hand: crossing 2,000 rows took 18 s. Events at
+// most this far apart in one direction form a flick run; an event further apart than this is deliberate scrolling and
+// moves one line. 17 ms is one 60 Hz frame: Terminal.app's slowest flick events still land inside it.
+const FLICK_GAP_MS = 17;
+// The first events of a run move one line each, so a short, careful scroll at a medium pace stays precise.
+const FLICK_RAMP_EVENTS = 3;
+// Lines per event at one event per frame (`FLICK_GAP_MS`); denser events scale up in proportion to their rate.
+const FLICK_BASE_LINES = 1.5;
+// A run sustained this many events (about half a second at 120 per second) doubles its lines per event.
+const FLICK_SUSTAIN_EVENTS = 60;
+const MAX_FLICK_LINES = 8;
 
 /**
  * Local macOS terminals receive wheel and trackpad deltas that the OS has already accelerated,
@@ -37,6 +43,9 @@ function terminalAcceleratesWheel(): boolean {
  * In `"auto"` mode on terminals that do not accelerate wheel input, the count follows event
  * velocity: an isolated notch moves one line, while a fast spin moves up to six lines per event.
  * For example, notches 100 ms apart move 1 line each, 50 ms apart move 2, and 20 ms apart move 5.
+ * On terminals that accelerate wheels themselves, events more than a frame apart move one line each,
+ * and a flick (a run of events a frame apart or closer) moves about 3 lines per event at 120 events a
+ * second, rising to 6 as the flick lasts. A fixed line count always wins.
  */
 export class WheelScrollAccelerator {
 	private lines: WheelScrollLines;
@@ -46,6 +55,7 @@ export class WheelScrollAccelerator {
 	private averageGap: number | undefined;
 	private carry = 0;
 	private flickRun = 0;
+	private flickGap: number | undefined;
 
 	constructor(lines: WheelScrollLines = "auto", accelerate = !terminalAcceleratesWheel()) {
 		this.lines = lines;
@@ -80,18 +90,38 @@ export class WheelScrollAccelerator {
 		return whole;
 	}
 
-	/** Lines for an event on a terminal that accelerates wheels itself: one, or more inside a long dense run. */
+	/**
+	 * Lines for an event on a terminal that accelerates wheels itself. An event that ends or starts a run moves one line,
+	 * as do the first events of a run. Past them the count follows the run's velocity (its average event gap against
+	 * one per frame) and how long it has lasted; a fractional part is carried to the next event.
+	 */
 	private flick(direction: -1 | 1, now: number): number {
 		const gap = now - this.lastTime;
 		const dense = direction === this.lastDirection && gap <= FLICK_GAP_MS;
 		this.lastTime = now;
 		this.lastDirection = direction;
-		this.flickRun = dense ? this.flickRun + 1 : 0;
-		return this.flickRun >= FLICK_RUN_FOR_THREE ? 3 : this.flickRun >= FLICK_RUN_FOR_TWO ? 2 : 1;
+		if (!dense) {
+			this.flickRun = 0;
+			this.flickGap = undefined;
+			this.carry = 0;
+			return 1;
+		}
+		this.flickRun++;
+		// Terminals deliver events in bursts; a gap under a millisecond says nothing about the hand's speed.
+		const sample = Math.max(1, gap);
+		this.flickGap = this.flickGap === undefined ? sample : this.flickGap * 0.75 + sample * 0.25;
+		if (this.flickRun < FLICK_RAMP_EVENTS) return 1;
+		const velocity = FLICK_GAP_MS / this.flickGap;
+		const sustain = 1 + Math.min(1, (this.flickRun - FLICK_RAMP_EVENTS) / FLICK_SUSTAIN_EVENTS);
+		const lines = Math.min(MAX_FLICK_LINES, Math.max(1, FLICK_BASE_LINES * velocity * sustain)) + this.carry;
+		const whole = Math.floor(lines);
+		this.carry = lines - whole;
+		return whole;
 	}
 
 	private reset(): void {
 		this.flickRun = 0;
+		this.flickGap = undefined;
 		this.lastTime = Number.NEGATIVE_INFINITY;
 		this.lastDirection = 0;
 		this.averageGap = undefined;

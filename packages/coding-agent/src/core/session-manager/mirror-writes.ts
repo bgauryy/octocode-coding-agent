@@ -7,13 +7,14 @@ import {
 	type MirrorWorkspace,
 	type TranscriptCommand,
 	type TranscriptResult,
+	transcripts as storedTranscripts,
 	writerErrorKind,
 } from "../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sharedAgentDbWriter } from "../../storage/database.ts";
+import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 import { readWorkspaceIdentity, workspaceIdentity } from "../../storage/workspace.ts";
 import { workspaceGit } from "../../utils/git-repository.ts";
-import { encodeSessionLines } from "./codec.ts";
+import { encodeSessionLines, SessionCodec } from "./codec.ts";
 import type { SessionState } from "./state.ts";
 import { withSessionFileLock } from "./shared-file.ts";
 
@@ -64,6 +65,10 @@ export interface Transcript {
 	problem?: string;
 	rebuild?: { notBefore: number; failures: number };
 	saved?: number;
+	/** The sequence of the last command that continued the mirror from its stored rows (`continueMirror`). */
+	continued?: number;
+	/** That command found the mirror moved meanwhile: the next rebuild saves everything. */
+	fullNext?: boolean;
 	pending: number;
 	waitingForRoom: boolean;
 }
@@ -160,9 +165,10 @@ export function rebuild(t: Transcript, origin: Origin): void {
 		// Unchanged since this state's last write, with nothing held back: the entries in memory are the file. An open
 		// (whose entries may have been read before its size was taken), another writer's records, or a state that moved
 		// on to another session: read the file while no one appends, and parse it once the lock is released.
-		if (origin !== "open" && attached(t) && stamp.size === state.fileSize && state.unwritten.length === 0)
+		if (origin !== "open" && attached(t) && stamp.size === state.fileSize && state.unwritten.length === 0) {
+			if (continueMirror(t, stamp, state.fileEntries)) return;
 			snapshot = { stamp, records: state.fileEntries };
-		else {
+		} else {
 			const read = withSessionFileLock(t.file, () => {
 				const taken = getFileStamp(t.file);
 				const bytes = readFileSync(t.file);
@@ -177,6 +183,59 @@ export function rebuild(t: Transcript, origin: Origin): void {
 		return;
 	}
 	save(t, origin, snapshot.stamp, snapshot.records, snapshot.lines);
+}
+
+/**
+ * Continue a mirror that holds a prefix of this file: store only the records past its last stored row, as appends do,
+ * instead of encoding the whole transcript again. Only when the stored rows end with the entry `records` holds at that
+ * position, under this file's identity and below its size; the writer still adds them only while the mirror is level
+ * with the stamp read here. False: save everything.
+ */
+function continueMirror(t: Transcript, stamp: FileStamp, records: readonly unknown[]): boolean {
+	if (t.fullNext) {
+		t.fullNext = false;
+		return false;
+	}
+	// Appends still waiting go first (a full save sends them): the stored rows read now would not include them.
+	if (batches.has(t)) return false;
+	let tail: ReturnType<typeof storedTranscripts.storedTail>;
+	try {
+		tail = storedTranscripts.storedTail(sharedAgentDb().db, t.sessionId);
+	} catch {
+		return false;
+	}
+	const saved = tail.stamp;
+	const from = tail.stored;
+	if (!saved || saved.file !== t.file || saved.file_binding !== stamp.binding || saved.byte_size >= stamp.size)
+		return false;
+	// `records[0]` is the header; the entry at stored position `p` is `records[p + 1]`.
+	if (from === 0 || from + 1 >= records.length || (records[from] as { id?: unknown }).id !== tail.lastId) return false;
+	const codec = new SessionCodec();
+	const header = JSON.stringify(codec.encode(records[0] as object));
+	for (let i = 0; i <= from; i++) codec.observe(records[i] as object);
+	const entries: Batch["entries"] = [];
+	for (let i = from + 1; i < records.length; i++) {
+		const record = records[i] as object;
+		entries.push({ position: i - 1, record: row(record, JSON.stringify(codec.encode(record))) });
+		codec.observe(record);
+	}
+	send(
+		t,
+		"append",
+		{
+			kind: "sync",
+			sessionId: t.sessionId,
+			file: t.file,
+			stamp,
+			previous: { size: saved.byte_size, mtime: saved.mtime },
+			header,
+			entries,
+			workspace: mirrorWorkspace(t.cwd, true),
+		},
+		true,
+	);
+	t.continued = sequence;
+	return true;
 }
 
 /**
@@ -240,10 +299,16 @@ export function save(
 	}
 }
 
-export function send(t: Transcript, origin: Origin, command: Extract<TranscriptCommand, { sessionId: string }>): void {
+/** `repair`: a command that brings the whole mirror level (a continuation, `continueMirror`), as a save does. */
+export function send(
+	t: Transcript,
+	origin: Origin,
+	command: Extract<TranscriptCommand, { sessionId: string }>,
+	repair = false,
+): void {
 	if (origin !== "append") flushAll();
 	const seq = ++sequence;
-	const full = command.kind === "save";
+	const full = command.kind === "save" || repair;
 	if (full) t.saved = seq;
 	t.pending += 1;
 	track(
@@ -273,9 +338,14 @@ function replied(t: Transcript, origin: Origin, seq: number, result: TranscriptR
 	if (result === "saved" || result === "current") {
 		t.problem = undefined;
 		t.rebuild = undefined;
-	} else if (result === "stale" && (t.saved ?? 0) < seq) {
-		// A full save sent after this command already covers it.
-		rebuild(t, origin);
+	} else if (result === "stale") {
+		// A repair sent after this command already covers it. A continuation (`continueMirror`) that found the mirror
+		// moved is itself the newest repair: the next one saves everything.
+		const continued = seq === t.continued;
+		if ((t.saved ?? 0) < seq || (continued && t.saved === seq)) {
+			if (continued) t.fullNext = true;
+			rebuild(t, origin);
+		}
 	}
 }
 

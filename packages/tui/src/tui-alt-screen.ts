@@ -25,7 +25,12 @@ import {
 	ENTER_ALT_SCREEN,
 	EXIT_ALT_SCREEN,
 } from "./tui-alt-screen/constants.ts";
-import { buildAltScreenExit, buildAltScreenForcedExit, renderAltScreenOutput } from "./tui-alt-screen/frame.ts";
+import {
+	buildAltScreenExit,
+	buildAltScreenForcedExit,
+	ImageRowsMemo,
+	renderAltScreenOutput,
+} from "./tui-alt-screen/frame.ts";
 import { AltScreenImages } from "./tui-alt-screen/images.ts";
 import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt-screen/mouse-gesture.ts";
 import { getMouseTrackingSequence } from "./tui-alt-screen/mouse-input.ts";
@@ -56,6 +61,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private disposeExitRestore?: () => void;
 	private readonly images = new AltScreenImages();
 	private readonly trimmedRows = new TrimmedRowsMemo();
+	private readonly imageRows = new ImageRowsMemo();
 	private readonly search: AltScreenSearchController;
 	private readonly selection: AltScreenSelection;
 	private readonly scrollbar: AltScreenScrollbar;
@@ -242,6 +248,15 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.terminal.write(
 			`${ENTER_ALT_SCREEN}${DISABLE_AUTOWRAP}${this.mouseEnabled ? getMouseTrackingSequence() : ""}\x1b[2J\x1b[H\x1b[?25l`,
 		);
+		// Frames dropped while the terminal was not reading: reassert the frame's modes and paint the screen whole.
+		this.terminal.setOutputRecovery?.(() => {
+			if (this.stopped || !this.altScreenActive) return;
+			this.terminal.write(
+				`${this.images.deleteAll()}${DISABLE_AUTOWRAP}${this.mouseEnabled ? getMouseTrackingSequence() : ""}`,
+			);
+			this.resetRenderState();
+			this.requestRender();
+		});
 	}
 
 	protected override onTerminalCapabilitiesChanged(): void {
@@ -250,6 +265,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	protected override beforeTerminalStop(_options: TuiStopOptions): void {
+		this.terminal.setOutputRecovery?.(undefined);
 		detachScrollViews(this.layoutRoot ?? this.implicitScrollView, ...this.children);
 		this.search.closeSearch();
 		this.selection.stopSelectionAutoScroll();
@@ -367,9 +383,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			cursorPos,
 			showHardwareCursor: this.getShowHardwareCursor(),
 			trimmedRows: this.trimmedRows,
+			imageRowsMemo: this.imageRows,
+			synchronized: this.terminal.synchronizedOutput === true,
 		});
 		if (fullRedraw) this.fullRedrawCount += 1;
-		this.terminal.write(buffer);
+		this.terminal.write(buffer, "frame");
 
 		this.previousScreen = screen;
 		this.previousScreenWidth = width;

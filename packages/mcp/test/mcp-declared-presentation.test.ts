@@ -50,7 +50,8 @@ describe("declared MCP presentation", () => {
 	});
 
 	it("declares each tool with the server's description and full input schema, and the block holds instructions only", async () => {
-		const { h, agentDir } = host();
+		// Every tool direct: the bundled server follows the deferred default (`mcpExposure: "recent"`) like any other.
+		const { h, agentDir } = host(undefined, { exposure: "direct" });
 		await h.start();
 		const { mcps } = await h.prompt();
 		const server = h.state.findServer("octocode")!.connection!;

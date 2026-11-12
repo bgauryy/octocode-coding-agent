@@ -45,7 +45,7 @@ describe("RenderScheduler pointer frames", () => {
 	it("paints at once when the last frame is old, and still honors output pressure", async () => {
 		const { s, frames, terminal } = scheduler();
 		s.paintNow();
-		await wait(15);
+		await wait(20);
 		s.requestInteractive();
 		await wait(3);
 		assert.equal(frames.length, 2);
@@ -58,5 +58,35 @@ describe("RenderScheduler pointer frames", () => {
 		await wait(80);
 		assert.equal(frames.length, 3);
 		s.stop();
+	});
+
+	it("paces pointer frames to one 60 Hz frame unless the terminal confirmed synchronized output", async () => {
+		// The delay the scheduler asks for right after a frame, read from its timer: wall-clock gaps only grow under load,
+		// so an upper bound on them would measure the machine, not the pacing.
+		const measure = async (synchronizedOutput: boolean | undefined) => {
+			const { s, frames, terminal } = scheduler();
+			(terminal as { synchronizedOutput?: boolean }).synchronizedOutput = synchronizedOutput;
+			const original = globalThis.setTimeout;
+			const delays: number[] = [];
+			globalThis.setTimeout = ((handler: () => void, delay?: number) => {
+				delays.push(delay ?? 0);
+				return original(handler, delay);
+			}) as typeof setTimeout;
+			try {
+				s.paintNow();
+				s.requestInteractive();
+			} finally {
+				globalThis.setTimeout = original;
+			}
+			await wait(40);
+			s.stop();
+			assert.equal(frames.length, 2, "the pointer frame was painted");
+			return delays[0] ?? 0;
+		};
+		// Terminal.app answers no DECRQM: a frame faster than its paint only shows half-written states.
+		assert.ok((await measure(undefined)) >= 15, "unknown support waits a whole frame");
+		assert.ok((await measure(false)) >= 15);
+		const synchronized = await measure(true);
+		assert.ok(synchronized >= 7 && synchronized < 15, `synchronized terminals keep 8 ms (${synchronized} ms)`);
 	});
 });

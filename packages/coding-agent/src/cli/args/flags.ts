@@ -103,6 +103,14 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: set((a) => (a.rpcAsk = true)),
 	},
 	{
+		name: "--rpc-lean-events",
+		kind: "boolean",
+		help: [
+			"RPC mode: send each message and tool result whole once; later events refer to it (no structured result data or request traces)",
+		],
+		apply: set((a) => (a.rpcLeanEvents = true)),
+	},
+	{
 		name: "--continue",
 		short: "-c",
 		kind: "boolean",

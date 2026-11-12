@@ -41,8 +41,11 @@ async function fixture(
 	const server = createServer(async (req, res) => {
 		const chunks: Buffer[] = [];
 		for await (const chunk of req) chunks.push(Buffer.from(chunk));
-		requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
 		res.on("close", () => fs.writeFileSync(providerClosed, "closed"));
+		const body = Buffer.concat(chunks).toString("utf8");
+		// A child stopped while sending its request (an RPC shutdown mid-request) leaves no body to record.
+		if (!body) return;
+		requests.push(JSON.parse(body));
 		if (!options.response || options.response === "hold") return;
 		if (options.response === "failure") {
 			res.writeHead(400, { "content-type": "application/json" });

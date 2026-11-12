@@ -264,8 +264,10 @@ describe("with Octocode MCP (default)", () => {
 		// `prompt-size.test.ts`); the other +70 since 48,667 came from concurrent edits. Slack over the measurement is 33.
 		// 50_047 (measured 50,014, user-requested): the agent tool's `tasks` and the backlog's `items`
 		// arrays, +303 in main (see `prompt-size.test.ts`); the other +21 since 49,690 came from concurrent edits.
+		// 39_600 (measured 39,557; MCP server text 14,091): lowered to the reading. The bundled server follows the deferred
+		// default, so its tools are no longer listed in `<tools>`, and native text shrank since. Slack 43.
 		expect(ownChars, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
-			50_047,
+			39_600,
 		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
@@ -296,18 +298,23 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.systemPrompt).toContain("use the research tools (`mcp__octocode__*`)");
 		expect(turn.systemPrompt).toContain("descriptions route each question");
 		expect(turn.systemPrompt).not.toContain("Search with bash");
-		expect(turn.systemPrompt).toMatch(/<mcps>\n[^\n]*\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
-		// Declared mode: the block is the server's instructions; the tools carry their own description and full schema.
+		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
+		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
+		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
+		// description and its top-level fields, and the full schema comes back on a rejected call.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
+		expect(turn.systemPrompt).toContain("A tool listed as `- name` is declared with its description");
+		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
-		expect(JSON.stringify(declared?.parameters)).toContain('"matchString"');
-		// `<tools>` lists native tools one by one and each described server once by its purpose (stated there, not in
-		// its `<mcps>` block); the server's tools are in `<mcps>`.
+		expect(declared?.description.length).toBeGreaterThan(60);
+		expect(JSON.stringify(declared?.parameters)).toContain('"queries"');
+		expect(JSON.stringify(declared?.parameters)).not.toContain('"matchString"');
+		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
 		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
-		expect(toolLines).toContain(
-			"- mcp__octocode__*: Code search and read; each tool's description says when to use it.",
+		expect(turn.systemPrompt.split("Code search and read; each tool's description says when to use it.")).toHaveLength(
+			2,
 		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(

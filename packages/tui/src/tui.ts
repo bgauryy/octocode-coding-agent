@@ -112,6 +112,14 @@ export abstract class TuiBase extends Container implements TUI {
 		this.scheduler.setPacing(options);
 	}
 
+	/**
+	 * Queued output bytes past which fullscreen frames are dropped while the terminal is not reading, then repainted
+	 * whole once it drains; undefined keeps every frame. Regular mode never drops: its rows become scrollback.
+	 */
+	setFrameOutputCap(bytes: number | undefined): void {
+		this.terminal.setFrameOutputCap?.(bytes);
+	}
+
 	getRenderPacingStats(): Readonly<RenderPacingStats> {
 		return this.scheduler.getStats();
 	}

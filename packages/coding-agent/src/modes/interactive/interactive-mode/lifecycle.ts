@@ -118,6 +118,24 @@ export async function checkShutdownRequested(host: LifecycleHost): Promise<void>
  * editor, an interactive `/octocode` subcommand) owns the terminal: its Ctrl+C is the child's.
  */
 let suspended = false;
+/** Set once the suspend path has sent its own group SIGTSTP: from then on a SIGTSTP stops this process. */
+let stopping = false;
+
+/**
+ * An external `kill -TSTP` (a job-control tool, a parent process) runs the same suspend as the Ctrl+Z key, so the shell
+ * gets the terminal back out of raw mode and the alternate screen. With a listener installed Node no longer stops on
+ * SIGTSTP, so this handler stops the process itself when the stop is due: the suspend path's own group signal, or a
+ * signal while a foreground child owns the terminal (the child and its terminal modes are its own, as without a listener).
+ * A signal while the suspend is still draining its restore output is that same suspend: it stops the group when done.
+ */
+function handleSigtstp(host: Pick<LifecycleHost, "ui" | "showStatus" | "isShuttingDown">): void {
+	if (stopping || foregroundChildActive() || host.isShuttingDown) {
+		process.kill(process.pid, "SIGSTOP");
+		return;
+	}
+	if (suspended) return;
+	handleCtrlZ(host);
+}
 
 export function registerSignalHandlers(host: LifecycleHost): void {
 	host.unregisterSignalHandlers();
@@ -126,6 +144,9 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 	const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 	if (process.platform !== "win32") {
 		signals.push("SIGHUP");
+		const tstpHandler = () => handleSigtstp(host);
+		process.on("SIGTSTP", tstpHandler);
+		host.signalCleanupHandlers.push(() => process.off("SIGTSTP", tstpHandler));
 	}
 
 	for (const signal of signals) {
@@ -198,6 +219,7 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 
 	const onResume = () => {
 		suspended = false;
+		stopping = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		signalTrackedDetachedChildren("SIGCONT");
@@ -208,6 +230,7 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 	const recover = () => {
 		signalTrackedDetachedChildren("SIGCONT");
 		suspended = false;
+		stopping = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		process.removeListener("SIGCONT", onResume);
@@ -215,6 +238,7 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 	const suspend = () => {
 		if (!suspended) return;
 		signalTrackedDetachedChildren("SIGSTOP");
+		stopping = true;
 		process.kill(0, "SIGTSTP");
 	};
 

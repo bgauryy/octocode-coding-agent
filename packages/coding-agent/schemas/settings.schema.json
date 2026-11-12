@@ -1264,6 +1264,11 @@
       "description": "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
       "default": "auto"
     },
+    "fullscreenFrameQueueLimitKiB": {
+      "type": "number",
+      "description": "Queued output in KiB past which fullscreen frames are dropped while the terminal is not reading, then repainted whole once it reads again; 0 keeps every frame. Clamped to 64 to 65536.",
+      "default": 512
+    },
     "queueMode": {
       "anyOf": [
         {

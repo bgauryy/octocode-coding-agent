@@ -245,6 +245,7 @@ describe("subagents", () => {
 			"--mode",
 			"rpc",
 			"--rpc-ask",
+			"--rpc-lean-events",
 			"--session-dir",
 			SESSION.dir,
 			"--session-id",
@@ -281,6 +282,7 @@ describe("subagents", () => {
 		const profile = parseProfile("p", "---\ntools: read\n---\n- Be careful.");
 		const parsed = parseArgs(buildAgentArgs(profile, "faux/model", SESSION));
 		expect(parsed.mode).toBe("rpc");
+		expect(parsed.rpcLeanEvents).toBe(true);
 		expect(parsed.messages).toEqual([]);
 		expect(parsed.fileArgs).toEqual([]);
 		expect(parsed.model).toBe("faux/model");
@@ -302,6 +304,7 @@ describe("subagents", () => {
 			"--mode",
 			"rpc",
 			"--rpc-ask",
+			"--rpc-lean-events",
 			"--session-dir",
 			SESSION.dir,
 			"--session-id",

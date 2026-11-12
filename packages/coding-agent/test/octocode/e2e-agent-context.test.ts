@@ -184,7 +184,10 @@ describe("the real assembled prefix of a main session", () => {
 	// 57_952 (57,603 + 349): AGENTS.md's owner table names the session codec, `composedLater`, the `@` file index, mcp's
 	// `api.ts`, the telemetry recorder and the theme UI kit, and the MCP boundary check (requested by the user). Slack stays 86.
 	// 58_019 (57,952 + 67): AGENTS.md names the web daemon as `/web` and the per-session server as its fallback only.
-	const OWN_PREFIX_CEILING = 58_019;
+	// 53_730 (measured 53,644: system without `mcps` 25,101, native tools 20,272, AGENTS.md 8,271; server text 4,792
+	// instructions and 12,242 declared): lowered to the reading. The bundled `octocode` server follows the deferred
+	// default, so the tool list no longer names it, and native tools and AGENTS.md shrank since. Slack stays 86.
+	const OWN_PREFIX_CEILING = 53_730;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

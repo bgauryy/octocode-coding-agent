@@ -4,13 +4,18 @@ import { ProcessTerminal } from "../../src/terminal.ts";
 import { TuiAltScreen } from "../../src/tui-alt-screen.ts";
 
 const how = process.argv[2];
-const tui = new TuiAltScreen(new ProcessTerminal());
+const terminal = new ProcessTerminal();
+const tui = new TuiAltScreen(terminal);
 tui.addChild({ render: () => ["hello"], invalidate() {} });
 tui.start();
 tui.renderNow();
 
 setTimeout(() => {
 	if (how === "exit") process.exit(0);
+	if (how === "status-exit") {
+		terminal.setProgramStatus({ state: "working", app: "octocode" });
+		process.exit(0);
+	}
 	if (how === "stop-then-exit") {
 		tui.stop({ preserveScreen: true });
 		process.exit(0);

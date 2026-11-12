@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
+import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { Container, Image, Text, resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
@@ -315,6 +316,63 @@ describe("shared application data in the TUI", () => {
 			expect.objectContaining({ structuredContent, details: { note: "retained" } }),
 		);
 		expect(text().indexOf("FULL RESULT")).toBeLessThan(text().indexOf("AFTER LARGE CALL"));
+	});
+
+	it("reads a finished call's large structured output from its asset only when a renderer reads it", () => {
+		const results: Array<{ structuredContent?: unknown; details?: unknown }> = [];
+		const { host, emit } = fixture();
+		host.getRegisteredToolDefinition = () => ({
+			renderResult(result) {
+				results.push(result);
+				return new Container();
+			},
+		});
+		subscribeToAgent(host);
+		emit({ type: "tool_execution_start", toolCallId: "big", toolName: "structured", args: {} });
+		const output = "line of output\n".repeat(10_000);
+		emit({
+			type: "tool_execution_end",
+			toolCallId: "big",
+			toolName: "structured",
+			result: {
+				content: [{ type: "text", text: "tail" }],
+				details: { kept: 1 },
+				structuredContent: { output, exit_code: 0 },
+			},
+			isError: false,
+		});
+		const last = results.at(-1)!;
+		const structured = last.structuredContent as { output: string; exit_code: number };
+		expect(last.details).toEqual({ kept: 1 });
+		// A scan over the values (the purpose rows) leaves the output unread; reading it by name loads it.
+		expect(Object.values(structured)).toEqual([0]);
+		expect(structured.output).toBe(output);
+		expect(structured.exit_code).toBe(0);
+	});
+
+	it("shares one reader and forgets a finished message's asset once its row holds it", () => {
+		const assets = new ApplicationAssets({ memory: true });
+		const reader = new FullContentReader();
+		const read = vi.fn((id: string) => assets.get(id));
+		const full = assets.put(
+			JSON.stringify({ id: "m", role: "assistant", text: "whole", content: [], complete: true, status: "completed" }),
+			"application/json",
+		);
+		const preview: ApplicationMessage = {
+			id: "m",
+			role: "assistant",
+			text: "preview",
+			content: [],
+			complete: true,
+			status: "completed",
+			full,
+		};
+		expect(reader.message(preview, read).text).toBe("whole");
+		reader.message(preview, read);
+		expect(read).toHaveBeenCalledTimes(1);
+		reader.forget(full);
+		expect(reader.message(preview, read).text).toBe("whole");
+		expect(read).toHaveBeenCalledTimes(2);
 	});
 
 	it("restores nested full content and error metadata while retaining current lifecycle state", () => {

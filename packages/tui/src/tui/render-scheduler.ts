@@ -27,10 +27,15 @@ const MIN_RENDER_INTERVAL_MS = 40;
 /**
  * Minimum time between frames a pointer asked for (wheel, scrollbar drag, selection). A wheel sends events a few
  * milliseconds apart and each wants the viewport to follow the hand: at the 40 ms streaming cadence scrolling moved 25
- * times a second, in visible steps. 8 ms lets it reach about 120 frames a second, and events inside one interval still
- * share a frame, so a fast spin cannot queue more frames than the terminal can show.
+ * times a second, in visible steps. Events inside one interval share a frame, so a fast spin cannot queue more frames
+ * than the terminal can show, and the lines of all of them arrive as one scroll.
+ *
+ * A terminal without synchronized output paints whatever part of a frame it has read when its display refreshes
+ * (Terminal.app: 60 Hz, no DECRQM reply). Frames faster than that only add half-painted states, so the floor is one
+ * 60 Hz frame. A terminal that confirmed synchronized output shows each frame whole and gets up to 120 frames a second.
  */
-const INTERACTIVE_RENDER_INTERVAL_MS = 8;
+const INTERACTIVE_RENDER_INTERVAL_MS = 16;
+const SYNCHRONIZED_INTERACTIVE_RENDER_INTERVAL_MS = 8;
 
 /**
  * The render loop: coalesces render requests into frames, throttles them to a minimum interval,
@@ -156,8 +161,10 @@ export class RenderScheduler {
 	/** Paint now and mark the pending render request as served. */
 	private emitFrame(): void {
 		this.renderRequested = false;
-		this.lastRenderAt = performance.now();
 		this.paint(this.pacing.metrics || this.pacing.adaptiveCadence);
+		// The interval runs from the end of this frame's write: a slow frame followed by a fast one must not reach the
+		// terminal closer together than the interval (it paints what it was written, not when we started composing).
+		this.lastRenderAt = performance.now();
 	}
 
 	/** Ask for a frame on the throttled cadence, one per tick no matter how often it is called. */
@@ -198,15 +205,19 @@ export class RenderScheduler {
 	 * otherwise when that interval ends, replacing a slower streaming timer. Output pressure still defers it.
 	 */
 	requestInteractive(): void {
+		const interval =
+			this.host.terminal().synchronizedOutput === true
+				? SYNCHRONIZED_INTERACTIVE_RENDER_INTERVAL_MS
+				: INTERACTIVE_RENDER_INTERVAL_MS;
 		const elapsed = performance.now() - this.lastRenderAt;
-		if (elapsed >= INTERACTIVE_RENDER_INTERVAL_MS) {
+		if (elapsed >= interval) {
 			this.requestImmediate();
 			return;
 		}
 		if (this.immediateRenderScheduled) return;
 		this.renderRequested = true;
 		this.cancelTimer();
-		this.schedule(INTERACTIVE_RENDER_INTERVAL_MS);
+		this.schedule(interval);
 	}
 
 	private cancelTimer(): void {

@@ -45,6 +45,8 @@ export interface Args {
 	noDialogs?: boolean;
 	/** `--rpc-ask`: the RPC client answers `ask` requests, so the session's UI offers `ask` (batches of typed questions). */
 	rpcAsk?: boolean;
+	/** `--rpc-lean-events`: the RPC client takes lean events (`modes/json-event-lean.ts`). */
+	rpcLeanEvents?: boolean;
 	export?: string;
 	noSkills?: boolean;
 	skills?: string[];

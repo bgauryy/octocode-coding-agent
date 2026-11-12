@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -14,7 +14,7 @@ const savedEnv = { ...process.env };
 
 beforeAll(() => {
 	const root = tmp("octocode-isolated-start-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team", "team.sqlite"),

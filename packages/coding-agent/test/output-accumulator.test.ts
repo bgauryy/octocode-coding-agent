@@ -140,7 +140,8 @@ describe("OutputAccumulator head and tail", () => {
 		const { output } = accumulate([numbered(3000)]);
 		await output.closeTempFile();
 		const full = await output.readFullOutput(10 * 1024 * 1024);
-		expect(full).toEqual({ content: numbered(3000), truncated: false });
+		// The saved file's path comes with it, so a caller can refer to the output instead of copying it.
+		expect(full).toEqual({ content: numbered(3000), truncated: false, path: expect.any(String) });
 	});
 });
 

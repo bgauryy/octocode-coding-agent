@@ -96,4 +96,5 @@ export const SETTINGS_DEFAULTS = {
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,
 	fullscreenWheelScrollLines: "auto",
+	fullscreenFrameQueueLimitKiB: 512,
 } as const;

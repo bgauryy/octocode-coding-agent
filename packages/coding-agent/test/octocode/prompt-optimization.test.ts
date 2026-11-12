@@ -9,7 +9,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import octocode from "../../src/octocode/index.ts";
 import { createTestSession } from "../helpers/session.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 
 /**
  * `/optimize` and the prompt hook through a real session, the native extension and a scripted main model. The helper
@@ -100,7 +100,7 @@ beforeAll(async () => {
 	const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 	git("init", "-q", "-b", "main");
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		HOME: path.join(root, "home"),
 		OCTOCODE_CODING_AGENT_DIR: agentDir,

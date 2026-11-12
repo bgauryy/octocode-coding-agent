@@ -24,7 +24,7 @@ import { createInteractiveModeHost } from "../../src/modes/interactive/interacti
 import type { InteractiveModeHost } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { daemonRequest, findWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 /**
  * The real interactive mode (editor, command dispatch, extension UI) over a terminal that draws nothing, with a real
@@ -135,7 +135,7 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
 
 	// The extension reads the environment when the session starts: change the same object, never replace it.
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		HOME: home,
 		OCTOCODE_CODING_AGENT_DIR: agentDir,

@@ -171,6 +171,8 @@ export interface SessionShape {
 	tools?: string[];
 	excludeTools?: string[];
 	skillResourceSnapshot?: SkillResourceSnapshot;
+	/** Settings over the defaults, e.g. `{ mcpExposure: "direct" }` to capture every tool declared in full. */
+	settings?: Record<string, unknown>;
 }
 
 /**
@@ -200,7 +202,7 @@ export async function scriptedSession(
 			streamSimple: faux.streamSimple,
 		} as never);
 	};
-	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false }, ...shape.settings });
 	// The options the CLI's runtime factory (`main/runtime-factory.ts`) passes for these flags.
 	const resourceLoader = new DefaultResourceLoader({
 		cwd: fx.cwd,
@@ -312,10 +314,10 @@ function describeRequest(
 }
 
 /** The main session as the user starts it: native tools, the Octocode MCP server, bundled skills and a project AGENTS.md. */
-export async function captureMain(): Promise<AgentContext> {
+export async function captureMain(settings?: Record<string, unknown>): Promise<AgentContext> {
 	const fx = fixture();
 	try {
-		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, {}, MAIN_REQUEST));
+		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, { settings }, MAIN_REQUEST));
 		return describeRequest("main", "main", undefined, context, normalizer(fx));
 	} finally {
 		fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -332,7 +334,7 @@ export async function captureChild(
 	name: string,
 	roleName: string | undefined,
 	parent: { task: string; goal: string } = { task: CHILD_TASK, goal: CHILD_GOAL },
-	{ isolated = false }: { isolated?: boolean } = {},
+	{ isolated = false, settings }: { isolated?: boolean; settings?: Record<string, unknown> } = {},
 ): Promise<AgentContext> {
 	const fx = fixture();
 	try {
@@ -412,6 +414,7 @@ export async function captureChild(
 			excludeTools: parsed.excludeTools,
 			// `main.ts` adopts the file only in a subagent that was handed one.
 			skillResourceSnapshot: readSkillResourceSnapshot(snapshotFile),
+			settings,
 		};
 		const runIn = identity.isolation ? { ...fx, cwd: identity.isolation.cwd } : fx;
 		const context = await withEnv(env, () => firstRequest(runIn, shape, task));
@@ -437,10 +440,17 @@ export const AGENTS: Array<{ name: string; role?: string; kind: AgentContext["ki
 	})),
 ];
 
-/** Starts every agent in turn (the process environment is swapped for each) and returns what its first request holds. */
-export async function captureAll(): Promise<AgentContext[]> {
+/**
+ * Starts every agent in turn (the process environment is swapped for each) and returns what its first request holds.
+ * `settings` apply to every agent's session over the defaults.
+ */
+export async function captureAll(settings?: Record<string, unknown>): Promise<AgentContext[]> {
 	const contexts: AgentContext[] = [];
 	for (const agent of AGENTS)
-		contexts.push(agent.kind === "main" ? await captureMain() : await captureChild(agent.name, agent.role));
+		contexts.push(
+			agent.kind === "main"
+				? await captureMain(settings)
+				: await captureChild(agent.name, agent.role, undefined, { settings }),
+		);
 	return contexts;
 }

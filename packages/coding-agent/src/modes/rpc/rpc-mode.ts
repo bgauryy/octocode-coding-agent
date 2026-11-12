@@ -26,6 +26,7 @@ import { createEventOutput, waitForEventBackpressure } from "../event-output.ts"
 import { headlessCommandActions } from "../headless-actions.ts";
 import { handleTerminationSignals } from "../termination-signals.ts";
 import { toJsonEvent } from "../json-event.ts";
+import { toLeanJsonEvent } from "../json-event-lean.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
@@ -43,6 +44,8 @@ interface RpcModeOptions {
 	noDialogs?: boolean;
 	/** `--rpc-ask`: the client declared it answers `ask` requests; only then does the session's UI offer `ask`. */
 	rpcAsk?: boolean;
+	/** `--rpc-lean-events`: each message and tool result is sent whole once (`json-event-lean.ts`). */
+	leanEvents?: boolean;
 }
 
 /**
@@ -60,7 +63,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	const output = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
 		writeRawStdout(serializeJsonLine(obj));
 	};
-	const outputEvent = createEventOutput<AgentSessionEvent>((event) => output(toJsonEvent(event)));
+	const toWire = options.leanEvents ? toLeanJsonEvent : toJsonEvent;
+	const outputEvent = createEventOutput<AgentSessionEvent>((event) => output(toWire(event)));
 
 	// Pending extension UI requests waiting for response
 	const pendingExtensionRequests: PendingExtensionRequests = new Map();

@@ -135,7 +135,9 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 	} finally {
 		try {
 			await broker.close();
-			if (!outputFailed) await host.stdout.flush();
+			// The client that disconnected may have closed its end too: a record still queued for it (a closing
+			// session's update) then fails with EPIPE. Nobody is left to read it, so it ends nothing but the wait.
+			if (!outputFailed) await host.stdout.flush().catch(() => undefined);
 		} finally {
 			for (const [signal, handler] of handlers) process.off(signal, handler);
 			process.stdout.off("error", stopAfterOutputFailure);

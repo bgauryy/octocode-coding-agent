@@ -137,10 +137,32 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 		}
 	});
 
+	it("asks for synchronized output with DECRQM and trusts only a reply that knows the mode", () => {
+		for (const [reply, supported] of [
+			["\x1b[?2026;2$y", true],
+			["\x1b[?2026;1$y", true],
+			["\x1b[?2026;0$y", false],
+			["\x1b[?2026;4$y", false],
+			[undefined, false],
+		] as const) {
+			const harness = setupNegotiation();
+			try {
+				assert.ok(harness.writes[0].includes("\x1b[?2026$p"));
+				assert.equal(harness.terminal.synchronizedOutput, false, "unknown until the terminal answers");
+				if (reply) harness.send(reply);
+				harness.send("\x1b[?62;4;52c");
+				assert.equal(harness.terminal.synchronizedOutput, supported, JSON.stringify(reply));
+				assert.equal(harness.getInput(), undefined, "the reply is not input");
+			} finally {
+				harness.cleanup();
+			}
+		}
+	});
+
 	it("queries Kitty mode before enabling modifyOtherKeys fallback", () => {
 		const harness = setupNegotiation();
 		try {
-			assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b]7501;?\x1b\\\x1b[c");
+			assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b]7501;?\x1b\\\x1b[?2026$p\x1b[c");
 			assert.equal(harness.writes.includes("\x1b[>4;2m"), false);
 			assert.equal(harness.terminal.kittyProtocolActive, false);
 		} finally {
@@ -301,7 +323,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 			withOverride("1", () => {
 				const harness = setupNegotiation();
 				try {
-					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[c");
+					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[?2026$p\x1b[c");
 					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.at(-1), working);
 				} finally {
@@ -311,7 +333,7 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 			withOverride("0", () => {
 				const harness = setupNegotiation();
 				try {
-					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[c");
+					assert.equal(harness.writes[0], "\x1b[>7u\x1b[?u\x1b[?2026$p\x1b[c");
 					harness.terminal.setProgramStatus({ state: "working", app: "octocode" });
 					assert.equal(harness.writes.includes(working), false);
 				} finally {

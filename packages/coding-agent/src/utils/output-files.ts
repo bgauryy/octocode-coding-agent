@@ -74,6 +74,50 @@ export function readOutputFile(path: string, maxBytes: number): string | undefin
 }
 
 /**
+ * The first `headBytes` and last `tailBytes` of a completed output file of this process, and its size, under the same
+ * read authority as `readOutputFile`; the whole text as `head` (and an empty `tail`) when it is no longer than both.
+ * Undefined when it cannot be read. A view shows a long output by its ends without reading all of it.
+ */
+export function readOutputFileEnds(
+	path: string,
+	headBytes: number,
+	tailBytes: number,
+): { head: string; tail: string; size: number } | undefined {
+	const identity = completedOutputs.get(path);
+	if (!identity) return undefined;
+	let fd: number;
+	try {
+		fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+	} catch {
+		return undefined;
+	}
+	try {
+		const stat = fstatSync(fd);
+		if (!stat.isFile() || stat.dev !== identity.dev || stat.ino !== identity.ino) return undefined;
+		const read = (length: number, position: number) => {
+			const buffer = Buffer.alloc(length);
+			let done = 0;
+			while (done < length) {
+				const count = readSync(fd, buffer, done, length - done, position + done);
+				if (count === 0) break;
+				done += count;
+			}
+			return buffer.subarray(0, done);
+		};
+		if (stat.size <= headBytes + tailBytes)
+			return { head: read(stat.size, 0).toString("utf8"), tail: "", size: stat.size };
+		// The head keeps no partial last character; the tail starts at a character boundary.
+		const head = new TextDecoder().decode(read(headBytes, 0), { stream: true });
+		const tail = read(tailBytes, stat.size - tailBytes);
+		let start = 0;
+		while (start < tail.length && (tail[start] & 0xc0) === 0x80) start++;
+		return { head, tail: tail.toString("utf8", start), size: stat.size };
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/**
  * Moves a completed output file of this process into `dir`, so it can be read with `readOutputFile` at its new path;
  * returns that path, or the old one when the file could not move.
  */

@@ -50,8 +50,17 @@ describe("syntax highlight renderer", () => {
 	it("loads the most common languages at startup and defers the rest", async () => {
 		expect(eagerLanguagesLoadedAtStartup).toBe(true);
 		expect(uncommonLanguageLoadedAtStartup).toBe(false);
-		await loadAllHighlightLanguages();
+		// "ada" was asked for before the full set loaded, so code already rendered as plain text would now change.
+		await expect(loadAllHighlightLanguages()).resolves.toBe(true);
 		expect(supportsLanguage("ada")).toBe(true);
+	});
+
+	it("reports no change from loading every language when only eager or unknown languages were asked for", async () => {
+		vi.resetModules();
+		const fresh = await import("../src/utils/syntax-highlight.ts");
+		expect(fresh.resolveLanguage("typescript")).toBe("typescript");
+		expect(fresh.resolveLanguage("not-a-language")).toBeUndefined();
+		await expect(fresh.loadAllHighlightLanguages()).resolves.toBe(false);
 	});
 
 	it("renders highlighted spans with the provided theme", () => {

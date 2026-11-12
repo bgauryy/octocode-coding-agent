@@ -8,7 +8,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 
 /**
  * A headless Octocode session (no UI, as print and JSON mode run) in a fresh git repository, driven by a scripted model.
@@ -84,7 +84,7 @@ export async function headless(options: HeadlessOptions = {}) {
 	options.setup?.({ root, cwd, home, outside });
 
 	// The extension reads the environment when the session starts: change the same object, never replace it.
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(
 		process.env,
 		{

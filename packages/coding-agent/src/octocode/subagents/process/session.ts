@@ -49,7 +49,17 @@ export function buildAgentArgs(
 	namedServers: readonly string[] = [],
 ): string[] {
 	// `--rpc-ask`: the parent's relay answers typed question batches (`ChildRelay`), so the child sends `ask`, not select/input.
-	const args = ["--mode", "rpc", "--rpc-ask", "--session-dir", session.dir, "--session-id", session.id];
+	// `--rpc-lean-events`: each message and tool result arrives whole once; the parent reads no repeated copy (`events.ts`).
+	const args = [
+		"--mode",
+		"rpc",
+		"--rpc-ask",
+		"--rpc-lean-events",
+		"--session-dir",
+		session.dir,
+		"--session-id",
+		session.id,
+	];
 	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
 	// local research. A lean child runs without any MCP server, and so does every child of an operator's `--no-mcp`.
 	const operator = operatorLimits();

@@ -167,6 +167,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `fullscreenScrollbar` | `"auto" \| "always" \| "hidden"` | `"auto"` | No effect in regular TUI mode. |
 | `fullscreenCopyOnSelect` | boolean | `true` | No effect in regular TUI mode. |
 | `fullscreenWheelScrollLines` | `number \| "auto"` | `"auto"` | Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100. |
+| `fullscreenFrameQueueLimitKiB` | number | `512` | Queued output in KiB past which fullscreen frames are dropped while the terminal is not reading, then repainted whole once it reads again; 0 keeps every frame. Clamped to 64 to 65536. |
 
 ## Schema and legacy settings
 

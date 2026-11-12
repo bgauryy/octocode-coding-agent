@@ -3,6 +3,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
+import { carrySavedOutput } from "../../core/tools/bash/stored-result.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { runningWorkOf, type WorkRow } from "../shared/running-work.ts";
@@ -263,12 +264,14 @@ export function registerBashTool(
 						if (!verification) return { ...value, details: finalDetails };
 						const output = value.structuredContent;
 						const receipt = foregroundReceipt(verification, endedBy, output, finalDetails);
+						const structuredContent = { ...asRecord(output), verification: verificationJson(receipt) };
+						carrySavedOutput(output, structuredContent);
 						return {
 							...value,
 							content: [
 								{ type: "text" as const, text: `${contentText(value.content)}\n\n${verificationLine(receipt)}` },
 							],
-							structuredContent: { ...asRecord(output), verification: verificationJson(receipt) },
+							structuredContent,
 							details: {
 								...finalDetails,
 								verification: receipt,
@@ -284,6 +287,8 @@ export function registerBashTool(
 						isRecord(output) && output.full_output_path
 							? { structuredContent: { ...output, full_output_path: moved.path } }
 							: {};
+					// The saved output moved: storing the result refers to it where it is now, without reading it.
+					carrySavedOutput(output, structured.structuredContent ?? asRecord(output), moved.path);
 					return completed(
 						{
 							...result,

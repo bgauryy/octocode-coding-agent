@@ -12,7 +12,7 @@ import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider
 import { attachBackend } from "../../src/octocode/claude-code/register.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { createTestSession } from "../helpers/session.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 
 /**
  * Claude Code as the model of a real headless Octocode session, played by a scripted ACP peer that calls back into the
@@ -40,7 +40,7 @@ async function claudeCodeSession(env: Record<string, string>, prompts: Step[][])
 	const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 	git("init", "-q", "-b", "main");
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(
 		process.env,
 		{

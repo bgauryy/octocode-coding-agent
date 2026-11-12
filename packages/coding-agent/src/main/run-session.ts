@@ -262,7 +262,11 @@ export async function runSession(args: string[], { cwd, agentDir, offlineMode }:
 
 	if (appMode === "rpc") {
 		printTimings();
-		await runRpcMode(runtime, { noDialogs: parsed.noDialogs, rpcAsk: parsed.rpcAsk });
+		await runRpcMode(runtime, {
+			noDialogs: parsed.noDialogs,
+			rpcAsk: parsed.rpcAsk,
+			leanEvents: parsed.rpcLeanEvents,
+		});
 	} else if (appMode === "interactive") {
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,

@@ -128,8 +128,9 @@ flowchart TD
 
 ### Headless
 
-| Flag           | Does                                                                                                                                               |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--no-stdin`   | Do not read piped stdin                                                                                                                            |
-| `--no-dialogs` | RPC: nobody answers dialogs; asks are refused as in a text run ([RPC](rpc.md#protocol))                                                            |
-| `--rpc-ask`    | RPC: the client answers `ask` requests (typed question batches) instead of `select`, `confirm` and `input` dialogs; a subagent always runs with it |
+| Flag                | Does                                                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--no-stdin`        | Do not read piped stdin                                                                                                                            |
+| `--no-dialogs`      | RPC: nobody answers dialogs; asks are refused as in a text run ([RPC](rpc.md#protocol))                                                            |
+| `--rpc-ask`         | RPC: the client answers `ask` requests (typed question batches) instead of `select`, `confirm` and `input` dialogs; a subagent always runs with it |
+| `--rpc-lean-events` | RPC: each message and tool result is sent whole once; later events refer to it ([RPC](rpc.md#protocol)); a subagent always runs with it            |

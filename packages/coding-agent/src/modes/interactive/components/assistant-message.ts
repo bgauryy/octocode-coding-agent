@@ -25,7 +25,7 @@ import { Osc133ZoneMarker } from "./osc133-zone.ts";
 import {
 	ContentAttachmentComponent,
 	contentText,
-	FullContentReader,
+	transcriptContent,
 	type ContentOptions,
 } from "./application-content.ts";
 import {
@@ -58,7 +58,7 @@ export class AssistantMessageComponent extends Container {
 	private readonly tools = new Map<string, ToolExecutionComponent>();
 	private readonly markdown = new Map<string, { component: Markdown; text: string }>();
 	private readonly attachments = new Map<string, ContentAttachmentComponent>();
-	private readonly fullContent = new FullContentReader();
+	private readonly fullContent = transcriptContent;
 	private expanded = false;
 	private readonly responseOverrides = new Map<string, boolean>();
 	private readonly responses: LongResponse[] = [];
@@ -244,6 +244,7 @@ export class AssistantMessageComponent extends Container {
 
 	updateMessage(received: ApplicationMessage, isStreaming = this.isStreaming): void {
 		const message = this.fullContent.message(received, this.contentOptions.readAsset);
+		if (received.complete) this.fullContent.forget(received.full);
 		this.lastMessage = message;
 		if (this.isStreaming !== isStreaming) this.markdown.clear();
 		this.isStreaming = isStreaming;

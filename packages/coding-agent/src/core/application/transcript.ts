@@ -24,7 +24,7 @@ import { toolResultText } from "./service/projection.ts";
 import { streamHint, type StreamHint } from "./service/wire.ts";
 import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-stream.ts";
 import { ToolCallStream } from "./transcript-toolcalls.ts";
-import { showsToolResult, spillTool, spillToolData, type ToolSource } from "./transcript-tools.ts";
+import { keptToolSource, showsToolResult, spillTool, spillToolData, type ToolSource } from "./transcript-tools.ts";
 import { toolDisplay, type TranscriptSession } from "./transcript-display.ts";
 import { adoptContext, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
@@ -279,7 +279,7 @@ export class ApplicationTranscript {
 	}
 
 	private toolData(value: unknown, id: string, owner: string, streaming = false): Partial<ApplicationTool> {
-		this.toolSources.set(id, { value, owner, streaming });
+		this.toolSources.set(id, keptToolSource(value, owner, streaming));
 		const projected = this.projected(owner, value);
 		const source = projected === undefined ? value : { ...asRecord(value), content: projected };
 		const data = {

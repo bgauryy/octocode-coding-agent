@@ -10,7 +10,7 @@ import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
 const savedArgv = process.argv[1];
@@ -23,7 +23,7 @@ vi.mock("../../src/config.ts", async (original) => ({
 
 beforeAll(() => {
 	const root = tmp("octocode-task-refs-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),

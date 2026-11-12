@@ -8,6 +8,7 @@ import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { TimerSettingsProperties } from "./settings-schema/timer.ts";
+import { FullscreenSettingsProperties } from "./settings-schema/fullscreen.ts";
 import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
@@ -344,30 +345,7 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.tuiMode,
 			}),
 		),
-		fullscreenExitOutput: Type.Optional(
-			Type.Union([Type.Literal("transcript"), Type.Literal("resume-hint")], {
-				description: "No effect in regular TUI mode.",
-				default: SETTINGS_DEFAULTS.fullscreenExitOutput,
-			}),
-		),
-		fullscreenScrollbar: Type.Optional(
-			Type.Union([Type.Literal("auto"), Type.Literal("always"), Type.Literal("hidden")], {
-				description: "No effect in regular TUI mode.",
-				default: SETTINGS_DEFAULTS.fullscreenScrollbar,
-			}),
-		),
-		fullscreenCopyOnSelect: Type.Optional(
-			Type.Boolean({
-				description: "No effect in regular TUI mode.",
-				default: SETTINGS_DEFAULTS.fullscreenCopyOnSelect,
-			}),
-		),
-		fullscreenWheelScrollLines: Type.Optional(
-			Type.Union([Type.Number(), Type.Literal("auto")], {
-				description: "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
-				default: SETTINGS_DEFAULTS.fullscreenWheelScrollLines,
-			}),
-		),
+		...FullscreenSettingsProperties,
 		queueMode: Type.Optional(
 			Type.Union([Type.Literal("all"), Type.Literal("one-at-a-time")], {
 				description: "Legacy setting migrated to steeringMode.",

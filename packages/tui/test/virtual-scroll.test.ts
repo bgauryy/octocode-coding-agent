@@ -205,6 +205,27 @@ describe("virtualized scroll view", () => {
 		}
 	});
 
+	it("lets the transcript container drop its joined copy of every row while frames draw items one by one", () => {
+		const next = random(11);
+		const specs = Array.from({ length: 300 }, () => newSpec(next));
+		const { virtual, exact } = twins(specs, "hidden");
+		const joined = (container: Container) => (container as unknown as { renderCache?: unknown }).renderCache;
+		const exactFrame = renderLayoutFrame(exact.root, 50, 20, () => {});
+		// A width change leaves most items unmeasured, so the frame is virtualized.
+		renderLayoutFrame(virtual.root, 61, 20, () => {});
+		const virtualFrame = renderLayoutFrame(virtual.root, 50, 20, () => {});
+		assert.strictEqual(joined(virtual.chat), undefined, "no joined rows retained");
+		assert.notStrictEqual(joined(exact.chat), undefined);
+		assert.deepStrictEqual(virtualFrame.lines, exactFrame.lines);
+		// A full layout joins them again and paints the same rows.
+		virtual.scroll.scrollBy(-40);
+		exact.scroll.scrollBy(-40);
+		assert.deepStrictEqual(
+			renderLayoutFrame(virtual.root, 50, 20, () => {}).lines,
+			renderLayoutFrame(exact.root, 50, 20, () => {}).lines,
+		);
+	});
+
 	it("finds search matches and selects rows in items never rendered at this width", () => {
 		const items = Array.from({ length: 300 }, (_, index) => new Item(`entry ${index} ${"filler ".repeat(10)}`));
 		items[5].text = "the needle is far above the viewport";

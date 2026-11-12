@@ -41,6 +41,20 @@ export class FullContentReader {
 		}
 	}
 
+	/** Drop what `read` keeps of `first` and the assets it chains to: their holder keeps what it took from them. */
+	forget(first: ApplicationAsset | undefined): void {
+		let asset = first;
+		for (let depth = 0; asset && depth < 8; depth++) {
+			const key = `${asset.id}:${asset.revision ?? ""}`;
+			const value = this.values.get(key);
+			this.values.delete(key);
+			asset =
+				value?.full && typeof value.full === "object" && "id" in value.full
+					? (value.full as ApplicationAsset)
+					: undefined;
+		}
+	}
+
 	data(first: ApplicationAsset | undefined, reader?: AssetReader): Record<string, unknown> | undefined {
 		let asset = first;
 		const seen = new Set<string>();
@@ -83,6 +97,43 @@ export class FullContentReader {
 			],
 		};
 	}
+}
+
+/**
+ * The one reader of the terminal's transcript. Asset keys name their content (an id and revision are content hashes),
+ * so every view may share decoded values: a message the event adapter decoded is not decoded again by its row. A row
+ * that keeps a finished message or result as resolved calls `forget`, so the reader does not keep its asset as well.
+ */
+export const transcriptContent = new FullContentReader();
+
+/** Top-level strings this long in a tool's structured data are read from its asset only when something reads them. */
+const DEFERRED_STRING_CHARS = 64 * 1024;
+
+/**
+ * `structured` as a terminal row keeps it: the same data, except that each top-level string of at least
+ * `DEFERRED_STRING_CHARS` characters (a bash result's 1 MiB `output` for programmatic callers) is read through `load`
+ * when first read by name, instead of being held by the row. Such a field is not enumerable, so a scan over the data's
+ * values (the purpose rows every tool row draws, which look only at named fields and arrays) leaves it unread.
+ */
+export function deferLargeStrings(structured: unknown, load: () => unknown): unknown {
+	if (!structured || typeof structured !== "object" || Array.isArray(structured)) return structured;
+	let copy: Record<string, unknown> | undefined;
+	for (const [key, value] of Object.entries(structured)) {
+		if (typeof value !== "string" || value.length < DEFERRED_STRING_CHARS) continue;
+		copy ??= { ...(structured as Record<string, unknown>) };
+		const target = copy;
+		Object.defineProperty(target, key, {
+			enumerable: false,
+			configurable: true,
+			get: () => {
+				const loaded = load();
+				const field = loaded && typeof loaded === "object" ? (loaded as Record<string, unknown>)[key] : undefined;
+				Object.defineProperty(target, key, { value: field, enumerable: false, writable: true, configurable: true });
+				return field;
+			},
+		});
+	}
+	return copy ?? structured;
 }
 
 /** Resolve display text through the same asset reference used by remote consumers. */

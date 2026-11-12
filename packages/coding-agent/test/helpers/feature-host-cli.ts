@@ -8,6 +8,7 @@ import { getCliInvocation } from "../../src/config.ts";
 import { stopTree } from "../../src/octocode/shared/process.ts";
 import { leadsProcessGroup } from "../../src/utils/shell.ts";
 import { trustFolder } from "../octocode/helpers.ts";
+import { compileCacheEnv } from "./compile-cache.ts";
 
 /**
  * Real-process fixtures for the feature host's entry points (CLI, RPC and ACP): an isolated HOME, agent directory and
@@ -42,6 +43,9 @@ export function createSandbox(extraEnv: Record<string, string> = {}): Sandbox {
 		OCTOCODE_MCP: "0",
 		OCTOCODE_MODELS_DEV: "0",
 		OCTOCODE_INTERNAL_ACP_WORKER: "0",
+		// A process exits only after writing the compile cache entries it lacked: without the suite's shared cache that is
+		// every module, seconds under load.
+		...compileCacheEnv(),
 		...extraEnv,
 	};
 	trustFolder(project, env);

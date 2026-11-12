@@ -95,6 +95,21 @@ describe("interactive view store", () => {
 		expect(requestRender).toHaveBeenCalledTimes(6);
 	});
 
+	it("leaves rows above a regular-mode viewport as the terminal holds them when ctrl+o toggles", () => {
+		const { ui, uiStore, chatContainer } = setup();
+		const off = bashTool({ requestRender() {} } as unknown as TUI);
+		const inView = bashTool({ requestRender() {} } as unknown as TUI);
+		chatContainer.addChild(off);
+		chatContainer.addChild(inView);
+		// The renderer reports `off` in the scrollback above the viewport: expanding it would replay the transcript.
+		(ui as { isAboveViewport?: (component: unknown) => boolean }).isAboveViewport = (component) => component === off;
+		const offRows = off.render(100).length;
+		const inViewRows = inView.render(100).length;
+		uiStore.getState().setToolsExpanded(true);
+		expect(off.render(100).length).toBe(offRows);
+		expect(inView.render(100).length).toBeGreaterThan(inViewRows);
+	});
+
 	it("renders rows added after the toggle in the current mode", () => {
 		const { host, uiStore, chatContainer } = setup();
 		const message = { role: "compactionSummary", summary: lines, tokensBefore: 1, timestamp: 1 } as never;

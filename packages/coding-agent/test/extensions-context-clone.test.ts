@@ -66,6 +66,18 @@ describe("cloneMessages", () => {
 		expect(copy[0].meta.date.getTime()).toBe(5);
 	});
 
+	it("shares an assistant message's request trace and copies everything else", () => {
+		const requestTrace = { layers: [{ kind: "message", index: 0, chars: 5, hash: "0123456789abcdef" }] };
+		const original = [
+			{ role: "assistant", content: [{ type: "text", text: "hi" }], requestTrace, timestamp: 1 },
+		] as unknown as AgentMessage[];
+		const [copy] = cloneMessages(original) as unknown as Array<{ content: unknown[]; requestTrace: unknown }>;
+		expect(copy.requestTrace).toBe(requestTrace);
+		expect(copy).not.toBe(original[0]);
+		expect(copy.content).not.toBe((original[0] as unknown as { content: unknown[] }).content);
+		expect(copy).toEqual(original[0]);
+	});
+
 	it("keeps cycles", () => {
 		const node: Record<string, unknown> = { name: "n" };
 		node.self = node;

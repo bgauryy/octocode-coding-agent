@@ -3,6 +3,7 @@ import { createHash, type Hash } from "node:crypto";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { join } from "node:path";
+import { DISPLAY_OUTPUT_MAX_BYTES, readOutputFile } from "../../utils/output-files.ts";
 import {
 	APPLICATION_UPLOAD_BYTES,
 	APPLICATION_IMAGE_MIME_TYPES,
@@ -37,6 +38,8 @@ export class ApplicationAssets {
 			value?: Buffer;
 			hash?: Hash;
 			pending?: { chunks: Buffer[]; bytes: number };
+			/** A completed output file of this process, read when the asset is read (`putOutputFile`). */
+			file?: string;
 		}
 	>();
 	private readonly options: { memory?: boolean; tempDir?: () => string };
@@ -129,9 +132,26 @@ export class ApplicationAssets {
 		return { ...stored.asset };
 	}
 
+	/**
+	 * A user shell command's spilled output as a text asset that is read from its file, with carriage returns removed as
+	 * the shell view shows it, each time it is read: a view that shows the command by its ends never reads or copies the
+	 * rest. `size` is the file's; the id and revision name the file and its size, never its path.
+	 */
+	putOutputFile(path: string, size: number, slot: string): ApplicationAsset {
+		const id = slotId(slot);
+		const revision = createHash("sha256").update(`${path}\0${size}`).digest("hex");
+		const asset: ApplicationAsset = { id, mimeType: "text/plain", size, revision };
+		this.assets.set(id, { asset, encoding: "utf8", file: path });
+		return { ...asset };
+	}
+
 	get(id: string): ApplicationAssetPayload | undefined {
 		const stored = this.assets.get(id);
 		if (!stored) return undefined;
+		if (stored.file !== undefined) {
+			const text = readOutputFile(stored.file, DISPLAY_OUTPUT_MAX_BYTES)?.replace(/\r/g, "");
+			return text === undefined ? undefined : { asset: { ...stored.asset }, encoding: "utf8", data: text };
+		}
 		const text = this.texts.get(id);
 		if (text && text.revision === stored.asset.revision && stored.encoding === "utf8")
 			return { asset: { ...stored.asset }, encoding: stored.encoding, data: text.data };

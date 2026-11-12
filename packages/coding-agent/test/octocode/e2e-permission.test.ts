@@ -16,7 +16,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { nativeCall } from "./e2e-calls.ts";
-import { tmp, trustFolder } from "./helpers.ts";
+import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 
 /**
  * Permission modes through the real Octocode runtime with a scripted model, bound without a UI as a headless run is (print
@@ -75,7 +75,7 @@ async function headless(env: Record<string, string>) {
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
 
 	// The extension reads the environment when the session starts: change the same object, never replace it.
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(
 		process.env,
 		{

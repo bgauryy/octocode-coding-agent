@@ -46,10 +46,18 @@ function isRecord(value: unknown): value is Record_ {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function fnv(text: string, seed: number): string {
-	let h = seed;
-	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
-	return (h >>> 0).toString(16).padStart(8, "0");
+const hex8 = (h: number): string => (h >>> 0).toString(16).padStart(8, "0");
+
+/** Both 32-bit FNV-1a halves of the hash, in one pass over the text. */
+function fnvPair(text: string): string {
+	let low = 0x811c9dc5;
+	let high = 0x9747b28c;
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		low = Math.imul(low ^ code, 16777619);
+		high = Math.imul(high ^ code, 16777619);
+	}
+	return hex8(low) + hex8(high);
 }
 
 /**
@@ -70,7 +78,7 @@ function asBlocks(value: unknown): unknown {
 
 function layer(kind: RequestLayer["kind"], value: unknown, extra: Partial<RequestLayer> = {}): RequestLayer {
 	const json = JSON.stringify(kind === "message" ? asBlocks(value) : value, withoutMarkers) ?? "";
-	return { kind, ...extra, chars: json.length, hash: fnv(json, 0x811c9dc5) + fnv(json, 0x9747b28c) };
+	return { kind, ...extra, chars: json.length, hash: fnvPair(json) };
 }
 
 function cacheControlOf(block: unknown): Record_ | undefined {

@@ -4,7 +4,7 @@ import { BUILTIN_FEATURES } from "../../src/core/resource-loader/builtins.ts";
 import octocode from "../../src/octocode/index.ts";
 import { getNativeToolNames, takesCallReason } from "../../src/octocode/permission/native-tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 type Schema = {
 	type?: string;
@@ -55,7 +55,7 @@ let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
 	saved = { ...process.env };
 	// Hermetic: a run inside an Octocode agent inherits its identity, which changes the registered tools.
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	process.env.OCTOCODE_HOME = tmp();
 });
 afterEach(() => {

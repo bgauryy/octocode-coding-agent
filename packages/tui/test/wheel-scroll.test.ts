@@ -15,29 +15,60 @@ describe("WheelScrollAccelerator", () => {
 		assert.strictEqual(accelerator.next(1, 2000), 1);
 	});
 
-	it("keeps one line per event in auto mode when the terminal already accelerates", () => {
+	it("keeps slow and medium scrolling at one line per event when the terminal already accelerates", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
-		assert.deepStrictEqual(scroll(accelerator, [0, 10, 20, 30]), [1, 1, 1, 1]);
-		// Any number of events at an ordinary pace stays one line each.
-		const steady = Array.from({ length: 60 }, (_, index) => 1000 + index * 12);
-		assert.ok(scroll(accelerator, steady).every((lines) => lines === 1));
+		const slow = Array.from({ length: 20 }, (_, index) => index * 100);
+		assert.ok(scroll(accelerator, slow).every((lines) => lines === 1));
+		// 40 events a second (25 ms apart) is deliberate scrolling, not a flick.
+		const medium = Array.from({ length: 80 }, (_, index) => 5000 + index * 25);
+		assert.ok(scroll(accelerator, medium).every((lines) => lines === 1));
 	});
 
-	it("moves more lines per event only inside a long dense run on such a terminal, and stops when it ends", () => {
+	it("keeps up with a 120 events/s flick on such a terminal (Terminal.app's measured rate)", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
-		const flick = Array.from({ length: 30 }, (_, index) => index * 4);
+		const flick = Array.from({ length: 240 }, (_, index) => index * 8.33);
 		const lines = scroll(accelerator, flick);
-		assert.deepStrictEqual(lines.slice(0, 8), [1, 1, 1, 1, 1, 1, 1, 1]);
-		assert.strictEqual(lines[8], 2);
-		assert.strictEqual(lines[23], 2);
-		assert.strictEqual(lines[24], 3);
-		// A slower event, or the other direction, ends the run.
-		assert.strictEqual(accelerator.next(1, 30 * 4 + 20), 1);
-		assert.deepStrictEqual(scroll(accelerator, [200, 204, 208]), [1, 1, 1]);
-		assert.strictEqual(accelerator.next(-1, 212), 1);
+		// The first events stay one line, so a short flick still lands precisely.
+		assert.deepStrictEqual(lines.slice(0, 3), [1, 1, 1]);
+		const total = lines.reduce((sum, count) => sum + count, 0);
+		// One line per event moved 239 rows; the flick now moves several times that, rising as it lasts.
+		assert.ok(total >= 1200 && total <= 1500, `240 events moved ${total} rows`);
+		assert.ok(lines[10] >= 3 && lines[10] <= 4, `early lines ${lines[10]}`);
+		assert.ok(lines[200] >= 6 && lines[200] <= 8, `sustained lines ${lines[200]}`);
+		assert.ok(lines.every((count) => count <= 8));
+	});
+
+	it("scales a flick with its velocity: one event per frame moves fewer lines than 120 per second", () => {
+		const perFrame = scroll(
+			new WheelScrollAccelerator("auto", false),
+			Array.from({ length: 120 }, (_, index) => index * 16.7),
+		);
+		const fast = scroll(
+			new WheelScrollAccelerator("auto", false),
+			Array.from({ length: 120 }, (_, index) => index * 8.33),
+		);
+		const sum = (values: number[]) => values.reduce((total, count) => total + count, 0);
+		assert.ok(sum(perFrame) > 120, "a sustained 60 events/s run still accelerates");
+		assert.ok(sum(fast) > sum(perFrame) * 1.6, `${sum(fast)} vs ${sum(perFrame)}`);
+	});
+
+	it("ends a flick on a pause or a direction change", () => {
+		const accelerator = new WheelScrollAccelerator("auto", false);
+		const flick = Array.from({ length: 30 }, (_, index) => index * 8);
+		assert.ok(scroll(accelerator, flick).at(-1)! > 1);
+		// A slower event ends the run: it and the next ramp events move one line.
+		assert.strictEqual(accelerator.next(1, 29 * 8 + 40), 1);
+		assert.deepStrictEqual(scroll(accelerator, [400, 408, 416]), [1, 1, 1]);
+		// Alternating directions never build a run, however fast.
+		const mixed = Array.from({ length: 40 }, (_, index) =>
+			accelerator.next(index % 2 === 0 ? -1 : 1, 1000 + index * 8),
+		);
+		assert.ok(mixed.every((lines) => lines === 1));
 		// A fixed line count is never changed.
 		const fixed = new WheelScrollAccelerator(1, false);
 		assert.ok(scroll(fixed, flick).every((count) => count === 1));
+		const three = new WheelScrollAccelerator(3, false);
+		assert.ok(scroll(three, flick).every((count) => count === 3));
 	});
 
 	it("scales auto mode with wheel velocity", () => {

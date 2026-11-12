@@ -6,7 +6,7 @@ import octocode from "../../src/octocode/index.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 import { ABORT_SETTLE_MS, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
@@ -15,7 +15,7 @@ const savedEnv = { ...process.env };
 
 beforeAll(() => {
 	const root = tmp("octocode-agent-rpc-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),

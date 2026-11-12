@@ -17,7 +17,7 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 const FIXTURE = path.join(import.meta.dirname, "subagent-fake-host.cjs");
 const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "scripts", "source-resolver.ts");
@@ -28,7 +28,7 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd,
 
 beforeAll(() => {
 	const root = tmp("octocode-agent-paths-");
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		OCTOCODE_HOME: path.join(root, "home"),
 		OCTOCODE_AGENT_DB: path.join(root, "team", "team.sqlite"),

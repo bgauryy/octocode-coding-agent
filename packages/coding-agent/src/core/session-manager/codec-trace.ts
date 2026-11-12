@@ -18,14 +18,21 @@ const BASE_CANDIDATES = 8;
 
 function sameLayer(left: RequestLayer, right: RequestLayer): boolean {
 	return (
-		left.kind === right.kind &&
-		left.role === right.role &&
-		left.index === right.index &&
-		left.chars === right.chars &&
-		left.hash === right.hash &&
-		left.breakpoint === right.breakpoint &&
-		left.ttl === right.ttl
+		left === right ||
+		(left.kind === right.kind &&
+			left.role === right.role &&
+			left.index === right.index &&
+			left.chars === right.chars &&
+			left.hash === right.hash &&
+			left.breakpoint === right.breakpoint &&
+			left.ttl === right.ttl)
 	);
+}
+
+/** Whether `layers` starts with the first `keep` layers of `base` themselves (shared objects, as `encode` leaves them). */
+function sharesPrefix(layers: readonly RequestLayer[], base: readonly RequestLayer[], keep: number): boolean {
+	for (let i = 0; i < keep; i++) if (layers[i] !== base[i]) return false;
+	return true;
 }
 
 function sharedPrefix(left: readonly RequestLayer[], right: readonly RequestLayer[]): number {
@@ -59,7 +66,12 @@ export class TraceIndex {
 		if (this.recent.length > BASE_CANDIDATES) this.recent.shift();
 	}
 
-	/** The stored form of `trace`: a delta against the earlier trace sharing the longest prefix, else the trace itself. */
+	/**
+	 * The stored form of `trace`: a delta against the earlier trace sharing the longest prefix, else the trace itself.
+	 * When a delta is chosen, the first `keep` layers of `trace` become the base's own objects, which are equal to them
+	 * (the read-back check below proves it): the live message then holds each unchanged layer once, as a resumed one
+	 * does, instead of a fresh copy per request. A trace is not changed after its message ends, so sharing is safe.
+	 */
 	encode(trace: RequestTrace): RequestTrace | StoredTraceDelta {
 		if (!Array.isArray(trace.layers) || isTraceDelta(trace)) return trace;
 		let best: { id: string; keep: number } | undefined;
@@ -71,9 +83,17 @@ export class TraceIndex {
 		if (!best) return trace;
 		const { layers, ...rest } = trace;
 		const delta: StoredTraceDelta = { base: best.id, keep: best.keep, ...rest, layers: layers.slice(best.keep) };
-		// Stored only when it reads back byte for byte: a trace with fields this format does not expect stays whole.
-		const decoded = this.decode(delta);
-		return decoded && JSON.stringify(decoded) === JSON.stringify(trace) ? delta : trace;
+		const base = this.byEntry.get(best.id) ?? [];
+		// A trace of the fields this format knows, in their order, whose prefix is the base's own layers reads back as
+		// itself (a resumed or already stored one); any other is stored only when it reads back byte for byte, so fields
+		// this format does not expect keep a trace whole.
+		const known = Object.keys(trace).every((key, i) => key === (i === 0 ? "layers" : "cacheMode"));
+		if (!(known && sharesPrefix(layers, base, best.keep))) {
+			const decoded = this.decode(delta);
+			if (!decoded || JSON.stringify(decoded) !== JSON.stringify(trace)) return trace;
+			for (let i = 0; i < best.keep; i++) layers[i] = base[i];
+		}
+		return delta;
 	}
 
 	/** The whole trace of a stored delta, or undefined when its base is not an earlier trace of this file. */

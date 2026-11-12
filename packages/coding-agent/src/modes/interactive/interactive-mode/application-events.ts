@@ -6,7 +6,12 @@ import { Spacer, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
-import { FullContentReader, toolContent } from "../components/application-content.ts";
+import {
+	deferLargeStrings,
+	FullContentReader,
+	toolContent,
+	transcriptContent,
+} from "../components/application-content.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { addToolExecution } from "./session-render.ts";
 import { renderWindowedEntries } from "./session-window.ts";
@@ -48,7 +53,7 @@ function renderRebuild(host: Host): void {
 export function applicationRenderer(host: Host, port: ApplicationService): (event: ApplicationEvent) => void {
 	const messages = new Map<string, ApplicationMessage>();
 	const assistants = new Map<string, AssistantMessageComponent>();
-	const fullContent = new FullContentReader();
+	const fullContent = transcriptContent;
 	const readAsset = (id: string) => port.readAsset(id);
 	const showError = (message: string) => {
 		host.chatContainer.addChild(new Spacer(1));
@@ -190,19 +195,25 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 			case "tool.completed": {
 				const component = host.pendingTools.get(event.toolCallId);
 				if (!component) break;
-				const full = fullContent.data(event.full, readAsset);
+				const asset = event.full;
+				const full = fullContent.data(asset, readAsset);
 				const content = event.content
 					? toolContent(event.content, readAsset)
 					: [{ type: "text", text: event.text ?? "" }];
-				if (event.full && !full) content.push({ type: "text", text: `[Full tool data unavailable: ${event.full.id}]` });
+				if (asset && !full) content.push({ type: "text", text: `[Full tool data unavailable: ${asset.id}]` });
+				// The row keeps its own copy: a finished call's decoded asset need not stay in the reader too.
+				if (event.type === "tool.completed") fullContent.forget(asset);
+				const structured = full?.structuredContent ?? event.structuredContent;
 				component.setDisplay(event.display);
 				component.updateResult(
 					{
 						content,
 						isError: event.failed ?? false,
 						details: full?.details ?? event.details,
-						structuredContent: (full?.structuredContent ??
-							event.structuredContent) as AgentToolResult["structuredContent"],
+						// A large output (a bash result's 1 MiB for programmatic callers) is read again only by a renderer that reads it.
+						structuredContent: (asset
+							? deferLargeStrings(structured, () => new FullContentReader().data(asset, readAsset)?.structuredContent)
+							: structured) as AgentToolResult["structuredContent"],
 						usage: event.usage as AgentToolResult["usage"],
 						...(event.progress ? { progress: event.progress } : {}),
 						durationMs: event.durationMs,

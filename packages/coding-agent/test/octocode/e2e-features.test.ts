@@ -22,7 +22,7 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { TEAM_ENTRY } from "../../src/octocode/team/session/rejoin.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { nativeCall } from "./e2e-calls.ts";
-import { tmp } from "./helpers.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
 
 /** Feature checks through the SDK defaults with a scripted model and isolated configuration. */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -138,7 +138,7 @@ beforeAll(async () => {
 	git("add", "-A");
 	git("commit", "-q", "-m", "init");
 
-	for (const key of Object.keys(process.env)) if (key.startsWith("OCTOCODE_")) delete process.env[key];
+	resetOctocodeEnv();
 	Object.assign(process.env, {
 		HOME: home,
 		OCTOCODE_CODING_AGENT_DIR: path.join(root, "agent"),

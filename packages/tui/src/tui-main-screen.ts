@@ -5,7 +5,7 @@ import { clipLineToWidth, FinishedLines } from "./tui/clip.ts";
 import { applyLineReset } from "./tui/composite.ts";
 import { LayoutRecorder, recordLayout } from "./tui/layout-recorder.ts";
 import type { RenderCounters } from "./tui/render-counters.ts";
-import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
+import { type Component, type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
 import { CursorRows } from "./tui-main-screen/cursor-rows.ts";
 import { writeChangedRows, writeDeletedRows } from "./tui-main-screen/frame-write.ts";
@@ -35,10 +35,17 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private hardwareCursorRow = 0;
 	private maxLinesRendered = 0;
 	private previousViewportTop = 0;
+	/** Start rows of the last frame's components. */
+	private componentStarts: ReadonlyMap<Component, number> = new Map();
 	private readonly scrollback = new ScrollbackPolicy();
 
 	get renderCounters(): Readonly<RenderCounters> {
 		return this.ledger.snapshot(this.fullRedrawCount);
+	}
+
+	isAboveViewport(component: Component): boolean {
+		const start = this.componentStarts.get(component);
+		return start !== undefined && start < this.previousViewportTop;
 	}
 
 	/** Replay the whole transcript if a row above the viewport changed (default: left alone; `invalidate` asks too). */
@@ -109,6 +116,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// extract the cursor position: all before line resets and the differential compare.
 		const layout = new LayoutRecorder();
 		const renderedLines = recordLayout(layout, () => this.render(width));
+		this.componentStarts = layout.starts;
 		const previousLayout = this.scrollback.advance(layout.leaves);
 		const repaintRequested = this.ledger.takeRepaint();
 		const overlays = this.hasOverlayEntries

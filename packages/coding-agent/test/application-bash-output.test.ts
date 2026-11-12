@@ -92,3 +92,39 @@ it("does not grant imported output paths file-read authority and displays the un
 		rmSync(directory, { recursive: true, force: true });
 	}
 });
+
+it("shows a long spilled shell output by its ends, as the whole would preview, and reads it whole only when asked", async () => {
+	const { executeBashWithOperations } = await import("../src/core/bash-executor.ts");
+	const { previewText } = await import("@octocodeai/octocode-contracts");
+	const original = `HEAD é\r\n${Array.from({ length: 20000 }, (_, i) => `line ${i} 日本 ✓\r\n`).join("")}TAIL ✓\r\n`;
+	const result = await executeBashWithOperations("x", tmpdir(), {
+		exec: async (_command, _cwd, { onData }) => {
+			onData(Buffer.from(original));
+			return { exitCode: 0 };
+		},
+	});
+	try {
+		expect(result.truncated).toBe(true);
+		const assets = new ApplicationAssets({ memory: true });
+		const message = normalizeApplicationMessage(
+			{
+				role: "bashExecution",
+				command: "x",
+				output: result.output,
+				exitCode: 0,
+				truncated: true,
+				fullOutputPath: result.fullOutputPath,
+				timestamp: 1,
+			},
+			"m",
+			assets,
+		);
+		const whole = original.replace(/\r/g, "");
+		const output = message.content?.[1];
+		if (output?.type !== "text" || !output.full) throw new Error("Expected a previewed output with its whole text");
+		expect(output.text).toBe(previewText(whole).text);
+		expect(assets.get(output.full.id)?.data).toBe(whole);
+	} finally {
+		if (result.fullOutputPath) rmSync(result.fullOutputPath, { force: true });
+	}
+});

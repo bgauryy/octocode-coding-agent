@@ -129,6 +129,49 @@ describe("main screen: scrollback is immutable", () => {
 		tui.stop();
 	});
 
+	it("a header row rebuilt as a new component of the same height above the viewport is an in-place edit", async () => {
+		const { terminal, tui, chat } = setup();
+		await terminal.flush();
+		const replays = tui.fullRedraws;
+		for (let tick = 1; tick <= 4; tick++) {
+			chat.children.splice(0, 1, new Rows(`tool · model ${tick}`));
+			tui.renderNow();
+		}
+		assert.strictEqual(tui.fullRedraws, replays, "a rebuilt status row does not replay scrollback");
+		assert.strictEqual(tui.renderCounters.deferredAboveViewport, 4);
+		tui.stop();
+	});
+
+	it("knows which components the terminal holds in scrollback above the viewport", () => {
+		const { tui, chat, live, spinner, choices } = setup();
+		assert.strictEqual(tui.isAboveViewport(live), true);
+		assert.strictEqual(tui.isAboveViewport(chat.children[30]), true);
+		assert.strictEqual(tui.isAboveViewport(spinner), false);
+		assert.strictEqual(tui.isAboveViewport(choices), false);
+		tui.stop();
+	});
+
+	it("an expansion toggle that skips the components above the viewport replays nothing and keeps the screen right", async () => {
+		const { terminal, tui, chat, dialog, choices } = setup();
+		const rows = [...chat.children, ...dialog.children] as Rows[];
+		await terminal.flush();
+		const replays = tui.fullRedraws;
+		const clears = terminal.scrollbackClears;
+		for (const expanded of [true, false, true]) {
+			for (const row of rows) if (!tui.isAboveViewport(row)) row.rows = expanded ? 3 : 1;
+			choices.rows = expanded ? 6 : 4;
+			tui.renderNow();
+			// The screen ends with the transcript's last rows; a shrink leaves blank rows below them, as any shrink does.
+			const shown = await visible(terminal);
+			while (shown.at(-1) === "") shown.pop();
+			const rendered = tui.render(60).map((row) => row.trimEnd());
+			assert.deepStrictEqual(shown, rendered.slice(-shown.length));
+		}
+		assert.strictEqual(tui.fullRedraws, replays, "no replay of the transcript");
+		assert.strictEqual(terminal.scrollbackClears, clears, "scrollback is never cleared");
+		tui.stop();
+	});
+
 	it("does not edit scrollback: the rows that scrolled off keep what the terminal already holds", async () => {
 		const { terminal, tui, live } = setup();
 		live.text = "tool 9s";

@@ -20,10 +20,11 @@ function replaceScrollbarCell(
 	replacement: string,
 	preserveTargetBackground: boolean,
 ): string {
-	if (isImageLine(line)) return line;
 	const key = `${column}\0${totalWidth}\0${preserveTargetBackground ? 1 : 0}\0${replacement}\0${line}`;
+	// Only rows without images are cut and remembered, so a remembered row needs no image check.
 	const known = cutRows.get(key);
 	if (known !== undefined) return known;
+	if (isImageLine(line)) return line;
 	const cut = cutScrollbarCell(line, column, totalWidth, replacement, preserveTargetBackground);
 	if (cutRows.size >= CUT_ROWS_LIMIT) cutRows.clear();
 	cutRows.set(key, cut);

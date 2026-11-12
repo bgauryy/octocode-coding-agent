@@ -16,6 +16,7 @@ import { expect, it, vi } from "vitest";
 import { getCliInvocation } from "../src/config.ts";
 import { ApiClient } from "../src/octocode/api/client.ts";
 import { apiDir, listInstances } from "../src/octocode/api/registry.ts";
+import { compileCacheEnv } from "./helpers/compile-cache.ts";
 import { SCRIPTED_MODEL_ARGS, startModelServer, writeScriptedProvider } from "./helpers/feature-host-cli.ts";
 import { trustFolder } from "./octocode/helpers.ts";
 
@@ -45,6 +46,7 @@ it("exchanges API messages on an ACP session and refuses overlapping ACP work wi
 		OCTOCODE_API_HTTP: "0",
 		OCTOCODE_PERMISSION: "full",
 		OCTOCODE_MEMORY_AUTO: "0",
+		...compileCacheEnv(),
 	};
 	trustFolder(project, env);
 	const invocation = getCliInvocation();

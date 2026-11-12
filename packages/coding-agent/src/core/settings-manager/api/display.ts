@@ -33,6 +33,7 @@ export interface DisplaySettingsApi {
 	setFullscreenCopyOnSelect(enabled: boolean): void;
 	getFullscreenWheelScrollLines(): WheelScrollLines;
 	setFullscreenWheelScrollLines(lines: WheelScrollLines): void;
+	getFullscreenFrameQueueLimitBytes(): number | undefined;
 	getImageAutoResize(): boolean;
 	setImageAutoResize(enabled: boolean): void;
 	getBlockImages(): boolean;

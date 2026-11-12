@@ -42,13 +42,14 @@ function documentFor(node: ScrollLayoutNode): VirtualDocument {
 }
 
 /** A plain `Container` renders exactly its children's rows in order, so the document is the leaves of plain containers. */
-function documentItems(component: Component, items: Component[] = []): Component[] {
+function documentItems(component: Component, items: Component[] = [], containers?: Container[]): Component[] {
 	if (
 		component instanceof Container &&
 		Object.getPrototypeOf(component) === Container.prototype &&
 		component.render === Container.prototype.render
 	) {
-		for (const child of component.children) documentItems(child, items);
+		containers?.push(component);
+		for (const child of component.children) documentItems(child, items, containers);
 	} else items.push(component);
 	return items;
 }
@@ -128,7 +129,8 @@ function layoutVirtual(
 ): LayoutBox | undefined {
 	const { x, y, contentWidth, clip } = frame;
 	const document = documentFor(node);
-	const items = documentItems(node.component);
+	const containers: Container[] = [];
+	const items = documentItems(node.component, [], containers);
 	const viewportHeight = Math.max(0, Math.floor(frame.height));
 	const widthChanged = document.lastWidth !== contentWidth;
 	const previousEstimates = widthChanged ? new Map<Component, number>() : document.estimated;
@@ -174,6 +176,8 @@ function layoutVirtual(
 		if (previous !== undefined) correction += heights[index] - previous;
 	}
 	node.state.shiftContent?.(correction);
+	// This frame draws the items one by one: the containers' joined rows are not read until a full layout joins them again.
+	for (const container of containers) container.releaseRenderCache();
 	document.estimated = estimated;
 	document.lastWidth = contentWidth;
 	document.exactWidth = undefined;

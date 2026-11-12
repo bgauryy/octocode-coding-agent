@@ -1,4 +1,4 @@
-import { isNativeModifierPressed } from "./native-modifiers.ts";
+import { isNativeModifierPressed, warmNativeModifiers } from "./native-modifiers.ts";
 import { getNativePlatformHelper } from "./native-platform.ts";
 import type { ProgramStatus } from "./program-status.ts";
 import { hasTmuxSession } from "./multiplexer.ts";
@@ -17,7 +17,8 @@ import { KeyboardProtocol, KITTY_KEYBOARD_PROTOCOL_QUERY } from "./terminal/keyb
 import { TerminalOutput } from "./terminal/output.ts";
 import { ProgramStatusReporter } from "./terminal/program-status-reporter.ts";
 import { ProgressIndicator } from "./terminal/progress.ts";
-import type { OutputTelemetry, Terminal } from "./terminal/types.ts";
+import { SynchronizedOutputProbe } from "./terminal/synchronized-output.ts";
+import type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
 import { KittyGraphicsProbe } from "./terminal-image/probe.ts";
 
 export {
@@ -27,7 +28,12 @@ export {
 	resolveEscapeTimeoutMs,
 	resolvePasteTimeoutMs,
 } from "./terminal/environment.ts";
-export type { OutputTelemetry, Terminal } from "./terminal/types.ts";
+export type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
+
+/** Terminals whose Return cannot carry Shift, so Enter asks the OS whether Shift is held. */
+function detectsNativeShiftEnter(): boolean {
+	return isAppleTerminalSession() || process.platform === "win32";
+}
 
 /**
  * Real terminal using process.stdin/stdout
@@ -37,10 +43,12 @@ export class ProcessTerminal implements Terminal {
 	private readonly programStatusReporter = new ProgramStatusReporter();
 	private readonly progress = new ProgressIndicator(() => this.output.allowsDecorativeOutput());
 	private readonly graphicsProbe = new KittyGraphicsProbe();
+	private readonly synchronizedOutputProbe = new SynchronizedOutputProbe();
 	private readonly keyboardProtocol = new KeyboardProtocol({
 		forward: (sequence) => this.forwardInputSequence(sequence),
 		onLastDeviceAttributes: () => {
 			this.programStatusReporter.settleQuery();
+			this.synchronizedOutputProbe.settle();
 			this.graphicsProbe.finish();
 		},
 	});
@@ -61,6 +69,7 @@ export class ProcessTerminal implements Terminal {
 	private capabilitiesHandler?: () => void;
 	private stdinBuffer?: StdinBuffer;
 	private stdinDataHandler?: (data: string) => void;
+	private nativeShiftWarmup?: NodeJS.Timeout;
 
 	get pendingOutputBytes(): number {
 		return this.output.pendingBytes;
@@ -84,6 +93,10 @@ export class ProcessTerminal implements Terminal {
 
 	get kittyProtocolActive(): boolean {
 		return this.keyboardProtocol.kittyProtocolActive;
+	}
+
+	get synchronizedOutput(): boolean {
+		return this.synchronizedOutputProbe.supported;
 	}
 
 	get modifyOtherKeysActive(): boolean {
@@ -129,6 +142,9 @@ export class ProcessTerminal implements Terminal {
 
 		// Query Kitty keyboard protocol and fall back to modifyOtherKeys when DA confirms no Kitty response.
 		this.queryAndEnableKittyProtocol();
+
+		// Load the native Shift check after start-up work instead of on the first Enter.
+		if (detectsNativeShiftEnter()) this.nativeShiftWarmup = setTimeout(warmNativeModifiers, 0).unref();
 	}
 
 	/**
@@ -148,6 +164,7 @@ export class ProcessTerminal implements Terminal {
 		this.stdinBuffer.on("data", (sequence) => {
 			if (this.graphicsProbe.consume(sequence)) return;
 			if (this.programStatusReporter.handleReply(sequence)) return;
+			if (this.synchronizedOutputProbe.handleReply(sequence)) return;
 			const input = this.keyboardProtocol.process(sequence);
 			if (input !== undefined) this.forwardInputSequence(input);
 		});
@@ -166,20 +183,22 @@ export class ProcessTerminal implements Terminal {
 
 	/**
 	 * Query terminal for Kitty keyboard protocol support (see KeyboardProtocol), the OSC 7501 program
-	 * status support and the graphics protocol, all answered before the trailing DA sentinel.
+	 * status support, synchronized output (DECRQM 2026) and the graphics protocol, all answered before the trailing DA
+	 * sentinel.
 	 */
 	private queryAndEnableKittyProtocol(): void {
 		this.setupStdinBuffer();
 		process.stdin.on("data", this.stdinDataHandler!);
 		this.keyboardProtocol.beginNegotiation();
 		const programStatusQuery = this.programStatusReporter.beginQuery();
+		const synchronizedOutputQuery = this.synchronizedOutputProbe.beginQuery();
 		const graphicsQuery = this.graphicsProbe.start(
 			// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- `isTTY` is typed boolean but is undefined on a stream that is not a terminal
 			Boolean(process.stdin.isTTY && process.stdout.isTTY),
 			this.capabilitiesHandler,
 		);
 		process.stdout.write(
-			`${KITTY_KEYBOARD_PROTOCOL_QUERY}${programStatusQuery}${graphicsQuery}${DEVICE_ATTRIBUTES_QUERY}`,
+			`${KITTY_KEYBOARD_PROTOCOL_QUERY}${programStatusQuery}${synchronizedOutputQuery}${graphicsQuery}${DEVICE_ATTRIBUTES_QUERY}`,
 		);
 		this.programStatusReporter.write();
 	}
@@ -199,8 +218,7 @@ export class ProcessTerminal implements Terminal {
 
 	private forwardInputSequence(sequence: string): void {
 		if (!this.inputHandler) return;
-		const shouldDetectNativeShiftEnter =
-			sequence === "\r" && (isAppleTerminalSession() || process.platform === "win32");
+		const shouldDetectNativeShiftEnter = sequence === "\r" && detectsNativeShiftEnter();
 		const input = normalizeNativeShiftEnterInput(
 			sequence,
 			shouldDetectNativeShiftEnter,
@@ -259,15 +277,18 @@ export class ProcessTerminal implements Terminal {
 	private restoreOnExit(): void {
 		const write = (data: string) => this.output.writeOnExit(data);
 		this.progress.clear(write, true);
+		this.programStatusReporter.restoreOnExit(write);
 		this.keyboardProtocol.restoreOnExit(write);
 		write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h`);
 	}
 
 	stop(): void {
+		clearTimeout(this.nativeShiftWarmup);
 		this.graphicsProbe.stop();
 		this.capabilitiesHandler = undefined;
 		this.progress.clear();
 		this.programStatusReporter.stop();
+		this.synchronizedOutputProbe.stop();
 
 		this.bracketedPaste.stop();
 		process.stdout.write(DISABLE_BRACKETED_PASTE);
@@ -302,8 +323,16 @@ export class ProcessTerminal implements Terminal {
 		this.disposeExitRestore = undefined;
 	}
 
-	write(data: string): void {
-		this.output.write(data);
+	write(data: string, kind?: OutputKind): void {
+		this.output.write(data, kind);
+	}
+
+	setFrameOutputCap(bytes: number | undefined): void {
+		this.output.setFrameCap(bytes);
+	}
+
+	setOutputRecovery(recover: (() => void) | undefined): void {
+		this.output.setRecovery(recover);
 	}
 
 	writeOnExit(data: string): void {

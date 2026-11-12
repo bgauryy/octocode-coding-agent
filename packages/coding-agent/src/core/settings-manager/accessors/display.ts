@@ -185,6 +185,15 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 		this.save();
 	}
 
+	/** Queued output bytes past which fullscreen frames are dropped, or undefined when frames are never dropped. */
+	getFullscreenFrameQueueLimitBytes(): number | undefined {
+		const kib = this.settings.fullscreenFrameQueueLimitKiB;
+		if (kib === 0) return undefined;
+		const limit =
+			typeof kib === "number" && Number.isFinite(kib) ? kib : SETTINGS_DEFAULTS.fullscreenFrameQueueLimitKiB;
+		return Math.max(64, Math.min(65536, Math.floor(limit))) * 1024;
+	}
+
 	getImageAutoResize(): boolean {
 		return this.settings.images?.autoResize ?? SETTINGS_DEFAULTS.images.autoResize;
 	}

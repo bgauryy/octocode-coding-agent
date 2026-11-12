@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
@@ -95,7 +97,11 @@ describe("coordinator prompt routing", () => {
 		const profiles = new Map([["researcher", researcher]]);
 		const turn = registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
 		let available = [opus, sonnet, haiku, other];
-		const ctx = { hasUI: true, model: opus, modelRegistry: { ...meteredBilling, getAvailable: () => available } };
+		const ctx = {
+			hasUI: true,
+			model: opus,
+			modelRegistry: { ...meteredBilling, getProviderKind: () => "API key", getAvailable: () => available },
+		};
 		const start = async () => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
 			const [result] = (await fake.emit("before_agent_start", event, ctx)) as Array<
@@ -134,5 +140,47 @@ describe("coordinator prompt routing", () => {
 		const reloaded = await start();
 		expect(reloaded.prompt).toContain("providers: `p` (2); `small` runs `p/haiku`");
 		expect(reloaded.message).toBeUndefined();
+	});
+
+	it("sends no notice when only the models.dev index changed, and the current counts with a later registry change", async () => {
+		const home = tmp();
+		vi.stubEnv("OCTOCODE_HOME", home);
+		const fake = fakeHost();
+		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
+		fake.api.setActiveTools(["bash", "file", "agent"]);
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		let available = [opus, sonnet, haiku, other];
+		const ctx = {
+			hasUI: true,
+			model: opus,
+			modelRegistry: { ...meteredBilling, getProviderKind: () => "API key", getAvailable: () => available },
+		};
+		const start = async () => {
+			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
+			const [result] = (await fake.emit("before_agent_start", event, ctx)) as Array<
+				{ message?: { content: string } } | undefined
+			>;
+			return { prompt: allSections(event).delegation ?? "", message: result?.message };
+		};
+
+		// No saved index yet: the first prompt counts q's model as runnable.
+		const first = await start();
+		expect(first.prompt).toContain("providers: `p` (3), `q` (1)");
+
+		// The refresh the session started saves an index in which q's model calls no tools.
+		mkdirSync(join(home, "agent"), { recursive: true });
+		writeFileSync(
+			join(home, "agent", "models-dev.json"),
+			JSON.stringify({ fetchedAt: Date.now(), models: { mini: { toolCall: false } }, providers: [] }),
+		);
+		expect((await start()).message).toBeUndefined();
+		await fake.emit("turn_end", {}, ctx);
+		expect(fake.sent).toEqual([]);
+
+		// A provider the user disables is told with the counts the new index gives.
+		available = [opus, haiku, other];
+		const notice = (await start()).message?.content;
+		expect(notice).toContain("Providers (models that can run a task): `p` (2), `q` (0)");
+		expect((await start()).message).toBeUndefined();
 	});
 });

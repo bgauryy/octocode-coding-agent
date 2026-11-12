@@ -18,14 +18,19 @@ flowchart TB
 | `fullscreen` (default) | Own screen. The transcript scrolls inside Octocode and the mouse works.     | `--tui-mode fullscreen` or `"tuiMode": "fullscreen"` |
 | `regular`              | Writes into your terminal's normal scrollback; the terminal owns the mouse. | `--tui-mode regular` or `"tuiMode": "regular"`       |
 
+In regular mode, rows that scrolled into the terminal's scrollback stay as the terminal holds them: a status that changes there is not rewritten, and `ctrl+o` expands or collapses only the output that starts in view. A resize or a theme change repaints everything.
+
 Fullscreen-only settings (see [settings](settings.md)):
 
-| Setting                      | Values                      | Default      | Effect                                    |
-| ---------------------------- | --------------------------- | ------------ | ----------------------------------------- |
-| `fullscreenExitOutput`       | `transcript`, `resume-hint` | `transcript` | What stays in the terminal after you exit |
-| `fullscreenScrollbar`        | `auto`, `always`, `hidden`  | `auto`       | Scrollbar visibility                      |
-| `fullscreenCopyOnSelect`     | boolean                     | `true`       | Selecting text copies it                  |
-| `fullscreenWheelScrollLines` | `auto`, or 1 to 100         | `auto`       | Lines per wheel event                     |
+| Setting                        | Values                      | Default      | Effect                                                                                          |
+| ------------------------------ | --------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| `fullscreenExitOutput`         | `transcript`, `resume-hint` | `transcript` | What stays in the terminal after you exit                                                       |
+| `fullscreenScrollbar`          | `auto`, `always`, `hidden`  | `auto`       | Scrollbar visibility                                                                            |
+| `fullscreenCopyOnSelect`       | boolean                     | `true`       | Selecting text copies it                                                                        |
+| `fullscreenWheelScrollLines`   | `auto`, or 1 to 100         | `auto`       | Lines per wheel event                                                                           |
+| `fullscreenFrameQueueLimitKiB` | `0`, or 64 to 65536         | `512`        | Queued output before frames are dropped ([pacing](configuration.md#terminal-output-and-pacing)) |
+
+With `fullscreenWheelScrollLines` at `auto`, slow wheel scrolling moves one line per event and a fast flick moves several, more the longer it lasts; frames sum every wheel event that arrives before they paint. A number fixes the lines per event.
 
 Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen).
 
@@ -37,13 +42,13 @@ Scrolling away from the end keeps your reading position while output arrives. Th
 
 `/links [query]` opens a searchable reference picker for the last answer. `/links message [query]` first chooses an answer, newest first; `/links all [query]` searches the session. Enter chooses a reference and then an action; Escape cancels. Full destinations remain available to inspect or copy even when the picker clips a long label.
 
-| Action | Result |
-| --- | --- |
-| Open | Web URLs use the platform handler; local files use the configured editor; backlog links retain their item handler |
-| Inspect destination | Show the full destination in the transcript |
-| Copy destination / Markdown link | Preserve the complete target |
-| Copy location / path | Preserve the absolute file path and available line and column |
-| Reveal parent folder | Ask the platform file handler to show its parent directory |
+| Action                           | Result                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Open                             | Web URLs use the platform handler; local files use the configured editor; backlog links retain their item handler |
+| Inspect destination              | Show the full destination in the transcript                                                                       |
+| Copy destination / Markdown link | Preserve the complete target                                                                                      |
+| Copy location / path             | Preserve the absolute file path and available line and column                                                     |
+| Reveal parent folder             | Ask the platform file handler to show its parent directory                                                        |
 
 References retain their session directory, including worktree paths. `src/a.ts:12:3` keeps line 12 and column 3. In fullscreen, activation routes through Octocode; in regular mode, the terminal's native link handler controls clicks, so use `/links` for exact editor handoff. No mouse, OSC 8, VS Code or GUI is required for the picker or copy commands. If a clipboard writer fails, Octocode reports it and the source remains in the transcript. Remote OSC 52 clipboard delivery cannot be acknowledged by the application.
 

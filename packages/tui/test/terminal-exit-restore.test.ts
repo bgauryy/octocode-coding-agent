@@ -8,8 +8,12 @@ const CHILD = fileURLToPath(new URL("./fixtures/exit-restore-child.ts", import.m
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const EXIT_ALT_SCREEN = "\x1b[?1049l";
 
-function run(how: string): { output: string; status: number | null } {
-	const result = spawnSync(process.execPath, [CHILD, how], { encoding: "utf8", timeout: 15000 });
+function run(how: string, env: NodeJS.ProcessEnv = {}): { output: string; status: number | null } {
+	const result = spawnSync(process.execPath, [CHILD, how], {
+		encoding: "utf8",
+		timeout: 15000,
+		env: { ...process.env, ...env },
+	});
 	return { output: result.stdout, status: result.status };
 }
 
@@ -48,5 +52,23 @@ describe("terminal restore on process exit", () => {
 		assert.strictEqual(status, 0);
 		assert.strictEqual(count(output, EXIT_ALT_SCREEN), 1);
 		assert.strictEqual(count(output, "\x1b[?2004l"), 1);
+	});
+
+	it("clears a reported program status before the key and paste resets when the process exits without stop()", () => {
+		const clear = "\x1b]7501;state=clear\x1b\\";
+		const supported = run("status-exit", { OCTOCODE_PROGRAM_STATUS: "1" });
+		assert.strictEqual(supported.status, 0);
+		assert.ok(supported.output.includes("\x1b]7501;state=working"), "the status was reported");
+		assert.strictEqual(count(supported.output, clear), 1, "and cleared once");
+		assert.ok(supported.output.lastIndexOf(clear) < supported.output.lastIndexOf("\x1b[<u"), "before the key reset");
+		assert.ok(
+			supported.output.lastIndexOf(clear) < supported.output.lastIndexOf("\x1b[?2004l"),
+			"before the paste reset",
+		);
+		assertRestored(supported.output);
+
+		const unsupported = run("status-exit", { OCTOCODE_PROGRAM_STATUS: "0" });
+		assert.strictEqual(unsupported.status, 0);
+		assert.ok(!unsupported.output.includes("\x1b]7501;"), "a terminal without support gets no status bytes");
 	});
 });

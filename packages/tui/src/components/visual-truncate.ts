@@ -4,8 +4,15 @@
  */
 
 import type { Component } from "../tui.ts";
+import { AnsiCodeTracker, updateTrackerFromText } from "../utils/ansi-tracker.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { wrapTextWithAnsi } from "../utils/wrap.ts";
+import { frameContentLines } from "../utils.ts";
 import { Text } from "./text.ts";
+
+/** How `wrapTextWithAnsi` splits text into logical lines. */
+const LINE_BREAK = /\r\n|\r|\n/;
 
 export interface VisualTruncateResult {
 	visualLines: string[];
@@ -37,19 +44,57 @@ export function truncateToVisualLines(
 		return { visualLines: [], skippedCount: 0 };
 	}
 
-	// Create a temporary Text component to render and get visual lines
-	const tempText = new Text(text, paddingX, 0);
-	const allVisualLines = tempText.render(width);
-
-	if (allVisualLines.length <= maxVisualLines) {
-		return { visualLines: allVisualLines, skippedCount: 0 };
+	const logicalLines = text.split(LINE_BREAK);
+	const limit = Math.max(0, Math.floor(maxVisualLines));
+	if (logicalLines.length <= limit || text.trim() === "") {
+		// Create a temporary Text component to render and get visual lines
+		const allVisualLines = new Text(text, paddingX, 0).render(width);
+		if (allVisualLines.length <= maxVisualLines) {
+			return { visualLines: allVisualLines, skippedCount: 0 };
+		}
+		const truncatedLines =
+			keep === "start" ? allVisualLines.slice(0, maxVisualLines) : allVisualLines.slice(-maxVisualLines);
+		return { visualLines: truncatedLines, skippedCount: allVisualLines.length - maxVisualLines };
 	}
 
-	const truncatedLines =
-		keep === "start" ? allVisualLines.slice(0, maxVisualLines) : allVisualLines.slice(-maxVisualLines);
-	const skippedCount = allVisualLines.length - maxVisualLines;
+	// A wrap never merges lines, so the kept visual lines come from at most `limit` logical lines: only those are
+	// wrapped, and the rest are only counted. A 2 MB tool result used to be wrapped whole for a 5-line preview.
+	const split = keep === "start" ? limit : logicalLines.length - limit;
+	const kept = keep === "start" ? logicalLines.slice(0, split) : logicalLines.slice(split);
+	const hidden = keep === "start" ? logicalLines.slice(split) : logicalLines.slice(0, split);
+	const padding = Math.min(paddingX, Math.max(0, Math.floor((width - 1) / 2)));
+	const contentWidth = Math.max(1, width - padding * 2);
+	// Styles left open by earlier lines carry into later ones, as in a whole-text wrap, and can change where a line
+	// breaks, so the tracker follows the lines in order: the hidden ones first when the end is kept.
+	const tracker = new AnsiCodeTracker();
+	let hiddenRows = 0;
+	const countHidden = (first: boolean) => {
+		for (const [index, line] of hidden.entries()) {
+			hiddenRows += visualRowCount(line, contentWidth, () => (first && index === 0 ? "" : tracker.getActiveCodes()));
+			updateTrackerFromText(line, tracker);
+		}
+	};
+	if (keep === "end") countHidden(true);
+	const prefix = keep === "end" ? tracker.getActiveCodes() : "";
+	if (keep === "start") {
+		for (const line of kept) updateTrackerFromText(line, tracker);
+		countHidden(false);
+	}
+	const wrapped = wrapTextWithAnsi(`${prefix}${kept.join("\n")}`.replace(/\t/g, "   "), contentWidth);
+	const visual = frameContentLines(wrapped, width, padding, 0);
+	const visualLines = keep === "start" ? visual.slice(0, limit) : visual.slice(-limit);
+	return { visualLines, skippedCount: hiddenRows + visual.length - visualLines.length };
+}
 
-	return { visualLines: truncatedLines, skippedCount };
+/**
+ * The rows `wrapTextWithAnsi` makes of one logical line after `prefix()` (the styles earlier lines left open), without
+ * building them when the line fits.
+ */
+function visualRowCount(line: string, width: number, prefix: () => string): number {
+	const normalized = line.includes("\t") ? line.replace(/\t/g, "   ") : line;
+	// No UTF-16 code unit is wider than two cells, so a line this short fits whatever it holds.
+	if (normalized.length * 2 <= width || visibleWidth(normalized) <= width) return 1;
+	return wrapTextWithAnsi(prefix() + normalized, width).length;
 }
 
 interface VisualLinePreviewOptions {
