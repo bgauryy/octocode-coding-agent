@@ -20,11 +20,12 @@ import { CACHE_RETENTION_ENV } from "../../../../common/src/env.ts";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "./turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
-import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { cacheCold, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { startEarlySummary } from "./early-summary.ts";
 import { shellParserReady } from "../permission/shell/mutation.ts";
 import { clearStaleResults, prefixRewritten } from "./clearing.ts";
 import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
-import { FallbackContinuity } from "./continuity.ts";
+import { FallbackContinuity, latestCompaction } from "./continuity.ts";
 import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
@@ -114,6 +115,7 @@ export function registerCompaction(
 			event.context.contextEntries.flatMap((entry) => entry.messages.map((message) => ({ message }))),
 			compactionThinking(api),
 			requests.toolRegistered && api.getActiveTools().includes(COMPACT_TOOL),
+			latestCompaction(ctx.sessionManager)?.id,
 		);
 		const current = ctx.sessionManager.getSessionId();
 		if (current !== session) {
@@ -144,6 +146,12 @@ export function registerCompaction(
 	let pendingRestore: PendingRestore | undefined;
 	/** When this process started its session: background work started earlier ended with an earlier process. */
 	let workSince = Date.now();
+	// Near the threshold the summary is requested beside the run, inside the session's cached request (`early-summary.ts`).
+	api.on("session_compact_prewarm", async (event, ctx) => {
+		if (downshiftFrom || thrash.tripped()) return;
+		const ttl = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
+		startEarlySummary(api, event, ctx, cacheCold(ctx.sessionManager, ttl));
+	});
 	api.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
 		continuity.discard();

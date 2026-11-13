@@ -21,7 +21,9 @@ type CompactionNoteKind =
 	/** The compaction succeeded but its messages could not be archived. */
 	| "archive-failed"
 	/** Complete checkpoint content could not be persisted, so compaction was cancelled. */
-	| "checkpoint-not-saved";
+	| "checkpoint-not-saved"
+	/** The summary requested ahead of the threshold (`early-summary.ts`): requested, ready, or why it cannot be used. */
+	| "early-summary";
 
 /** Appends a compaction note to the session; a session replaced meanwhile (a stale `api`) records nothing. */
 export function recordCompactionNote(

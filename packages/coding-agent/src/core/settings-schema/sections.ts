@@ -52,12 +52,6 @@ export const RetrySettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.retry.fallbackModels,
 		}),
 	),
-	maxDelayMs: Type.Optional(
-		Type.Number({
-			description: "Legacy retry delay setting. Use provider.maxRetryDelayMs instead.",
-			deprecated: true,
-		}),
-	),
 });
 
 export const ToolExecutionSettingsSchema = Type.Object(
@@ -184,20 +178,7 @@ export const PackageSourceSchema = Type.Union(
 	},
 );
 
-const StringArraySchema = Type.Array(Type.String());
-export const SkillsInputSchema = Type.Union(
-	[
-		StringArraySchema,
-		Type.Object(
-			{
-				enableSkillCommands: Type.Optional(Type.Boolean()),
-				customDirectories: Type.Optional(StringArraySchema),
-			},
-			{ deprecated: true },
-		),
-	],
-	{ description: "Local skill file paths or directories." },
-);
+export const SkillsInputSchema = Type.Array(Type.String(), { description: "Local skill file paths or directories." });
 
 /** Install record on a `plugins[]` entry written by `octocode plugin install`. */
 export const PluginInstallSourceSchema = Type.Object(

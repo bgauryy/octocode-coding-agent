@@ -4,9 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentRuns, archiveHistory } from "../../../db/src/api.ts";
-import { openDatabase } from "../../../db/src/db.ts";
-import { SCHEMA_PLAN } from "../../../db/src/migrations.ts";
-import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -15,7 +12,6 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
-const { DatabaseSync } = loadSqlite();
 const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "scripts", "source-resolver.ts");
 const WORKER = path.join(import.meta.dirname, "lifecycle-child-worker.ts");
 let root: string;
@@ -58,41 +54,6 @@ afterEach(() => {
 });
 
 describe("the agent_runs table", () => {
-	it("migrates a version 2 file by adding the table and the place columns, keeping its rows", () => {
-		const file = path.join(root, "v2.db");
-		const open = (plan?: typeof SCHEMA_PLAN) =>
-			openDatabase(
-				{ file, mirrorFile: `${file}.transcripts`, archiveDir: path.join(root, "archive"), privateParent: false },
-				plan,
-			);
-		const old = open({ version: 2, migrations: SCHEMA_PLAN.migrations.slice(0, 1) });
-		for (const column of ["cwd", "branch", "process_title"]) old.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
-		old.db.exec("DROP TABLE agent_runs");
-		old.db.exec("DROP TABLE timers");
-		// Version 5 added `backlog.closed` with its audit triggers; a version 2 file has neither.
-		for (const name of ["insert", "update", "delete"]) old.db.exec(`DROP TRIGGER backlog_audits_${name}`);
-		old.db.exec("ALTER TABLE backlog DROP COLUMN closed");
-		// Step 7 adds `backlog.rank`.
-		old.db.exec("ALTER TABLE backlog DROP COLUMN rank");
-		// Step 8 adds `cache_write` to `agents`.
-		old.db.exec("ALTER TABLE agents DROP COLUMN cache_write");
-		old.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
-		old.close();
-		open().close();
-		const raw = new DatabaseSync(file, { readOnly: true });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_PLAN.version });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
-		// Step 10 (the transcript mirror's own file) is not additive: an Octocode before it refuses the file.
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "10" });
-		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain(
-			"run_id",
-		);
-		expect((raw.prepare("PRAGMA table_info(agents)").all() as { name: string }[]).map((c) => c.name)).toEqual(
-			expect.arrayContaining(["cwd", "branch", "process_title"]),
-		);
-		raw.close();
-	});
-
 	it("gives a main session a run at its join, with where it works", () => {
 		process.title = "octocode-main-abcd1234";
 		const main = member("steady-main", { role: "main" });

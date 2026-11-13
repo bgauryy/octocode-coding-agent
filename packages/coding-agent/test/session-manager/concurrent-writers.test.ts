@@ -178,25 +178,6 @@ describe("locked session appends", () => {
 		expect(records().map((e) => e.id)).toEqual(expect.arrayContaining([foreignId, ownId]));
 	});
 
-	it("a migration rewrite keeps a foreign entry", () => {
-		const legacy = join(dir, "legacy.jsonl");
-		writeFileSync(
-			legacy,
-			`${JSON.stringify({ type: "session", id: "legacy", timestamp: new Date().toISOString(), cwd: dir })}\n` +
-				`${JSON.stringify({ type: "message", timestamp: new Date().toISOString(), message: userMsg("old") })}\n`,
-		);
-		const a = SessionManager.open(legacy, dir, dir); // migrates v1 -> current and rewrites
-		expect(JSON.parse(readFileSync(legacy, "utf8").split("\n")[0]).version).toBeGreaterThan(1);
-		const b = SessionManager.open(legacy, dir, dir);
-		const foreignId = b.appendCustomEntry("b", 1);
-		(a as unknown as { _rewriteFile(): void })._rewriteFile();
-		const ids = readFileSync(legacy, "utf8")
-			.split("\n")
-			.filter(Boolean)
-			.map((l) => (JSON.parse(l) as SessionEntry).id);
-		expect(ids).toContain(foreignId);
-	});
-
 	it("leaves no lock behind and does not touch in-memory sessions", () => {
 		const a = open();
 		a.appendCustomEntry("a", 1);
@@ -287,19 +268,22 @@ describe("review fixes", () => {
 		expect(ids.slice(-2)).toEqual([b1, a1]);
 	});
 
-	it("treats a lock held past the wait as retryable, not a permanent failure (S1-3)", async () => {
+	it("keeps a record in memory while a lock is held past the wait, and writes it first afterwards (S1-3)", async () => {
 		const lockfile = (await import("proper-lockfile")).default;
 		const session = open();
 		const release = lockfile.lockSync(file, { realpath: false, lockfilePath: `${file}.lock` });
 		const before = readFileSync(file);
+		let held: string;
 		try {
-			expect(() => session.appendCustomEntry("blocked", 1)).toThrow();
+			// Not refused and not a permanent failure: the record is part of the session, only its write waits.
+			held = session.appendCustomEntry("blocked", 1);
+			expect(session.getLeafId()).toBe(held);
+			expect(readFileSync(file).equals(before)).toBe(true);
 		} finally {
 			release();
 		}
-		expect(readFileSync(file).equals(before)).toBe(true);
 		const id = session.appendCustomEntry("retried", 1);
-		expect(customs().map((e) => e.id)).toEqual([id]);
+		expect(customs().map((e) => e.id)).toEqual([held, id]);
 		expect(session.getLeafId()).toBe(id);
 	}, 10_000);
 });

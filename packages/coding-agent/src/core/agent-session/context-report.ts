@@ -6,6 +6,8 @@ import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts"
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
 import { contextSizeWarnings, mcpInstructionSizes } from "../context-budget.ts";
 import { MCPS_SECTION } from "../../../../common/src/mcp-names.ts";
+import { archivedSummary } from "../compaction/checkpoint.ts";
+import { renderContextLifecycle, type ContextLifecycle } from "./context-lifecycle.ts";
 
 interface ContextContributor {
 	name: string;
@@ -26,6 +28,8 @@ export interface ContextReport {
 	/** Parts of the instructions over their share of the window (`context-budget.ts`); nothing is cut for them. */
 	warnings: string[];
 	note: string;
+	/** Committed-projection lifecycle snapshot, before request hooks; absent in older saved reports. */
+	compaction?: ContextLifecycle;
 }
 
 /** Inspect the committed effective transcript without running hooks or a model request. */
@@ -44,7 +48,10 @@ export function contextReport(
 		session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 	);
 	const usage = session.getContextUsage();
-	const measured = estimateProjectedContextTokens(projection, session.sessionManager.getBranch());
+	const branch = session.sessionManager.getBranch();
+	const measured = estimateProjectedContextTokens(projection, branch);
+	const compactions = branch.filter((entry) => entry.type === "compaction");
+	const latest = compactions.at(-1);
 	const contributors: ContextContributor[] = [];
 	const add = (name: string, tokens: number) => {
 		if (tokens > 0) contributors.push({ name, tokens });
@@ -84,6 +91,23 @@ export function contextReport(
 			contextFilesChars: system?.sections?.project_context?.length ?? 0,
 			contextWindow: capacity,
 		}),
+		compaction: {
+			enabled: settings.enabled,
+			recordedCompactions: compactions.length,
+			activeCheckpoints: projection.messages.filter((message) => message.role === "compactionSummary").length,
+			otherMessages: projection.messages.filter(
+				(message) => message.role !== "system" && message.role !== "compactionSummary",
+			).length,
+			keepRecentTokens: settings.keepRecentTokens,
+			persistent: session.sessionManager.isPersisted(),
+			latest: latest
+				? {
+						at: latest.timestamp,
+						tokensBefore: latest.tokensBefore,
+						separateCheckpoint: archivedSummary(latest.details) !== undefined,
+					}
+				: null,
+		},
 		note: "Current usage is the session estimate anchored to available provider receipts, not exact tokenization. Contributors estimate the committed projection; the next request's hooks and provider transformations can change it. Unknown usage after compaction stays unknown. Skill bodies already present in messages are counted once; skill listings remain in instruction sections.",
 	};
 }
@@ -107,7 +131,8 @@ function totalLines(report: ContextReport, number: (value: number | null) => str
 		`**Total context: ${number(used)} of ${number(report.capacity)} tokens in use (${percentOf(used, report.capacity)})**${source}`,
 		`\`${"█".repeat(filled)}${"░".repeat(BAR_CELLS - filled)}\` ${number(Math.max(0, report.capacity - used))} free`,
 	];
-	if (report.threshold !== null)
+	if (report.compaction?.enabled === false) lines.push("Automatic compaction is off. /compact runs it manually.");
+	else if (report.threshold !== null)
 		lines.push(
 			used > report.threshold
 				? `Above the compaction threshold (${number(report.threshold)} tokens): the next request may compact eligible history first.`
@@ -125,6 +150,7 @@ export function renderContextReport(report: ContextReport, all = false): string 
 	return [
 		totalLines(report, number),
 		report.warnings.map((warning) => `Warning: ${warning}`).join("\n"),
+		report.compaction ? renderContextLifecycle(report.compaction, report.threshold) : "",
 		[
 			"| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",
 			...visible.map((row) => `| ${row.name.replaceAll("|", "\\|")} | ${number(row.tokens)} | ${share(row.tokens)} |`),

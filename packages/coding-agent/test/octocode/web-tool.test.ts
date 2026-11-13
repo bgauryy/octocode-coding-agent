@@ -876,7 +876,9 @@ describe("web images", () => {
 			} as unknown as ExtensionAPI,
 			fakePermission("full"),
 		);
-		expect(description).toMatch(/PNG, JPEG, GIF or WebP URL returns the image itself/);
+		expect(description).toMatch(/Image URLs \(PNG, JPEG, GIF, WebP\) return images/);
+		expect(description).toContain("resizing large ones and naming saved originals");
+		expect(description).toContain("SVG returns XML");
 	});
 
 	it("leaves browser routing to the policy, which knows whether the session holds a browser", () => {

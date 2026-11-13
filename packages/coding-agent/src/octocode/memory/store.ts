@@ -291,7 +291,8 @@ export class MemoryStore {
 			keywords,
 			pinned: input.pinned ?? current.pinned,
 			author: input.author,
-			now,
+			// Recall uses updatedAt as a revision: equal or backward clocks must not hide an edit.
+			now: Math.max(now, current.updatedAt + 1),
 		});
 		return { memory: this.get(id)!, created: false };
 	}

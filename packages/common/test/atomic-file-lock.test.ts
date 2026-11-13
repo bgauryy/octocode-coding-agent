@@ -85,8 +85,13 @@ describe("cooperative file mutation locks", () => {
 	});
 	it("preserves mutation errors and identifies committed writes when lock cleanup fails", async () => {
 		const file = fixture();
-		vi.spyOn(lockfile, "lock").mockResolvedValue(async () => {
-			throw new Error("release failed");
+		const acquire = lockfile.lock;
+		vi.spyOn(lockfile, "lock").mockImplementation(async (target, options) => {
+			const release = await acquire(target, options);
+			return async () => {
+				await release();
+				throw new Error("release failed");
+			};
 		});
 		const original = new Error("mutation failed");
 		await expect(

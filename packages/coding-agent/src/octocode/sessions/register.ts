@@ -14,8 +14,6 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { expandKey, plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { addUsage, contentText, emptyUsage, type Spend, modelLookup, spendOf, unpricedModel } from "../shared/util.ts";
-import { summaryMethodOf } from "../shared/summary-method.ts";
-import { archivedSummary } from "../../core/compaction/checkpoint.ts";
 import {
 	type BriefInput,
 	latestRequest,
@@ -32,6 +30,7 @@ import { registerPurgeCommand } from "./purge-command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
 import { type CompleteTitle, createAutoTitler } from "./title.ts";
 import { sweepSessions } from "./sweep.ts";
+import { RUNNING_WORK_TYPE } from "../shared/context-notices.ts";
 import {
 	type Entry,
 	branchOf,
@@ -42,11 +41,12 @@ import {
 	totals,
 } from "./session-scan.ts";
 import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
+import { compactionRequestBrief, runningWorkBrief } from "./compaction-brief.ts";
 
 /** Custom message type of the resume brief. */
 export const RESUME_MESSAGE_TYPE = "octocode-resume";
 /** Custom message type of the running-work note added after a compaction. */
-export const RUNNING_WORK_TYPE = "octocode-running-work";
+export { RUNNING_WORK_TYPE };
 
 interface SessionsOptions {
 	commands: Subcommands;
@@ -66,7 +66,7 @@ interface SessionsOptions {
  * After a compaction, a non-waking reorient brief: the work still running (background bash jobs and subagents started
  * since this session started in this process, without a report yet), this session's ongoing backlog items with their
  * goal, why, paths, links and last notes, its open tasks, its path reservations and the questions waiting for its reply,
- * and the latest user request (left out after Octocode's own summary, which keeps the user's messages word for word).
+ * and the latest user request (left out when Octocode's summary already keeps that request inline).
  * The summary may have dropped them, and the running work's reports will arrive later as messages. Every part is capped
  * (see brief.ts).
  */
@@ -77,7 +77,8 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 	});
 	api.on("session_compact", async (event, ctx) => {
 		const branch = branchOf(ctx);
-		const running = unreportedWork(branch, since).map((work) => describeWork(work, false));
+		const source = ctx.sessionManager.getSessionFile();
+		const running = runningWorkBrief(branch, since, source);
 		let ongoing: string[] = [];
 		try {
 			const agent = sharedAgentDb();
@@ -88,11 +89,9 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 			// The agent database is unavailable: the running work and the request alone still help.
 		}
 		const held = team ? teamBrief(team) : [];
-		// Octocode's own summary is followed by the user's messages word for word, so their latest request is already kept,
-		// unless the summary went to a file: what stays inline then may leave the request out.
-		const details = event.compactionEntry?.details;
-		const kept = summaryMethodOf(details) !== undefined && archivedSummary(details) === undefined;
-		const request = kept ? undefined : latestRequest(branch);
+		// The native summary keeps user messages within a budget; test for the actual copy before skipping this reminder.
+		const latest = latestRequest(branch);
+		const request = latest ? compactionRequestBrief(latest, event.compactionEntry, source) : undefined;
 		if (running.length === 0 && ongoing.length === 0 && held.length === 0 && !request) return;
 		const lines = [
 			...(running.length > 0
@@ -100,12 +99,17 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 				: []),
 			...ongoing,
 			...held,
-			...(request ? [renderInstruction("notices/compaction/latest-request.md", { request })] : []),
+			...(request ? [request] : []),
 		];
 		const content = renderInstruction("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
 			void api.sendMessage(
-				{ customType: RUNNING_WORK_TYPE, content, display: false },
+				{
+					customType: RUNNING_WORK_TYPE,
+					content,
+					display: false,
+					details: { compactionId: event.compactionEntry?.id ?? null },
+				},
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
 		} catch {

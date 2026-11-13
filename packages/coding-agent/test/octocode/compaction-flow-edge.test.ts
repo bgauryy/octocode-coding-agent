@@ -10,6 +10,7 @@ import { CONTINUITY_TYPE, withoutCarriedNotes } from "../../src/octocode/compact
 import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { requestMessages } from "../../src/octocode/compaction/thinking.ts";
+import { requestView } from "../../src/octocode/compaction/request-view.ts";
 import { sessionCleared, sessionClearedAt } from "../../src/octocode/files/reads.ts";
 import { prepare, type Entry } from "../../src/octocode/profiler/index.ts";
 import { deriveInsights } from "../../src/octocode/profiler/insights.ts";
@@ -106,6 +107,37 @@ async function sharedRequest(
 }
 
 describe("the cache-sharing summary sends the live request's messages", () => {
+	it("omits superseded notice generations identically in live and shared prefixes", async () => {
+		const state = (customType: string, compactionId: string, content: string) => ({
+			role: "custom",
+			customType,
+			content,
+			details: { compactionId },
+			display: false,
+			timestamp: at,
+		});
+		const branch = [{ type: "compaction", id: "c2", details: { summaryMethod: { method: "cache-shared" } } }];
+		const entries = [
+			projected("e0", "message", system),
+			projected("c2", "compaction", summary),
+			projected("old-work", "custom_message", state("octocode-running-work", "c1", "Obsolete work state")),
+			projected("old-usage", "custom_message", state("octocode-context-usage", "c1", "Obsolete occupancy")),
+			projected("work", "custom_message", state("octocode-running-work", "c2", "Current work state")),
+			projected("e5", "message", user("next step")),
+		];
+		const live = convertToLlm(
+			requestView(
+				entries.flatMap((entry) => entry.messages),
+				{ getBranch: () => branch },
+				model,
+			) as never,
+		);
+		expect(JSON.stringify(live)).not.toContain("Obsolete");
+		expect(JSON.stringify(live)).toContain("Current work state");
+		const { context } = await sharedRequest(entries, branch, "e5");
+		expect(JSON.stringify(context.messages.slice(0, -1))).toBe(JSON.stringify(live));
+	});
+
 	it("hides the continuity message an earlier compaction left in the kept tail, as every live request does", async () => {
 		// c1 fell back to the default summary (continuity note n1); c2, Octocode's own summary, kept n1 in its tail and
 		// carries its user messages. register.ts:261-267 hides n1 from every live request since c2 (`withoutCarriedNotes`).

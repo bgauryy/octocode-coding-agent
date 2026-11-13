@@ -74,6 +74,7 @@ export interface ExtensionAPI {
 		event: "session_before_compact",
 		handler: ExtensionHandler<SessionEvents.SessionBeforeCompactEvent, unknown>,
 	): () => void;
+	on(event: "session_compact_prewarm", handler: ExtensionHandler<SessionEvents.SessionCompactPrewarmEvent>): () => void;
 	on(event: "session_compact", handler: ExtensionHandler<SessionEvents.SessionCompactEvent>): () => void;
 	on(event: "session_compact_failed", handler: ExtensionHandler<SessionEvents.SessionCompactFailedEvent>): () => void;
 	on(event: "session_shutdown", handler: ExtensionHandler<SessionEvents.SessionShutdownEvent>): () => void;

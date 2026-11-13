@@ -35,7 +35,7 @@ export {
 	buildSessionProjection,
 	sessionEntryToContextMessages,
 } from "./session-manager/context.ts";
-export { assertValidSessionId, migrateSessionEntries, parseSessionEntries } from "./session-manager/entries.ts";
+export { assertValidSessionId, parseSessionEntries } from "./session-manager/entries.ts";
 export { findMostRecentSession, loadEntriesFromFile } from "./session-manager/storage.ts";
 export { hasTornTail } from "./session-manager/session-tail.ts";
 export { repairSessionFile, type SessionRepair } from "./session-manager/repair.ts";

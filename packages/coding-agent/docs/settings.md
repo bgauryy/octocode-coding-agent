@@ -40,7 +40,6 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `retry.provider.maxRetries` | number |  | SDK or provider retry attempts. |
 | `retry.provider.maxRetryDelayMs` | number | `60000` | Maximum server-requested delay before failing. |
 | `retry.fallbackModels` | `string[]` | `[]` | Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. The first one with credentials becomes the session model with a notice and stays selected; `/model` switches back. Empty: such a failure ends the turn. |
-| `retry.maxDelayMs` | number |  | Legacy retry delay setting. Use provider.maxRetryDelayMs instead. |
 | `showCacheMissNotices` | boolean | `false` | Show cache cost and provider recovery notices. |
 | `httpProxy` | string |  | Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients. |
 | `httpIdleTimeoutMs` | `number \| "disabled"` |  | HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or "disabled" disables both. |
@@ -119,7 +118,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `packages[].prompts` | `string[]` |  |  |
 | `packages[].themes` | `string[]` |  |  |
 | `extensions` | `string[]` |  | `builtin:&lt;id>` entries switch a built-in feature on (llama.cpp, mcp). Other entries are ignored: user code extensions are not supported. |
-| `skills` | `string[] \| object` |  | Local skill file paths or directories. |
+| `skills` | `string[]` |  | Local skill file paths or directories. |
 | `prompts` | `string[]` |  | Local prompt template file paths or directories. |
 | `themes` | `string[]` |  | Local theme file paths or directories. |
 | `enableSkillCommands` | boolean | `true` | Register skills as /skill:name commands. |
@@ -171,7 +170,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `fullscreenWheelScrollLines` | `number \| "auto"` | `"auto"` | Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100. |
 | `fullscreenFrameQueueLimitKiB` | number | `512` | Queued output in KiB past which fullscreen frames are dropped while the terminal is not reading, then repainted whole once it reads again; 0 keeps every frame. Clamped to 64 to 65536. |
 
-## Schema and legacy settings
+## Schema and other settings
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -202,8 +201,6 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `sessions.autoTitle` | boolean | `true` | Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title. |
 | `timer` | object |  |  |
 | `optimizePrompts` | boolean | `false` | Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it. |
-| `queueMode` | `"all" \| "one-at-a-time"` |  | Legacy setting migrated to steeringMode. |
-| `websockets` | boolean |  | Legacy setting migrated to transport. |
 
 ## Telemetry and privacy
 

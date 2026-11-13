@@ -121,7 +121,10 @@ export class ApplicationTranscript {
 				const source = this.toolSources.get(id);
 				if (!source) continue;
 				const next = { ...tool, ...this.toolData(source.value, id, source.owner, source.streaming) };
-				this.putTool(id, { ...next, display: toolDisplay(next, source.value, true, this.displays) });
+				this.putTool(id, {
+					...next,
+					display: toolDisplay(next, source.value, true, this.displays, this.toolSources.get(id)?.projected),
+				});
 			}
 		});
 	}
@@ -279,8 +282,8 @@ export class ApplicationTranscript {
 	}
 
 	private toolData(value: unknown, id: string, owner: string, streaming = false): Partial<ApplicationTool> {
-		this.toolSources.set(id, keptToolSource(value, owner, streaming));
 		const projected = this.projected(owner, value);
+		this.toolSources.set(id, { ...keptToolSource(value, owner, streaming), projected: projected !== undefined });
 		const source = projected === undefined ? value : { ...asRecord(value), content: projected };
 		const data = {
 			...normalizeToolData(source, `tool:${id}`, this.assets, streaming),
@@ -356,7 +359,8 @@ export class ApplicationTranscript {
 			notRun: event.notRun,
 			status: type === "tool.completed" ? (failed ? "failed" : "completed") : "running",
 		};
-		tool.display = toolDisplay(tool, this.toolSources.get(event.toolCallId)?.value, replacesResult, this.displays);
+		const source = this.toolSources.get(event.toolCallId);
+		tool.display = toolDisplay(tool, source?.value, replacesResult, this.displays, source?.projected);
 		spillTool(tool, this.assets, type === "tool.completed");
 		this.putTool(event.toolCallId, tool);
 		return { ...tool, type: event.type, ...(event.failed === undefined ? {} : { failed: event.failed }) };

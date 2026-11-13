@@ -69,14 +69,16 @@ export class ApplicationStream {
 				const index = next.messages.findIndex((message) => message.id === event.messageId);
 				if (index === -1) return this.resync();
 				const message = next.messages[index];
+				// A replacement owns all display fields; absent optional fields clear a previous asset or
+				// rich body. Legacy text-only appends have no replacement fields and keep their old shape.
+				const replacement = event.text !== undefined || event.content !== undefined || event.full !== undefined;
 				// An append continues the block exactly as this view holds it; any other state needs a fresh snapshot.
 				const updated = event.block
 					? appendApplicationMessage(message, event.block, event.delta)
 					: {
 							...message,
 							text: event.text ?? message.text + event.delta,
-							...(event.content === undefined ? {} : { content: event.content }),
-							...(event.full === undefined ? {} : { full: event.full }),
+							...(replacement ? { content: event.content, full: event.full } : {}),
 						};
 				if (!updated) return this.resync();
 				const messages = [...next.messages];

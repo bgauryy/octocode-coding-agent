@@ -1,5 +1,3 @@
-import type { OAuthCredentials } from "../auth/types.ts";
-
 /** Legacy extension OAuth prompt. */
 export interface OAuthPrompt {
 	message: string;
@@ -41,5 +39,3 @@ export interface OAuthLoginCallbacks {
 	onSelect(prompt: OAuthSelectPrompt): Promise<string | undefined>;
 	signal?: AbortSignal;
 }
-
-export type { OAuthCredentials };

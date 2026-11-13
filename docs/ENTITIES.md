@@ -18,24 +18,24 @@ An item can involve several sessions, agents and attempts, and a session can wor
 
 ## Database
 
-Schema version 10, migrated additively where possible so an older Octocode can usually still read the file (version 10, which moved the transcript mirror into its own file, is not additive); backlog writes by an older version are refused (see [guarantees](#guarantees)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
+Schema version 10. There are no upgrade steps: a file at an older version is set aside and a new one created, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
-| Tables                                                                      | Holds                                                                                                                                              |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts  |
-| `sessions`, `session_forks`                                                 | Sessions bound to their workspace and host-created fork links; imports can stay unbound                                                            |
-| `session_transcripts`, `session_entries` (transcript mirror)                | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload), rebuildable from the transcript files              |
-| `compaction_summaries` (transcript mirror)                                  | One summary per compacted entry of a session; detail copies on disk have their own retention                                                       |
-| `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                       |
-| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                        |
-| `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                    |
-| `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                 |
-| `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                     |
-| `timers`                                                                    | The `timer` tool's wakes                                                                                                                           |
-| `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                            |
-| `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                    |
+| Tables                                                                      | Holds                                                                                                                                             |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts |
+| `sessions`, `session_forks`                                                 | Sessions bound to their workspace and host-created fork links; imports can stay unbound                                                           |
+| `session_transcripts`, `session_entries` (transcript mirror)                | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload), rebuildable from the transcript files               |
+| `compaction_summaries` (transcript mirror)                                  | One summary per compacted entry of a session; detail copies on disk have their own retention                                                      |
+| `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                      |
+| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                       |
+| `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                   |
+| `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                |
+| `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                    |
+| `timers`                                                                    | The `timer` tool's wakes                                                                                                                          |
+| `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                           |
+| `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                   |
 
-Migrations 2 to 9 added `agents.end_hint`, the `agent_runs` table with agent location columns, `timers` (and later more wait conditions), `backlog.closed`, `backlog.rank` (manual card order), cache-write token counts and the `!` command history; migration 10 moved the transcript mirror's tables into their own file. A session's rows in both files go together when it is deleted; each file's part is one transaction.
+A session's rows in both files go together when it is deleted; each file's part is one transaction.
 
 ## Agents, runs and mail
 

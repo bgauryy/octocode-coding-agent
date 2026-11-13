@@ -34,7 +34,8 @@ afterEach(() => {
 });
 
 const cwd = () => path.join(dir, "repo");
-const ctx = () => ({ cwd: cwd(), sessionManager: { getSessionId: () => SESSION } }) as never;
+const ctx = () =>
+	({ cwd: cwd(), sessionManager: { getSessionId: () => SESSION, getSessionFile: () => undefined } }) as never;
 
 /** Items B1 (held by this session), B2 (held by another) and B3 (todo). */
 function seed(): void {
@@ -66,7 +67,22 @@ describe("the live state a compaction summary carries", () => {
 		expect(line).toContain('B1 ongoing "Held by this session"');
 		expect(line).not.toContain("B2");
 		expect(line).not.toContain("B3");
-		expect(line).toContain("not held by this session");
+		expect(line).toContain("run `backlog get` before relying on an unlisted id");
+	});
+
+	it("does not deny ownership of held items omitted from a shortened list", () => {
+		const agent = sharedAgentDb();
+		const store = new BacklogStore(() => agent, registeredWorkspace(cwd(), agent).id);
+		for (let index = 1; index <= 9; index++) {
+			store.add({ title: `Held item ${index}`, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
+			store.update(`B${index}`, { state: "ongoing" }, { id: SESSION });
+		}
+		const [line] = liveStateLines(ctx(), [], 0);
+		expect(line.match(/\bB\d+ ongoing/g)).toHaveLength(8);
+		expect(line).toContain("1 more (backlogPlan list shows them)");
+		expect(line).toContain("This list may be shortened");
+		expect(line).toContain("run `backlog get` before relying on an unlisted id");
+		expect(line).not.toContain("not held by this session");
 	});
 
 	it("says none when the session holds nothing, so an id the summary invented is not confirmed", () => {
@@ -85,6 +101,19 @@ describe("the live state a compaction summary carries", () => {
 		expect(lines[1]).toMatch(/started in this process with no report yet.*yarn test/);
 		expect(lines[1]).not.toContain("yarn build");
 		expect(liveStateLines(ctx(), entries, 3_000)).toHaveLength(1);
+	});
+
+	it("bounds long background commands instead of refilling the compacted context", () => {
+		const command = `run-tests ${"argument ".repeat(10_000)} --final-check`;
+		const entries = Array.from({ length: 12 }, (_, index) =>
+			backgroundJob(`c${index}`, command, `/logs/${index}.log`),
+		).flat();
+		const lines = liveStateLines(ctx(), entries, 1_000);
+		expect(lines.join("\n").length).toBeLessThan(5_000);
+		expect(lines[1]).toContain("bash-1");
+		expect(lines[1]).toContain("characters omitted");
+		expect(lines[1]).toContain("4 more background starts");
+		expect(JSON.stringify(entries)).toContain(command);
 	});
 
 	it("is appended to the summary as Recovery bullets that splitSummary removes again", async () => {

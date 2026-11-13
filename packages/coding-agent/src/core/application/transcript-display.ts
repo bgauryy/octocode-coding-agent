@@ -92,22 +92,29 @@ export function buildToolDisplay(
 /**
  * A tool's display after an event: rebuilt from the latest result when the event carried one (`replaced`) or the call
  * finished, otherwise the display it had. A call that never ran has no result, so its stop text is the outcome.
+ * A projected result keeps the renderer's argument-only metadata and uses the projection for its outcome and blocks.
  */
 export function toolDisplay(
 	tool: ApplicationTool,
 	result: unknown,
 	replaced: boolean,
 	lookup: (toolName: string) => ToolDisplayFunction | undefined,
+	projected = false,
 ): ToolDisplay {
 	if (!replaced && tool.display && tool.status === "running") return tool.display;
-	const display = buildToolDisplay(lookup(tool.toolName), {
+	let display = buildToolDisplay(lookup(tool.toolName), {
 		toolName: tool.toolName,
 		args: tool.arguments,
-		result,
+		result: projected ? undefined : result,
 		text: tool.content ? applicationContentText(tool.content) : tool.text,
 		status: tool.status,
 		...(tool.hint ? { hint: tool.hint } : {}),
 	});
+	if (projected) {
+		const { title, summary, meta, subjects, reason, kind, preface } = display;
+		const { blocks, outcome } = genericToolDisplay(tool.toolName, tool.hint, tool.text, tool.status);
+		display = { title, summary, meta, subjects, reason, kind, preface, blocks, outcome };
+	}
 	if (display.outcome || tool.status === "running" || !tool.text) return display;
 	return {
 		...display,

@@ -121,7 +121,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"warnings",
 		],
 	},
-	{ heading: "Schema and legacy settings", rest: true },
+	{ heading: "Schema and other settings", rest: true },
 ];
 
 /** Defaults that `SETTINGS_DEFAULTS` holds but the schema does not declare. */

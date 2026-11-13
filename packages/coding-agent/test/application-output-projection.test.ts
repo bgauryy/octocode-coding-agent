@@ -1,13 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getApplicationPort } from "../src/core/application/index.ts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
+import type { ToolDisplayFunction } from "../src/core/features/types/tools.ts";
 
-function fixture(messages: unknown[] = []) {
+function fixture(messages: unknown[] = [], display?: ToolDisplayFunction) {
 	let listener: ((event: AgentSessionEvent) => void) | undefined;
 	const session = {
 		sessionId: "projection-test",
 		messages,
 		isStreaming: false,
+		getToolRenderers: display ? () => ({ display }) : undefined,
 		subscribe(fn: typeof listener) {
 			listener = fn;
 			return () => {};
@@ -29,6 +31,88 @@ async function snapshot(service: ReturnType<typeof getApplicationPort>) {
 	return frame.snapshot;
 }
 describe("application output projection", () => {
+	it("keeps projected output authoritative for registered displays and runs the projector once per tool update", () => {
+		const display = vi.fn<ToolDisplayFunction>(({ args, result }) => ({
+			title: "Custom",
+			summary: args.goal,
+			reason: args.reason,
+			kind: "agent",
+			preface: [{ type: "markdown", text: args.task ?? "" }],
+			state: "waiting",
+			locations: [{ path: "result-derived-link" }],
+			outcome: { text: "result-derived-outcome" },
+			blocks: [{ type: "text", text: JSON.stringify(result ?? {}) }],
+		}));
+		const project = vi.fn((owner: string) => (owner === "agent" ? "Projected report" : undefined));
+		const f = fixture([], display);
+		f.service.setToolOutputProjector(project);
+		f.emit({
+			type: "tool_execution_start",
+			toolCallId: "a",
+			toolName: "agent",
+			args: { goal: "Check architecture", reason: "Support future interfaces", task: "Inspect the application" },
+		});
+		display.mockClear();
+		for (const type of ["tool_execution_update", "tool_execution_end"]) {
+			f.emit({ type, toolCallId: "a", toolName: "agent", result, partialResult: result });
+			const tool = f.service.getSnapshot().tools?.[0];
+			if (!tool) throw new Error("Expected the projected tool snapshot");
+			expect(tool?.display?.blocks).toEqual([
+				{ type: "text", text: "Projected report", ...(type === "tool_execution_update" ? { preview: "tail" } : {}) },
+			]);
+			expect(tool.display).toMatchObject({
+				title: "Custom",
+				summary: "Check architecture",
+				reason: "Support future interfaces",
+				kind: "agent",
+				preface: [{ type: "markdown", text: "Inspect the application" }],
+			});
+			expect(tool.display?.state).toBeUndefined();
+			expect(tool.display?.locations).toBeUndefined();
+			expect(JSON.stringify(tool.display)).not.toContain("result-derived");
+		}
+		expect(project).toHaveBeenCalledTimes(2);
+		expect(display).toHaveBeenCalledTimes(2);
+		for (const [input] of display.mock.calls) expect(input.result).toBeUndefined();
+		f.emit({ type: "tool_execution_end", toolCallId: "b", toolName: "read", result });
+		expect(display).toHaveBeenCalledTimes(3);
+		expect(display.mock.lastCall?.[0].result).toBe(result);
+		expect(f.service.getSnapshot().tools?.[1]?.display?.title).toBe("Custom");
+		expect(result.content[0].text).toBe("RAW_PAYLOAD");
+		f.service.dispose();
+	});
+
+	it("does not expose raw output to registered displays when the projector fails", () => {
+		const display = vi.fn<ToolDisplayFunction>(() => ({ title: "Custom", blocks: [] }));
+		const f = fixture([], display);
+		f.service.setToolOutputProjector(() => {
+			throw new Error("RAW_PAYLOAD");
+		});
+		f.emit({ type: "tool_execution_end", toolCallId: "a", toolName: "agent", result });
+		const tool = f.service.getSnapshot().tools?.[0];
+		expect(tool?.display?.blocks).toEqual([{ type: "text", text: "Tool output unavailable" }]);
+		expect(display).toHaveBeenCalledOnce();
+		expect(display.mock.lastCall?.[0].result).toBeUndefined();
+		f.service.dispose();
+	});
+
+	it("reprojects custom displays and restores them when the projection is removed", () => {
+		const display = vi.fn<ToolDisplayFunction>(() => ({
+			title: "Custom",
+			blocks: [{ type: "text", text: "RAW_PAYLOAD" }],
+		}));
+		const f = fixture([], display);
+		f.emit({ type: "tool_execution_end", toolCallId: "a", toolName: "agent", result });
+		expect(f.service.getSnapshot().tools?.[0]?.display?.title).toBe("Custom");
+		const remove = f.service.setToolOutputProjector(() => "Projected report");
+		expect(f.service.getSnapshot().tools?.[0]?.display?.blocks).toEqual([{ type: "text", text: "Projected report" }]);
+		expect(display).toHaveBeenCalledTimes(2);
+		remove();
+		expect(f.service.getSnapshot().tools?.[0]?.display?.title).toBe("Custom");
+		expect(display).toHaveBeenCalledTimes(3);
+		f.service.dispose();
+	});
+
 	it("projects tool updates, completion and message copies without changing native results", async () => {
 		const f = fixture();
 		f.service.setToolOutputProjector((owner, value) =>

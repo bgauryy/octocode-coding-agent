@@ -4,11 +4,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { privateDir } from "../../common/src/file-mode.ts";
 import { beginImmediate, loadSqlite } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
-import { AgentDbMigratingError, prepareSchema } from "./migrate.ts";
-import type { MigrationContext } from "./migration-context.ts";
-import { MIRROR_PLAN, SCHEMA_PLAN, type SchemaPlan } from "./migrations.ts";
 import * as agentEvents from "./queries/agent-events.ts";
-import { AgentDbError, COORDINATION_FILE, type FileKind } from "./schema.ts";
+import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
 import { createMirrorSchema, MIRROR_APPLICATION_ID } from "./schema-mirror.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
@@ -66,29 +63,18 @@ interface DatabaseLocations {
 const MIRROR_FILE: FileKind = {
 	applicationId: MIRROR_APPLICATION_ID,
 	name: "Octocode transcript mirror",
+	version: 1,
 	create: createMirrorSchema,
 };
 
-/** What opening reports while a long migration runs (`MigrationContext.progress`). */
-export interface OpenHooks {
-	progress?(done: number, total: number): void;
-}
-
 /**
  * Open an independent connection on the coordination file; the mirror opens at its first use. The host supplies the
- * paths. Migrating a file from before version 10 moves the transcript mirror into `mirrorFile` (`mirror-move.ts`).
+ * paths.
  */
-export function openDatabase(
-	locations: DatabaseLocations,
-	plan: SchemaPlan = SCHEMA_PLAN,
-	hooks: OpenHooks = {},
-): AgentDb {
+export function openDatabase(locations: DatabaseLocations, kind: FileKind = COORDINATION_FILE): AgentDb {
 	const { file, mirrorFile, archiveDir, privateParent } = locations;
-	const openMirror = () => openConnection(mirrorFile, privateParent, MIRROR_PLAN, MIRROR_FILE, { openMirror: refuse });
-	const coordination = openConnection(file, privateParent, plan, COORDINATION_FILE, {
-		openMirror,
-		progress: hooks.progress,
-	});
+	const openMirror = () => openConnection(mirrorFile, privateParent, MIRROR_FILE);
+	const coordination = openConnection(file, privateParent, kind);
 	let mirror: Connection | undefined;
 	let refused: AgentDbError | undefined;
 	const mirrorDb = (): MirrorDb => {
@@ -130,10 +116,6 @@ export function openDatabase(
 	};
 }
 
-const refuse = (): never => {
-	throw new Error("The transcript mirror has no mirror of its own");
-};
-
 interface Connection {
 	db: Db;
 	fts: boolean;
@@ -144,14 +126,25 @@ interface Connection {
 	close(): void;
 }
 
-/** One connection on `target`, its schema brought to `plan` for a file of `kind`. */
-function openConnection(
-	target: string,
-	privateParent: boolean,
-	plan: SchemaPlan,
-	kind: FileKind,
-	context: MigrationContext,
-): Connection {
+/**
+ * One connection on `target`, with the schema of a file of `kind`. A file at an older schema version is renamed to
+ * `<file>.v<version>.retired` (with its `-wal` and `-shm`), so nothing in it is lost, and a new file is created in its
+ * place: Octocode has no upgrade steps.
+ */
+function openConnection(target: string, privateParent: boolean, kind: FileKind): Connection {
+	try {
+		return connect(target, privateParent, kind);
+	} catch (error) {
+		if (!(error instanceof AgentDbRetiredError)) throw error;
+		for (const suffix of ["", "-wal", "-shm"]) {
+			const from = `${target}${suffix}`;
+			if (fs.existsSync(from)) fs.renameSync(from, `${target}.v${error.version}.retired${suffix}`);
+		}
+		return connect(target, privateParent, kind);
+	}
+}
+
+function connect(target: string, privateParent: boolean, kind: FileKind): Connection {
 	// Private to this user: it holds prompts, notes and memories. SQLite gives its -wal and -shm files the same mode.
 	// Our own folder is tightened when it already exists; a folder named by OCTOCODE_AGENT_DB is only created.
 	if (privateParent) privateDir(path.dirname(target));
@@ -216,7 +209,7 @@ function openConnection(
 	};
 	try {
 		db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
-		const { fts } = prepareSchema(db, target, transaction, plan, kind, context);
+		const { fts } = prepareSchema(db, target, transaction, kind);
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
 		tighten(target);
 		let open = true;
@@ -278,15 +271,10 @@ function tighten(target: string): void {
 
 const shared = new Map<string, AgentDb>();
 const refused = new Map<string, AgentDbError>();
-/** Retry even without a write: a peer can roll back or release its lock without changing either file. */
-const MIGRATION_RETRY_MS = 1_000;
-/** Files another process was migrating, with their change marker and next retry time. */
-const migrating = new Map<string, { error: AgentDbMigratingError; stamp: string; retryAt: number }>();
 
 /**
  * One process connection per configured file. Opening another home must not close a database borrowed by a live
- * session. An `AgentDbError` is remembered per file and thrown again without retrying. A file another process is
- * migrating (`AgentDbMigratingError`, a busy error) is tried again once the file changes or after a short pause.
+ * session. An `AgentDbError` is remembered per file and thrown again without retrying.
  */
 export function sharedDatabase(locations: DatabaseLocations): AgentDb {
 	const key = canonicalPath(locations.file);
@@ -294,18 +282,12 @@ export function sharedDatabase(locations: DatabaseLocations): AgentDb {
 	if (current?.db.isOpen) return current;
 	const problem = refused.get(key);
 	if (problem) throw problem;
-	const stamp = dbStamp(locations.file);
-	const waiting = migrating.get(key);
-	if (waiting?.stamp === stamp && performance.now() < waiting.retryAt) throw waiting.error;
-	migrating.delete(key);
 	try {
 		const opened = openDatabase(locations);
 		shared.set(key, opened);
 		return opened;
 	} catch (error) {
 		if (error instanceof AgentDbError) refused.set(key, error);
-		if (error instanceof AgentDbMigratingError)
-			migrating.set(key, { error, stamp, retryAt: performance.now() + MIGRATION_RETRY_MS });
 		throw error;
 	}
 }
@@ -315,5 +297,4 @@ export function closeSharedConnections(): void {
 	for (const connection of shared.values()) connection.close();
 	shared.clear();
 	refused.clear();
-	migrating.clear();
 }

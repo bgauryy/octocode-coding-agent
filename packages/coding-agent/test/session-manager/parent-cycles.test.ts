@@ -1,9 +1,7 @@
-import crypto from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { collectEntriesForBranchSummary } from "../../src/core/compaction/branch-summarization.ts";
 import { buildSessionContext, SessionManager } from "../../src/core/session-manager.ts";
 
@@ -88,33 +86,5 @@ describe("session files whose parent links loop", () => {
 		const collected = collectEntriesForBranchSummary(manager, "bbbb0004", "bbbb0001");
 		expect(collected.commonAncestorId).toBeNull();
 		expect(collected.entries.map((e) => e.id)).toEqual(["bbbb0002", "bbbb0003", "bbbb0004"]);
-	});
-
-	it("gives every entry of a version 1 session its own id when the random source repeats", () => {
-		// Version 1 files have no ids; the migration assigns them. A repeated id would let a later entry replace an
-		// earlier one in the index and close a loop of parent links.
-		const original = crypto.randomUUID;
-		const values = ["cccc0001", "cccc0001", "cccc0002", "cccc0003", "cccc0004"];
-		crypto.randomUUID = vi.fn(() => `${values.shift() ?? "cccc0009"}-0000-4000-8000-000000000000` as const);
-		syncBuiltinESMExports();
-		try {
-			const file = join(dir, "v1.jsonl");
-			const v1 = [
-				{ type: "session", id: "v1", timestamp: "t", cwd: dir },
-				...["one", "two", "three"].map((text) => ({
-					type: "message",
-					timestamp: "t",
-					message: { role: "user", content: text, timestamp: 1 },
-				})),
-			];
-			writeFileSync(file, `${v1.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
-			const manager = SessionManager.open(file, dir);
-			const ids = manager.getEntries().map((e) => e.id);
-			expect(new Set(ids).size).toBe(3);
-			expect(texts(manager)).toEqual(["one", "two", "three"]);
-		} finally {
-			crypto.randomUUID = original;
-			syncBuiltinESMExports();
-		}
 	});
 });

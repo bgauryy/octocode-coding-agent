@@ -85,3 +85,12 @@ export function withBusyTimeout<T>(db: Sqlite.DatabaseSync, ms: number, work: ()
 		db.exec(`PRAGMA busy_timeout=${previous}`);
 	}
 }
+
+/**
+ * `write` without waiting for another connection's lock, for a write nothing depends on (a periodic sample, a history
+ * count): it is not worth holding the thread that also draws the screen, so a locked database raises the busy error at
+ * once (`isBusy`) and the caller skips the write.
+ */
+export function withoutWaiting<T>(db: Sqlite.DatabaseSync, write: () => T): T {
+	return withBusyTimeout(db, 0, write);
+}

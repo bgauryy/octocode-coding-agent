@@ -88,6 +88,14 @@ export async function checkCompaction(
 	const assistantIsFromBeforeCompaction =
 		compactionEntry !== null && assistantMessage.timestamp <= new Date(compactionEntry.timestamp).getTime();
 	if (assistantIsFromBeforeCompaction) {
+		// The old response's usage and errors are stale, but input added since the checkpoint is not.
+		if (!skipAbortedCheck) {
+			let tokens = estimateLeafContextTokens(currentProjection, sessionManager).tokens;
+			for (const message of incoming) tokens += estimateTokens(message);
+			if (shouldCompact(tokens, contextWindow, settings)) {
+				return host.runAutoCompaction("threshold", false, messageModel);
+			}
+		}
 		return false;
 	}
 

@@ -4,9 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentEvents, agents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openDatabase } from "../../../db/src/db.ts";
-import { SCHEMA_PLAN } from "../../../db/src/migrations.ts";
-import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { sameProcess } from "../../src/octocode/shared/process.ts";
@@ -21,7 +18,6 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 
-const { DatabaseSync } = loadSqlite();
 let root: string;
 let db: AgentDb;
 let store: TeamStore;
@@ -47,14 +43,6 @@ const deleteReasons = () =>
 			.filter((event) => event.type === "delete")
 			.map((event) => [event.name, event.data.reason]),
 	);
-const columns = (file: string, table: string) => {
-	const raw = new DatabaseSync(file, { readOnly: true });
-	try {
-		return (raw.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((column) => column.name);
-	} finally {
-		raw.close();
-	}
-};
 
 beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lifecycle-hint-")));
@@ -70,74 +58,6 @@ afterEach(() => {
 	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	fs.rmSync(root, { recursive: true, force: true });
-});
-
-describe("the end_hint migration", () => {
-	const open = (file: string, plan?: typeof SCHEMA_PLAN) =>
-		openDatabase(
-			{
-				file,
-				mirrorFile: `${file}.transcripts`,
-				archiveDir: path.join(path.dirname(file), "archive"),
-				privateParent: false,
-			},
-			plan,
-		);
-
-	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`), 8 (`cache_write`), 9 (`shell_history`) and 10 (the transcript mirror's own file) came after these.
-		expect(SCHEMA_PLAN.version).toBe(10);
-		expect(SCHEMA_PLAN.migrations).toEqual([
-			expect.objectContaining({ to: 2, additive: true }),
-			expect.objectContaining({ to: 3, additive: true }),
-			expect.objectContaining({ to: 4, additive: true }),
-			expect.objectContaining({ to: 5, additive: true }),
-			expect.objectContaining({ to: 6, additive: true }),
-			expect.objectContaining({ to: 7, additive: true }),
-			expect.objectContaining({ to: 8, additive: true }),
-			expect.objectContaining({ to: 9, additive: true }),
-			expect.objectContaining({ to: 10, additive: false }),
-		]);
-		const old = path.join(root, "old.db");
-		const first = open(old, { version: 1, migrations: [] });
-		// A version 1 file as the previous Octocode wrote it: no end_hint column.
-		for (const column of ["end_hint", "cwd", "branch", "process_title"])
-			first.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
-		// Step 8 adds `cache_write` to `agents` (and to `agent_runs`, dropped below).
-		first.db.exec("ALTER TABLE agents DROP COLUMN cache_write");
-		first.db.exec("DROP TABLE agent_runs");
-		first.db.exec("DROP TABLE timers");
-		// Step 5 adds `backlog.closed` and recreates its audit triggers; a version 1 file has neither.
-		for (const name of ["insert", "update", "delete"]) first.db.exec(`DROP TRIGGER backlog_audits_${name}`);
-		first.db.exec("ALTER TABLE backlog DROP COLUMN closed");
-		// Step 7 adds `backlog.rank`.
-		first.db.exec("ALTER TABLE backlog DROP COLUMN rank");
-		first.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
-		first.close();
-		expect(columns(old, "agents")).not.toContain("end_hint");
-		open(old).close();
-		expect(columns(old, "agents")).toContain("end_hint");
-		expect(fs.existsSync(`${old}.v1.bak`)).toBe(true);
-		const fresh = path.join(root, "fresh.db");
-		open(fresh).close();
-		expect(columns(old, "agents")).toEqual(columns(fresh, "agents"));
-		const raw = new DatabaseSync(old, { readOnly: true });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
-		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_PLAN.version });
-		raw.close();
-	});
-
-	it("is refused by an Octocode from before the transcript mirror moved out (step 10 is not additive)", () => {
-		const file = path.join(root, "both.db");
-		open(file).close();
-		expect(() => open(file, { version: 9, migrations: SCHEMA_PLAN.migrations.slice(0, 8) })).toThrow(
-			/needs an Octocode that supports schema version 10/,
-		);
-		// No floor row: the floor is the file's own version, which an Octocode at 9 cannot read.
-		const raw = new DatabaseSync(file, { readOnly: true });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toBeUndefined();
-		raw.close();
-	});
 });
 
 describe("cache writes per agent", () => {

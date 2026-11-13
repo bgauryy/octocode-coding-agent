@@ -9,6 +9,8 @@ export interface ToolSource {
 	value: unknown;
 	owner: string;
 	streaming: boolean;
+	/** Output projection is authoritative; result renderers must not read the original instead. */
+	projected?: boolean;
 }
 
 /**

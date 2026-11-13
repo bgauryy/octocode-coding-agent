@@ -24,7 +24,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("settings keys Octocode ignores", () => {
-	it("reports a removed compaction block as removed, saying what controls it now", () => {
+	it("reports a key no setting reads, with the command that removes it", () => {
 		writeFileSync(
 			globalPath,
 			JSON.stringify({
@@ -38,9 +38,7 @@ describe("settings keys Octocode ignores", () => {
 
 		expect(diagnostics).toHaveLength(1);
 		expect(diagnostics[0]?.type).toBe("warning");
-		expect(diagnostics[0]?.message).toBe(
-			`${globalPath}: 1 ignored key (compaction removed): /configuration unset compaction`,
-		);
+		expect(diagnostics[0]?.message).toBe(`${globalPath}: 1 ignored key (compaction): /configuration unset compaction`);
 		// Loading stays permissive: the known keys still apply and the unknown one is kept in the file.
 		expect(manager.getTheme()).toBe("dark");
 		expect(manager.getCompactionReserveTokens()).toBeGreaterThan(0);
@@ -52,9 +50,7 @@ describe("settings keys Octocode ignores", () => {
 
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
-		expect(warning?.message).toBe(
-			`${globalPath}: 1 ignored key (defaultModle unknown): /configuration unset defaultModle`,
-		);
+		expect(warning?.message).toBe(`${globalPath}: 1 ignored key (defaultModle): /configuration unset defaultModle`);
 	});
 
 	it("warns about an unknown key inside a known object setting, by dotted path", () => {
@@ -64,7 +60,7 @@ describe("settings keys Octocode ignores", () => {
 
 		// One line per file names every ignored key.
 		expect(messages).toEqual([
-			`${globalPath}: 2 ignored keys (thinkingBudgets.xhigh unknown, bash.nope unknown): /configuration unset thinkingBudgets.xhigh bash.nope`,
+			`${globalPath}: 2 ignored keys (thinkingBudgets.xhigh, bash.nope): /configuration unset thinkingBudgets.xhigh bash.nope`,
 		]);
 		expect(messages.join("\n")).not.toContain("thinkingBudgets.high ");
 	});
@@ -74,7 +70,7 @@ describe("settings keys Octocode ignores", () => {
 
 		const [warning] = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir));
 
-		expect(warning?.message).toContain("constructor unknown");
+		expect(warning?.message).toContain("(constructor)");
 	});
 
 	it("reports the removed codemode keys as unknown keys", () => {
@@ -83,7 +79,7 @@ describe("settings keys Octocode ignores", () => {
 		const messages = collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((d) => d.message);
 
 		expect(messages).toEqual([
-			`${globalPath}: 2 ignored keys (codemode unknown, autoEnableCodemode unknown): /configuration unset codemode autoEnableCodemode`,
+			`${globalPath}: 2 ignored keys (codemode, autoEnableCodemode): /configuration unset codemode autoEnableCodemode`,
 		]);
 	});
 
@@ -93,13 +89,14 @@ describe("settings keys Octocode ignores", () => {
 		expect(collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir))).toEqual([]);
 	});
 
-	it("stays silent for known keys, including legacy ones that migrate", () => {
-		writeFileSync(
-			globalPath,
-			JSON.stringify({ $schema: "x", theme: "dark", queueMode: "all", websockets: true, retry: { enabled: false } }),
-		);
-
+	it("stays silent for known keys and names keys of earlier versions like any other unknown key", () => {
+		writeFileSync(globalPath, JSON.stringify({ $schema: "x", theme: "dark", retry: { enabled: false } }));
 		expect(collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir))).toEqual([]);
+
+		writeFileSync(globalPath, JSON.stringify({ queueMode: "all", websockets: true }));
+		expect(collectSettingsDiagnostics(SettingsManager.create(cwd, agentDir)).map((item) => item.message)).toEqual([
+			`${globalPath}: 2 ignored keys (queueMode, websockets): /configuration unset queueMode websockets`,
+		]);
 	});
 
 	it("reports each load once: not again when drained, again after a reload", async () => {
@@ -113,7 +110,7 @@ describe("settings keys Octocode ignores", () => {
 		await manager.reload();
 		const reloaded = collectSettingsDiagnostics(manager).map((d) => d.message);
 		expect(reloaded).toEqual([
-			`${globalPath}: 2 ignored keys (compaction removed, typo unknown): /configuration unset compaction typo`,
+			`${globalPath}: 2 ignored keys (compaction, typo): /configuration unset compaction typo`,
 		]);
 
 		writeFileSync(globalPath, JSON.stringify({ theme: "dark" }));
@@ -142,7 +139,7 @@ describe("settings keys Octocode ignores", () => {
 		untrusted.setProjectTrusted(true);
 		const [warning] = collectSettingsDiagnostics(untrusted);
 		expect(warning?.message).toBe(
-			`${projectPath}: 1 ignored key (compaction removed): /configuration unset compaction --local`,
+			`${projectPath}: 1 ignored key (compaction): /configuration unset compaction --local`,
 		);
 
 		expect(collectSettingsDiagnostics(SettingsManager.createForStartup(cwd, agentDir, true))).toHaveLength(1);

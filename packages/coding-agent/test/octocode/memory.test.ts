@@ -109,6 +109,13 @@ describe("memory query builder", () => {
 		expect(ftsQuery(Array.from({ length: 50 }, (_, i) => `w${i}`).join(" "))!.split(" OR ")).toHaveLength(32);
 	});
 
+	it("limits eligible terms without changing explicit search's short-word support", () => {
+		expect(terms("db ui sqlite db rollback", 2)).toEqual(["db", "ui"]);
+		expect(terms("db ui sqlite db rollback", 2, 3)).toEqual(["sqlite", "rollback"]);
+		const words = Array.from({ length: 50 }, (_, index) => `word${index}`);
+		expect(terms(`db ui ${words.join(" ")}`, 32, 3)).toEqual(words.slice(0, 32));
+	});
+
 	it("normalizes titles, measures overlap, parses ids", () => {
 		expect(normalizeTitle("  Use node:SQLITE!  ")).toBe(normalizeTitle("use node sqlite"));
 		expect(jaccard(["a", "b"], ["a", "b"])).toBe(1);

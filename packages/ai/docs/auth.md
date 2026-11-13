@@ -160,7 +160,7 @@ await models.logout("openai");
 
 `manual_code` prompts race a local callback server; `p.signal` aborts them when the server wins. OpenAI login reuses saved registrations, validates the returned identity and accepts `LoginOptions.getDeviceId` (stable installation UUID) and `agentName`; `Models.login` passes the previous credential to the provider. The optional `OAuthAuth.logout` hook lets OpenAI revoke renewable sessions under the store lock; local tokens are cleared even when revocation is unconfirmed, and `signedOut` records never count as authentication. Failed device-flow or token validation errors list field names, never values.
 
-The built-in flows are private to the providers; `@octocodeai/octocode-ai/oauth` exports only the types the coding agent's extension OAuth needs.
+The built-in flows are private to the providers.
 
 ### Vertex AI
 

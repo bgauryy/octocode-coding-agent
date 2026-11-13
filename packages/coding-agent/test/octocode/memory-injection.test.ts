@@ -14,6 +14,30 @@ import { MemoryStore } from "../../src/octocode/memory/store.ts";
 import { tmp } from "./helpers.ts";
 
 describe("bounded memory retrieval", () => {
+	it.each([true, false])("counts eligible words toward the recall query limit (FTS: %s)", (fts) => {
+		const db = openAgentDb(path.join(tmp(), "memory.sqlite"));
+		try {
+			const store = new MemoryStore({ ...db, fts }, "repo-a");
+			const memory = store.set({ title: "PostgreSQL rollback", author: "test" }).memory;
+			const search = vi.spyOn(store, "search");
+			const shortWords = Array.from(
+				{ length: 32 },
+				(_, index) => `${index < 26 ? "x" : "y"}${String.fromCharCode(97 + (index % 26))}`,
+			).join(" ");
+			const injection = selectInjection(store, {
+				query: `${shortWords} postgresql rollback`,
+				scope: "all",
+				seen: new Set(),
+				topK: 5,
+				pinned: false,
+			});
+			expect(injection?.ids).toEqual([memory.id]);
+			expect(search.mock.calls[0][0]).toBe("postgresql rollback");
+		} finally {
+			db.close();
+		}
+	});
+
 	it.each([true, false])("finds unseen memories beyond the usual retrieval window (FTS: %s)", (fts) => {
 		const db = openAgentDb(path.join(tmp(), "memory.sqlite"));
 		const store = new MemoryStore({ ...db, fts }, "repo-a");

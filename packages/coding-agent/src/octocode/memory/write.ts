@@ -56,6 +56,7 @@ export async function writeMemory({
 	ctx,
 	signal,
 }: WriteCall): Promise<ReturnType<typeof textResult<{ ids: number[] }>>> {
+	signal?.throwIfAborted();
 	/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. A save asks in every mode: `full` runs a `file.outside` change, and this text would steer every later session. */
 	const confirmWide = async (wide: boolean, title: string, what: string[], effect: string) => {
 		if (!wide) return;
@@ -85,6 +86,7 @@ export async function writeMemory({
 			);
 		}
 		if (id === undefined) throw new Error("delete needs id.");
+		signal?.throwIfAborted();
 		const removed = store.delete(id);
 		return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
 	}
@@ -105,6 +107,7 @@ export async function writeMemory({
 		],
 		`${current ? "changes" : "saves"} a memory every later session receives`,
 	);
+	signal?.throwIfAborted();
 	const { memory, created } = store.set({
 		...(id !== undefined ? { id } : {}),
 		...(params.scope ? { scope: params.scope } : {}),

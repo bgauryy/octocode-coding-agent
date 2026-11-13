@@ -79,6 +79,8 @@ Before each run, automatic recall considers pinned and relevant notes: 1,200 cha
 
 Claude Code's auto memory is a separate, read-only source, off by default: [project context](../../../docs/CONTEXT.md#project-context).
 
+An omitted or replaced memory notice no longer counts as present: unchanged notes can be recalled again when their original content has left the active branch. Restoring the exact notice restores that deduplication state. Saved notes provide long-term knowledge; the checkpoint, recent messages and task records provide the working state of the current session ([context management](../../../docs/CONTEXT.md#working-across-many-context-windows)).
+
 ## Lifecycle events and compaction history
 
 Built-in hooks record init, create, update, delete and committed compaction events in the same database. Every activation, including resume and reload, gets its own init event; repeated delivery is idempotent; registration IDs distinguish reused agent names. Heartbeats and activity text produce no events, and nonpersistent agents produce no automatic durable events.

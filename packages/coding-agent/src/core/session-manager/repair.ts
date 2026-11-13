@@ -21,7 +21,7 @@ function backupPath(file: string): string {
 }
 
 /** Copy the file as it is to the first free backup name and return that name; an existing backup is never replaced. */
-export function backupSessionFile(file: string): string {
+function backupSessionFile(file: string): string {
 	const backup = backupPath(file);
 	copyFileSync(file, backup, constants.COPYFILE_EXCL);
 	return backup;

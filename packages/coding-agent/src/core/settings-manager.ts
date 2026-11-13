@@ -16,7 +16,7 @@ export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
-import { migrateSettings, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
+import { settingsObject, tryLoadSettingsFromStorage } from "./settings-manager/load.ts";
 import { watchProviderToggles } from "./settings-manager/provider-watch.ts";
 import { deepMergeSettings, effectiveSettings, mergeAllSettings } from "./settings-manager/merge.ts";
 import { SettingsPersistence } from "./settings-manager/persistence.ts";
@@ -148,14 +148,14 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		state.warnings = state.warnings.filter((warning) => !warning.message.startsWith("Pi settings were not read"));
 		if (inherited) state.warnings.push(...inherited.warnings);
 		// Pi's values never stand in for Octocode's own file while that file is invalid.
-		state.inheritedSettings = inherited && !state.globalSettingsLoadError ? migrateSettings(inherited.settings) : {};
+		state.inheritedSettings = inherited && !state.globalSettingsLoadError ? settingsObject(inherited.settings) : {};
 		state.settings = effectiveSettings(state);
 	}
 
 	/** Create an in-memory SettingsManager (no file I/O) */
 	static inMemory(settings: Partial<Settings> = {}, options: SettingsManagerCreateOptions = {}): SettingsManager {
 		const storage = new InMemorySettingsStorage();
-		const initialSettings = migrateSettings(structuredClone(settings));
+		const initialSettings = settingsObject(structuredClone(settings));
 		storage.withLock("global", () => JSON.stringify(initialSettings, null, 2));
 		return SettingsManager.fromStorage(storage, options);
 	}

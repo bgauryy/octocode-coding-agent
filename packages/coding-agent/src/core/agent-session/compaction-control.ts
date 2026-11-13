@@ -20,6 +20,7 @@ import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, type CompactionReason, runCompaction } from "../session-compaction.ts";
 import type { SessionInternals } from "./host.ts";
 import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
+import { CompactionPrewarm } from "./compaction-prewarm.ts";
 import { summarizationRetryCallbacks } from "./retry.ts";
 import { recordRunFailure } from "./run-outcome.ts";
 import type { AgentSessionEvent } from "./types.ts";
@@ -41,6 +42,7 @@ export interface CompactionControlHost extends Pick<
 	"session" | "run" | "emit" | "refreshContext" | "resolveIdleWaitIfIdle"
 > {
 	readonly cacheWarmer: Pick<CacheWarmer, "cancel"> | undefined;
+	forcedSystemPrompt(): string | undefined;
 	/** The session's default summary (`_runDefaultCompaction`). */
 	summarize: CompactionHost["summarize"];
 	/** Starts the delivery of input held during a manual compaction; never throws or waits (`releaseHeldInput`). */
@@ -49,6 +51,7 @@ export interface CompactionControlHost extends Pick<
 
 export class SessionCompaction {
 	private readonly _autoCompactionLimit = new AutoCompactionLimit();
+	private readonly _prewarm = new CompactionPrewarm();
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 
@@ -89,6 +92,7 @@ export class SessionCompaction {
 		const { settingsManager } = this.host.session;
 		const emit = (event: AgentSessionEvent) => this.host.emit(event);
 		return {
+			forceSystemPrompt: this.host.forcedSystemPrompt(),
 			watch: summaryStreamWatcher({
 				idleMs: settingsManager.getHttpIdleTimeoutMs(),
 				onProgress: (progress) => emit({ type: "compaction_progress", reason, ...progress }),
@@ -141,6 +145,7 @@ export class SessionCompaction {
 		const customInstructions = validateCompactionInstructions(options?.customInstructions);
 		const { session } = this.host;
 		await session.abort("internal");
+		this._prewarm.drop();
 		// Nothing to summarize is an answer, not a failure: it throws before any compaction event, so no frontend reports it.
 		const model = session.model;
 		const settings = model
@@ -189,6 +194,7 @@ export class SessionCompaction {
 				outcome,
 			});
 			this._autoCompactionLimit.succeeded();
+			this._prewarm.reset();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const aborted = controller.signal.aborted || outcome.cancelledByExtension;
@@ -227,10 +233,28 @@ export class SessionCompaction {
 		return compactionResult;
 	}
 
+	/** Plans the coming threshold compaction once `tokens` nears the threshold (`compaction-prewarm.ts`); shows nothing. */
+	prewarm(tokens: number, model: Model<any>, thinking?: ThinkingLevel): void {
+		const { session } = this.host;
+		if (this.isRunning) return;
+		const settings = session.settingsManager.getCompactionSettings(
+			model,
+			thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+		);
+		if (!this._prewarm.due(tokens, model, settings)) return;
+		this._prewarm.start(session.sessionManager, session.extensionRunner, model, settings, {
+			forceSystemPrompt: this.host.forcedSystemPrompt(),
+			watch: summaryStreamWatcher({ idleMs: session.settingsManager.getHttpIdleTimeoutMs() }),
+			retry: session.settingsManager.getRetrySettings(),
+			callbacks: {},
+		});
+	}
+
 	/** Cancel in-progress compaction (manual or auto). */
 	abort(): void {
 		this._compactionAbortController?.abort();
 		this._autoCompactionAbortController?.abort();
+		this._prewarm.drop();
 	}
 
 	/**
@@ -283,7 +307,14 @@ export class SessionCompaction {
 			}
 
 			const pathEntries = session.sessionManager.getBranch();
-			const preparation = prepareCompaction(pathEntries, settings);
+			// The plan made ahead of the threshold, when it still holds: its summary is ready or already being written.
+			const forced = this.host.forcedSystemPrompt();
+			const planned =
+				reason === "threshold"
+					? this._prewarm.take(pathEntries, session.sessionManager.getSessionId(), model, settings, forced)
+					: undefined;
+			if (!planned) this._prewarm.drop();
+			const preparation = planned ?? prepareCompaction(pathEntries, settings);
 			if (!preparation) {
 				if (willRetry) await this._recoveryNotStarted("nothing in the context can be summarized");
 				return false;
@@ -310,6 +341,7 @@ export class SessionCompaction {
 				outcome,
 			});
 			this._autoCompactionLimit.succeeded();
+			this._prewarm.reset();
 			const stoppedAfterCompaction = abortController.signal.aborted || this.host.run.agentRunAbortRequested;
 			this.host.emit({
 				type: "compaction_end",
@@ -327,6 +359,7 @@ export class SessionCompaction {
 			return session.agent.hasQueuedMessages();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "compaction failed";
+			this._prewarm.drop();
 			if (error instanceof CompactionFitError) this.host.run.windowUnfit = message;
 			const aborted = abortController?.signal.aborted === true || outcome.cancelledByExtension;
 			if (!aborted && started) this._autoCompactionLimit.failed();

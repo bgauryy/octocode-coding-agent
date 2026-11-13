@@ -2,7 +2,7 @@ import { uuidv7 } from "@octocodeai/octocode-ai";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { jsonlLines, parseJsonlLine } from "../../../../common/src/jsonl.ts";
-import { CURRENT_SESSION_VERSION, type CompactionEntry, type FileEntry, type SessionHeader } from "./types.ts";
+import { CURRENT_SESSION_VERSION, type FileEntry, type SessionHeader } from "./types.ts";
 
 export function createSessionId(): string {
 	return uuidv7();
@@ -26,73 +26,16 @@ export function generateId(byId: { has(id: string): boolean }): string {
 	return randomUUID();
 }
 
-/** Migrate v1 → v2: add id/parentId tree structure. Mutates in place. */
-function migrateV1ToV2(entries: FileEntry[]): void {
-	const ids = new Set<string>();
-	let prevId: string | null = null;
-
-	for (const entry of entries) {
-		if (entry.type === "session") {
-			entry.version = 2;
-			continue;
-		}
-
-		entry.id = generateId(ids);
-		ids.add(entry.id);
-		entry.parentId = prevId;
-		prevId = entry.id;
-
-		// Convert firstKeptEntryIndex to firstKeptEntryId for compaction
-		if (entry.type === "compaction") {
-			const comp = entry as CompactionEntry & { firstKeptEntryIndex?: number };
-			if (typeof comp.firstKeptEntryIndex === "number") {
-				const targetEntry = entries[comp.firstKeptEntryIndex];
-				if (targetEntry && targetEntry.type !== "session") {
-					comp.firstKeptEntryId = targetEntry.id;
-				}
-				delete comp.firstKeptEntryIndex;
-			}
-		}
-	}
-}
-
-/** Migrate v2 → v3: rename hookMessage role to custom. Mutates in place. */
-function migrateV2ToV3(entries: FileEntry[]): void {
-	for (const entry of entries) {
-		if (entry.type === "session") {
-			entry.version = 3;
-			continue;
-		}
-
-		// Update message entries with hookMessage role
-		if (entry.type === "message") {
-			const msgEntry = entry;
-			if (msgEntry.message && (msgEntry.message as { role: string }).role === "hookMessage") {
-				(msgEntry.message as { role: string }).role = "custom";
-			}
-		}
-	}
-}
-
 /**
- * Run all necessary migrations to bring entries to current version.
- * Mutates entries in place. Returns true if any migration was applied.
+ * Refuses a session file of another format version. Octocode does not convert session files: one written by another
+ * version is left as it is, and the caller reports why it cannot be opened.
  */
-export function migrateToCurrentVersion(entries: FileEntry[]): boolean {
-	const header = entries.find((e) => e.type === "session");
-	const version = header?.version ?? 1;
-
-	if (version >= CURRENT_SESSION_VERSION) return false;
-
-	if (version < 2) migrateV1ToV2(entries);
-	if (version < 3) migrateV2ToV3(entries);
-
-	return true;
-}
-
-/** Exported for testing */
-export function migrateSessionEntries(entries: FileEntry[]): void {
-	migrateToCurrentVersion(entries);
+export function assertCurrentSessionVersion(header: SessionHeader, file?: string): void {
+	if (header.version === CURRENT_SESSION_VERSION) return;
+	const found = header.version === undefined ? "no version" : `version ${header.version}`;
+	throw new Error(
+		`Session file ${file ?? header.id} has ${found}; this Octocode reads version ${CURRENT_SESSION_VERSION} only. The file is left as it is.`,
+	);
 }
 
 /** Exported for compaction.test.ts */

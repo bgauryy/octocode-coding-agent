@@ -4,12 +4,6 @@ type ObjectSchema = { properties: Record<string, unknown>; additionalProperties?
 
 const KNOWN_KEYS = new Set(Object.keys(SettingsSchema.properties));
 
-/** Root keys that earlier versions read and no setting controls now, each with what controls the behavior today. */
-const REMOVED_KEYS: Readonly<Record<string, string>> = {
-	compaction:
-		"Compaction is built in and its thresholds are fixed by the model's context window and thinking setup; no setting changes them.",
-};
-
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -42,16 +36,15 @@ export function ignoredSettingsKeys(settings: object): string[] {
 }
 
 /**
- * One line for every ignored key of a file: `2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed):
- * /configuration unset thinkingBudgets.xhigh compaction`, or undefined when none. The command is the one-step fix;
- * `--local` points it at the project file. Why a removed key is gone is in the settings reference, not on every start.
+ * One line for every ignored key of a file: `2 ignored keys (thinkingBudgets.xhigh, compaction): /configuration unset
+ * thinkingBudgets.xhigh compaction`, or undefined when none. The command is the one-step fix; `--local` points it at
+ * the project file.
  */
 export function describeIgnoredKeys(
 	keys: readonly string[],
 	scope: "global" | "project" = "global",
 ): string | undefined {
 	if (keys.length === 0) return undefined;
-	const named = keys.map((key) => `${key} ${Object.hasOwn(REMOVED_KEYS, key) ? "removed" : "unknown"}`);
 	const fix = `/configuration unset ${keys.join(" ")}${scope === "project" ? " --local" : ""}`;
-	return `${keys.length} ignored key${keys.length === 1 ? "" : "s"} (${named.join(", ")}): ${fix}`;
+	return `${keys.length} ignored key${keys.length === 1 ? "" : "s"} (${keys.join(", ")}): ${fix}`;
 }

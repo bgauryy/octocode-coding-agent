@@ -126,23 +126,6 @@ describe("openai-completions reasoning_details streaming", () => {
 		expect(getAssistantPayload(mockState.payloads[1])?.reasoning_details).toEqual([reasoningDetail]);
 	});
 
-	it("falls back to encrypted tool-call signatures for older stored assistant messages", async () => {
-		mockState.chunkSets = [
-			[chunk({ reasoning_details: [reasoningDetail] }), toolCallChunk(), chunk({}, "tool_calls")],
-			[chunk({ content: "ok" }), chunk({}, "stop")],
-		];
-
-		const assistantMessage = await runOpenAICompletionsStream();
-		assistantMessage.content = assistantMessage.content.filter((block) => block.type !== "thinking");
-		const toolCall = assistantMessage.content.find((block) => block.type === "toolCall");
-		if (!toolCall || toolCall.type !== "toolCall") throw new Error("Expected tool call");
-		toolCall.thoughtSignature = JSON.stringify(reasoningDetail);
-
-		await runOpenAICompletionsStream([assistantMessage]);
-
-		expect(getAssistantPayload(mockState.payloads[1])?.reasoning_details).toEqual([reasoningDetail]);
-	});
-
 	it("preserves signed text and summary reasoning_details in their original sequence", async () => {
 		mockState.chunkSets = [
 			[

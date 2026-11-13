@@ -5,6 +5,7 @@ import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { CONTEXT_NOTICE_TYPE, supersededNotice } from "../shared/context-notices.ts";
 
 /**
  * Context usage notices: when the context crosses half, three quarters and nine tenths of the room before automatic
@@ -14,7 +15,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
  * in the transcript where it was sent. The last band noticed is read back from the context, so a resume does not
  * repeat it and a compaction, which summarizes the notices away, starts the bands over.
  */
-export const CONTEXT_NOTICE_TYPE = "octocode-context-usage";
+export { CONTEXT_NOTICE_TYPE };
 
 /** Shares of the room before automatic compaction (window less reserve) that each get one notice. */
 const CONTEXT_NOTICE_BANDS = [0.5, 0.75, 0.9] as const;
@@ -45,10 +46,16 @@ export function contextNoticeText(tokens: number, limit: number, window: number,
 }
 
 /** The band of the last notice in the context, if any. */
-export function lastNoticedBand(messages: readonly Pick<MessageRef, "message">[]): number | undefined {
+export function lastNoticedBand(
+	messages: readonly Pick<MessageRef, "message">[],
+	compactionId?: string,
+): number | undefined {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index].message;
 		if (!isRecord(message) || message.role !== "custom" || message.customType !== CONTEXT_NOTICE_TYPE) continue;
+		if (supersededNotice(message, compactionId)) continue;
+		// A legacy notice cannot establish occupancy in this new checkpoint; one fresh append upgrades its provenance.
+		if (compactionId && (!isRecord(message.details) || message.details.compactionId === undefined)) continue;
 		const band = isRecord(message.details) ? message.details.band : undefined;
 		return typeof band === "number" ? band : undefined;
 	}
@@ -65,6 +72,7 @@ export function noticeContextUsage(
 	messages: readonly Pick<MessageRef, "message">[],
 	thinking?: CompactionThinking,
 	compactTool = false,
+	compactionId?: string,
 ): void {
 	const model = ctx.model;
 	const tokens = ctx.getContextUsage()?.tokens;
@@ -72,7 +80,7 @@ export function noticeContextUsage(
 	const limit = autoCompactAt(model, thinking);
 	const band = noticeBand(tokens, limit);
 	if (band === undefined) return;
-	const last = lastNoticedBand(messages);
+	const last = lastNoticedBand(messages, compactionId);
 	if (last !== undefined && last >= band) return;
 	try {
 		void api.sendMessage(
@@ -80,7 +88,7 @@ export function noticeContextUsage(
 				customType: CONTEXT_NOTICE_TYPE,
 				content: contextNoticeText(tokens, limit, model.contextWindow, compactTool && band >= COMPACT_HINT_BAND),
 				display: false,
-				details: { band, tokens, limit },
+				details: { band, tokens, limit, compactionId: compactionId ?? null },
 			},
 			{ triggerTurn: false },
 		);

@@ -1,4 +1,4 @@
-import { type Db, type OwnedChild, processSamples } from "../../../../db/src/api.ts";
+import { type Db, isBusy, type OwnedChild, processSamples, withoutWaiting } from "../../../../db/src/api.ts";
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "../../../../common/src/time.ts";
 import { isProcessTitle } from "./title.ts";
 import type { ProcessRow, ProcessTableSource } from "./table.ts";
@@ -124,7 +124,9 @@ export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 			const memory = options.memory ? options.memory() : process.memoryUsage();
 			const identity = options.identity();
 			const at = now();
-			processSamples.record(options.db, {
+			// The last sample of a process that is ending may wait for the database; a periodic one never does.
+			const write = <T>(run: () => T): T => (ended ? run() : withoutWaiting(options.db, run));
+			const sample = {
 				at,
 				pid: selfPid,
 				started: options.started ?? null,
@@ -134,13 +136,15 @@ export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 				heapUsed: memory.heapUsed,
 				ended,
 				children: lastTable ? ownedChildren(lastTable, selfPid, options.kinds()) : [],
-			});
+			};
+			write(() => processSamples.record(options.db, sample));
 			if (at - lastPrune >= PRUNE_EVERY_MS) {
+				write(() => processSamples.pruneBefore(options.db, at - SAMPLE_RETENTION_MS));
 				lastPrune = at;
-				processSamples.pruneBefore(options.db, at - SAMPLE_RETENTION_MS);
 			}
 		} catch (error) {
-			options.onError(error);
+			// Another process holds the database: this sample is skipped, the next one is minutes away.
+			if (!isBusy(error)) options.onError(error);
 		}
 	};
 	const sampleOnce = async (): Promise<void> => {

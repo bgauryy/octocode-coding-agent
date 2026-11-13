@@ -273,6 +273,29 @@ describe("generateSummary reasoning options", () => {
 		);
 	});
 
+	it.each([
+		["no content", []],
+		["whitespace", [{ type: "text", text: " \n\t" }]],
+		["only thinking", [{ type: "thinking", thinking: "I should summarize this." }]],
+	] as const)("rejects %s from conversation and split-turn summaries", async (_label, content) => {
+		completeSimpleMock.mockResolvedValue({ ...mockSummaryResponse, content: [...content] });
+		await expect(generateSummaryWithUsage(messages, createModel(false), undefined, "test-key")).rejects.toThrow(
+			"Summarization failed: the summary was empty",
+		);
+		const preparation: CompactionPreparation = {
+			firstKeptEntryId: "entry-keep",
+			messagesToSummarize: [],
+			turnPrefixMessages: messages,
+			isSplitTurn: true,
+			tokensBefore: 100,
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { enabled: true, reserveTokens: 2000, keepRecentTokens: 20 },
+		};
+		await expect(compact(preparation, createModel(false), "test-key")).rejects.toThrow(
+			"Turn prefix summarization failed: the summary was empty",
+		);
+	});
+
 	it("rejects tool calls from split-turn summaries", async () => {
 		completeSimpleMock.mockResolvedValueOnce(mockToolCallResponse);
 		const preparation: CompactionPreparation = {

@@ -52,6 +52,9 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
 	if (response.stopReason === "length") {
 		return `${label} failed: generation hit the token cap and the summary is incomplete`;
 	}
+	if (!response.content.some((block) => block.type === "toolCall") && !contentText(response.content).trim()) {
+		return `${label} failed: the summary was empty`;
+	}
 	return undefined;
 }
 

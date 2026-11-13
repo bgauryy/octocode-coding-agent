@@ -32,7 +32,7 @@ export function deepMergeObjects(
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
 export function deepMergeSettings(base: Settings, overrides: Settings): Settings {
-	const merged = deepMergeObjects(base as Record<string, unknown>, overrides as Record<string, unknown>) as Settings;
+	const merged = deepMergeObjects(base, overrides) as Settings;
 	Object.assign(
 		merged,
 		mergeCachePreferences([

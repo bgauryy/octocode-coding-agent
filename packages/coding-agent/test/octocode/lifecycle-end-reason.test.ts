@@ -116,36 +116,6 @@ describe("the delete event's end record", () => {
 	});
 });
 
-describe("reading stored reasons", () => {
-	it("maps the legacy reasons to `crashed`, keeping the old code path as detail", () => {
-		const workspace = registeredWorkspace(root, db).id;
-		const legacy = (id: string, reason: string, extra: Record<string, unknown> = {}) =>
-			agentEvents.append(db.db, workspace, {
-				id,
-				time: new Date(1000).toISOString(),
-				name: id,
-				parentId: null,
-				sessionId: null,
-				type: "delete",
-				version: 1,
-				data: { agentId: id, reason, ...extra },
-			});
-		legacy("reaped-one", "reaped");
-		legacy("removed-one", "removed");
-		legacy("replaced-one", "replaced dead registration");
-		legacy("left-one", "left");
-		const data = Object.fromEntries(deletes().map((event) => [event.name, event.data]));
-		expect(data["reaped-one"]).toMatchObject({ reason: "crashed" });
-		expect(data["reaped-one"]).not.toHaveProperty("detail");
-		expect(data["removed-one"]).toMatchObject({ reason: "crashed", detail: "removed" });
-		expect(data["replaced-one"]).toMatchObject({ reason: "crashed", detail: "replaced dead registration" });
-		expect(data["left-one"]).toMatchObject({ reason: "left" });
-		// The stored row is not rewritten.
-		const raw = db.db.prepare("SELECT data FROM agent_events WHERE id = 'reaped-one'").get() as { data: string };
-		expect(JSON.parse(raw.data).reason).toBe("reaped");
-	});
-});
-
 describe("who names the reason", () => {
 	it("a run's settle names completed or failed, and says nothing for an abort", () => {
 		expect(settleReason("completed")).toBe("completed");

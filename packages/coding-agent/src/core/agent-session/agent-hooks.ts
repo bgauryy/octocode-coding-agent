@@ -6,11 +6,11 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentContext, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
-import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
+import type { Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import { estimateLeafContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
+import { projectForcedSystemPrompt, type RequestSystemOverride } from "../forced-system-prompt.ts";
 import { convertToLlm } from "../messages.ts";
 import type { SessionProjection } from "../session-manager.ts";
 import { normalizeBuildSystemPromptOptions } from "../system-prompt.ts";
@@ -34,6 +34,8 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
 	): Promise<boolean>;
+	/** Requests the coming compaction's summary ahead when the context nears the threshold (`compaction-prewarm.ts`). */
+	prewarmCompaction(tokens: number, model: Model<any>, thinking?: ThinkingLevel): void;
 }
 
 /** Estimated tokens of a request built from `projection`, counting the tools it will declare that it does not yet. */
@@ -199,6 +201,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 				assertFitsWindow(host, model);
 			}
 			if (thresholdAttempted) attempted.add(context);
+			else host.prewarmCompaction(requestTokens(host, projection), model, thinkingLevel);
 			assertImageRequestContext(model, convertToLlm(context.messages));
 			return { ...previous, context, model, thinkingLevel, refreshInput };
 		}
@@ -322,18 +325,19 @@ export function installHiddenDeclarationsProjection(host: AgentHooksHost): void 
  */
 export function installForcedPromptProjection(host: AgentHooksHost): void {
 	const agent = host.session.agent;
+	let pending: RequestSystemOverride | undefined;
+	agent.subscribe((event) => {
+		if (event.type !== "message_end" || event.message.role !== "assistant") return;
+		if (pending && event.message.stopReason !== "aborted" && event.message.stopReason !== "error")
+			host.tools.rememberRequestSystemOverride(pending);
+		pending = undefined;
+	});
 	const previousTransformContext = agent.transformContext;
 	agent.transformContext = async (messages, signal) => {
 		const transformed = previousTransformContext ? await previousTransformContext(messages, signal) : messages;
 		const forced = host.tools.runSystemPromptOptions?.forceSystemPrompt;
-		if (forced === undefined) return transformed;
-		const current = getCurrentSystemMessage(transformed);
-		const head: SystemMessage = {
-			role: "system",
-			content: forced,
-			...(current?.toolsAdded ? { toolsAdded: current.toolsAdded } : {}),
-			timestamp: current?.timestamp ?? Date.now(),
-		};
-		return [head, ...transformed.filter((message) => message.role !== "system")];
+		const session = host.session.sessionManager;
+		pending = { sessionId: session.getSessionId(), leafId: session.getLeafId(), forced };
+		return projectForcedSystemPrompt(transformed, forced);
 	};
 }

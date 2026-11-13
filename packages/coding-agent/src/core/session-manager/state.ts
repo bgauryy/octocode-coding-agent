@@ -22,7 +22,7 @@ export interface SessionState {
 	 * a torn tail is this process's own.
 	 */
 	failedWrite?: FailedWrite;
-	/** Messages kept in memory because another process held the lock past the wait; the next write saves them first. */
+	/** Records kept in memory because another process held the lock past the wait; the retry or the next write saves them first. */
 	readonly unwritten: SessionEntry[];
 	fileEntries: FileEntry[];
 	/** What the session file holds so far, for storing the next line against it (`codec.ts`). */

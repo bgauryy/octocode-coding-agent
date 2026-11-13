@@ -153,7 +153,7 @@ describe("turn_end", () => {
  * the only edit of an old message is the staged recovery from a request rejected as too large (HTTP 413).
  */
 describe("context edits", () => {
-	it("are named only by 413 recovery and the read index that invalidates its cached context", () => {
+	it("are named only by recovery and read or memory indexes that invalidate removed context", () => {
 		const sourceRoot = path.resolve(__dirname, "../../src/octocode");
 		const walk = (dir: string): string[] =>
 			fs
@@ -168,7 +168,13 @@ describe("context edits", () => {
 		const naming = walk(sourceRoot)
 			.filter((file) => /context_edit|ContextEdit|appendContextEdit/.test(fs.readFileSync(file, "utf8")))
 			.map((file) => path.relative(sourceRoot, file).split(path.sep).join("/"));
-		expect(naming.sort()).toEqual(["compaction/images.ts", "compaction/recovery.ts", "files/dedupe.ts"]);
+		expect(naming.sort()).toEqual([
+			"compaction/history-cache.ts",
+			"compaction/images.ts",
+			"compaction/recovery.ts",
+			"files/dedupe.ts",
+			"memory/inject.ts",
+		]);
 	});
 
 	it("are the only entries the turn_end handler returns, and only for a turn rejected as too large", async () => {

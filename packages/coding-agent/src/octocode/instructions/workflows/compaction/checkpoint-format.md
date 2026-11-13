@@ -1,17 +1,17 @@
 Use these headings in order:
 
 {{goalHeading}}
-[The user's goals and reasons, if shown; separate items for different tasks]
+[Current goals and reasons; earlier goals only while still relevant]
 
 ## Constraints & Preferences
 - [The user's constraints, preferences or requirements, or "(none)"]
 
 ## Progress
 ### Done
-- [x] [Completed work]
+- [x] [Completed work needed to continue: outcome and evidence reference]
 
 ### In Progress
-- [ ] [Work under way; pending jobs or external effects and how to check their state before retrying]
+- [ ] [Active work, owner, item/agent/job ids and dependencies; pending effects and how to check before retrying]
 
 ### Blocked
 - [What prevents progress, if anything]
@@ -20,10 +20,10 @@ Use these headings in order:
 - **[Decision]**: [Brief rationale, evidence and unverified assumptions]
 
 ## Errors & Fixes
-- [Each error or failed approach: exact error text, cause, fix or "unresolved"; include the user's corrections]
+- [Unresolved errors; for resolved failures, one-line lesson and evidence. Keep user corrections.]
 
 ## Where We Stopped
-- [Work under way in the last messages, exact file paths and the assistant's last step. Exclude this summary request: it is not a user ask. Name a next step only if it follows directly from the latest request; never start tangential work.]
+- [The latest request, exact file paths, last action and next step within that request. Exclude this summary request; never start tangential work.]
 
 ## Critical Context
 - [Data, examples or references needed to continue, or "(none)"]

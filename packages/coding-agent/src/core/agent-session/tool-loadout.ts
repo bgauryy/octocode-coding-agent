@@ -19,6 +19,8 @@ import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 import { companionFloor, toolsToActivate, toToolInfo, withCompanions } from "./tool-loadout/activation.ts";
 import { runPrepareLoadoutHooks } from "./tool-loadout/prepare-hooks.ts";
+import { ancestors } from "../session-manager/ancestors.ts";
+import type { RequestSystemOverride } from "../forced-system-prompt.ts";
 import { buildBaseSystemPromptOptions } from "./tool-loadout/prompt-options.ts";
 
 export interface ToolLoadoutOptions {
@@ -61,6 +63,7 @@ export class SessionToolLoadout {
 	baseSystemPromptOptions!: NormalizedBuildSystemPromptOptions;
 	/** Prompt options after before_agent_start mutations for the active run. */
 	runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
+	private _lastRequestOverride?: RequestSystemOverride;
 
 	private readonly host: Pick<SessionInternals, "session" | "cwd">;
 
@@ -84,6 +87,21 @@ export class SessionToolLoadout {
 	/** Current effective system prompt, including changes not yet sent to the model. */
 	get systemPrompt(): string {
 		return buildSystemPrompt(this.runSystemPromptOptions ?? this.baseSystemPromptOptions);
+	}
+
+	/** Retain only the last request's override and origin, not another copy of its messages. */
+	rememberRequestSystemOverride(snapshot: RequestSystemOverride): void {
+		this._lastRequestOverride = snapshot;
+	}
+
+	/** A different session or sibling branch cannot reuse this transient override. */
+	get requestForcedSystemPrompt(): string | undefined {
+		const session = this.host.session.sessionManager;
+		const saved = this._lastRequestOverride;
+		if (!saved || saved.sessionId !== session.getSessionId()) return undefined;
+		for (const entry of ancestors(session.getLeafEntry(), (id) => session.getEntry(id)))
+			if (entry.id === saved.leafId) return saved.forced;
+		return undefined;
 	}
 
 	setBaseToolDefinitions(definitions: Map<string, ToolDefinition>): void {

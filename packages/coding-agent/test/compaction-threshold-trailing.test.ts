@@ -129,4 +129,25 @@ describe("threshold compaction counts content after the last response", () => {
 		await run(assistant, false, [prompt]);
 		expect(compacted).not.toHaveBeenCalled();
 	});
+
+	it.each(["incoming", "persisted"] as const)(
+		"counts large %s context before the first response after compaction",
+		async (source) => {
+			const manager = session.sessionManager;
+			assistant.timestamp = Date.now() - 10_000;
+			const first = manager.appendMessage({
+				role: "user",
+				content: "Original objective",
+				timestamp: assistant.timestamp - 1,
+			});
+			manager.appendMessage(assistant);
+			manager.appendCompaction("A concise checkpoint", first, belowThreshold);
+			const large: AgentMessage = { role: "user", content: "x".repeat(1_200_000), timestamp: Date.now() + 1 };
+			if (source === "persisted") manager.appendMessage(large);
+			session.agent.state.messages = manager.buildSessionContext().messages;
+			const { run, compacted } = check();
+			await run(assistant, false, source === "incoming" ? [large] : []);
+			expect(compacted).toHaveBeenCalledWith("threshold", false, session.model);
+		},
+	);
 });

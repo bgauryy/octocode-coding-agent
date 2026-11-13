@@ -56,17 +56,6 @@ export function append(db: DatabaseSync, workspace: string, event: AgentEvent, k
 	);
 }
 
-/** Reasons older Octocode versions stored: `reaped` named the detector, the others the code path. All mean the process died without leaving. */
-const LEGACY_CRASH = new Set(["removed", "replaced dead registration"]);
-
-/** A stored `delete` payload as readers see it: a legacy reason becomes `crashed` (the old text stays as `detail`, except `reaped`, which only named the detector). */
-function readable(type: string, data: Record<string, unknown>): Record<string, unknown> {
-	if (type !== "delete" || typeof data.reason !== "string") return data;
-	if (data.reason === "reaped") return { ...data, reason: "crashed" };
-	if (LEGACY_CRASH.has(data.reason)) return { ...data, reason: "crashed", detail: data.detail ?? data.reason };
-	return data;
-}
-
 function decode(row: Row): EventRow {
 	return {
 		seq: Number(row.seq),
@@ -77,7 +66,7 @@ function decode(row: Row): EventRow {
 		parentId: row.parent_id as string | null,
 		sessionId: row.session_id as string | null,
 		type: row.type as EventType,
-		data: readable(String(row.type), JSON.parse(String(row.data)) as Record<string, unknown>),
+		data: JSON.parse(String(row.data)) as Record<string, unknown>,
 		version: 1,
 	};
 }

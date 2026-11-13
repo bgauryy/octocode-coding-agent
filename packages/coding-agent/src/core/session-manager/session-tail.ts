@@ -59,13 +59,6 @@ function readTail(file: string): Tail {
 	}
 }
 
-/** Throws unless the file ends with a whole record; true when that record lacks only its newline. Writes nothing. */
-export function assertCompleteSessionTail(file: string): boolean {
-	const tail = readTail(file);
-	if (tail.kind === "torn") throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
-	return tail.kind === "unterminated";
-}
-
 /** Whether `file` ends in part of a record: a write that was cut off. A read-only check for a UI to say so. */
 export function hasTornTail(file: string): boolean {
 	try {

@@ -175,6 +175,21 @@ describe("cache-sharing compaction summary", () => {
 		expect(sent).not.toContain(SHARED_IMAGE_FOCUS);
 	});
 
+	it("delivers budget-aware preservation and ownership instructions through both summary routes", async () => {
+		for (const standalone of [false, true]) {
+			const run = setup();
+			await writeSummary(run.api, run.event, run.ctx, standalone ? ({ ...model, id: "previous" } as never) : undefined);
+			const sent = JSON.stringify(run.calls[0].context.messages);
+			expect(sent).toContain("Do not rely on those copies");
+			expect(sent).toContain("approvals still in force with their scope");
+			expect(sent).toContain("owner, item/agent/job ids and dependencies");
+			expect(sent).toContain("pending effects and how to check before retrying");
+			expect(sent).toContain("Do not quote whole messages or retell earlier summaries");
+			expect(sent).toContain("outcome and evidence reference");
+			expect(sent).toContain("for resolved failures, one-line lesson and evidence");
+		}
+	});
+
 	describe("with a cold prompt cache", () => {
 		const TTL = 300_000;
 		const replyAt = (timestamp: number) => [
@@ -360,6 +375,7 @@ describe("cache-sharing compaction summary", () => {
 		await sharedSummary(next.api, next.event, next.ctx, model as never, "x");
 		const prompt = finalPrompt(next.calls[0]);
 		expect(prompt).toMatch(/earlier summary/);
+		expect(prompt).toContain("not one account per compaction");
 		expect(prompt).toContain("## User Messages");
 		expect(prompt).toContain("## Recovery");
 		expect(prompt).toContain("<read-files>");
@@ -418,9 +434,7 @@ describe("cache-sharing compaction summary", () => {
 		expect(SHARED_SUMMARY_PROMPT).not.toMatch(/EXACT format/);
 		expect(SHARED_SUMMARY_PROMPT).toMatch(/text only/i);
 		// The request is appended as a user message; the summary must not report it as the user's last ask.
-		expect(SHARED_SUMMARY_PROMPT).toMatch(/not part of the conversation/);
-		expect(SHARED_SUMMARY_PROMPT).toMatch(/request to write this summary is not one of them and not a user ask/);
-		expect(SHARED_SUMMARY_PROMPT).toMatch(/not part of the conversation/);
+		expect(SHARED_SUMMARY_PROMPT).toContain("This request is not part of the conversation: do not record it.");
 	});
 
 	it.each([
@@ -530,6 +544,36 @@ describe("cache-sharing compaction summary", () => {
 });
 
 describe("writeSummary with the shared path", () => {
+	it("summarizes revised messages even when their count, cut point and token estimate are unchanged", async () => {
+		const { calls, api, ctx, event } = setup({ reply: (n) => reply([text(`## Goal\nrevision ${n}`)]) });
+		const first = await writeSummary(api, event, ctx, model as never);
+		const preparation = (event as { preparation: { messagesToSummarize: unknown[] } }).preparation;
+		preparation.messagesToSummarize = [
+			{ ...ask, content: [{ type: "text", text: "fix the lexer in src/b.ts" }] },
+			call,
+		];
+		const revised = await writeSummary(api, event, ctx, model as never);
+		expect(calls).toHaveLength(2);
+		expect(first?.compaction?.summary).toContain("revision 1");
+		expect(revised?.compaction?.summary).toContain("revision 2");
+		expect(finalPrompt(calls[1])).toContain("fix the lexer in src/b.ts");
+		expect(finalPrompt(calls[1])).not.toContain("fix the parser in src/a.ts");
+	});
+
+	it("refreshes file evidence and output limits before reusing a paid summary", async () => {
+		const { calls, api, ctx, event, fileOps } = setup();
+		await writeSummary(api, event, ctx, model as never);
+		fileOps.edited.add("src/later.ts");
+		const revised = await writeSummary(api, event, ctx, model as never);
+		expect(revised?.compaction?.details).toMatchObject({
+			modifiedFiles: ["src/b.ts", "src/later.ts", "src/new.ts"],
+		});
+		const settings = (event as { preparation: { settings: { reserveTokens: number } } }).preparation.settings;
+		settings.reserveTokens = 5_000;
+		await writeSummary(api, event, ctx, model as never);
+		expect(calls).toHaveLength(3);
+	});
+
 	it("keys paid summaries by manual focus and never carries that focus into automatic compaction", async () => {
 		const { calls, api, ctx, event } = setup({ customInstructions: "Keep parser boundaries." });
 		await writeSummary(api, event, ctx);

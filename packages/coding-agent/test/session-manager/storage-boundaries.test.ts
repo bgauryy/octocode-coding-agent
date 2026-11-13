@@ -26,51 +26,6 @@ describe("session storage boundaries", () => {
 		expect(SessionManager.open(originalFile).buildSessionContext().messages).toHaveLength(2);
 	});
 
-	it("migrates legacy history before assigning a current-version fork header", () => {
-		const source = join(dir, "legacy.jsonl");
-		const original = `${[
-			{ type: "session", id: "legacy", timestamp: "2025-01-01T00:00:00Z", cwd: dir },
-			{
-				type: "message",
-				timestamp: "2025-01-01T00:00:01Z",
-				message: { role: "user", content: "first", timestamp: 1 },
-			},
-			{
-				type: "message",
-				timestamp: "2025-01-01T00:00:02Z",
-				message: { role: "user", content: "second", timestamp: 2 },
-			},
-		]
-			.map((entry) => JSON.stringify(entry))
-			.join("\n")}\n`;
-		writeFileSync(source, original);
-		const fork = SessionManager.forkFrom(source, dir, dir);
-		expect(
-			fork.buildSessionContext().messages.map((message) => ("content" in message ? message.content : undefined)),
-		).toEqual(["first", "second"]);
-		expect(fork.getBranch()).toHaveLength(2);
-		expect(fork.getHeader()?.version).toBe(3);
-		expect(readFileSync(source, "utf8")).toBe(original);
-		expect(SessionManager.open(fork.getSessionFile()!).getBranch()).toHaveLength(2);
-	});
-	it("keeps the exact original bytes, malformed lines included, when a legacy migration rewrites the file", () => {
-		const file = join(dir, "legacy-malformed.jsonl");
-		const original = [
-			JSON.stringify({ type: "session", id: "legacy", timestamp: "2025-01-01T00:00:00Z", cwd: dir }),
-			JSON.stringify({ type: "message", timestamp: "t1", message: { role: "user", content: "first", timestamp: 1 } }),
-			'{"type":"message","message":{"role":"user","content":"hand-edited',
-			JSON.stringify({ type: "message", timestamp: "t2", message: { role: "user", content: "second", timestamp: 2 } }),
-			"",
-		].join("\n");
-		writeFileSync(file, original);
-		const manager = SessionManager.open(file, dir);
-		expect(manager.getHeader()?.version).toBe(3);
-		expect(readFileSync(`${file}.bak`, "utf8")).toBe(original);
-		manager.appendMessage({ role: "user", content: "third", timestamp: 3 });
-		expect(SessionManager.open(file, dir).buildSessionContext().messages).toHaveLength(3);
-		expect(fs.existsSync(`${file}.1.bak`)).toBe(false);
-	});
-
 	it("leaves no partial fork when copying the source fails midway", () => {
 		const manager = SessionManager.create(dir, dir);
 		manager.appendMessage({ role: "user", content: "first", timestamp: 1 });
@@ -165,30 +120,6 @@ describe("session storage boundaries", () => {
 		expect(manager.getLeafId()).toBe(leaf);
 		expect(manager.getEntries()).toEqual(before);
 		expect(manager.buildSessionContext()).toEqual(context);
-	});
-	it("refuses legacy migration when it would overwrite an incomplete final record", () => {
-		const file = join(dir, "legacy-partial.jsonl");
-		const bytes =
-			JSON.stringify({ type: "session", version: 1, id: "legacy", timestamp: new Date(0).toISOString(), cwd: dir }) +
-			"\n" +
-			JSON.stringify({
-				type: "message",
-				timestamp: new Date(1).toISOString(),
-				message: { role: "user", content: "original", timestamp: 1 },
-			}) +
-			"\n" +
-			'{"type":"message","message":{"role":"user","content":"partial';
-		writeFileSync(file, bytes);
-		expect(() => SessionManager.open(file)).toThrow(/incomplete|recover/);
-		expect(readFileSync(file, "utf8")).toBe(bytes);
-		const manager = SessionManager.create(dir, dir);
-		const leaf = manager.appendMessage({ role: "user", content: "active session", timestamp: 1 });
-		const originalFile = manager.getSessionFile();
-		expect(() => manager.setSessionFile(file)).toThrow(/incomplete|recover/);
-		expect(manager.getSessionFile()).toBe(originalFile);
-		expect(manager.getLeafId()).toBe(leaf);
-		manager.appendMessage({ role: "user", content: "still active", timestamp: 2 });
-		expect(readFileSync(file, "utf8")).toBe(bytes);
 	});
 	it.each(["partial", "complete"])("keeps every byte of an uncertain %s append and goes on after it", (mode) => {
 		const manager = SessionManager.create(dir, dir);

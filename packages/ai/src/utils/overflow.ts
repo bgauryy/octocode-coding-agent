@@ -192,14 +192,3 @@ const promptTokens = (message: AssistantMessage): number =>
 export function isRecoverableLength(message: AssistantMessage, desiredMaxOutput: number): boolean {
 	return message.stopReason === "length" && desiredMaxOutput > 0 && message.usage.output < desiredMaxOutput;
 }
-
-/**
- * Get the overflow patterns for testing purposes.
- *
- * @deprecated No code in this repository uses it, and a copy of the pattern list is not a stable contract: patterns
- * change with provider error wording. Call `isContextOverflow` to classify an error instead. Kept only because the
- * package barrel exports it; it will be removed in a later breaking release.
- */
-export function getOverflowPatterns(): RegExp[] {
-	return [...OVERFLOW_PATTERNS];
-}

@@ -265,4 +265,27 @@ describe("process sampler", () => {
 		await sampler.idle();
 		expect(processSamples.since(agent.db, 0).map((sample) => sample.ended)).toEqual([true]);
 	});
+
+	it("skips a periodic sample while another connection holds the database, without waiting or a notice", async () => {
+		const sampler = start(table);
+		await sampler.idle();
+		expect(processSamples.since(agent.db, 0)).toHaveLength(1);
+		const other = openAgentDb(path.join(path.dirname(agent.file), "sampler.db"));
+		try {
+			// Held across the interval: the sample of this tick meets a locked database.
+			other.db.exec("BEGIN IMMEDIATE");
+			await vi.advanceTimersByTimeAsync(60_000);
+			await sampler.idle();
+			other.db.exec("ROLLBACK");
+			expect(failures).toEqual([]);
+			expect(processSamples.since(agent.db, 0)).toHaveLength(1);
+			// The next interval records again.
+			await vi.advanceTimersByTimeAsync(60_000);
+			await sampler.idle();
+			expect(processSamples.since(agent.db, 0)).toHaveLength(2);
+		} finally {
+			sampler.stop();
+			other.close();
+		}
+	});
 });

@@ -31,10 +31,9 @@ function directoryIdentity(lockfilePath: string): string | undefined {
 	return stat?.isDirectory() ? `${stat.dev}:${stat.ino}:${stat.birthtimeNs}` : undefined;
 }
 
-/** Older records also stored ctime, which a heartbeat changes without replacing the directory. */
 function sameDirectory(lockfilePath: string, recorded: string): boolean {
 	const current = directoryIdentity(lockfilePath);
-	return current !== undefined && (recorded === current || recorded.startsWith(`${current}:`));
+	return current !== undefined && recorded === current;
 }
 
 let ownStart: string | undefined;
@@ -58,15 +57,53 @@ function ownStartTime(): string | undefined {
 export function recordLockOwner(lockfilePath: string): () => void {
 	let recorded: string | undefined;
 	try {
-		const dir = directoryIdentity(lockfilePath);
-		if (dir) {
-			const owner: LockOwner = { pid: process.pid, host: HOST, started: ownStartTime(), dir, token: randomUUID() };
-			recorded = JSON.stringify(owner);
-			fs.writeFileSync(ownerPath(lockfilePath), recorded, { mode: 0o600 });
-		}
+		recorded = ownerRecord(lockfilePath);
+		if (recorded) fs.writeFileSync(ownerPath(lockfilePath), recorded, { mode: 0o600 });
 	} catch {
 		// Unknown owner: waiters fall back to the stale limit.
 	}
+	return forgetLockOwner(lockfilePath, recorded);
+}
+
+function ownerRecord(lockfilePath: string, dir = directoryIdentity(lockfilePath)): string | undefined {
+	if (!dir) return undefined;
+	const owner: LockOwner = { pid: process.pid, host: HOST, started: ownStartTime(), dir, token: randomUUID() };
+	return JSON.stringify(owner);
+}
+
+/** Async acquisitions publish metadata before the mutation without a synchronous disk write. */
+async function recordLockOwnerAsync(lockfilePath: string, dir: string | undefined): Promise<() => void> {
+	let recorded: string | undefined;
+	const temporary = `${ownerPath(lockfilePath)}.pending-${randomUUID()}`;
+	try {
+		recorded = dir === undefined ? undefined : ownerRecord(lockfilePath, dir);
+		if (recorded) {
+			await fs.promises.writeFile(temporary, recorded, { mode: 0o600, flag: "wx" });
+			// Publish only complete metadata, without overwriting a successor's record or its open inode.
+			if (directoryIdentity(lockfilePath) === dir) {
+				try {
+					await fs.promises.link(temporary, ownerPath(lockfilePath));
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+					// A prior holder can exit between releasing its directory and forgetting its sidecar.
+					const previous = fs.readFileSync(ownerPath(lockfilePath), "utf8");
+					const owner = parseOwner(previous);
+					if (owner && !sameDirectory(lockfilePath, owner.dir) && directoryIdentity(lockfilePath) === dir) {
+						forgetLockOwner(lockfilePath, previous)();
+						if (directoryIdentity(lockfilePath) === dir) await fs.promises.link(temporary, ownerPath(lockfilePath));
+					}
+				}
+			}
+		}
+	} catch {
+		// The same conservative fallback as a synchronous acquisition with unreadable metadata.
+	} finally {
+		await fs.promises.rm(temporary, { force: true }).catch(() => undefined);
+	}
+	return forgetLockOwner(lockfilePath, recorded);
+}
+
+function forgetLockOwner(lockfilePath: string, recorded: string | undefined): () => void {
 	return () => {
 		try {
 			// A replaced lock belongs to a successor, whose record this holder must leave alone.
@@ -80,7 +117,16 @@ export function recordLockOwner(lockfilePath: string): () => void {
 
 function readOwner(lockfilePath: string): LockOwner | undefined {
 	try {
-		const owner = JSON.parse(fs.readFileSync(ownerPath(lockfilePath), "utf8")) as Partial<LockOwner> | null;
+		return parseOwner(fs.readFileSync(ownerPath(lockfilePath), "utf8"));
+	} catch {
+		// No record, or one being written.
+		return undefined;
+	}
+}
+
+function parseOwner(recorded: string): LockOwner | undefined {
+	try {
+		const owner = JSON.parse(recorded) as Partial<LockOwner> | null;
 		if (
 			typeof owner?.pid === "number" &&
 			Number.isInteger(owner.pid) &&
@@ -203,6 +249,8 @@ interface LockOwnerGuard {
 	check(): void;
 	fs: LockFileSystem;
 	acquired(): () => void;
+	acquiredAsync(): Promise<() => void>;
+	assertHeld(): void;
 }
 
 export function guardLockOwner(lockfilePath: string, base: LockFileSystem = fs): LockOwnerGuard {
@@ -261,6 +309,18 @@ export function guardLockOwner(lockfilePath: string, base: LockFileSystem = fs):
 			acquiring = false;
 			held = directoryIdentity(lockfilePath);
 			return recordLockOwner(lockfilePath);
+		},
+		acquiredAsync: async () => {
+			acquiring = false;
+			held = created;
+			return recordLockOwnerAsync(lockfilePath, held);
+		},
+		assertHeld: () => {
+			if (held === undefined || directoryIdentity(lockfilePath) !== held)
+				throw Object.assign(new Error("Another process took over the file lock; nothing was written."), {
+					code: "ECOMPROMISED",
+					file: lockfilePath,
+				});
 		},
 	};
 }

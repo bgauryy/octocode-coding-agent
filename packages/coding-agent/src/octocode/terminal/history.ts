@@ -1,4 +1,4 @@
-import { shellHistory } from "../../../../db/src/api.ts";
+import { shellHistory, withoutWaiting } from "../../../../db/src/api.ts";
 import type { HistoryEntry } from "../../../../terminal/src/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 
@@ -9,7 +9,8 @@ const LOAD = 2000;
 
 /**
  * The user's `!` commands in the agent database, shared by every session. A failed read or write leaves the editor
- * without history suggestions; it never stops a command.
+ * without history suggestions; it never stops a command. A write never waits for another process's database lock: the
+ * count of one run is not worth holding the thread that also draws the screen, so it is skipped.
  */
 export class ShellHistoryStore {
 	private cache: HistoryEntry[] | undefined;
@@ -59,8 +60,10 @@ export class ShellHistoryStore {
 	record(cwd: string, command: string, at = Date.now()): void {
 		try {
 			const db = sharedAgentDb(this.env).db;
-			shellHistory.record(db, cwd, command, at);
-			if (++this.writes % 100 === 1) shellHistory.prune(db, KEEP);
+			withoutWaiting(db, () => {
+				shellHistory.record(db, cwd, command, at);
+				if (++this.writes % 100 === 1) shellHistory.prune(db, KEEP);
+			});
 		} catch {
 			// History is a convenience.
 		}
@@ -70,7 +73,8 @@ export class ShellHistoryStore {
 	/** Stores how the last run of `command` in `cwd` exited. */
 	setExit(cwd: string, command: string, exit: number): void {
 		try {
-			shellHistory.setExit(sharedAgentDb(this.env).db, cwd, command, exit);
+			const db = sharedAgentDb(this.env).db;
+			withoutWaiting(db, () => shellHistory.setExit(db, cwd, command, exit));
 		} catch {
 			// History is a convenience.
 		}

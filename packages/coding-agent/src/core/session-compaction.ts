@@ -110,6 +110,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	const { firstKeptEntryId, tokensBefore } = produced;
 	const usage: Usage | undefined = produced.usage;
 	run.checkAbort("summary");
+	if (!produced.summary.trim()) throw new Error("Compaction failed: the summary was empty");
 
 	const finalized = finalizeCompactionResult(
 		{

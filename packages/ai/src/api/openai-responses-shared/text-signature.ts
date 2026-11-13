@@ -9,19 +9,13 @@ export function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase
 export function parseTextSignature(
 	signature: string | undefined,
 ): { id: string; phase?: TextSignatureV1["phase"] } | undefined {
-	if (!signature) return undefined;
-	if (signature.startsWith("{")) {
-		try {
-			const parsed = JSON.parse(signature) as Partial<TextSignatureV1>;
-			if (parsed.v === 1 && typeof parsed.id === "string") {
-				if (parsed.phase === "commentary" || parsed.phase === "final_answer") {
-					return { id: parsed.id, phase: parsed.phase };
-				}
-				return { id: parsed.id };
-			}
-		} catch {
-			// Fall through to legacy plain-string handling.
-		}
+	if (!signature?.startsWith("{")) return undefined;
+	try {
+		const parsed = JSON.parse(signature) as Partial<TextSignatureV1>;
+		if (parsed.v !== 1 || typeof parsed.id !== "string") return undefined;
+		if (parsed.phase === "commentary" || parsed.phase === "final_answer") return { id: parsed.id, phase: parsed.phase };
+		return { id: parsed.id };
+	} catch {
+		return undefined;
 	}
-	return { id: signature };
 }

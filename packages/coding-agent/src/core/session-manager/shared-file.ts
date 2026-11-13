@@ -22,6 +22,12 @@ export function forkHint(file: string): string {
 
 /** Longest a write waits for another process's lock; the holder keeps it for a few milliseconds. */
 const LOCK_WAIT_MS = 3000;
+/**
+ * The wait of an appended record, which is kept in memory when the lock is not free (`persistence.ts`,
+ * `held-retry.ts`): long enough to outlast another process's own append, short enough that a run's records never
+ * freeze the thread that also draws the screen.
+ */
+export const HELD_LOCK_WAIT_MS = 100;
 
 /**
  * Longest a mirror read waits for a live holder: the read has a fallback (a rebuild, a later append or the next open

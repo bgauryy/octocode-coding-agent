@@ -377,7 +377,6 @@ Auxiliary untracked drivers: `.octocode/tmp/perf/waits/tools/` and `.octocode/tm
 | Check | Procedure / oracle |
 | --- | --- |
 | Process audit | No owned survivors after each scenario (historical 0 in 127 runs); parent-kill and ACP fixture recovery are TC-07/23. Search all callers of processMatch/groupMembers/descendantPids/stopTree, including .mjs, for awaited async results; typecheck alone misses scripts. |
-| Migration copy / interruption | On disposable copies only: `node scripts/db-migrate.mjs --db <copy>/workspaces.db --clean-test-rows`; coordination DB <10 MB; transcript row counts/per-session checksums equal source; interruption leaves the old file intact and retry preserves checksums. Never use a live DB as a fixture. |
 | Migration guards / real data | A live file must be refused with owning pids. Real-data migration is owner-run only after all Octocode processes close: backup, schema 10, no transcript tables in workspaces.db and no temp-workspace rows were earlier acceptance criteria; verify current schema before execution. |
 | WAL / isolation | After a long reader, writes and idle, both WALs return to ≤1,000 pages; old mirror tables are absent from coordination queries; a test resolving real-home DB fails the suite. |
 | Earlier open findings | Revalidate report batching/stagger timers, awaited ps sampling, MCP restarts on /new or /resume, early Enter refusal, post-paint fsync/discovery/grammar loading, and db-migrate unknown-flag/--help behavior. The old plan called these defects; this update does not establish their present status. |

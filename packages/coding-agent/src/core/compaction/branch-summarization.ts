@@ -9,6 +9,7 @@ import { renderInstruction } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
+import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
 import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "../messages.ts";
 import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
@@ -18,7 +19,6 @@ import { summaryMaxTokens } from "./settings.ts";
 import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
-import { estimateTokens } from "./tokens.ts";
 import {
 	computeFileLists,
 	createFileOps,
@@ -224,15 +224,18 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 		const entry = entries[i];
 		const message = getMessageFromEntry(entry, edits.get(entry.id));
 		if (!message) continue;
+		const serialized = serializeMessages([message]);
+		// Prompt state, thinking and images are not serialized; they must not spend the text summary's budget.
+		if (!serialized) continue;
 
 		// Extract file ops from assistant messages (tool calls)
 		extractFileOpsFromMessage(message, fileOps);
 
-		const tokens = estimateTokens(message);
+		const tokens = charsToTokens(serialized.length);
 
 		// Check budget before adding
 		if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
-			// If this is a summary entry, try to fit it anyway as it's important context
+			// Retain a required checkpoint for the caller's fit check rather than silently dropping its older history.
 			if (entry.type === "compaction" || entry.type === "branch_summary") {
 				if (totalTokens < tokenBudget * 0.9) {
 					messages.unshift(message);
@@ -285,10 +288,22 @@ export async function generateBranchSummary(
 	const contextWindow = model.contextWindow || 128000;
 	const tokenBudget = contextWindow - reserveTokens;
 
-	const { messages, fileOps } = prepareBranchEntries(entries, tokenBudget);
+	const { messages, fileOps, totalTokens } = prepareBranchEntries(entries, tokenBudget);
 
 	if (messages.length === 0) {
 		return { summary: "No content to summarize" };
+	}
+	if (!(tokenBudget > 0)) {
+		return {
+			error:
+				"Branch summary cannot fit: branchSummary.reserveTokens leaves no room for input. Reduce the reserve or choose a model with a larger context window.",
+		};
+	}
+	if (totalTokens > tokenBudget) {
+		return {
+			error:
+				"Branch summary cannot fit the retained checkpoint in this model's input budget. Choose a model with a larger context window or navigate without summarizing.",
+		};
 	}
 
 	// Serialize to text so the model does not treat it as a conversation to continue; custom messages keep their type as the label.

@@ -15,7 +15,7 @@ export interface TextSignatureV1 {
 export interface TextContent {
 	type: "text";
 	text: string;
-	textSignature?: string; // e.g., for OpenAI responses, message metadata (legacy id string or TextSignatureV1 JSON)
+	textSignature?: string; // e.g., for OpenAI responses, message metadata (TextSignatureV1 JSON)
 	annotations?: ContentAnnotation[];
 }
 

@@ -746,13 +746,12 @@ describe("compaction", () => {
 		await s.session.compact();
 		expect(log.length).toBeGreaterThan(0);
 		expect(new Set(log.map((call) => call.model))).toEqual(new Set(["faux-1"]));
-		expect(log.some((call) => call.text.includes("This summary becomes the only record"))).toBe(true);
+		expect(log.some((call) => call.text.includes("The next model sees this checkpoint"))).toBe(true);
+		expect(log.some((call) => call.text.includes("Merge findings once"))).toBe(true);
 		// Exact user constraints are kept as written, not paraphrased (code keeps whole messages only within its budget).
 		expect(
 			log.some((call) =>
-				call.text.includes(
-					"do not quote whole messages; state what they asked for, decided and corrected, and keep each limit, number, path, identifier and prohibition the user set exactly as written",
-				),
+				call.text.includes("keep user limits, numbers, paths, identifiers and prohibitions exactly as written"),
 			),
 		).toBe(true);
 		// The summary is asked for inside the session's own request (its messages, then one more), not as a standalone prompt.
@@ -760,7 +759,7 @@ describe("compaction", () => {
 		expect(log[0].text).toContain("Stop here and write a context checkpoint");
 		expect(log[0].text).not.toContain("<conversation>");
 		// The handoff sections are `SUMMARY_CHECKPOINT_FORMAT` (`core/compaction/summary-format.ts`); "## TL;DR" replaced "## Follow-ups".
-		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR", "only record"])
+		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR", "Do not rely on those copies"])
 			expect(log.some((call) => call.text.includes(section))).toBe(true);
 		const entry = compactionEntries().at(-1)!;
 		expect(entry.fromHook).toBe(true);

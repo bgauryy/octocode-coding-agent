@@ -34,6 +34,8 @@ type SummaryStream<C> = (
 
 /** How the session sends a compaction's summary requests; an extension that writes the summary itself uses it too. */
 export interface SummaryRequestPolicy {
+	/** The run's transient system override for cache-sharing requests; absent for the recorded instruction projection. */
+	forceSystemPrompt?: string;
 	/** Wraps a stream function so its requests report progress and a silent attempt ends as a retryable timeout. */
 	watch<C>(stream: SummaryStream<C>): SummaryStream<C>;
 	/** The session's `retry` settings. */

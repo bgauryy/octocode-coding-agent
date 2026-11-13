@@ -82,6 +82,26 @@ describe("ApplicationStream event reducers", () => {
 		expect(stream.snapshot?.messages[0].text).toBe("Replaced");
 	});
 
+	it("authoritative replacement clears an old full-content asset and omitted rich content", () => {
+		const full = { id: "old", mimeType: "application/json", size: 1 };
+		const content = [{ id: "b", type: "text" as const, text: "Old" }];
+		const stream = started({ ...base, messages: [{ ...base.messages[0], content, full }] });
+		stream.accept(event(1, { type: "message.delta", messageId: "m1", delta: "", text: "New", content }));
+		expect(stream.snapshot?.messages[0].full).toBeUndefined();
+		expect(stream.snapshot?.messages[0].content).toEqual(content);
+		stream.accept(event(2, { type: "message.delta", messageId: "m1", delta: "", text: "Plain" }));
+		expect(stream.snapshot?.messages[0]).toMatchObject({ text: "Plain" });
+		expect(stream.snapshot?.messages[0].content).toBeUndefined();
+	});
+
+	it("legacy text-only appends preserve existing content and its asset", () => {
+		const full = { id: "old", mimeType: "application/json", size: 1 };
+		const content = [{ id: "b", type: "text" as const, text: "Old" }];
+		const stream = started({ ...base, messages: [{ ...base.messages[0], content, full }] });
+		stream.accept(event(1, { type: "message.delta", messageId: "m1", delta: " world" }));
+		expect(stream.snapshot?.messages[0]).toMatchObject({ text: "Hello world", content, full });
+	});
+
 	it("run.started marks streaming with the run id and run.settled clears both", () => {
 		const stream = started();
 		stream.accept(event(1, { type: "run.started", runId: "r1" }));

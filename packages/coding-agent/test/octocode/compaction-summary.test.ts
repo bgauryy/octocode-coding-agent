@@ -385,7 +385,17 @@ describe("words kept beside the user's messages", () => {
 		]);
 	});
 
-	it("asks the summarizer to keep every approval the user granted, with its scope", () => {
-		expect(SUMMARY_FOCUS).toMatch(/every approval or permission the user granted, with its scope/);
+	it("keeps current scoped approvals and marks superseded instructions rather than reviving them", () => {
+		expect(SUMMARY_FOCUS).toContain("approvals still in force with their scope");
+		expect(SUMMARY_FOCUS).toContain("label them superseded");
+	});
+
+	it("preserves critical constraints even when the appended messages do not fit", () => {
+		expect(SUMMARY_FOCUS).toContain("within a budget; long or older messages may become references or be omitted");
+		expect(SUMMARY_FOCUS).toContain("Do not rely on those copies");
+		expect(SUMMARY_FOCUS).toContain("user limits, numbers, paths, identifiers and prohibitions exactly as written");
+		expect(SUMMARY_FOCUS).not.toContain("only record");
+		expect(SUMMARY_CHECKPOINT_FORMAT).toContain("owner, item/agent/job ids and dependencies");
+		expect(SUMMARY_CHECKPOINT_FORMAT).toContain("pending effects and how to check before retrying");
 	});
 });

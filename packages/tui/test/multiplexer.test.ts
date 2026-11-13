@@ -67,15 +67,28 @@ describe("tmux queries through a fake tmux", () => {
 		assert.equal(fake?.calls().length, 1, "the answer is cached");
 	});
 
-	it("asks again after an answer with no client attached", () => {
-		const detached = installFakeTmux({ clientTermtype: "", clientTermname: "" });
+	it("believes an answer with no client attached for half a minute, then asks again", () => {
+		const now = Date.now;
+		let at = now();
+		Date.now = () => at;
 		try {
+			const detached = installFakeTmux({ clientTermtype: "", clientTermname: "" });
+			try {
+				assert.deepEqual(tmuxClientTerminalNames(TMUX_ENV), []);
+				assert.deepEqual(tmuxClientTerminalNames(TMUX_ENV), []);
+				assert.equal(detached.calls().length, 1, "a detached session does not ask for every notification");
+			} finally {
+				detached.restore();
+			}
+			withFake({ clientTermtype: "ghostty 1.3.1", clientTermname: "xterm-ghostty" });
+			at += 29_000;
 			assert.deepEqual(tmuxClientTerminalNames(TMUX_ENV), []);
+			// A terminal that attached meanwhile is found once the answer is old.
+			at += 2_000;
+			assert.deepEqual(tmuxClientTerminalNames(TMUX_ENV), ["ghostty", "xterm-ghostty"]);
 		} finally {
-			detached.restore();
+			Date.now = now;
 		}
-		withFake({ clientTermtype: "ghostty 1.3.1", clientTermname: "xterm-ghostty" });
-		assert.deepEqual(tmuxClientTerminalNames(TMUX_ENV), ["ghostty", "xterm-ghostty"]);
 	});
 
 	it("handles XTVERSION names with a space and a missing name", () => {

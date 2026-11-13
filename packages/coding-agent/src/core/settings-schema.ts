@@ -357,20 +357,12 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		...FullscreenSettingsProperties,
-		queueMode: Type.Optional(
-			Type.Union([Type.Literal("all"), Type.Literal("one-at-a-time")], {
-				description: "Legacy setting migrated to steeringMode.",
-				deprecated: true,
-			}),
-		),
-		websockets: Type.Optional(Type.Boolean({ description: "Legacy setting migrated to transport.", deprecated: true })),
 	},
 	{ additionalProperties: true },
 );
 
 type SettingsInput = Static<typeof SettingsSchema>;
 
-interface RetrySettings extends Omit<Static<typeof RetrySettingsSchema>, "maxDelayMs"> {}
 export interface ThinkingBudgetsSettings extends Static<typeof ThinkingBudgetsSettingsSchema> {}
 export type MermaidRenderingMode = NonNullable<Static<typeof MarkdownSettingsSchema>["mermaid"]>;
 export interface WarningSettings extends Static<typeof WarningSettingsSchema> {}
@@ -381,7 +373,4 @@ export type FullscreenExitOutput = NonNullable<SettingsInput["fullscreenExitOutp
 export type TuiMode = NonNullable<SettingsInput["tuiMode"]>;
 export type CacheWarmingMode = NonNullable<SettingsInput["cacheWarming"]>;
 export type RemoteSettings = NonNullable<SettingsInput["remote"]>;
-export interface Settings extends Omit<SettingsInput, "queueMode" | "retry" | "skills" | "websockets"> {
-	retry?: RetrySettings;
-	skills?: string[];
-}
+export interface Settings extends SettingsInput {}

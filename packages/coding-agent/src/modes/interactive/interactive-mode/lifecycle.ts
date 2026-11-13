@@ -2,13 +2,19 @@
  * Exit, suspend and shutdown: Ctrl+C, Ctrl+D and Ctrl+Z, signal handlers, and stopping the terminal UI.
  */
 
+import { join } from "node:path";
 import chalk from "chalk";
+import { getAgentDir } from "../../../config.ts";
 import { foregroundChildActive } from "../../../utils/foreground-child.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
+import { endIfStalled, watchMainThread } from "../../../utils/stall-guard.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
 import { disposeTranscript } from "./transcript-dispose.ts";
+
+/** Under the agent directory: one JSON line for each session ended because its main thread stayed blocked. */
+const STALL_LOG = "main-thread-stalls.jsonl";
 
 /** Interactive-mode members used by shutdown and signal handling. */
 type LifecycleHost = Pick<
@@ -176,6 +182,9 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 		host.signalCleanupHandlers.push(() => process.off("SIGTSTP", tstpHandler));
 	}
 
+	// A main thread that stays blocked cannot answer any of these signals: the watch ends the session instead.
+	host.signalCleanupHandlers.push(watchMainThread({ notePath: join(getAgentDir(), STALL_LOG) }));
+
 	for (const signal of signals) {
 		const handler = () => {
 			if ((suspended || foregroundChildActive()) && signal === "SIGINT") return;
@@ -302,7 +311,8 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 		host.unsubscribe();
 	}
 	if (host.isInitialized) {
-		host.stopInteractiveTui(fullscreenExitOutput);
+		// Leaving raw mode waits for the terminal to read pending output; one that stopped reading must not hold the exit.
+		endIfStalled(() => host.stopInteractiveTui(fullscreenExitOutput));
 		host.isInitialized = false;
 	}
 	// Final transcript output still needs live rows; release their clocks only after the renderer stops.

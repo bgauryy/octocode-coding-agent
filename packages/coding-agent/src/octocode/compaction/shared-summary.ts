@@ -13,6 +13,7 @@ import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
+import { projectForcedSystemPrompt } from "../../core/forced-system-prompt.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
@@ -21,6 +22,7 @@ import { clipText, contentText } from "../shared/util.ts";
 import { latestReminderOnly } from "../shared/reminder-view.ts";
 import { prefixRewritten } from "./clearing.ts";
 import { requestView } from "./request-view.ts";
+import { historyPrefixRewritten } from "./history-cache.ts";
 
 /**
  * The summary request that reads the conversation from the prompt cache. Octocode's `compact()` serializes the conversation
@@ -148,6 +150,7 @@ export async function sharedSummary(
 	recordUsage?: (message: AssistantMessage) => void,
 	cacheCold = false,
 	instructionsCold = cacheCold,
+	requireWarmPrefix = false,
 ): Promise<CompactionResult | undefined> {
 	const fail = (reason: string, userChoice?: boolean): undefined => {
 		unusable(reason, userChoice);
@@ -161,13 +164,15 @@ export async function sharedSummary(
 		const projection = ctx.sessionManager.buildSessionProjection();
 		// The projection as every live request sends it: Octocode's own `context` transform (`requestView`) and, in a
 		// child, only the latest identity reminder, so the cached prefix is the same.
-		const messages = requestView(
+		const projected = requestView(
 			latestReminderOnly(withoutHiddenDeclarations(projection.messages, new Set(api.getHiddenDeclarations()))),
 			ctx.sessionManager,
 			model,
 		);
+		const messages = projectForcedSystemPrompt(projected, event.summaryRequest?.forceSystemPrompt);
 		const rewritten = prefixRewritten(messages, model);
-		const cold = cacheCold || rewritten;
+		const cold = cacheCold || rewritten || historyPrefixRewritten(ctx.sessionManager);
+		if (requireWarmPrefix && cold) return fail("the request prefix is cold");
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
 		const prompt = [
 			SHARED_SUMMARY_PROMPT,

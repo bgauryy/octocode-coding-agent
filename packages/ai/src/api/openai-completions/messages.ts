@@ -28,8 +28,6 @@ import { transformMessages } from "../transform-messages.ts";
 import {
 	isOpenAICompletionsReasoningField,
 	type OpenAICompletionsReasoningField,
-	type OpenAIEncryptedReasoningDetail,
-	parseLegacyEncryptedReasoningDetail,
 	parseOpenAIReasoningDetails,
 } from "./reasoning-details.ts";
 import { convertTools } from "./tools.ts";
@@ -185,14 +183,9 @@ export function convertMessages(
 
 			const thinkingBlocks = msg.content.filter(isThinkingContentBlock);
 			const toolCalls = msg.content.filter(isToolCallBlock);
-			const signedReasoningDetails = thinkingBlocks
+			const preservedReasoningDetails = thinkingBlocks
 				.map((block) => parseOpenAIReasoningDetails(block.thinkingSignature))
 				.find((details) => details !== undefined);
-			const legacyReasoningDetails = toolCalls
-				.map((toolCall) => parseLegacyEncryptedReasoningDetail(toolCall.thoughtSignature))
-				.filter((detail): detail is OpenAIEncryptedReasoningDetail => detail !== undefined);
-			const preservedReasoningDetails =
-				signedReasoningDetails ?? (legacyReasoningDetails.length > 0 ? legacyReasoningDetails : undefined);
 
 			const nonEmptyThinkingBlocks = thinkingBlocks.filter((block) => block.thinking.trim().length > 0);
 			if (nonEmptyThinkingBlocks.length > 0) {

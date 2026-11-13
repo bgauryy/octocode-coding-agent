@@ -11,7 +11,7 @@ type OpenAIReasoningSummaryDetail = OpenAIReasoningDetailBase & {
 	summary: string;
 };
 
-export type OpenAIEncryptedReasoningDetail = OpenAIReasoningDetailBase & {
+type OpenAIEncryptedReasoningDetail = OpenAIReasoningDetailBase & {
 	type: "reasoning.encrypted";
 	data: string;
 };
@@ -65,24 +65,6 @@ export function parseOpenAIReasoningDetails(signature: string | undefined): Open
 	try {
 		const parsed = JSON.parse(signature) as unknown;
 		return Array.isArray(parsed) && parsed.length > 0 && parsed.every(isOpenAIReasoningDetail) ? parsed : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-export function parseLegacyEncryptedReasoningDetail(
-	signature: string | undefined,
-): OpenAIEncryptedReasoningDetail | undefined {
-	if (!signature) return undefined;
-	try {
-		const parsed = JSON.parse(signature) as unknown;
-		return isOpenAIReasoningDetail(parsed) &&
-			parsed.type === "reasoning.encrypted" &&
-			typeof parsed.id === "string" &&
-			parsed.id.length > 0 &&
-			parsed.data.length > 0
-			? parsed
-			: undefined;
 	} catch {
 		return undefined;
 	}

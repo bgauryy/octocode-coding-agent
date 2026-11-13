@@ -4,7 +4,7 @@ import { backlog } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { shownLine } from "../sessions/store.ts";
-import { describeWork, unreportedWork } from "../sessions/work.ts";
+import { runningWorkBrief } from "../sessions/compaction-brief.ts";
 
 /**
  * The Recovery lines that state what the tools say is true when a summary is written: the backlog items this session
@@ -45,7 +45,7 @@ export function liveStateLines(
 	} catch {
 		lines.push(renderInstruction("notices/recovery/live-unreadable.md"));
 	}
-	const work = unreportedWork(entries, since).map((item) => describeWork(item, false));
+	const work = runningWorkBrief(entries, since, ctx.sessionManager.getSessionFile());
 	if (work.length > 0) lines.push(renderInstruction("notices/recovery/live-work.md", { work: work.join("; ") }));
 	return lines;
 }

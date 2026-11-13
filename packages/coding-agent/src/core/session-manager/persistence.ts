@@ -8,18 +8,25 @@ import {
 	createSessionHeader,
 	createSessionId,
 	getSessionFilePath,
-	migrateToCurrentVersion,
+	assertCurrentSessionVersion,
 } from "./entries.ts";
 import { appendRecords } from "./append-records.ts";
 import { encodeSessionLines, SessionCodec } from "./codec.ts";
 import { mirrorOpened, mirrorReplaced, recordFork } from "./mirror.ts";
-import { backupSessionFile, repairSessionFile, type SessionRepair } from "./repair.ts";
-import { isSessionLockTimeout, lockSessionFile, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
+import { repairSessionFile, type SessionRepair } from "./repair.ts";
+import { retryHeldEntries } from "./held-retry.ts";
+import {
+	HELD_LOCK_WAIT_MS,
+	isSessionLockTimeout,
+	lockSessionFile,
+	mergeForeignEntries,
+	withSessionFileLock,
+} from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
-import { adoptRecovery, assertCompleteSessionTail, endSessionTail } from "./session-tail.ts";
+import { adoptRecovery, endSessionTail } from "./session-tail.ts";
 import { loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
-import { CURRENT_SESSION_VERSION, type FileEntry, type NewSessionOptions, type SessionEntry } from "./types.ts";
+import type { FileEntry, NewSessionOptions, SessionEntry } from "./types.ts";
 import { blockWrites, liftWriteBlock } from "./write-recovery.ts";
 
 /** Create the session directory when persisting, then open the session file, load preloaded entries or start a new session. */
@@ -68,8 +75,6 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 			return;
 		}
 
-		const header = entries.find((entry) => entry.type === "session");
-		if ((header?.version ?? 1) < CURRENT_SESSION_VERSION) assertCompleteSessionTail(resolvedFile);
 		state.sessionFile = resolvedFile;
 		state.fileSize = sizeBeforeRead ?? statSync(resolvedFile).size;
 		state.codec = observedCodec(entries);
@@ -146,14 +151,10 @@ function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSes
 	const header = entries.find((e) => e.type === "session");
 
 	if (header) {
+		// No conversion of another format version: the file is refused and stays as it is.
+		assertCurrentSessionVersion(header, state.sessionFile);
 		state.fileEntries = entries;
 		state.sessionId = header.id;
-
-		if (migrateToCurrentVersion(state.fileEntries)) {
-			// The rewrite keeps only the records that parsed: a `.bak` keeps the file as it was, malformed lines included.
-			if (state.persist && state.sessionFile && existsSync(state.sessionFile)) backupSessionFile(state.sessionFile);
-			rewriteSessionFile(state);
-		}
 	} else {
 		startNewSession(state, options);
 		state.fileEntries = state.fileEntries.concat(entries);
@@ -255,7 +256,7 @@ function hasConversation(state: SessionState): boolean {
 }
 
 /** Write the held entries, then `entry` when given. */
-export function persistEntry(state: SessionState, entry?: SessionEntry): void {
+export function persistEntry(state: SessionState, entry?: SessionEntry, lockWaitMs?: number): void {
 	if (!state.persist || !state.sessionFile) return;
 	liftWriteBlock(state);
 
@@ -264,26 +265,27 @@ export function persistEntry(state: SessionState, entry?: SessionEntry): void {
 		flushNewSessionFile(state, state.sessionFile);
 	} else {
 		const file = state.sessionFile;
-		withSessionFileLock(file, () => {
-			const pending = entry && !state.unwritten.includes(entry) ? [...state.unwritten, entry] : [...state.unwritten];
-			// Part of a record a stopped writer left is sealed first, and the record naming it is merged like any other.
-			const recovery = endSessionTail(state, file, pending);
-			mergeForeignEntries(state, file, pending);
-			adoptRecovery(state, recovery, pending);
-			appendRecords(state, file, pending);
-		});
+		withSessionFileLock(
+			file,
+			() => {
+				const pending = entry && !state.unwritten.includes(entry) ? [...state.unwritten, entry] : [...state.unwritten];
+				// Part of a record a stopped writer left is sealed first, and the record naming it is merged like any other.
+				const recovery = endSessionTail(state, file, pending);
+				mergeForeignEntries(state, file, pending);
+				adoptRecovery(state, recovery, pending);
+				appendRecords(state, file, pending);
+			},
+			lockWaitMs,
+		);
 	}
-}
-
-/** A message the session cannot produce again: dropping one would record a tool call or a reply as never finished. */
-function cannotRegenerate(entry: SessionEntry): boolean {
-	return entry.type === "message" && (entry.message.role === "toolResult" || entry.message.role === "assistant");
 }
 
 /**
  * Append an entry as the new leaf and persist it. A failed write rolls the entry back and blocks further writes until
- * one can succeed (`write-recovery.ts`). A lock another process held past the wait wrote nothing: a message that cannot
- * be regenerated then stays in memory and goes first at the next write; anything else is rolled back for the caller to retry.
+ * one can succeed (`write-recovery.ts`). A lock another process holds is waited for only briefly (`HELD_LOCK_WAIT_MS`):
+ * the record then stays in memory, part of the session at once, and is written first by the timed retry
+ * (`held-retry.ts`) or the next write, whichever comes first. No record kind is refused for a held lock: the wait would
+ * hold the thread that also draws the screen, once for every record of a run.
  */
 export function appendEntry(state: SessionState, entry: SessionEntry): void {
 	liftWriteBlock(state);
@@ -292,28 +294,29 @@ export function appendEntry(state: SessionState, entry: SessionEntry): void {
 	state.byId.set(entry.id, entry);
 	state.leafId = entry.id;
 	try {
-		persistEntry(state, entry);
+		persistEntry(state, entry, HELD_LOCK_WAIT_MS);
 	} catch (error) {
-		if (isSessionLockTimeout(error) && cannotRegenerate(entry)) {
+		if (isSessionLockTimeout(error)) {
 			state.unwritten.push(entry);
+			retryHeldEntries(state, (current) => writeHeldEntries(current, HELD_LOCK_WAIT_MS));
 			return;
 		}
 		state.fileEntries.pop();
 		state.byId.delete(entry.id);
 		state.leafId = previousLeaf;
-		if (isSessionLockTimeout(error)) throw error;
 		throw blockWrites(state, error);
 	}
 }
 
 /**
  * One more try at the entries held back by a lock, for a moment no later write will follow (the session is being
- * replaced or is quitting). Never throws: a failure leaves them unsaved, and a resume warns about any unanswered call.
+ * replaced or is quitting), or the timed retry's with the short `lockWaitMs` (`held-retry.ts`). Never throws: a
+ * failure leaves them unsaved, and a resume warns about any unanswered call.
  */
-export function writeHeldEntries(state: SessionState): void {
+export function writeHeldEntries(state: SessionState, lockWaitMs?: number): void {
 	if (state.unwritten.length === 0 || state.persistenceFailure) return;
 	try {
-		persistEntry(state);
+		persistEntry(state, undefined, lockWaitMs);
 	} catch (error) {
 		if (!isSessionLockTimeout(error)) blockWrites(state, error);
 	}

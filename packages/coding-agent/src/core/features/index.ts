@@ -52,6 +52,7 @@ export type {
 	SessionBoundaryDraft,
 	SessionCompactEvent,
 	SessionCompactFailedEvent,
+	SessionCompactPrewarmEvent,
 	SessionEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,

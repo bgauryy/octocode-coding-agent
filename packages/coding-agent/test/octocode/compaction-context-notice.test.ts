@@ -10,6 +10,24 @@ import {
 const model = { provider: "anthropic", id: "claude-x", contextWindow: 200_000 };
 
 describe("context usage notice", () => {
+	it.each([{ band: 0.9, compactionId: null }, { band: 0.9 }])(
+		"starts notice bands over when an older notice survives in the retained tail: %j",
+		(details) => {
+			const sent: Array<Record<string, unknown>> = [];
+			const entries = [{ message: { role: "custom", customType: CONTEXT_NOTICE_TYPE, details } }];
+			const api = {
+				sendMessage: (message: Record<string, unknown>) => {
+					sent.push(message);
+					return Promise.resolve();
+				},
+			};
+			const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
+			noticeContextUsage(api as never, ctx as never, entries, undefined, false, "new-checkpoint");
+			expect(sent).toHaveLength(1);
+			expect(sent[0]).toMatchObject({ details: { band: 0.5, compactionId: "new-checkpoint" } });
+		},
+	);
+
 	it("bands usage of the room before automatic compaction", () => {
 		expect(noticeBand(10_000, 184_000)).toBeUndefined();
 		expect(noticeBand(92_000, 184_000)).toBe(0.5);

@@ -120,6 +120,7 @@ export function createSessionCollaborators(
 	const compaction = new SessionCompaction({
 		...base,
 		cacheWarmer,
+		forcedSystemPrompt: () => tools.requestForcedSystemPrompt,
 		summarize: seams.runDefaultCompaction,
 		// Not awaited: the compaction's caller gets its answer now; a failing run is reported as any hook's run would be.
 		releaseHeldInput: () => {
@@ -198,6 +199,7 @@ export function createSessionCollaborators(
 			tools,
 			expandMentionSkills: (text, expandedPaths) => expandMentionSkills(base, text, expandedPaths),
 			runAutoCompaction: seams.runAutoCompaction,
+			prewarmCompaction: (tokens, model, thinking) => compaction.prewarm(tokens, model, thinking),
 		},
 		agentEvents: { ...base, inputs, retry, boundaries, toolCalls, emitExtensionEvent: seams.emitExtensionEvent },
 		compactionCheck: {

@@ -60,23 +60,6 @@ describe("recorded lock ownership", () => {
 		}
 	});
 
-	it("keeps a legacy owner's identity through heartbeat changes to ctime", () => {
-		fs.mkdirSync(lock);
-		const stat = fs.statSync(lock, { bigint: true });
-		fs.writeFileSync(
-			`${lock}.owner`,
-			JSON.stringify({
-				pid: process.pid,
-				host: os.hostname(),
-				dir: `${stat.dev}:${stat.ino}:${stat.birthtimeNs}:${stat.ctimeNs}`,
-			}),
-		);
-		const heartbeat = new Date(Date.now() + 1000);
-		fs.utimesSync(lock, heartbeat, heartbeat);
-		vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
-		expect(() => guardLockOwner(lock).check()).toThrow(expect.objectContaining({ code: "ELOCKED" }));
-	});
-
 	it("refuses stale removal after a successor replaced the observed directory, even before its owner record", () => {
 		fs.mkdirSync(lock);
 		const guard = guardLockOwner(lock);

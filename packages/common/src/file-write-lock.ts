@@ -173,7 +173,7 @@ export async function withFileLock<T>(
 			compromised = error;
 		},
 	});
-	const forget = guard.acquired();
+	let forget = () => {};
 	const release = async () => {
 		try {
 			await releaseLock();
@@ -181,15 +181,21 @@ export async function withFileLock<T>(
 			forget();
 		}
 	};
-	lock.owned = await lockDirectory(lockfilePath);
-	const owned = lock.owned;
-	const assertHeld = async () => {
-		if (!compromised && owned !== undefined && (await lockDirectory(lockfilePath)) === owned) return;
-		throw Object.assign(new Error(`Another process took over the lock on ${file}; nothing was written.`), {
-			code: "ECOMPROMISED",
-		});
-	};
 	try {
+		forget = await guard.acquiredAsync();
+		guard.assertHeld();
+		lock.owned = await lockDirectory(lockfilePath);
+		guard.assertHeld();
+		const owned = lock.owned;
+		const assertHeld = async () => {
+			guard.assertHeld();
+			const current = await lockDirectory(lockfilePath);
+			guard.assertHeld();
+			if (!compromised && owned !== undefined && current === owned) return;
+			throw Object.assign(new Error(`Another process took over the lock on ${file}; nothing was written.`), {
+				code: "ECOMPROMISED",
+			});
+		};
 		return await update(assertHeld);
 	} finally {
 		// A compromised lock is already released (and the directory is the successor's): nothing of ours to remove.
@@ -228,6 +234,7 @@ export async function withFileWriteLock<T>(
 	const deadline = Date.now() + 30_000;
 	let compromised: Error | undefined;
 	let release: (() => Promise<void>) | undefined;
+	let assertOwner = () => {};
 	const lockfilePath = path.join(path.dirname(target), `.octocode-${key}.lock`);
 	while (!release) {
 		signal?.throwIfAborted();
@@ -244,7 +251,7 @@ export async function withFileWriteLock<T>(
 					compromised = error;
 				},
 			});
-			const forget = guard.acquired();
+			let forget = () => {};
 			release = async () => {
 				try {
 					await releaseLock();
@@ -252,13 +259,21 @@ export async function withFileWriteLock<T>(
 					forget();
 				}
 			};
+			forget = await guard.acquiredAsync();
+			guard.assertHeld();
+			assertOwner = guard.assertHeld;
 		} catch (error) {
+			if (release) {
+				await release().catch(() => undefined);
+				release = undefined;
+			}
 			if ((error as NodeJS.ErrnoException).code !== "ELOCKED" || Date.now() >= deadline) throw error;
 			await sleep(50, undefined, { signal });
 		}
 	}
 	const assertHeld = () => {
 		signal?.throwIfAborted();
+		assertOwner();
 		if (compromised) throw compromised;
 	};
 	let result: T;

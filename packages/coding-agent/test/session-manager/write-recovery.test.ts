@@ -223,11 +223,15 @@ describe("a lock another process holds past the wait", () => {
 		expect(reopened.getEntries().filter((entry) => entry.id === kept)).toHaveLength(1);
 	}, 10_000);
 
-	it("still rolls back what can be regenerated", () => {
+	it("keeps a user message too, instead of refusing it after seconds of waiting", () => {
 		const manager = SessionManager.create(dir, dir);
-		const root = manager.appendMessage(user("first"));
+		manager.appendMessage(user("first"));
 		const file = manager.getSessionFile()!;
-		expect(() => held(file, () => manager.appendMessage(user("again")))).toThrow();
-		expect(manager.getLeafId()).toBe(root);
+		const again = held(file, () => manager.appendMessage(user("again")));
+		expect(manager.getLeafId()).toBe(again);
+		// Written first by the next record once the lock is free.
+		manager.appendMessage(user("after"));
+		const reopened = SessionManager.open(file, dir);
+		expect(reopened.getEntries().filter((entry) => entry.id === again)).toHaveLength(1);
 	}, 10_000);
 });

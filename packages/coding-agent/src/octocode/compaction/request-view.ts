@@ -3,6 +3,7 @@ import type { BranchSource } from "../shared/branch-index.ts";
 import { summaryMethodOf } from "../shared/summary-method.ts";
 import { latestCompaction, withoutCarriedNotes } from "./continuity.ts";
 import { requestMessages } from "./thinking.ts";
+import { withoutSupersededNotices } from "../shared/context-notices.ts";
 
 /**
  * The messages as Octocode's own `context` handler (`register.ts`) sends them in every request: the results cleared on
@@ -13,7 +14,11 @@ import { requestMessages } from "./thinking.ts";
 export function requestView<T>(messages: T[], session: BranchSource, model: unknown): T[] {
 	const latest = latestCompaction(session);
 	return requestMessages(
-		withoutCarriedNotes(messages, latest?.id, summaryMethodOf(latest?.details) !== undefined),
+		withoutCarriedNotes(
+			withoutSupersededNotices(messages, latest?.id),
+			latest?.id,
+			summaryMethodOf(latest?.details) !== undefined,
+		),
 		model,
 		sessionCleared(session),
 		sessionClearedAt(session),

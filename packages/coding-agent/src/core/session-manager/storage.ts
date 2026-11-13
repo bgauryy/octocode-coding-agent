@@ -22,7 +22,7 @@ import {
 	createSessionHeader,
 	createSessionId,
 	getSessionFilePath,
-	migrateToCurrentVersion,
+	assertCurrentSessionVersion,
 	parseSessionEntryLine,
 } from "./entries.ts";
 import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
@@ -314,7 +314,7 @@ export function forkSessionFile(
 	if (!sourceHeader) {
 		throw new Error(`Cannot fork: source session has no header: ${resolvedSourcePath}`);
 	}
-	migrateToCurrentVersion(sourceEntries);
+	assertCurrentSessionVersion(sourceHeader, resolvedSourcePath);
 
 	// The fork is new work in targetCwd even when its caller chooses a separate JSONL directory.
 	if (sessionDir && statSync(resolvedTargetCwd, { throwIfNoEntry: false })?.isDirectory())

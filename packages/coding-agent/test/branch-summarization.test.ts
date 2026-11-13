@@ -6,7 +6,7 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { summaryMaxTokens } from "../src/core/compaction/settings.ts";
 import { generateBranchSummary } from "../src/core/compaction/index.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
@@ -44,7 +44,55 @@ function response(content: AssistantMessage["content"]): AssistantMessage {
 	};
 }
 
+function finishedStream() {
+	const stream = createAssistantMessageEventStream();
+	queueMicrotask(() =>
+		stream.push({ type: "done", reason: "stop", message: response([{ type: "text", text: "summary" }]) }),
+	);
+	return stream;
+}
+
 describe("branch summarization", () => {
+	it.each(["compaction", "branch_summary"] as const)(
+		"refuses an oversized %s checkpoint before a provider call and leaves the history intact",
+		async (type) => {
+			const checkpoint: SessionEntry = {
+				id: "oversized-checkpoint",
+				parentId: "branch-user",
+				timestamp: new Date(2).toISOString(),
+				summary: "Complete historical evidence. ".repeat(4_000),
+				...(type === "compaction"
+					? { type, firstKeptEntryId: "branch-user", tokensBefore: 100_000 }
+					: { type, fromId: "branch-user" }),
+			};
+			const branch = [...entries, checkpoint];
+			const before = structuredClone(branch);
+			const streamFn = vi.fn<StreamFn>(finishedStream);
+			const result = await generateBranchSummary(branch, {
+				model: { ...model, contextWindow: 2_000, maxTokens: 500 },
+				reserveTokens: 1_000,
+				signal: new AbortController().signal,
+				streamFn,
+			});
+			expect(result.error).toContain("cannot fit");
+			expect(result.summary).toBeUndefined();
+			expect(streamFn).not.toHaveBeenCalled();
+			expect(branch).toEqual(before);
+		},
+	);
+
+	it("refuses a reserve that leaves no input budget before a provider call", async () => {
+		const streamFn = vi.fn<StreamFn>(finishedStream);
+		const result = await generateBranchSummary(entries, {
+			model: { ...model, contextWindow: 1_024, maxTokens: 500 },
+			reserveTokens: 2_048,
+			signal: new AbortController().signal,
+			streamFn,
+		});
+		expect(result.error).toContain("cannot fit");
+		expect(streamFn).not.toHaveBeenCalled();
+	});
+
 	it("does not override tool choice for branch summaries", async () => {
 		let requestOptions: SimpleStreamOptions | undefined;
 		const streamFn: StreamFn = (_model, _context, options) => {

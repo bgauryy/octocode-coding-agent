@@ -324,6 +324,23 @@ export function deliverRestoredFiles(
 	}
 	const restored = restoreFiles(pending, heldFiles(contextReads(ctx)), ctx.cwd, total);
 	if (!restored || restored.content.length > total) return undefined;
+	// Partial excerpts stay partial for the guard, but an identical retained excerpt need not be appended again.
+	const retained = ctx.sessionManager
+		.buildSessionProjection()
+		.entries.flatMap((entry) => entry.messages)
+		.find(
+			(message) =>
+				message.role === "custom" &&
+				message.customType === RESTORED_FILES_TYPE &&
+				message.content === restored.content &&
+				isRecord(message.details) &&
+				typeof message.details.id === "string" &&
+				Array.isArray(message.details.files) &&
+				message.details.files.length === restored.files.length &&
+				message.details.files.every((file, index) => file === restored.files[index].file),
+		);
+	if (retained?.role === "custom" && isRecord(retained.details) && typeof retained.details.id === "string")
+		return { id: retained.details.id, files: restored.files };
 	const id = randomUUID();
 	try {
 		const partial = restored.files.filter((entry) => !entry.whole).map((entry) => entry.file);

@@ -15,11 +15,13 @@ import {
 	settleRestoredFiles,
 } from "../../src/octocode/compaction/restore.ts";
 import { windowBudget } from "../../src/octocode/compaction/summary.ts";
-import { RESTORED_FILES_TYPE, seenFiles } from "../../src/octocode/files/reads.ts";
+import { contextReads, RESTORED_FILES_TYPE, seenFiles } from "../../src/octocode/files/reads.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { tmp } from "./helpers.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
+import type { ExtensionAPI } from "../../src/core/features/index.ts";
 
 const call = (id: string, name: string, args: Record<string, unknown>) => ({
 	role: "assistant",
@@ -38,6 +40,90 @@ const result = (id: string, toolName: string, timestamp: number, extra: Record<s
 const plain = (...files: string[]) => files.map((file) => ({ file }));
 
 describe("file restore after compaction", () => {
+	it("does not append a retained identical partial source excerpt again, but restores changed content", () => {
+		const dir = tmp();
+		const file = path.join(dir, "large.ts");
+		fs.writeFileSync(
+			file,
+			Array.from({ length: 600 }, (_, n) => `export function item${n}() { return "${"value".repeat(15)}"; }`).join(
+				"\n",
+			),
+		);
+		const session = SessionManager.inMemory(dir);
+		const kept = session.appendMessage({ role: "user", content: "Continue working on large.ts", timestamp: 1 });
+		const sent: Array<Parameters<ExtensionAPI["sendMessage"]>[0]> = [];
+		const api = {
+			sendMessage: (message: Parameters<ExtensionAPI["sendMessage"]>[0]) => {
+				sent.push(message);
+				session.appendCustomMessageEntry(
+					message.customType,
+					message.content,
+					message.display ?? false,
+					message.details,
+				);
+			},
+		};
+		const ctx = { cwd: dir, sessionManager: session };
+		const candidates = [{ file, workedAt: 3, line: 1 }];
+		const first = deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)!;
+		expect(first.files[0].whole).toBe(false);
+		const prefix = JSON.stringify(session.buildSessionProjection().messages);
+		session.appendCompaction("Newest checkpoint", kept, 50_000);
+		const checkpoint = JSON.stringify(session.buildSessionProjection().messages);
+		expect(deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)?.id).toBe(first.id);
+		expect(sent).toHaveLength(1);
+		expect(JSON.stringify(session.buildSessionProjection().messages)).toBe(checkpoint);
+		const guard = new FileGuard();
+		guard.restore(contextReads(ctx));
+		expect(guard.check(file, "write", "large.ts")).toMatch(/whole file/);
+		expect(guard.check(file, "edit", "large.ts")).toBeUndefined();
+		expect(
+			session.getEntries().some((entry) => entry.type === "custom_message" && entry.content === sent[0].content),
+		).toBe(true);
+		expect(prefix).toContain("item0");
+		fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("item0", "changedItem0"));
+		expect(deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)?.files[0].whole).toBe(false);
+		expect(sent).toHaveLength(2);
+		expect(sent[1].content).toContain("changedItem0");
+	});
+
+	it("revalidates a retained identical outline without appending or granting a whole-file read", () => {
+		const dir = tmp();
+		const file = path.join(dir, "outline.ts");
+		const text = Array.from(
+			{ length: 600 },
+			(_, n) => `export function item${n}() {\n return "${"value".repeat(15)}";\n}`,
+		).join("\n");
+		fs.writeFileSync(file, text);
+		const session = SessionManager.inMemory(dir);
+		const sent: Array<Parameters<ExtensionAPI["sendMessage"]>[0]> = [];
+		const api = {
+			sendMessage: (message: Parameters<ExtensionAPI["sendMessage"]>[0]) => {
+				sent.push(message);
+				session.appendCustomMessageEntry(
+					message.customType,
+					message.content,
+					message.display ?? false,
+					message.details,
+					Date.now() - 60_000,
+				);
+			},
+		};
+		const ctx = { cwd: dir, sessionManager: session };
+		const first = deliverRestoredFiles(api, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
+		fs.writeFileSync(file, text.replace("value", "other"));
+		const guard = new FileGuard();
+		guard.restore(contextReads(ctx));
+		expect(guard.inspect(file, "edit", "outline.ts").stale).toBe(true);
+		const pending = deliverRestoredFiles(api, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
+		expect(pending.id).toBe(first.id);
+		expect(sent).toHaveLength(1);
+		expect(settleRestoredFiles(session.buildSessionProjection().messages, pending, guard)).toBe(true);
+		expect(guard.inspect(file, "edit", "outline.ts").stale).toBeUndefined();
+		expect(guard.check(file, "edit", "outline.ts")).toBeUndefined();
+		expect(guard.check(file, "write", "outline.ts")).toMatch(/whole file/);
+	});
+
 	it("does not refill a nearly full compacted context and keeps the original file available", () => {
 		const directory = tmp();
 		const file = path.join(directory, "work.ts");

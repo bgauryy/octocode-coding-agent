@@ -1,7 +1,6 @@
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import {
-	type CompactionPreparation,
 	type CompactionResult,
 	compact,
 	inlineSummaryTokens,
@@ -27,6 +26,7 @@ import {
 } from "./checkpoint-text.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carriedUserMessages, type FallbackContinuity, persistenceFailure } from "./continuity.ts";
+import { takeEarlySummary } from "./early-summary.ts";
 import { keptWordsOf } from "./kept-words.ts";
 import { carriedLoadedSkills, LOADED_SKILLS_DETAILS, loadedSkills, loadedSkillsLines } from "./loaded-skills.ts";
 import { recordCompactionNote } from "./record.ts";
@@ -39,6 +39,7 @@ import {
 } from "./saved-results.ts";
 import { sessionCachePreferences, sharedSummary, type SummaryApi } from "./shared-summary.ts";
 import { noGainReason } from "./summary-gain.ts";
+import { paidSummaryKey } from "./summary-cache.ts";
 import { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText } from "./summary-text.ts";
 
 export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSAGES_CHARS, userMessagesSection };
@@ -110,26 +111,11 @@ export { SUMMARY_METHOD_DETAILS, summaryMethodOf };
 interface PaidSummary {
 	key: string;
 	result: CompactionResult;
-	method: { method: string; reason?: string };
+	method: { method: string; reason?: string; early?: { requestedAt: string; waitedMs: number } };
 }
 
 /** The last paid summary of each session (by its session manager). */
 const paid = new WeakMap<object, PaidSummary>();
-
-/** What a summary call depends on: the model and the span it summarizes. */
-function paidKey(model: Model<Api>, preparation: CompactionPreparation, instructions?: string): string {
-	return JSON.stringify([
-		model.provider,
-		model.id,
-		preparation.firstKeptEntryId,
-		preparation.tokensBefore,
-		preparation.isSplitTurn,
-		preparation.messagesToSummarize.length,
-		preparation.turnPrefixMessages.length,
-		preparation.previousSummary ?? null,
-		instructions ?? null,
-	]);
-}
 
 /**
  * What code appends after `summary` (the model's text): the saved-results block, the user's messages word for word
@@ -250,8 +236,26 @@ export async function writeSummary(
 			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment, saveText),
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
 		});
-		const key = paidKey(model, event.preparation, event.customInstructions);
+		const forced = event.summaryRequest?.forceSystemPrompt;
+		const key = paidSummaryKey(model, event.preparation, event.customInstructions, api.getThinkingLevel(), forced);
 		let paidSummary = paid.get(ctx.sessionManager);
+		// The summary requested ahead of the threshold (`early-summary.ts`): ready, or waited for what is left of it.
+		if (paidSummary?.key !== key && !summaryModel && event.reason === "threshold" && !event.customInstructions) {
+			const thinking = api.getThinkingLevel();
+			const taken = await takeEarlySummary(
+				ctx.sessionManager,
+				model,
+				event.preparation,
+				thinking,
+				event.signal,
+				forced,
+			);
+			if (event.signal.aborted) return undefined;
+			if (taken) {
+				paidSummary = { key, result: taken.result, method: { method: "cache-shared", early: taken.early } };
+				paid.set(ctx.sessionManager, paidSummary);
+			}
+		}
 		if (paidSummary?.key !== key) {
 			// An automatic compaction whose appended sections alone (unsaved) are as large as what the summary replaces cannot
 			// free anything, so the model is not paid to write it.

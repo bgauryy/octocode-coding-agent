@@ -33,9 +33,15 @@ const caches = {
 	features: new Map<string, readonly string[]>(),
 };
 
+/** How long "no client attached" is believed before tmux is asked again. */
+const NO_CLIENT_TTL_MS = 30_000;
+/** When each pane last had no attached client (`tmuxClientTerminalNames`). */
+const noClientAt = new Map<string, number>();
+
 /** Clears every cached tmux answer (tests). */
 export function resetMultiplexerCache(): void {
 	for (const cache of Object.values(caches)) cache.clear();
+	noClientAt.clear();
 }
 
 /** The pane `env` runs in (`TMUX_PANE`, which tmux sets in every pane), or undefined when it names none. */
@@ -144,9 +150,20 @@ function terminalName(termtype: string): string {
 
 /**
  * Emulator names of the attached client, best first: the XTVERSION name, then the `TERM` name. `[]` on error or with no
- * client attached; that answer is not cached, so a terminal that attaches later (a session started detached) is found.
+ * client attached; that answer is kept only for `NO_CLIENT_TTL_MS`, so a terminal that attaches later (a session started
+ * detached) is found, and a detached session does not run this synchronous query for every notification.
  */
 export function tmuxClientTerminalNames(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+	const key = cacheKey(env);
+	const emptyAt = noClientAt.get(key);
+	if (emptyAt !== undefined && Date.now() - emptyAt < NO_CLIENT_TTL_MS) return [];
+	const names = clientTerminalNames(env);
+	if (names.length === 0) noClientAt.set(key, Date.now());
+	else noClientAt.delete(key);
+	return names;
+}
+
+function clientTerminalNames(env: NodeJS.ProcessEnv): readonly string[] {
 	return memo(
 		caches.names,
 		env,

@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
-import { clipText } from "../shared/util.ts";
+import { clipText, contentText } from "../shared/util.ts";
 import { clearsFloor, MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import {
 	type Memory,
@@ -45,10 +45,10 @@ interface Injection {
  * Ids injected earlier on this branch, each with the `updatedAt` of the version injected (undefined for an injection
  * that did not record it), from the `octocode-memory` custom messages in `entries`, oldest first. A compaction
  * summarizes the messages before its first kept entry away, so only injections from that entry on count (all of them
- * are dropped when the kept entry is unknown).
+ * are dropped when the kept entry is unknown). An omitted or changed injection no longer suppresses recall.
  */
 export function injectedIds(entries: readonly unknown[]): Map<number, number | undefined> {
-	return new Map(keptInjections(entries).flatMap((injection) => injection.ids));
+	return new Map(keptInjections(entries).flatMap((injection) => (injection.intact ? injection.ids : [])));
 }
 
 /**
@@ -60,7 +60,14 @@ export function headerInContext(entries: readonly unknown[]): boolean {
 	return keptInjections(entries).some((injection) => injection.whole);
 }
 
-type KeptInjection = { at: number; ids: Array<[number, number | undefined]>; whole: boolean };
+type KeptInjection = {
+	at: number;
+	id: string | undefined;
+	content: string;
+	ids: Array<[number, number | undefined]>;
+	intact: boolean;
+	whole: boolean;
+};
 
 /** A fold of a branch into the injections a compaction has not summarized away (`keptInjections`). */
 interface InjectionFold {
@@ -82,13 +89,28 @@ function foldInjection(fold: InjectionFold, entry: unknown): void {
 		fold.injections = kept === undefined ? [] : fold.injections.filter((injection) => injection.at >= kept);
 		return;
 	}
+	if (entry.type === "context_edit") {
+		if (typeof entry.targetId !== "string") return;
+		const injection = fold.injections.find((injection) => injection.id === entry.targetId);
+		if (injection) {
+			const replacement = asRecord(entry.replacement).content;
+			const text = contentText(replacement);
+			injection.intact = entry.replacement !== null && text === injection.content;
+			injection.whole = text.startsWith(MEMORY_HEADER);
+		}
+		return;
+	}
 	if (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE) return;
 	const details = asRecord(entry.details);
 	const list = Array.isArray(details.ids) ? details.ids : [];
 	const updated = Array.isArray(details.updated) ? details.updated : [];
+	const content = contentText(entry.content);
 	fold.injections.push({
 		at,
-		whole: typeof entry.content === "string" && entry.content.startsWith(MEMORY_HEADER),
+		id: typeof entry.id === "string" ? entry.id : undefined,
+		content,
+		intact: true,
+		whole: content.startsWith(MEMORY_HEADER),
 		ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
 			typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
 		),
@@ -114,7 +136,7 @@ export function sessionInjections(session: BranchSource): {
 } {
 	const kept = injectionIndex.read(session).injections;
 	return {
-		injected: new Map(kept.flatMap((injection) => injection.ids)),
+		injected: new Map(kept.flatMap((injection) => (injection.intact ? injection.ids : []))),
 		headerInContext: kept.some((injection) => injection.whole),
 	};
 }
@@ -197,7 +219,7 @@ export function selectInjection(
 			? [renderInstruction("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })]
 			: [];
 	for (const line of note) used += line.length + 1;
-	const words = terms(options.query, MAX_QUERY_TERMS).filter((word) => word.length >= MIN_TERM_LENGTH);
+	const words = terms(options.query, MAX_QUERY_TERMS, MIN_TERM_LENGTH);
 	const stems = new Set(words.map(stem));
 	const found =
 		words.length > 0

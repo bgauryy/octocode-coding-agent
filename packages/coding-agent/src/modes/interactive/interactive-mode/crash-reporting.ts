@@ -7,6 +7,7 @@ import { type AssistantMessage, isRetryableAssistantError } from "@octocodeai/oc
 import { APP_NAME, detectInstallChange, VERSION } from "../../../config.ts";
 import { findExtensionStackMatches, recordCrash as writeCrashRecord } from "../../../core/crash-log.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
+import { endIfStalled } from "../../../utils/stall-guard.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
 import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
@@ -222,7 +223,7 @@ export function uncaughtCrash(host: CrashReportingHost, error: Error): never {
 		// A child that cannot be killed is left to the OS; the crash report matters more.
 	}
 	try {
-		host.ui.stop();
+		endIfStalled(() => host.ui.stop());
 	} catch {
 		// A terminal that cannot be restored cleanly is already dead or about to be; the report prints either way.
 	}

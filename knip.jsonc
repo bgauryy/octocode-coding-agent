@@ -10,7 +10,6 @@
 				"scripts/agent-eval/fixtures/checks/*.mjs",
 				"scripts/agent-treeshake-smoke-entry.ts",
 				"scripts/browser-smoke-entry.ts",
-				"scripts/db-migrate.mjs",
 				"scripts/generate-thinking-capabilities.mjs",
 				"scripts/profile-render-backpressure.mjs",
 				"scripts/stage-registry-release.mjs",
@@ -32,7 +31,7 @@
 			// Knip does not resolve to ai sources.
 			"entry": [
 				"src/index.ts",
-				"src/{models,compat,oauth,bedrock-provider,bun-oauth}.ts",
+				"src/{models,compat,bedrock-provider,bun-oauth}.ts",
 				"src/providers/compat-schema.ts",
 			],
 		},

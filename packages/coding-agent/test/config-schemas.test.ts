@@ -121,10 +121,8 @@ describe("generated configuration schemas", () => {
 				cacheWarming: "idle",
 				retention: { days: 30, sessionDays: 0 },
 				extensionSetting: { enabled: true },
-				queueMode: "all",
-				websockets: true,
-				skills: { enableSkillCommands: true, customDirectories: ["./skills"] },
-				retry: { maxDelayMs: 1000 },
+				skills: ["./skills"],
+				retry: { provider: { maxRetryDelayMs: 1000 } },
 			},
 			invalid: { cacheWarming: "always" },
 		},
@@ -207,15 +205,14 @@ describe("generated configuration schemas", () => {
 		expect(Compile(SettingsSchema).Check({ compaction: { enabled: false, reserveTokens: -1 } })).toBe(true);
 	});
 
-	it("describes legacy settings migrations accurately", () => {
+	it("declares no setting of an earlier version: such a key is not converted, and is reported as unknown", () => {
 		const schema = JSON.parse(renderConfigSchemas().get("schemas/settings.schema.json") ?? "") as {
-			properties: {
-				queueMode: { description: string };
-				retry: { properties: { maxDelayMs: { description: string } } };
-			};
+			properties: Record<string, unknown> & { retry: { properties: Record<string, unknown> } };
 		};
-		expect(schema.properties.retry.properties.maxDelayMs.description).toContain("provider.maxRetryDelayMs");
-		expect(schema.properties.queueMode.description).toBe("Legacy setting migrated to steeringMode.");
+		expect(schema.properties).not.toHaveProperty("queueMode");
+		expect(schema.properties).not.toHaveProperty("websockets");
+		expect(schema.properties.retry.properties).not.toHaveProperty("maxDelayMs");
+		expect(JSON.stringify(schema)).not.toContain('"deprecated"');
 	});
 
 	it("accepts custom compatibility settings and rejects malformed known fields", async () => {

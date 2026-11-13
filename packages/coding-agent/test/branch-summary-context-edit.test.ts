@@ -81,4 +81,54 @@ describe("branch summarization with context edits", () => {
 		expect(prompt).not.toContain("SECRET-REMOVED");
 		expect(prompt).not.toContain("ORIGINAL-TEXT");
 	});
+
+	it.each(["system", "thinking"] as const)(
+		"does not let discarded %s content evict the abandoned user request from the summary budget",
+		async (kind) => {
+			let prompt = "";
+			const streamFn: StreamFn = (_model, context) => {
+				prompt = JSON.stringify(context.messages.filter((message) => message.role === "user"));
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() =>
+					stream.push({ type: "done", reason: "stop", message: fauxAssistantMessage("Branch summary") }),
+				);
+				return stream;
+			};
+			const hidden = "NOT-SENT-IN-SUMMARY ".repeat(10_000);
+			const branch: SessionEntry[] = [
+				{
+					...base,
+					type: "message",
+					id: "request",
+					parentId: null,
+					message: { role: "user", content: "PRESERVE-THIS-REQUEST", timestamp: 1 },
+				},
+				{
+					...base,
+					type: "message",
+					id: "discarded",
+					parentId: "request",
+					message:
+						kind === "system"
+							? { role: "system", content: hidden, timestamp: 2 }
+							: {
+									...fauxAssistantMessage("VISIBLE-ANSWER"),
+									content: [
+										{ type: "thinking", thinking: hidden },
+										{ type: "text", text: "VISIBLE-ANSWER" },
+									],
+								},
+				},
+			];
+			await generateBranchSummary(branch, {
+				model: { ...model, contextWindow: 2_000, maxTokens: 500 },
+				reserveTokens: 1_000,
+				signal: new AbortController().signal,
+				streamFn,
+			});
+			expect(prompt).toContain("PRESERVE-THIS-REQUEST");
+			expect(prompt).not.toContain("NOT-SENT-IN-SUMMARY");
+			if (kind === "thinking") expect(prompt).toContain("VISIBLE-ANSWER");
+		},
+	);
 });

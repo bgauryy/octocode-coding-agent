@@ -18,10 +18,10 @@ const STOPWORDS = new Set(
 export const MAX_QUERY_TERMS = 32;
 
 /**
- * Lower-case letter/number words of `text` (NFKC, so full-width `ＳＱＬ` is `sql`), stopwords and one-letter words
- * dropped, first occurrence order, unique.
+ * Lower-case letter/number words of `text` (NFKC, so full-width `ＳＱＬ` is `sql`), stopwords and words shorter than
+ * `minLength` dropped before the limit, first occurrence order, unique.
  */
-export function terms(text: string, max = Number.POSITIVE_INFINITY): string[] {
+export function terms(text: string, max = Number.POSITIVE_INFINITY, minLength = 2): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
 	for (const match of text
@@ -30,7 +30,7 @@ export function terms(text: string, max = Number.POSITIVE_INFINITY): string[] {
 		.matchAll(/[\p{L}\p{N}_]+/gu)) {
 		// Snake case splits too (`busy_timeout` → busy, timeout) so it matches the unicode61 tokenizer's view of `_`.
 		for (const word of match[0].split("_")) {
-			if (word.length < 2 || STOPWORDS.has(word) || seen.has(word)) continue;
+			if (word.length < minLength || STOPWORDS.has(word) || seen.has(word)) continue;
 			seen.add(word);
 			out.push(word);
 			if (out.length >= max) return out;

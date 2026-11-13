@@ -1,34 +1,12 @@
-/**
- * `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions.
- * Migration 9 creates it; a new file gets the same statement. `IF NOT EXISTS` keeps the step a no-op on a file that has
- * the table already (SQLite leaves the clause out of the stored schema, so both shapes compare equal).
- */
-export const SHELL_HISTORY_SCHEMA_V9 = `
-CREATE TABLE IF NOT EXISTS shell_history (
+/** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
+const SHELL_HISTORY_SCHEMA = `
+CREATE TABLE shell_history (
   cwd TEXT NOT NULL, command TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_at INTEGER NOT NULL, last_exit INTEGER,
   PRIMARY KEY (cwd, command));
-CREATE INDEX IF NOT EXISTS shell_history_recent ON shell_history(last_at);
+CREATE INDEX shell_history_recent ON shell_history(last_at);
 `;
 
-/** The audit table as migration 3 created it, before `cache_write` (migration 8 adds that column). */
-export const AGENT_RUNS_SCHEMA_V3 = `
-CREATE TABLE agent_runs (
-  run_id TEXT PRIMARY KEY, registration_id TEXT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), agent_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('main','child')), parent_agent_id TEXT, parent_session_id TEXT, session_id TEXT,
-  started_by TEXT, profile TEXT, model TEXT, goal TEXT, backlog_workspace TEXT, backlog_seq INTEGER,
-  cwd TEXT, branch TEXT, process_title TEXT, pid INTEGER,
-  started_at INTEGER NOT NULL, ended_at INTEGER, end_reason TEXT, end_detail TEXT,
-  tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0,
-  outcome TEXT, outcome_source TEXT, report_path TEXT, files_changed TEXT);
-CREATE INDEX agent_runs_agent ON agent_runs(agent_id, started_at DESC);
-CREATE INDEX agent_runs_workspace ON agent_runs(workspace_id, started_at DESC);
-CREATE INDEX agent_runs_item ON agent_runs(backlog_workspace, backlog_seq) WHERE backlog_seq IS NOT NULL;
-CREATE INDEX agent_runs_session ON agent_runs(session_id);
-CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
-`;
-
-/** The audit table of agent runs and its indexes: a new file creates it with the rest, an older file by migrations 3 and 8. */
+/** The audit table of agent runs and its indexes. */
 const AGENT_RUNS_SCHEMA = `
 CREATE TABLE agent_runs (
   run_id TEXT PRIMARY KEY, registration_id TEXT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), agent_id TEXT NOT NULL,
@@ -53,12 +31,10 @@ CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
  * other agent's reservation covers the path in `condition`; `file`, `item`, `agent`, `port` and `check` store their fields
  * as JSON in `condition`) every `interval_ms` and wakes once when it is met or the deadline passes. `baseline` is what a
  * `file` or `check` condition compares against (set at creation); `checks` and `spent_usd` count a `check`'s model calls
- * and their cost. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE. A new file
- * creates the table with the rest, a version 3 file by migration 4 and version 5 by migration 6 (a rebuild: SQLite cannot
- * widen a CHECK).
+ * and their cost. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE.
  */
-const timersTable = (name: string) => `
-CREATE TABLE ${name} (
+const TIMERS_SCHEMA = `
+CREATE TABLE timers (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
   agent TEXT, tool_call_id TEXT, note TEXT NOT NULL,
   kind TEXT NOT NULL CHECK(kind IN ('once','every','until')), due_at INTEGER NOT NULL, interval_ms INTEGER,
@@ -71,40 +47,14 @@ CREATE TABLE ${name} (
   CHECK((kind = 'once') = (interval_ms IS NULL)),
   CHECK((kind = 'until') = (condition_kind IS NOT NULL)),
   CHECK((condition_kind IS NULL) = (condition IS NULL)));
-`;
-
-const TIMERS_INDEXES = `
 CREATE INDEX timers_due ON timers(session_id, due_at) WHERE status = 'active';
 CREATE INDEX timers_ended ON timers(ended_at) WHERE status <> 'active';
 `;
 
-const TIMERS_SCHEMA = `${timersTable("timers")}${TIMERS_INDEXES}`;
-
-/** The table migration 6 builds beside `timers`, copies into, and renames over it. */
-export const TIMERS_REBUILD_TABLE = timersTable("timers_next");
-export const TIMERS_REBUILD_INDEXES = TIMERS_INDEXES;
-
-/** `timers` as versions 4 and 5 created it: migration 4 still builds this shape, and migration 6 rebuilds it. */
-export const TIMERS_SCHEMA_V4 = `
-CREATE TABLE timers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
-  agent TEXT, tool_call_id TEXT, note TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('once','every','until')), due_at INTEGER NOT NULL, interval_ms INTEGER,
-  condition_kind TEXT CHECK(condition_kind IN ('command','unlocked')), condition TEXT, cwd TEXT,
-  max_runs INTEGER, runs INTEGER NOT NULL DEFAULT 0, deadline_at INTEGER,
-  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done','cancelled','expired','failed')), stop_reason TEXT,
-  last_fired_at INTEGER, last_exit INTEGER, last_output TEXT,
-  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ended_at INTEGER,
-  CHECK((kind = 'once') = (interval_ms IS NULL)),
-  CHECK((kind = 'until') = (condition_kind IS NOT NULL)),
-  CHECK((condition_kind IS NULL) = (condition IS NULL)));
-${TIMERS_INDEXES}`;
-
 /**
- * The audit triggers on `backlog`: every insert, update and delete files a row with the acting `octocode_audit_actor()`. One
- * text for a new file and for the migration that adds `closed`, so both end with the same triggers.
+ * The audit triggers on `backlog`: every insert, update and delete files a row with the acting `octocode_audit_actor()`.
  */
-export const BACKLOG_AUDIT_TRIGGERS = `
+const BACKLOG_AUDIT_TRIGGERS = `
 CREATE TRIGGER backlog_audits_insert AFTER INSERT ON backlog BEGIN
  INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, before_value, after_value)
  SELECT NEW.workspace_id, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog', NULL, json_object('id', NEW.id, 'workspace_id', NEW.workspace_id, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id, 'closed', NEW.closed, 'rank', NEW.rank);
@@ -118,12 +68,6 @@ CREATE TRIGGER backlog_audits_delete AFTER DELETE ON backlog BEGIN
  SELECT OLD.workspace_id, 'B' || OLD.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog', json_object('id', OLD.id, 'workspace_id', OLD.workspace_id, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id, 'closed', OLD.closed, 'rank', OLD.rank), NULL;
 END;
 `;
-
-/** The triggers as migration 5 created them: the same text without `rank`, which a file at version 5 does not have yet. */
-export const BACKLOG_AUDIT_TRIGGERS_V5 = BACKLOG_AUDIT_TRIGGERS.replaceAll(", 'rank', NEW.rank", "").replaceAll(
-	", 'rank', OLD.rank",
-	"",
-);
 
 export const SCHEMA = `
 CREATE TABLE workspaces (
@@ -362,7 +306,7 @@ CREATE TABLE session_forks (
   parent_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   child_file TEXT NOT NULL, CHECK(child_id <> parent_id));
 CREATE INDEX session_forks_parent ON session_forks(parent_id);
-${SHELL_HISTORY_SCHEMA_V9}
+${SHELL_HISTORY_SCHEMA}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

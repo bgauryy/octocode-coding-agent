@@ -34,6 +34,11 @@ afterEach(() => {
 const request = { type: "message", id: "u1", message: { role: "user", content: "Ship the thing" } };
 /** The details Octocode's own summary leaves on its compaction entry (`summaryMethodOf`). */
 const own = { summaryMethod: { method: "cache-shared" } };
+const inlineOwn = {
+	details: own,
+	summary:
+		"## Goal\nShip\n\n## User Messages (verbatim, oldest first)\n<user-message>\nShip the thing\n</user-message>",
+};
 
 async function compacted(entries: unknown[], team: TeamNotes | undefined, compactionEntry?: unknown) {
 	const fake = fakeHost();
@@ -67,12 +72,28 @@ async function compacted(entries: unknown[], team: TeamNotes | undefined, compac
 
 describe("running work note after a compaction", () => {
 	it("names the latest request after Octocode's summary only when that summary went to a file", async () => {
-		const inline = await compacted([request], undefined, { details: own });
+		const inline = await compacted([request], undefined, inlineOwn);
 		expect(inline.join("\n")).not.toContain("Latest user request");
 		const archived = await compacted([request], undefined, {
 			details: { ...own, checkpointArchive: { path: "/s.md", summary: "whole" } },
 		});
 		expect(archived.join("\n")).toContain('Latest user request: "Ship the thing"');
+	});
+
+	it("restores a bounded latest request when the native summary omitted its verbatim copy", async () => {
+		const [content] = await compacted([request], undefined, { details: own, summary: "## Goal\nShip" });
+		expect(content).toContain('Latest user request: "Ship the thing"');
+	});
+
+	it("shows both ends of a long request with a complete transcript pointer", async () => {
+		const content = `Keep the release constraint ${"middle requirement ".repeat(10_000)} Run the final suite`;
+		const [note] = await compacted([{ ...request, message: { role: "user", content } }], undefined);
+		expect(note.length).toBeLessThan(2_000);
+		expect(note).toContain("Latest user request excerpt");
+		expect(note).toContain("Keep the release constraint");
+		expect(note).toContain("Run the final suite");
+		expect(note).toContain("characters omitted");
+		expect(note).toContain("s.jsonl");
 	});
 
 	it("names the paths this agent reserved and the questions still waiting for its reply", async () => {
@@ -105,7 +126,7 @@ describe("running work note after a compaction", () => {
 	});
 
 	it("leaves out the latest request after Octocode's own summary, which keeps the user's messages, and keeps it after any other", async () => {
-		expect(await compacted([request], undefined, { details: own })).toEqual([]);
+		expect(await compacted([request], undefined, inlineOwn)).toEqual([]);
 		// Octocode's default summary and another extension's carry no summary method: the request is not kept elsewhere.
 		for (const compactionEntry of [{ details: {} }, { details: undefined }, undefined])
 			expect(await compacted([request], undefined, compactionEntry)).toEqual([

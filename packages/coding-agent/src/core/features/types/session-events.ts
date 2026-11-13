@@ -91,6 +91,21 @@ export interface SessionBeforeCompactEvent {
 	summaryRequest?: SummaryRequestPolicy;
 }
 
+/**
+ * Fired when the context nears the compaction threshold, while the run goes on: a handler may request the summary of
+ * `preparation` now, so the compaction that follows reuses it instead of holding the turn while it is written. That
+ * compaction passes the same `preparation` to `session_before_compact`. Return values are ignored; `signal` aborts when
+ * the plan is dropped (another compaction, a changed branch or model, an abort of the session).
+ */
+export interface SessionCompactPrewarmEvent {
+	type: "session_compact_prewarm";
+	preparation: CompactionPreparation;
+	branchEntries: SessionEntry[];
+	signal: AbortSignal;
+	/** As on `session_before_compact`, without progress or retry notices: nothing is shown for a background request. */
+	summaryRequest?: SummaryRequestPolicy;
+}
+
 /** Fired after context compaction succeeds */
 export interface SessionCompactEvent {
 	type: "session_compact";
@@ -162,6 +177,7 @@ export type SessionEvent =
 	| SessionBeforeForkEvent
 	| SessionBeforeQuitEvent
 	| SessionBeforeCompactEvent
+	| SessionCompactPrewarmEvent
 	| SessionCompactEvent
 	| SessionCompactFailedEvent
 	| SessionShutdownEvent

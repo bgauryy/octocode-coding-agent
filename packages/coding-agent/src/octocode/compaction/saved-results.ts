@@ -98,9 +98,14 @@ function branchMessage(entry: SessionEntry): unknown {
  * The messages compaction `at` summarized: the entries from where the compaction before it began keeping (else right
  * after it) up to where it begins keeping (else up to it). Those it kept are summarized by the next one.
  */
-function stretchMessages(branch: readonly SessionEntry[], at: number, before: number | undefined): unknown[] {
+function stretchMessages(
+	branch: readonly SessionEntry[],
+	at: number,
+	before: number | undefined,
+	indices: ReadonlyMap<string, number>,
+): unknown[] {
 	const indexOf = (id: unknown, fallback: number): number => {
-		const index = typeof id === "string" ? branch.findIndex((entry) => entry.id === id) : -1;
+		const index = typeof id === "string" ? (indices.get(id) ?? -1) : -1;
 		return index >= 0 ? index : fallback;
 	};
 	const from =
@@ -120,15 +125,22 @@ export function carriedRecords(
 	branch: readonly SessionEntry[],
 	key: string,
 ): { recorded: unknown[]; stretches: unknown[][] } {
-	const compactions = branch.flatMap((entry, index) => (entry.type === "compaction" ? [index] : []));
+	const compactions: number[] = [];
+	const indices = new Map<string, number>();
+	for (let index = 0; index < branch.length; index++) {
+		const entry = branch[index];
+		const { id } = entry;
+		if (!indices.has(id)) indices.set(id, index);
+		if (entry.type === "compaction") compactions.push(index);
+	}
 	const stretches: unknown[][] = [];
 	for (let at = compactions.length - 1; at >= 0; at--) {
 		const entry = branch[compactions[at]] as SessionEntry & { details?: unknown };
 		const carried = isRecord(entry.details) ? entry.details[key] : undefined;
-		if (Array.isArray(carried)) return { recorded: carried as unknown[], stretches };
-		stretches.unshift(stretchMessages(branch, compactions[at], compactions[at - 1]));
+		if (Array.isArray(carried)) return { recorded: carried as unknown[], stretches: stretches.reverse() };
+		stretches.push(stretchMessages(branch, compactions[at], compactions[at - 1], indices));
 	}
-	return { recorded: [], stretches };
+	return { recorded: [], stretches: stretches.reverse() };
 }
 
 /** The paths earlier summaries carried (`carriedRecords`), and the files saved during each stretch without a record. */

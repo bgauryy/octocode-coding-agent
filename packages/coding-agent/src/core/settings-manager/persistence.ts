@@ -3,7 +3,7 @@ import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
 import { ignoredBuiltinSwitches } from "../features/builtin-ids.ts";
 import { describeIgnoredKeys, ignoredSettingsKeys } from "./ignored-keys.ts";
-import { migrateSettings } from "./load.ts";
+import { settingsObject } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
@@ -196,7 +196,7 @@ function mergeScopedSettings(
 	modifiedNestedFields: Map<keyof Settings, Set<string>>,
 ): string {
 	const currentFileSettings =
-		current !== undefined ? migrateSettings(JSON.parse(stripBom(current)) as Record<string, unknown>) : {};
+		current !== undefined ? settingsObject(JSON.parse(stripBom(current)) as Record<string, unknown>) : {};
 	const mergedSettings: Settings = { ...currentFileSettings };
 	for (const field of modifiedFields) {
 		const value = snapshotSettings[field];
