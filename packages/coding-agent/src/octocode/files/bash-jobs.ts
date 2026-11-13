@@ -139,12 +139,23 @@ export class BashJobs {
 			reason?: string;
 		},
 	): BashJob {
-		const dir = this.logDir();
-		privateDir(dir);
 		const id = `bash-${++this.next}`;
 		// Job ids restart with each extension instance (a /reload), so the start time keeps an earlier log.
-		const log = path.join(dir, `${id}-${Date.now()}.log`);
-		const output = new RotatingLog(log, maxLogBytes);
+		let log: string;
+		let output: RotatingLog;
+		try {
+			const dir = this.logDir();
+			privateDir(dir);
+			log = path.join(dir, `${id}-${Date.now()}.log`);
+			output = new RotatingLog(log, maxLogBytes);
+		} catch (error) {
+			// The shell already runs. A storage failure must not leave an unregistered tree or open pipes behind.
+			killTree(pid);
+			child.once("error", () => undefined);
+			for (const pipe of [child.stdin, child.stdout, child.stderr]) pipe?.destroy();
+			child.unref();
+			throw error;
+		}
 		if (earlier && earlier.length > 0) output.write(earlier);
 		const record = recordFile(log);
 		try {

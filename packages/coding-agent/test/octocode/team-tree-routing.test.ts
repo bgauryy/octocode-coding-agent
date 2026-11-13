@@ -150,7 +150,12 @@ describe("coordinate list details", () => {
 	it("shows the item, its why and the log folders, each on one row, and nothing without data", async () => {
 		const { cwd, file } = setup();
 		const store = TeamStore.open(cwd, file);
-		const agent = sharedDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false });
+		const agent = sharedDatabase({
+			file,
+			mirrorFile: `${file}.transcripts`,
+			archiveDir: path.join(path.dirname(file), "archive"),
+			privateParent: false,
+		});
 		try {
 			const at = Date.now();
 			const item = { goal: "", body: "", paths: "", evidence: "", plan: "", priority: 1, tags: "" };

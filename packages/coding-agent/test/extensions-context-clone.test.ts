@@ -1,14 +1,16 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { describe, expect, it } from "vitest";
-import { cloneMessages } from "../src/core/features/runner/clone-messages.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
+import { cloneMessages, onlyReadsMessages, readsMessagesOnly } from "../src/core/features/runner/clone-messages.ts";
 import { dispatchContext } from "../src/core/features/runner/emit-transforms.ts";
 import type { Extension } from "../src/core/features/types.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
 
 type Handler = (event: { messages: AgentMessage[] }) => unknown;
 
-function host(handlers: { context?: Handler }) {
+function host(handlers: { context?: Handler | Handler[] }) {
 	const map = new Map<string, Handler[]>();
-	for (const [event, handler] of Object.entries(handlers)) map.set(event, [handler]);
+	for (const [event, handler] of Object.entries(handlers)) map.set(event, [handler].flat());
 	const extension = { path: "test", handlers: map } as unknown as Extension;
 	return {
 		extensions: [extension],
@@ -46,6 +48,79 @@ describe("dispatchContext copies", () => {
 		expect(result[1]).toMatchObject({ content: "edited" });
 		expect(messages[1]).toMatchObject({ content: "hello" });
 		expect(result[0]).not.toBe(messages[0]);
+	});
+});
+
+describe("dispatchContext with read-only handlers", () => {
+	type Seen = { messages: AgentMessage[] };
+	const text = (message: AgentMessage) => (message as { content: unknown }).content;
+
+	it("hands read-only handlers the messages themselves and copies nothing", async () => {
+		const messages = transcript();
+		const seen: AgentMessage[][] = [];
+		const reader = readsMessagesOnly((e: Seen) => {
+			seen.push(e.messages);
+		});
+		const result = await dispatchContext(host({ context: [reader, reader] }), messages);
+		expect(seen).toHaveLength(2);
+		for (const view of seen) expect(view.every((message, i) => message === messages[i])).toBe(true);
+		expect(result).not.toBe(messages);
+		expect(result.every((message, i) => message === messages[i])).toBe(true);
+	});
+
+	it("copies before the first handler that may edit, and keeps its edits from the caller", async () => {
+		const messages = transcript();
+		const views: Array<{ who: string; messages: AgentMessage[]; content: unknown }> = [];
+		const reader = (who: string) =>
+			readsMessagesOnly((e: Seen) => {
+				views.push({ who, messages: e.messages, content: text(e.messages[1]) });
+			});
+		const editor = (e: Seen) => {
+			views.push({ who: "editor", messages: e.messages, content: text(e.messages[1]) });
+			(e.messages[1] as { content: unknown }).content = "edited";
+		};
+		const result = await dispatchContext(host({ context: [reader("before"), editor, reader("after")] }), messages);
+		const [before, edit, after] = views;
+		expect(before.messages[1]).toBe(messages[1]);
+		expect(edit.messages[1]).not.toBe(messages[1]);
+		expect(edit.content).toBe("hello");
+		// A handler after the editor sees its edit (handlers chain), on the copy.
+		expect(after.content).toBe("edited");
+		expect(after.messages[1]).toBe(edit.messages[1]);
+		expect(text(result[1])).toBe("edited");
+		expect(text(messages[1])).toBe("hello");
+		expect(result[0]).not.toBe(messages[0]);
+	});
+
+	it("copies a read-only handler's returned list too before an editor runs", async () => {
+		const messages = transcript();
+		const extra = { role: "user", content: "added", timestamp: 3 } as AgentMessage;
+		const reader = readsMessagesOnly((e: Seen) => ({ messages: [...e.messages, extra] }));
+		const editor = (e: Seen) => {
+			for (const message of e.messages) (message as { content: unknown }).content = "edited";
+		};
+		const result = await dispatchContext(host({ context: [reader, editor] }), messages);
+		expect(result.map(text)).toEqual(["edited", "edited", "edited"]);
+		expect(messages.map(text)).toEqual(transcript().map(text));
+		expect(text(extra)).toBe("added");
+	});
+
+	it("keeps the declaration through ExtensionAPI.on", async () => {
+		const handlers: unknown[] = [];
+		const extension = await loadExtensionFromFactory(
+			(api) => {
+				api.on(
+					"context",
+					readsMessagesOnly(async () => undefined),
+				);
+				api.on("context", async () => undefined);
+			},
+			process.cwd(),
+			createEventBus(),
+			createExtensionRuntime(),
+		);
+		handlers.push(...(extension.handlers.get("context") ?? []));
+		expect(handlers.map(onlyReadsMessages)).toEqual([true, false]);
 	});
 });
 

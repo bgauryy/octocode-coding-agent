@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 import { getShellEnv } from "../../utils/shell.ts";
@@ -126,7 +127,9 @@ export async function runCliInTerminal(
 		tui.stop();
 		const release = holdTerminalForChild();
 		let child: ReturnType<typeof spawn> | undefined;
+		let stopped = false;
 		const stop = () => {
+			stopped = true;
 			if (child && child.exitCode === null && child.signalCode === null) child.kill();
 		};
 		ctx.signal?.addEventListener("abort", stop, { once: true });
@@ -149,18 +152,22 @@ export async function runCliInTerminal(
 				done(exit);
 			}
 		};
-		process.stdout.write(`Running ${label}\nOctocode resumes when it exits.\n`);
-		try {
+		const start = async () => {
+			// The restore sequences `stop` queued reach the terminal before this text and the CLI draw on it.
+			await tui.terminal?.drainOutput?.();
+			if (stopped) return finish(null);
+			process.stdout.write(`Running ${label}\nOctocode resumes when it exits.\n`);
 			child = spawn(cliRuntime(), [bin, ...argv], { cwd: ctx.cwd, env: getShellEnv(), stdio: "inherit" });
-		} catch (error) {
-			void finish(null);
-			throw error;
-		}
-		child.on("error", (error) => {
-			process.stderr.write(`${error.message}\n`);
+			child.on("error", (error) => {
+				process.stderr.write(`${error.message}\n`);
+				void finish(null);
+			});
+			child.on("close", (exit) => void finish(exit));
+		};
+		start().catch((error: unknown) => {
+			process.stderr.write(`${errorMessage(error)}\n`);
 			void finish(null);
 		});
-		child.on("close", (exit) => void finish(exit));
 		return { render: () => [], invalidate: () => undefined };
 	});
 	return exited;

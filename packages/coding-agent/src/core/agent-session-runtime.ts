@@ -8,7 +8,7 @@ import {
 	SessionImportFileNotFoundError,
 	SessionNameError,
 } from "./agent-session-runtime/import.ts";
-import { extractUserMessageText } from "./agent-session-runtime/messages.ts";
+import { forkTarget } from "./agent-session-runtime/messages.ts";
 import type {
 	CreateAgentSessionRuntimeFactory,
 	CreateAgentSessionRuntimeResult,
@@ -145,11 +145,18 @@ export class AgentSessionRuntime {
 		this.session.dispose();
 	}
 
+	/**
+	 * The runtime owns the services it holds: the replaced ones are released here (their model runtime stops watching
+	 * auth.json), unless the factory handed the same services back. A failed creation never reaches this, so the current
+	 * services stay live until the next switch or `dispose`.
+	 */
 	private apply(result: CreateAgentSessionRuntimeResult): void {
+		const replaced = this._services;
 		this._session = result.session;
 		this._services = result.services;
 		this._diagnostics = result.diagnostics;
 		this._modelFallbackMessage = result.modelFallbackMessage;
+		if (replaced !== result.services) replaced.dispose?.();
 	}
 
 	/** Replace the runtime with one for `sessionManager`, announcing why the session started. */
@@ -254,23 +261,7 @@ export class AgentSessionRuntime {
 		if (beforeResult.cancelled) {
 			return { cancelled: true };
 		}
-		let targetLeafId: string | null;
-		let selectedText: string | undefined;
-
-		const selectedEntry = this.session.sessionManager.getEntry(entryId);
-		if (!selectedEntry) {
-			throw new Error("Invalid entry ID for forking");
-		}
-
-		if (position === "at") {
-			targetLeafId = selectedEntry.id;
-		} else {
-			if (selectedEntry.type !== "message" || selectedEntry.message.role !== "user") {
-				throw new Error("Invalid entry ID for forking");
-			}
-			targetLeafId = selectedEntry.parentId;
-			selectedText = extractUserMessageText(selectedEntry.message.content);
-		}
+		const { targetLeafId, selectedText } = forkTarget(this.session.sessionManager, entryId, position);
 
 		const previousSessionFile = this.session.sessionFile;
 		if (this.session.sessionManager.isPersisted()) {
@@ -347,15 +338,16 @@ export class AgentSessionRuntime {
 		return { cancelled: false };
 	}
 
-	/** Settle and save the active turn, then shut the session down. */
 	/**
-	 * Every exit path (quit, a signal, RPC shutdown, print mode) disposes before `process.exit`, which would drop the
-	 * database mirror writes still queued: wait for them, bounded. A write still out after that is repaired at the next open.
+	 * Settle and save the active turn, shut the session down and release its services. Every exit path (quit, a signal,
+	 * RPC shutdown, print mode) disposes before `process.exit`, which would drop the database mirror writes still queued:
+	 * wait for them, bounded. A write still out after that is repaired at the next open.
 	 */
 	async dispose(): Promise<void> {
 		try {
 			await this.teardownCurrent("quit");
 		} finally {
+			this._services?.dispose?.();
 			await sessionMirrorSettled(MIRROR_EXIT_WAIT_MS);
 		}
 	}

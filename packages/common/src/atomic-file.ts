@@ -234,19 +234,40 @@ export async function atomicWriteFile(
 				assertHeld();
 				options.beforeCommit?.();
 			};
-			const steps = writeSteps(asyncIo, target, data, options, check);
-			let step = steps.next();
-			while (!step.done) {
-				let value: unknown;
-				try {
-					value = await step.value;
-				} catch (error) {
-					step = steps.throw(error);
-					continue;
-				}
-				step = steps.next(value);
-			}
+			await driveAsync(writeSteps(asyncIo, target, data, options, check));
 		},
 		options.signal,
 	);
+}
+
+/**
+ * `atomicWriteFile` without its lock or content check, for a caller that holds its own lock: `beforeCommit` (which may
+ * be async) runs on the real target after the temp file is complete and just before the rename; a throw there writes nothing.
+ */
+export async function atomicWriteFileUnlocked(
+	file: string,
+	data: string | Uint8Array,
+	options: Omit<AtomicWriteOptions, "beforeCommit"> & { beforeCommit?: () => void | Promise<void> } = {},
+): Promise<void> {
+	const { beforeCommit } = options;
+	const check = async () => {
+		options.signal?.throwIfAborted();
+		await beforeCommit?.();
+	};
+	await driveAsync(writeSteps(asyncIo, file, data, { ...options, beforeCommit: undefined }, check));
+}
+
+/** Runs `writeSteps` with each yielded promise awaited and its value (or error) handed back. */
+async function driveAsync(steps: Generator<unknown, void, unknown>): Promise<void> {
+	let step = steps.next();
+	while (!step.done) {
+		let value: unknown;
+		try {
+			value = await step.value;
+		} catch (error) {
+			step = steps.throw(error);
+			continue;
+		}
+		step = steps.next(value);
+	}
 }

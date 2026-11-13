@@ -24,6 +24,12 @@ export interface StackLayoutNode {
 	align: "stretch" | "start" | "center" | "end";
 }
 
+/** What a virtualized frame left unmeasured, measured on demand. */
+export interface ContentSettler {
+	all(): void;
+	rows(rowsFromEnd: number): void;
+}
+
 interface ScrollLayoutState {
 	readonly scrollTop: number;
 	readonly primary: boolean;
@@ -38,8 +44,11 @@ interface ScrollLayoutState {
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void;
 	/** Content above the viewport turned out `rows` taller (or shorter, when negative) than laid out: keep the rows in view. */
 	shiftContent?(rows: number): void;
-	/** Called each frame: scrolling first measures what a virtualized frame left unmeasured. */
-	setContentSettler?(settle: (() => void) | undefined): void;
+	/**
+	 * Called each frame: scrolling first measures what a virtualized frame left unmeasured, all of it (`all`) or the
+	 * items the last rows reach (`rows`).
+	 */
+	setContentSettler?(settle: ContentSettler | undefined): void;
 }
 
 export interface ScrollLayoutNode {

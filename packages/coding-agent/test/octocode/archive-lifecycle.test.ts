@@ -8,6 +8,7 @@ import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 import { archiveFolder } from "../../src/octocode/history/archive.ts";
 import { projectAgents } from "../../src/octocode/archive/projection.ts";
 import { registerArchiveLifecycle } from "../../src/octocode/archive/lifecycle.ts";
+import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -99,7 +100,7 @@ describe("durable agent lifecycle", () => {
 			data: { agentId: "child", parentRegistrationId: parentRegistration },
 		});
 	});
-	it("projects only the newest 50 and binds to the first database", () => {
+	it("projects only the newest 50 and binds to the first database", async () => {
 		for (let i = 0; i < 55; i++)
 			db.transaction(() =>
 				agentEvents.append(db.db, registeredWorkspace(root, db).id, {
@@ -113,7 +114,7 @@ describe("durable agent lifecycle", () => {
 					version: 1,
 				}),
 			);
-		projectAgents(db, root);
+		await projectAgents(db, root);
 		const file = path.join(root, ".octocode/code/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		const rows = content
@@ -124,16 +125,16 @@ describe("durable agent lifecycle", () => {
 		expect(rows[0].id).toBe("event-54");
 		expect(agentEvents.list(db.db, registeredWorkspace(root, db).id, Number.MAX_SAFE_INTEGER, 100)).toHaveLength(55);
 		const other = openAgentDb(path.join(root, "other.db"));
-		expect(() => projectAgents(other, root)).toThrow("another database");
+		await expect(projectAgents(other, root)).rejects.toThrow("another database");
 		expect(fs.readFileSync(file, "utf8")).toBe(content);
 		other.close();
 		fs.unlinkSync(file);
-		projectAgents(db, root);
+		await projectAgents(db, root);
 		expect(fs.readFileSync(file, "utf8")).toBe(content);
 		fs.writeFileSync(file, JSON.stringify({ ...rows[0], time: "bad" }) + "\n");
-		expect(() => projectAgents(db, root)).toThrow("another database or format");
+		await expect(projectAgents(db, root)).rejects.toThrow("another database or format");
 	});
-	it("takes no lock when the view is current, and reports a held lock as ELOCKED for a quiet retry", () => {
+	it("takes no lock when the view is current, and reports a held lock as ELOCKED for a quiet retry", async () => {
 		const event = (id: string) =>
 			db.transaction(() =>
 				agentEvents.append(db.db, registeredWorkspace(root, db).id, {
@@ -148,33 +149,33 @@ describe("durable agent lifecycle", () => {
 				}),
 			);
 		event("first");
-		projectAgents(db, root);
+		await projectAgents(db, root);
 		const file = path.join(root, ".octocode/code/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		// Another process holds the view's lock: a commit that changed no event does not wait for it or fail.
 		fs.mkdirSync(`${file}.lock`);
-		expect(() => projectAgents(db, root)).not.toThrow();
+		await expect(projectAgents(db, root)).resolves.toBeUndefined();
 		// A new event needs the lock: the error is ELOCKED, which the lifecycle retries instead of warning.
 		event("second");
-		expect(() => projectAgents(db, root)).toThrow(expect.objectContaining({ code: "ELOCKED" }));
+		await expect(projectAgents(db, root)).rejects.toThrow(expect.objectContaining({ code: "ELOCKED" }));
 		expect(fs.readFileSync(file, "utf8")).toBe(content);
 		fs.rmdirSync(`${file}.lock`);
-		projectAgents(db, root);
+		await projectAgents(db, root);
 		expect(fs.readFileSync(file, "utf8")).toContain('"id":"second"');
 	});
-	it("refuses symlink and empty projections without overwriting them", () => {
+	it("refuses symlink and empty projections without overwriting them", async () => {
 		fs.mkdirSync(path.join(root, ".octocode/code"), { recursive: true });
 		const file = path.join(root, ".octocode/code/agents.txt");
 		fs.writeFileSync(file, "");
-		expect(() => projectAgents(db, root)).toThrow("Invalid");
+		await expect(projectAgents(db, root)).rejects.toThrow("Invalid");
 		fs.unlinkSync(file);
 		const target = path.join(root, "outside");
 		fs.writeFileSync(target, "unchanged");
 		fs.symlinkSync(target, file);
-		expect(() => projectAgents(db, root)).toThrow("symlink");
+		await expect(projectAgents(db, root)).rejects.toThrow("symlink");
 		expect(fs.readFileSync(target, "utf8")).toBe("unchanged");
 	});
-	it("does not export a live listener's old events into a replacement checkout", () => {
+	it("does not export a live listener's old events into a replacement checkout", async () => {
 		const project = path.join(root, "checkout");
 		fs.mkdirSync(project);
 		const original = registeredWorkspace(project, db);
@@ -182,7 +183,7 @@ describe("durable agent lifecycle", () => {
 		fs.mkdirSync(project);
 		const replacement = registeredWorkspace(project, db);
 		expect(replacement.id).not.toBe(original.id);
-		expect(() => projectAgents(db, project, original)).toThrow(/path changed/);
+		await expect(projectAgents(db, project, original)).rejects.toThrow(/path changed/);
 		expect(fs.existsSync(path.join(project, ".octocode/code/agents.txt"))).toBe(false);
 	});
 
@@ -268,6 +269,50 @@ describe("durable agent lifecycle", () => {
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(projections).toBe(settled + 2);
 	});
+
+	it("writes the view off the committing thread: no synchronous file write, one follow-up with the newest events", async () => {
+		const fake = fakeHost();
+		const close = registerArchiveLifecycle(fake.api, {
+			canProject: () => true,
+			agentId: () => undefined,
+			parentId: () => undefined,
+		});
+		const ctx = fakeCtx({ cwd: root });
+		Object.assign(ctx.sessionManager, {
+			getSessionFile: () => path.join(root, "not-created.jsonl"),
+			getSessionId: () => "session",
+		});
+		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+		const file = path.join(root, ".octocode/code/agents.txt");
+		const syncWrites = [vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "writeFileSync"), vi.spyOn(fs, "mkdirSync")];
+		const shared = sharedAgentDb();
+		const workspace = registeredWorkspace(root, shared).id;
+		// Commits in successive turns: the second and third arrive while the first projection is writing.
+		for (const id of ["one", "two", "three"]) {
+			shared.transaction(() =>
+				agentEvents.append(shared.db, workspace, {
+					id,
+					time: new Date().toISOString(),
+					name: null,
+					parentId: null,
+					sessionId: "session",
+					type: "init",
+					version: 1,
+					data: { agentId: null, activationId: id, reason: "startup", parentSession: null },
+				}),
+			);
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		await vi.waitFor(() => expect(fs.readFileSync(file, "utf8")).toContain('"id":"three"'), { timeout: 5000 });
+		const lines = fs.readFileSync(file, "utf8").trim().split("\n");
+		expect(lines.map((line) => JSON.parse(line).id).slice(0, 3)).toEqual(["three", "two", "one"]);
+		// No lock collided with this process's own projection: none is left behind, and nothing was written synchronously.
+		expect(fs.existsSync(`${file}.lock`)).toBe(false);
+		for (const spy of syncWrites)
+			expect(spy.mock.calls.filter(([target]) => String(target).includes("agents.txt"))).toEqual([]);
+		for (const spy of syncWrites) spy.mockRestore();
+		close();
+	});
 });
 
 it("retains a committed full summary when its detail folder cannot be written", async () => {
@@ -295,7 +340,7 @@ it("retains a committed full summary when its detail folder cannot be written", 
 		tokensBefore: 1000,
 	};
 	await fake.fire("session_compact", { compactionEntry: entry }, ctx);
-	expect(compactions.get(db.db, "write-failed", entry.id)).toMatchObject({
+	expect(compactions.get(db.mirror.db, "write-failed", entry.id)).toMatchObject({
 		summary: entry.summary,
 		detailState: "missing",
 	});
@@ -305,6 +350,49 @@ it("retains a committed full summary when its detail folder cannot be written", 
 	});
 	Object.assign(ctx.sessionManager, { getSessionFile: () => undefined });
 	await fake.fire("session_compact", { compactionEntry: { ...entry, id: "not-persisted" } }, ctx);
-	expect(compactions.get(db.db, "write-failed", "not-persisted")).toBeUndefined();
+	expect(compactions.get(db.mirror.db, "write-failed", "not-persisted")).toBeUndefined();
+	close();
+});
+
+it("keeps the next start reading only appended lines after a compaction of this session", async () => {
+	const fake = fakeHost();
+	const close = registerArchiveLifecycle(fake.api, {
+		canProject: () => false,
+		agentId: () => undefined,
+		parentId: () => undefined,
+	});
+	const file = path.join(root, "long.jsonl");
+	const timestamp = "2026-01-01T00:00:00Z";
+	const entry = (id: string) => ({
+		type: "compaction",
+		id,
+		parentId: null,
+		timestamp,
+		summary: `summary ${id}`,
+		firstKeptEntryId: "kept",
+		tokensBefore: 100,
+	});
+	const append = (...lines: unknown[]) =>
+		fs.appendFileSync(file, lines.map((line) => `${JSON.stringify(line)}\n`).join(""));
+	// The archive segment the compaction hook writes before this one runs.
+	const segment = (id: string, n: number) => {
+		const folder = archiveFolder("long", process.env, root);
+		fs.mkdirSync(folder, { recursive: true });
+		fs.writeFileSync(path.join(folder, `${n}-x-${id}.md`), "detail");
+	};
+	const ctx = fakeCtx({ cwd: root });
+	Object.assign(ctx.sessionManager, { getSessionFile: () => file, getSessionId: () => "long" });
+	segment("one", 1);
+	append({ type: "session", version: 3, id: "long", cwd: root, timestamp }, entry("one"));
+	const transcript = vi.spyOn(HistoryRepair.prototype, "transcript");
+	await fake.fire("session_start", { type: "session_start", reason: "resume" }, ctx);
+	const end = fs.statSync(file).size;
+	// A turn and a live compaction of this session.
+	segment("two", 2);
+	append({ type: "message", id: "m1", text: "x".repeat(1000) }, entry("two"));
+	await fake.fire("session_compact", { compactionEntry: entry("two") }, ctx);
+	await fake.fire("session_start", { type: "session_start", reason: "resume" }, ctx);
+	expect(transcript.mock.calls.map(([, from]) => from)).toEqual([0, end]);
+	expect(compactions.forSession(db.mirror.db, "long").map((row) => row.entryId)).toEqual(["one", "two"]);
 	close();
 });

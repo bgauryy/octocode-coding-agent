@@ -1,4 +1,5 @@
 import { type Color, foregroundAnsi, mixColors, type TerminalColorMode } from "./colors.ts";
+import { animationClock } from "./tokens/clock.ts";
 import { visibleWidth } from "./utils/width.ts";
 
 export interface ShimmerOptions {
@@ -7,7 +8,7 @@ export interface ShimmerOptions {
 	/** Color at the center of the band. */
 	peak: Color;
 	mode: TerminalColorMode;
-	/** Time of the frame, in milliseconds (default `Date.now()`); every shimmer on one clock moves in step. */
+	/** Time of the frame, in milliseconds (default `animationClock.decorationTime()`); every shimmer on one clock moves in step. */
 	now?: number;
 	/** How long the band takes to cross the text and its padding (default 2000). */
 	periodMs?: number;
@@ -34,7 +35,7 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 	const padding = Math.max(0, options.padding ?? 10);
 	const width = visibleWidth(text);
 	const span = width + 2 * padding;
-	const phase = (((options.now ?? Date.now()) % periodMs) + periodMs) % periodMs;
+	const phase = (((options.now ?? animationClock.decorationTime()) % periodMs) + periodMs) % periodMs;
 	const center = (phase / periodMs) * span - padding;
 	const ansi = new Map<number, string>();
 	let out = "";

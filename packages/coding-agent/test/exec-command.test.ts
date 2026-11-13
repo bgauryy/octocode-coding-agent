@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { execCommand } from "../src/core/exec.ts";
 
 const node = (script: string) => ["-e", script];
@@ -48,5 +52,32 @@ describe.skipIf(process.platform === "win32")("execCommand", () => {
 		const result = await running;
 		expect(result.killed).toBe(true);
 		expect(result.code).toBe(128 + 15);
+	}, 20_000);
+
+	it("runs the command as the leader of its own group, outside the terminal's foreground group", async () => {
+		const result = await execCommand("sh", ["-c", 'echo "$$ $(ps -o pgid= -p $$)"'], process.cwd());
+		const [pid, pgid] = result.stdout.trim().split(/\s+/);
+		expect(result.code).toBe(0);
+		expect(pgid).toBe(pid);
+		expect(Number(pgid)).not.toBe(Number(execSync("ps -o pgid= -p $PPID", { encoding: "utf8" }).trim()));
+	});
+
+	it("stops the command's whole tree when the signal aborts", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-tree-"));
+		const file = path.join(dir, "grandchild");
+		const controller = new AbortController();
+		try {
+			const running = execCommand("sh", ["-c", `sleep 30 & echo $! > "${file}"; wait`], process.cwd(), {
+				signal: controller.signal,
+			});
+			await vi.waitFor(() => expect(fs.readFileSync(file, "utf8")).toMatch(/^\d+\n$/));
+			const grandchild = Number(fs.readFileSync(file, "utf8"));
+			controller.abort();
+			const result = await running;
+			expect(result.killed).toBe(true);
+			await vi.waitFor(() => expect(() => process.kill(grandchild, 0)).toThrow());
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	}, 20_000);
 });

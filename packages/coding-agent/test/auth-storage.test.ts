@@ -8,6 +8,7 @@ import fs, {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CredentialStore, createModels, type Provider } from "@octocodeai/octocode-ai";
@@ -274,6 +275,33 @@ describe("AuthStorage", () => {
 
 	describe("atomic auth.json writes", () => {
 		const leftovers = () => readdirSync(tempDir).filter((name) => name.endsWith(".tmp"));
+
+		test.each(["sync", "async"])("preserves a credential file created during %s initialization", async (mode) => {
+			const saved = JSON.stringify({ anthropic: { type: "api_key", key: "other-process-key" } });
+			const write = fs.writeFileSync;
+			let injected = false;
+			const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation((target, data, options) => {
+				if (target === authJsonPath && !injected) {
+					injected = true;
+					write(target, saved, { mode: 0o600 });
+				}
+				write(target, data, options);
+			});
+			syncBuiltinESMExports();
+			try {
+				const backend = new FileAuthStorageBackend(authJsonPath);
+				const read = (current: string | undefined) => ({ result: current });
+				const result =
+					mode === "sync" ? backend.withLock(read) : await backend.withLockAsync(async (current) => read(current));
+				const credentialWrites = writeSpy.mock.calls.filter(([target]) => target === authJsonPath);
+				expect(credentialWrites).toEqual([[authJsonPath, "{}", { encoding: "utf-8", mode: 0o600, flag: "wx" }]]);
+				expect(result).toBe(saved);
+				expect(readFileSync(authJsonPath, "utf8")).toBe(saved);
+			} finally {
+				writeSpy.mockRestore();
+				syncBuiltinESMExports();
+			}
+		});
 
 		test("replaces the file by rename and leaves it 0600 (sync and async)", async () => {
 			writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
@@ -679,4 +707,18 @@ describe("AuthStorage", () => {
 		await expect(storage.modify("openai", async () => ({ type: "api_key", key: "new" }))).rejects.toThrow();
 		expect(readFileSync(authJsonPath, "utf8")).toBe("{invalid-json");
 	});
+
+	test.each(["null", "[]", '"value"', "1", '{"anthropic":null}', '{"anthropic":{"type":"api_key","key":1}}'])(
+		"rejects invalid credential data without changing %s",
+		async (content) => {
+			writeAuthJson({ anthropic: { type: "api_key", key: "stored" } });
+			const storage = AuthStorage.create(authJsonPath);
+			writeFileSync(authJsonPath, content, "utf8");
+			const mutate = vi.fn(async () => ({ type: "api_key" as const, key: "new" }));
+			await expect(storage.modify("openai", mutate)).rejects.toThrow("Invalid auth.json");
+			expect(mutate).not.toHaveBeenCalled();
+			await expect(storage.delete("anthropic")).rejects.toThrow("Invalid auth.json");
+			expect(readFileSync(authJsonPath, "utf8")).toBe(content);
+		},
+	);
 });

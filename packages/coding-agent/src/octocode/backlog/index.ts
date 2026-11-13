@@ -2,10 +2,13 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../browser/launcher.ts";
 import { STATUS } from "../shared/status.ts";
+import { DatabaseFollower } from "../shared/database-follower.ts";
+import { backlog as backlogQueries, dbStamp } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { backlogCommand } from "./command.ts";
 import { registerBacklogDigest } from "./digest.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
-import { countsText, openTaskCount } from "./format.ts";
+import { countsText, sessionTaskTally, taskProgressText } from "./format.ts";
 import { refreshItemTitles } from "./title-lookup.ts";
 import { registerBacklogPlanTool } from "./plan-tool.ts";
 import { registerBacklogTool } from "./tool.ts";
@@ -35,17 +38,35 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 	const { commands, open, ...backlogOptions } = options;
 
 	let currentContext: ExtensionContext | undefined;
-	const refresh = (ctx: ExtensionContext) => {
+	let lastAudit: number | undefined;
+	let stopFollowing: (() => void) | undefined;
+	const database = () => sharedAgentDb(backlogOptions.env ?? process.env);
+	const follower = new DatabaseFollower(() => {
+		try {
+			return dbStamp(database().file);
+		} catch {
+			return "unreadable";
+		}
+	});
+	const refresh = (ctx: ExtensionContext, changedOnly = false) => {
 		currentContext = ctx;
 		if (!ctx.hasUI || options.isSubagent) return;
 		try {
 			const backlog = openBacklog(ctx, backlogOptions);
+			const audit = Number(
+				backlogQueries.auditRows(database().db, backlog.store.repo, undefined, undefined, 1)[0]?.id ?? 0,
+			);
+			if (changedOnly && audit === lastAudit) return;
+			lastAudit = audit;
 			refreshItemTitles(backlog.store);
-			const text = countsText(backlog.store.counts(), openTaskCount(backlog.store, backlog.session));
+			const text = countsText(backlog.store.counts());
 			ctx.ui.setStatus(STATUS.backlog, text || undefined);
+			ctx.ui.setStatus(STATUS.steps, taskProgressText(sessionTaskTally(backlog.store, backlog.session)));
 		} catch {
 			// An unreadable agent database (a foreign file) hides the counts; the tool and command report why.
+			lastAudit = undefined;
 			ctx.ui.setStatus(STATUS.backlog, undefined);
+			ctx.ui.setStatus(STATUS.steps, undefined);
 		}
 	};
 
@@ -79,7 +100,22 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 			}),
 		);
 	if (!options.isSubagent) registerBacklogDigest(api, backlogOptions);
-	api.on("session_start", (_event, ctx) => refresh(ctx));
+	api.on("session_start", (_event, ctx) => {
+		stopFollowing?.();
+		lastAudit = undefined;
+		refresh(ctx);
+		stopFollowing =
+			ctx.hasUI && !options.isSubagent
+				? follower.subscribe(() => {
+						if (currentContext) refresh(currentContext, true);
+					})
+				: undefined;
+	});
+	api.on("session_shutdown", () => {
+		stopFollowing?.();
+		stopFollowing = undefined;
+		currentContext = undefined;
+	});
 	// Another session or agent may have changed the board: repaint at the end of every run.
 	api.on("agent_end", (_event, ctx) => refresh(ctx));
 	return { open: openView, refresh };

@@ -1,7 +1,10 @@
-import { runSetError } from "../../configuration/run-flags.ts";
 import type { FlagSpec } from "./types.ts";
 
 const push = (list: string[] | undefined, value: string) => [...(list ?? []), value];
+
+/** Why a `--set` word is not `key=value`, or undefined when it is. Kept here: `--help` must not load the configuration catalog. */
+const runSetError = (word: string): string | undefined =>
+	word.indexOf("=") > 0 ? undefined : `expects <key>=<value>, got "${word}"`;
 
 /** `--enable`, `--disable` and `--set`: configuration for this run only (`configuration/run-flags.ts` applies them). */
 export const CONFIGURATION_FLAGS: readonly FlagSpec[] = [

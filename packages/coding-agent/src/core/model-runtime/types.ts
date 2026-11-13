@@ -27,6 +27,8 @@ export interface CreateModelRuntimeOptions {
 	/** Credential storage. Defaults to the file at authPath. */
 	credentials?: CredentialStore;
 	authPath?: string;
+	/** Keep default credential discovery read-only, including legacy fallback sources. */
+	readOnlyCredentials?: boolean;
 	modelsPath?: string | null;
 	modelsStore?: ModelsStore;
 	modelsStorePath?: string;

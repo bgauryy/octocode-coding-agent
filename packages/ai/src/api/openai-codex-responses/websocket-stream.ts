@@ -2,6 +2,7 @@ import type { ResponseStreamEvent } from "openai/resources/responses/responses.j
 import type { AssistantMessage, Model } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { normalizeContext } from "../../utils/transcript.ts";
+import { createAbortError } from "../../utils/abort.ts";
 import { convertResponsesMessages } from "../openai-responses-shared/messages.ts";
 import { processResponsesStream } from "../openai-responses-shared/stream-processing.ts";
 import { mapCodexEvents } from "./events.ts";
@@ -43,7 +44,7 @@ export async function processWebSocketStream(
 	grammarToolInputProperties: ReadonlyMap<string, string>,
 	options?: OpenAICodexResponsesOptions,
 ): Promise<void> {
-	const { socket, entry, reused, release } = await acquireWebSocket(
+	const { socket, entry, reused, release, signal } = await acquireWebSocket(
 		url,
 		headers,
 		cacheSessionId,
@@ -51,6 +52,7 @@ export async function processWebSocketStream(
 		options?.signal,
 		websocketConnectTimeoutMs,
 		options?.env,
+		options?.sessionId,
 	);
 	let keepConnection = true;
 	const useCachedContext = options?.transport === "websocket-cached" || options?.transport === "auto";
@@ -58,34 +60,30 @@ export async function processWebSocketStream(
 	// WebSocket continuation still works via connection-scoped previous_response_id state.
 	const fullBody = body;
 	const requestBody = useCachedContext && entry ? buildCachedWebSocketRequestBody(entry, fullBody) : fullBody;
-	const stats = cacheSessionId ? getOrCreateWebSocketDebugStats(cacheSessionId) : undefined;
-	if (stats) {
-		stats.requests++;
-		if (reused) stats.connectionsReused++;
-		else stats.connectionsCreated++;
-		if (useCachedContext) stats.cachedContextRequests++;
-		if (requestBody.store === true) stats.storeTrueRequests++;
-		stats.lastInputItems = requestBody.input?.length ?? 0;
-		if (requestBody.previous_response_id) {
-			stats.deltaRequests++;
-			stats.lastDeltaInputItems = requestBody.input?.length ?? 0;
-			stats.lastPreviousResponseId = requestBody.previous_response_id;
-		} else {
-			stats.fullContextRequests++;
-			stats.lastDeltaInputItems = undefined;
-			stats.lastPreviousResponseId = undefined;
-		}
-	}
 	try {
+		if (signal.aborted) throw createAbortError();
+		const stats = cacheSessionId ? getOrCreateWebSocketDebugStats(cacheSessionId) : undefined;
+		if (stats) {
+			stats.requests++;
+			if (reused) stats.connectionsReused++;
+			else stats.connectionsCreated++;
+			if (useCachedContext) stats.cachedContextRequests++;
+			if (requestBody.store === true) stats.storeTrueRequests++;
+			stats.lastInputItems = requestBody.input?.length ?? 0;
+			if (requestBody.previous_response_id) {
+				stats.deltaRequests++;
+				stats.lastDeltaInputItems = requestBody.input?.length ?? 0;
+				stats.lastPreviousResponseId = requestBody.previous_response_id;
+			} else {
+				stats.fullContextRequests++;
+				stats.lastDeltaInputItems = undefined;
+				stats.lastPreviousResponseId = undefined;
+			}
+		}
 		socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
 		await processResponsesStream(
 			startWebSocketOutputOnFirstEvent(
-				mapCodexEvents(
-					parseWebSocket(socket, options?.signal, idleTimeoutMs),
-					output,
-					model,
-					options?.onProviderStreamEvent,
-				),
+				mapCodexEvents(parseWebSocket(socket, signal, idleTimeoutMs), output, model, options?.onProviderStreamEvent),
 				onStart,
 			),
 			output,
@@ -98,7 +96,7 @@ export async function processWebSocketStream(
 				applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
 			},
 		);
-		if (options?.signal?.aborted) {
+		if (signal.aborted) {
 			keepConnection = false;
 		} else if (useCachedContext && entry && output.responseId) {
 			const responseItems = convertResponsesMessages(

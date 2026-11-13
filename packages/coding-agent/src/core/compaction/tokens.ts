@@ -11,7 +11,8 @@ import {
 	estimateContextTokensWith,
 	estimateMessageTokens,
 } from "@octocodeai/octocode-ai/utils/estimate";
-import type { SessionEntry, SessionProjection } from "../session-manager.ts";
+import type { ReadonlySessionManager, SessionEntry, SessionProjection } from "../session-manager.ts";
+import { ancestors } from "../session-manager/ancestors.ts";
 
 /**
  * Estimate context tokens from messages, using the last valid assistant usage and estimating what follows it with
@@ -27,6 +28,29 @@ export function estimateProjectedContextTokens(
 	projection: SessionProjection,
 	branchEntries: SessionEntry[],
 ): ContextUsageEstimate {
+	return estimateWithBranch(projection, () => newestFirst(branchEntries));
+}
+
+/**
+ * `estimateProjectedContextTokens` with the session's own branch (`getBranch()`), read from the leaf back only as far as
+ * the usage entry or a later edit or compaction: copying and scanning the whole branch made each estimate cost more the
+ * longer the session was.
+ */
+export function estimateLeafContextTokens(
+	projection: SessionProjection,
+	session: Pick<ReadonlySessionManager, "getLeafEntry" | "getEntry">,
+): ContextUsageEstimate {
+	return estimateWithBranch(projection, () => ancestors(session.getLeafEntry(), (id) => session.getEntry(id)));
+}
+
+function* newestFirst(entries: readonly SessionEntry[]): Generator<SessionEntry, void, undefined> {
+	for (let i = entries.length - 1; i >= 0; i--) yield entries[i];
+}
+
+function estimateWithBranch(
+	projection: SessionProjection,
+	branchNewestFirst: () => Iterable<SessionEntry>,
+): ContextUsageEstimate {
 	const estimate = estimateContextTokens(projection.messages);
 	if (estimate.lastUsageIndex !== null) {
 		let projectedMessageIndex = 0;
@@ -40,16 +64,13 @@ export function estimateProjectedContextTokens(
 			projectedMessageIndex = nextMessageIndex;
 		}
 
-		const usageEntryIndex = usageEntryId ? branchEntries.findIndex((entry) => entry.id === usageEntryId) : -1;
-		let latestInvalidatingEntryIndex = -1;
-		for (let i = branchEntries.length - 1; i >= 0; i--) {
-			const entry = branchEntries[i];
-			if (entry.type === "context_edit" || entry.type === "compaction") {
-				latestInvalidatingEntryIndex = i;
-				break;
+		// The usage counts while its entry comes after the branch's latest context edit or compaction.
+		if (usageEntryId !== undefined) {
+			for (const entry of branchNewestFirst()) {
+				if (entry.type === "context_edit" || entry.type === "compaction") break;
+				if (entry.id === usageEntryId) return estimate;
 			}
 		}
-		if (usageEntryIndex > latestInvalidatingEntryIndex) return estimate;
 	}
 
 	const currentSystem = getCurrentSystemMessage(projection.messages);

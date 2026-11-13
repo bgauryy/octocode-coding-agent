@@ -6,6 +6,7 @@ import {
 	DEFAULT_HISTORY_WINDOWS,
 	archiveHistory,
 	expire,
+	forks,
 	maintenance,
 	purge,
 	sessions,
@@ -24,8 +25,14 @@ beforeEach(() => {
 });
 afterEach(() => agent.close());
 
+/** The transcript mirror's tables live in their own file (`agent.mirror`). */
+const MIRROR_TABLES = new Set(["session_transcripts", "session_entries", "compaction_summaries"]);
 const count = (table: string, where = "1") =>
-	(agent.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get() as { n: number }).n;
+	(
+		(MIRROR_TABLES.has(table) ? agent.mirror.db : agent.db)
+			.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`)
+			.get() as { n: number }
+	).n;
 const workspace = (id: string) => {
 	workspaces.register(agent.db, { id, root: `/r/${id}`, name: id, binding: `1:${id.length}` });
 	return id;
@@ -33,9 +40,9 @@ const workspace = (id: string) => {
 const stamp = { size: 1, mtime: "1000000000", binding: "1:2" };
 /** A session with a transcript of two entries, a compaction, an event, a session task and a command receipt. */
 function seedSession(id: string, ws: string, mtimeNs = stamp.mtime) {
-	transcripts.bind(agent.db, id, ws);
+	sessions.bind(agent.db, id, ws);
 	transcripts.save(
-		agent.db,
+		agent.mirror.db,
 		id,
 		`/t/${id}.jsonl`,
 		JSON.stringify({ id }),
@@ -46,7 +53,7 @@ function seedSession(id: string, ws: string, mtimeNs = stamp.mtime) {
 		],
 		0,
 	);
-	agent.db
+	agent.mirror.db
 		.prepare("INSERT INTO compaction_summaries(workspace_id,session_id,entry_id,summary) VALUES (?,?,?,?)")
 		.run(ws, id, "c1", "s");
 	agent.db
@@ -76,7 +83,7 @@ const SESSION_TABLES = [
 describe("session liveness row", () => {
 	it("repairs a row created without a pid when the process saves stats, keeping a known start time", () => {
 		const ws = workspace("w");
-		transcripts.bind(agent.db, "s", ws);
+		sessions.bind(agent.db, "s", ws);
 		expect(sessions.pidOf(agent.db, "s")).toEqual({ pid: null, pid_started: null });
 		const stats = { cost: 1, tokens: 2, filesChanged: 0, unpriced: false, branch: null, head: null };
 		sessions.saveStats(agent.db, "s", { ...stats, pid: 10, pidStarted: "t10" });
@@ -95,13 +102,13 @@ describe("forget and erase", () => {
 		const ws = workspace("w");
 		seedSession("a", ws);
 		agent.db.prepare("UPDATE sessions SET cost = 3, branch = 'main', pid = 7 WHERE id = 'a'").run();
-		sessions.forget(agent.db, "a");
+		sessions.forget(agent.db, agent.mirror.db, "a");
 		expect(sessions.byId(agent.db, "a")).toMatchObject({ cost: 0, branch: null, pid: null });
 		expect(SESSION_TABLES.map((table) => count(table))).toEqual([1, 1, 2, 1, 1, 1, 1]);
-		expect(transcripts.records(agent.db, "a")).toHaveLength(3);
+		expect(transcripts.records(agent.mirror.db, "a")).toHaveLength(3);
 		// With nothing durable behind it, the row itself goes.
-		transcripts.bind(agent.db, "bare", ws);
-		sessions.forget(agent.db, "bare");
+		sessions.bind(agent.db, "bare", ws);
+		sessions.forget(agent.db, agent.mirror.db, "bare");
 		expect(sessions.byId(agent.db, "bare")).toBeUndefined();
 	});
 
@@ -109,15 +116,15 @@ describe("forget and erase", () => {
 		const ws = workspace("w");
 		seedSession("parent", ws);
 		seedSession("other", ws);
-		transcripts.bind(agent.db, "child", ws);
-		transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "parent");
+		sessions.bind(agent.db, "child", ws);
+		forks.link(agent.db, agent.mirror.db, "child", "/t/child.jsonl", "parent");
 		// A retry whose first commit lost its acknowledgement.
-		transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "parent");
+		forks.link(agent.db, agent.mirror.db, "child", "/t/child.jsonl", "parent");
 		expect(count("session_forks")).toBe(1);
-		expect(() => transcripts.linkFork(agent.db, "child", "/t/child.jsonl", "other")).toThrow(
+		expect(() => forks.link(agent.db, agent.mirror.db, "child", "/t/child.jsonl", "other")).toThrow(
 			"Another transcript already uses this session ID",
 		);
-		expect(() => transcripts.linkFork(agent.db, "child", "/t/elsewhere.jsonl", "parent")).toThrow(
+		expect(() => forks.link(agent.db, agent.mirror.db, "child", "/t/elsewhere.jsonl", "parent")).toThrow(
 			"Another transcript already uses this session ID",
 		);
 		expect(agent.db.prepare("SELECT parent_id, child_file FROM session_forks WHERE child_id = 'child'").get()).toEqual({
@@ -132,7 +139,7 @@ describe("forget and erase", () => {
 		seedSession("b", ws);
 		seedSession("keep", ws);
 		agent.db.prepare("INSERT INTO session_forks(child_id,parent_id,child_file) VALUES ('b','a','/t/b.jsonl')").run();
-		const counts = sessions.erase(agent.db, ["a", "b", "missing"]);
+		const counts = sessions.erase(agent.db, agent.mirror.db, ["a", "b", "missing"]);
 		expect(counts).toEqual({
 			sessions: 2,
 			transcripts: 2,
@@ -150,17 +157,26 @@ describe("forget and erase", () => {
 			).toBe(0);
 		expect(count("sessions")).toBe(1);
 		expect(count("session_entries")).toBe(2);
-		expect(sessions.erase(agent.db, ["keep"]).sessions).toBe(1);
+		expect(sessions.erase(agent.db, agent.mirror.db, ["keep"]).sessions).toBe(1);
 		expect(SESSION_TABLES.map((table) => count(table))).toEqual(SESSION_TABLES.map(() => 0));
-		expect(sessions.erase(agent.db, [])).toMatchObject({ sessions: 0 });
+		expect(sessions.erase(agent.db, agent.mirror.db, [])).toMatchObject({ sessions: 0 });
 	});
 
-	it("is atomic: a failure part way leaves every row", () => {
+	it("is atomic per file: a failure in the coordination part leaves every coordination row", () => {
 		const ws = workspace("w");
 		seedSession("a", ws);
 		agent.db.exec("CREATE TRIGGER stop BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT, 'stop'); END");
-		expect(() => sessions.erase(agent.db, ["a"])).toThrow(/stop/);
-		expect(SESSION_TABLES.map((table) => count(table))).toEqual([1, 1, 2, 1, 1, 1, 1]);
+		expect(() => sessions.erase(agent.db, agent.mirror.db, ["a"])).toThrow(/stop/);
+		// The mirror's part ran first in its own file's transaction (the transcript is rebuilt from its session file);
+		// no coordination row went.
+		expect(SESSION_TABLES.map((table) => count(table))).toEqual([1, 0, 0, 0, 1, 1, 1]);
+		agent.db.exec("DROP TRIGGER stop");
+		expect(sessions.erase(agent.db, agent.mirror.db, ["a"])).toMatchObject({ sessions: 1, events: 1, transcripts: 0 });
+	});
+
+	it("refuses a mirror transaction inside a coordination one: the mirror's lock always comes first", () => {
+		expect(() => agent.transaction(() => agent.mirror.transaction(() => 1))).toThrow(/inside a coordination/);
+		expect(agent.mirror.transaction(() => agent.transaction(() => 2))).toBe(2);
 	});
 });
 
@@ -174,6 +190,10 @@ describe("purge", () => {
 		const item = (agent.db.prepare("SELECT id FROM backlog WHERE workspace_id=?").get(ws) as { id: number }).id;
 		agent.db.prepare("INSERT INTO backlog_notes(item,at,author,kind,text) VALUES (?,1,'u','note','n')").run(item);
 		agent.db.prepare("INSERT INTO backlog_links(item,relation,target) VALUES (?,'r','x')").run(item);
+		// A run of one of the workspace's agents (no session: a purge of the workspace takes it too).
+		agent.db
+			.prepare("INSERT INTO agent_runs(run_id,workspace_id,agent_id,kind,started_at) VALUES (?,?,'a','child',1)")
+			.run(`run-${ws}`, ws);
 		agent.db.prepare("INSERT INTO backlog_completions(item,operation_key,payload) VALUES (?,'k','{}')").run(item);
 		agent.db
 			.prepare(
@@ -205,6 +225,7 @@ describe("purge", () => {
 			["backlog_tasks", "workspace_id"],
 			["workspace_commands", "workspace_id"],
 			["agent_events", "workspace_id"],
+			["agent_runs", "workspace_id"],
 			["compaction_summaries", "workspace_id"],
 			["messages", "workspace_id"],
 			["leases", "workspace_id"],
@@ -229,7 +250,7 @@ describe("purge", () => {
 		agent.db.prepare("INSERT INTO meta(key,value) VALUES ('memory_auto','on')").run();
 		expect(owned(one).every((n) => n > 0)).toBe(true);
 		const before = owned(two);
-		const counts = purge.workspace(agent.db, one);
+		const counts = purge.workspace(agent.db, agent.mirror.db, one);
 		expect(owned(one)).toEqual(owned(one).map(() => 0));
 		expect(owned(two)).toEqual(before);
 		expect(counts).toMatchObject({
@@ -248,7 +269,7 @@ describe("purge", () => {
 		expect(count("meta", "key='backlog_seq:one'")).toBe(0);
 		// The audit guard is back exactly as it was.
 		expect(() => agent.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/immutable/);
-		expect(purge.workspace(agent.db, "absent")).toMatchObject({ workspaces: 0, sessions: 0 });
+		expect(purge.workspace(agent.db, agent.mirror.db, "absent")).toMatchObject({ workspaces: 0, sessions: 0 });
 	});
 
 	it("keepSessions spares every per-session row of the kept session and the workspace row it references", () => {
@@ -267,7 +288,7 @@ describe("purge", () => {
 		const kept = (id: string) =>
 			SESSION_TABLES.map((table) => count(table, `${table === "sessions" ? "id" : "session_id"} = '${id}'`));
 		const before = kept("cur");
-		const counts = purge.workspace(agent.db, one, { keepSessions: ["cur"] });
+		const counts = purge.workspace(agent.db, agent.mirror.db, one, { keepSessions: ["cur"] });
 		expect(kept("cur")).toEqual(before);
 		expect(kept("old")).toEqual(before.map(() => 0));
 		expect(counts).toMatchObject({ sessions: 1, backlog: 1, workspaces: 0 });
@@ -295,7 +316,7 @@ describe("purge", () => {
 			.prepare("INSERT INTO session_forks(child_id,parent_id,child_file) VALUES ('cur','cur-parent','/t/cur.jsonl')")
 			.run();
 		agent.db.prepare("INSERT INTO meta(key,value) VALUES ('memory_auto','off')").run();
-		const counts = purge.all(agent.db, { keepSessions: ["cur", "cur-parent"] });
+		const counts = purge.all(agent.db, agent.mirror.db, { keepSessions: ["cur", "cur-parent"] });
 		expect(counts).toMatchObject({ sessions: 1, workspaces: 1, backlog: 2 });
 		expect(count("sessions")).toBe(2);
 		expect(count("session_forks")).toBe(1);
@@ -323,7 +344,7 @@ describe("purge", () => {
 			.run();
 		const objects = () => agent.db.prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").all();
 		const schema = objects();
-		const counts = purge.all(agent.db);
+		const counts = purge.all(agent.db, agent.mirror.db);
 		expect(counts).toMatchObject({ workspaces: 2, backlog: 2, config_audits: 1, session_entries: 4, sessions: 2 });
 		const tables = (
 			agent.db
@@ -333,8 +354,9 @@ describe("purge", () => {
 				.all() as Array<{ name: string }>
 		).map((row) => row.name);
 		const left = Object.fromEntries(tables.map((name) => [name, count(name)]).filter(([, n]) => n !== 0));
-		// `meta` keeps the schema version and the oldest version that may read the file.
-		expect(left).toEqual({ meta: 2, trusted_folders: 1 });
+		// `meta` keeps its settings (`memory_auto`); a new file at version 10 records no floor (step 10 is not additive).
+		expect(left).toEqual({ meta: 1, trusted_folders: 1 });
+		expect([...MIRROR_TABLES].map((table) => count(table))).toEqual([0, 0, 0]);
 		expect(objects()).toEqual(schema);
 		agent.close();
 		agent = openAgentDb(file);
@@ -357,7 +379,7 @@ describe("maintenance", () => {
 		const ws = bulk();
 		maintenance.checkpoint(agent.db);
 		const grown = fs.statSync(file).size;
-		purge.workspace(agent.db, ws);
+		purge.workspace(agent.db, agent.mirror.db, ws);
 		const result = maintenance.vacuum(agent.db);
 		expect(result).toMatchObject({ busy: false });
 		expect(result.bytesAfter).toBeLessThan(result.bytesBefore);
@@ -401,14 +423,19 @@ describe("expire", () => {
 				"INSERT INTO agent_events(id,workspace_id,time,session_id,type,data,version) VALUES ('new-ev',?,?,'old','init','{}',1)",
 			)
 			.run(ws, new Date(cutoff + 5).toISOString());
-		const counts = expire.orphans(agent.db, ["old", "recent", "unknown"], cutoff);
+		const counts = expire.orphans(agent.db, agent.mirror.db, ["old", "recent", "unknown"], cutoff);
 		// Events follow their own time, not the transcript's: ev-old and ev-recent are both older than the cutoff.
 		expect(counts).toEqual({ transcripts: 1, entries: 2, events: 2, timers: 0 });
 		expect(count("session_transcripts")).toBe(2);
 		expect(count("session_entries", "session_id='old'")).toBe(0);
 		expect(count("agent_events", "id IN ('new-ev','ev-present')")).toBe(2);
 		expect(count("sessions")).toBe(3);
-		expect(expire.orphans(agent.db, [], cutoff)).toEqual({ transcripts: 0, entries: 0, events: 0, timers: 0 });
+		expect(expire.orphans(agent.db, agent.mirror.db, [], cutoff)).toEqual({
+			transcripts: 0,
+			entries: 0,
+			events: 0,
+			timers: 0,
+		});
 	});
 });
 

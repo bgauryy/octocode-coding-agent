@@ -1,6 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Row } from "../rows.ts";
 
+/**
+ * The transcript mirror's `compaction_summaries` (`schema-mirror.ts`): every function takes the mirror's connection
+ * (`AgentDb.mirror.db`). `workspace_id` and `session_id` name rows of the coordination file.
+ */
+
 export interface CompactionSummary {
 	workspace: string;
 	sessionId: string;
@@ -120,4 +125,37 @@ export function sessionIndex(
 		seq: Number(row.seq),
 		committedAt: row.committed_at as number | null,
 	}));
+}
+
+/** Whether a compaction summary of `sessionId` is stored. */
+export function has(db: DatabaseSync, sessionId: string): boolean {
+	return db.prepare("SELECT 1 FROM compaction_summaries WHERE session_id=?").get(sessionId) !== undefined;
+}
+
+/** Removes the summaries of the sessions `ids` (a user's deletion of those sessions); returns how many. */
+export function erase(db: DatabaseSync, ids: readonly string[]): number {
+	return Number(
+		db
+			.prepare("DELETE FROM compaction_summaries WHERE session_id IN (SELECT value FROM json_each(?))")
+			.run(JSON.stringify([...new Set(ids)])).changes,
+	);
+}
+
+/** Removes the summaries of `workspace` except those of the sessions in `kept` (`purge.workspace`); returns how many. */
+export function purgeWorkspace(db: DatabaseSync, workspace: string, kept: readonly string[]): number {
+	return Number(
+		db
+			.prepare(`DELETE FROM compaction_summaries WHERE workspace_id = ?
+		AND COALESCE(session_id, '') NOT IN (SELECT value FROM json_each(?))`)
+			.run(workspace, JSON.stringify([...new Set(kept)])).changes,
+	);
+}
+
+/** Removes every summary except those of the sessions in `kept` (`purge.all`); returns how many. */
+export function keepOnly(db: DatabaseSync, kept: readonly string[]): number {
+	return Number(
+		db
+			.prepare("DELETE FROM compaction_summaries WHERE session_id NOT IN (SELECT value FROM json_each(?))")
+			.run(JSON.stringify([...new Set(kept)])).changes,
+	);
 }

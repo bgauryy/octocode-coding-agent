@@ -51,8 +51,9 @@ export interface BoardFlow {
 	confirmClaim(item: SnapshotItem): void;
 	confirmReopen(item: SnapshotItem, state: State, note: string): void;
 	closed(item: SnapshotItem, refreshed: boolean): void;
-	/** The card to refocus after a keyboard drop re-parents it. */
-	focusRef: string | undefined;
+	/** One focus delivery after a keyboard drop re-parents its card. */
+	focusRequest: { ref: string; id: number } | undefined;
+	consumeFocus(id: number): boolean;
 	announcement: string;
 	toast: ToastMessage | undefined;
 	dismissToast(): void;
@@ -85,8 +86,26 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 	const [dialog, setDialog] = useState<BoardDialog>();
 	const [toast, setToast] = useState<ToastMessage>();
 	const [announcement, announce] = useState("");
-	const [focusRef, setFocusRef] = useState<string>();
+	const [focusRequest, setFocusRequest] = useState<BoardFlow["focusRequest"]>();
+	const focusSequence = useRef(0);
+	const pendingFocus = useRef<number | undefined>(undefined);
+	const consumeFocus = useCallback((id: number) => {
+		if (pendingFocus.current !== id) return false;
+		pendingFocus.current = undefined;
+		return true;
+	}, []);
+	useEffect(() => {
+		// A request survives until commit. A filtered or deleted card must not gain focus if it appears later.
+		if (focusRequest) consumeFocus(focusRequest.id);
+	}, [focusRequest, consumeFocus]);
 	const keyboardDrop = useRef<string | undefined>(undefined);
+	const finishKeyboardDrop = useCallback((ref: string) => {
+		if (keyboardDrop.current !== ref) return;
+		keyboardDrop.current = undefined;
+		const id = ++focusSequence.current;
+		pendingFocus.current = id;
+		setFocusRequest({ ref, id });
+	}, []);
 	const inflight = useRef(new Set<string>());
 	const acked = useRef(false);
 	const latest = useRef(index);
@@ -127,15 +146,10 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 			} finally {
 				inflight.current.delete(item.ref);
 				setOverlay(({ [item.ref]: _settled, ...rest }) => rest);
-				if (keyboardDrop.current === item.ref) {
-					// A keyboard drop re-parents the card, so focus falls to the page: send it back to the card's title.
-					keyboardDrop.current = undefined;
-					setFocusRef(item.ref);
-					setTimeout(() => setFocusRef(undefined), 0);
-				}
+				finishKeyboardDrop(item.ref);
 			}
 		},
-		[actions, notify],
+		[actions, notify, finishKeyboardDrop],
 	);
 
 	/** Optimistic reorder inside the column the card is in. */
@@ -155,9 +169,10 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 			} finally {
 				inflight.current.delete(item.ref);
 				setOverlay(({ [item.ref]: _settled, ...rest }) => rest);
+				finishKeyboardDrop(item.ref);
 			}
 		},
-		[actions, notify],
+		[actions, notify, finishKeyboardDrop],
 	);
 
 	const request = useCallback(
@@ -167,16 +182,21 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 			switch (plan.kind) {
 				case "none": {
 					const refs = columns.current.get(target);
-					if (!slot || target === "closed" || !refs || isSamePlace(refs, item.ref, slot)) return;
+					if (!slot || target === "closed" || !refs || isSamePlace(refs, item.ref, slot)) {
+						if (keyboardDrop.current === item.ref) keyboardDrop.current = undefined;
+						return;
+					}
 					return void reorder(item, target, slot);
 				}
 				case "refuse":
+					if (keyboardDrop.current === item.ref) keyboardDrop.current = undefined;
 					announce(plan.reason);
 					return notify(plan.reason, "error");
 				case "move":
 					return void execute(item, plan.state, undefined, undefined, slot);
 				case "complete":
 					// The host refuses done without a completion: the editor collects it, as the state control did.
+					if (keyboardDrop.current === item.ref) keyboardDrop.current = undefined;
 					return navigate(`#${item.ref}/edit`);
 				case "close":
 					return setDialog({ kind: "close", item });
@@ -268,8 +288,10 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 				setDialog(undefined);
 				void execute(item, state, note, `${item.ref} reopened.`);
 			},
-			focusRef,
+			focusRequest,
+			consumeFocus,
 			closed: (item, refreshed) => {
+				if (keyboardDrop.current === item.ref) keyboardDrop.current = undefined;
 				setDialog(undefined);
 				const before: State = item.state === "backlog" ? "backlog" : "todo";
 				announce(`${item.ref} closed`);
@@ -306,7 +328,8 @@ function BoardFlowProvider({ index, children }: { index: BacklogIndex; children:
 			announcement,
 			toast,
 			dismissToast,
-			focusRef,
+			focusRequest,
+			consumeFocus,
 		],
 	);
 	return <BoardFlowContext.Provider value={flow}>{children}</BoardFlowContext.Provider>;

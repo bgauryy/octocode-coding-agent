@@ -20,7 +20,7 @@ const STOP_REASONS: Record<string, string> = {
 
 /**
  * The runner's token totals as Octocode's `Usage`. A plan pays for its runner's turns, so the dollar figure it reports
- * (the API value) is no bill and counts nothing; a metered run counts what it reported.
+ * (the API value) is no bill and counts nothing; other runs keep the dollar figure they reported.
  */
 function usageOf(reply: RunnerReply): Usage {
 	const usage = emptyUsage();
@@ -32,7 +32,7 @@ function usageOf(reply: RunnerReply): Usage {
 		usage.cacheWrite = tokens.cachedWriteTokens ?? 0;
 		usage.totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 	}
-	if (reply.billing === "metered" && reply.cost !== undefined && reply.cost > 0) usage.cost.total = reply.cost;
+	if (reply.billing !== "plan" && reply.cost !== undefined && reply.cost > 0) usage.cost.total = reply.cost;
 	return usage;
 }
 
@@ -57,7 +57,7 @@ export interface RunnerChildInput {
 export async function runRunnerChild(
 	runners: Runners,
 	input: RunnerChildInput,
-): Promise<SubagentOutcome & { billing: RunnerBilling }> {
+): Promise<SubagentOutcome & { billing?: RunnerBilling }> {
 	if (input.signal?.aborted) throw new Error("Subagent cancelled");
 	const { identity } = input;
 	const report = new ReportTracker(identity.scratch ?? reportDir(identity.id), identity.resultContract);
@@ -70,9 +70,10 @@ export async function runRunnerChild(
 			// The final answer does not depend on the row.
 		}
 	};
+	const model = input.model?.trim();
 	const reply = await runners.turn({
 		runner: input.runner,
-		...(input.model ? { model: input.model } : {}),
+		...(model ? { model } : {}),
 		cwd: input.cwd,
 		text: runnerTask(input.task, input.cwd),
 		signal: input.signal ?? new AbortController().signal,

@@ -24,7 +24,7 @@ beforeAll(async () => {
 	endpoint = await startEndpoint();
 });
 afterAll(async () => {
-	await endpoint.close();
+	await endpoint?.close();
 });
 afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());

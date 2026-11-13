@@ -14,16 +14,22 @@ import {
 	type TranscriptCommand,
 	transcripts,
 	writerErrorKind,
+	type DbWriterLocations,
 } from "../src/api.ts";
 import { getFileStamp } from "../../common/src/paths.ts";
 import { tmp } from "./helpers.ts";
 
 let dir: string;
-let locations: { file: string; archiveDir: string; privateParent: boolean };
+let locations: DbWriterLocations;
 let writers: DbWriter[];
 beforeEach(() => {
 	dir = tmp();
-	locations = { file: path.join(dir, "writer.db"), archiveDir: path.join(dir, "archive"), privateParent: false };
+	locations = {
+		file: path.join(dir, "writer.db"),
+		mirrorFile: path.join(dir, "writer.transcripts.db"),
+		archiveDir: path.join(dir, "archive"),
+		privateParent: false,
+	};
 	writers = [];
 });
 afterEach(() => {
@@ -31,13 +37,13 @@ afterEach(() => {
 	closeSharedAgentDb();
 });
 
-/** Another process holding the write lock for `ms`; resolves once it holds it. */
-async function holdLock(ms: number) {
+/** Another process holding the write lock of `file` (the coordination file) for `ms`; resolves once it holds it. */
+async function holdLock(ms: number, file = locations.file) {
 	const holder = spawn(
 		process.execPath,
 		[
 			"-e",
-			`const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(${JSON.stringify(locations.file)});
+			`const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(${JSON.stringify(file)});
 			 db.exec("BEGIN IMMEDIATE"); process.stdout.write("held\\n"); setTimeout(() => db.exec("COMMIT"), ${ms});`,
 		],
 		{ stdio: ["ignore", "pipe", "inherit"] },
@@ -98,7 +104,7 @@ const save = (id: string, file: string, stamp: FileStamp, records: unknown[]): T
 const rows = (id: string) => {
 	const reader = openDatabase(locations);
 	try {
-		return transcripts.records(reader.db, id).map((line) => JSON.parse(line) as unknown);
+		return transcripts.records(reader.mirror.db, id).map((line) => JSON.parse(line) as unknown);
 	} finally {
 		reader.close();
 	}
@@ -176,7 +182,7 @@ describe("database writer worker", () => {
 		expect((error as Error).message).toContain("Another transcript already uses this session ID");
 		const reader = openDatabase(locations);
 		try {
-			expect(transcripts.stamp(reader.db, "s-owner")?.file).toBe(first.file);
+			expect(transcripts.stamp(reader.mirror.db, "s-owner")?.file).toBe(first.file);
 		} finally {
 			reader.close();
 		}
@@ -207,6 +213,17 @@ describe("database writer worker", () => {
 		expect(db.canAccept()).toBe(true);
 	});
 
+	it("releases timed-out drain observers while commands are still pending", async () => {
+		const db = writer(new URL("data:text/javascript,setInterval(() => {}, 1000)"));
+		const { file, stamp } = sessionFile("s-drain", 0);
+		const pending = db.submit({ kind: "sync", sessionId: "s-drain", file, stamp, workspace }).catch(() => undefined);
+		expect(await Promise.all(Array.from({ length: 32 }, () => db.drain(1)))).toEqual(Array(32).fill(false));
+		expect(db.pending).toBe(1);
+		expect((db as unknown as { idle: Set<unknown> }).idle.size).toBe(0);
+		db.close();
+		await pending;
+	});
+
 	it("waits for another process's lock on its own thread: a 10 ms timer here fires on time", async () => {
 		const db = writer();
 		const { file, stamp, records } = sessionFile("s-held", 3);
@@ -221,6 +238,48 @@ describe("database writer worker", () => {
 		expect(performance.now() - started).toBeGreaterThan(200);
 		expect(rows("s-held")).toHaveLength(4);
 		await holder.released();
+	});
+
+	it("keeps the lock retry budget when the worker's wall clock moves backwards", async () => {
+		const workerEntry = new URL("../src/writer/worker-entry.ts", import.meta.url).href;
+		const source = `
+import { parentPort } from "node:worker_threads";
+const now = Date.now;
+parentPort.on("message", (request) => {
+	if (request.command.kind !== "save") return;
+	let first = true;
+	Date.now = () => {
+		const offset = first ? 0 : 60_000;
+		first = false;
+		return now() - offset;
+	};
+});
+await import(${JSON.stringify(workerEntry)});
+`;
+		const db = writer(new URL(`data:text/javascript,${encodeURIComponent(source)}`));
+		const { file, stamp, records } = sessionFile("s-clock", 1);
+		expect(await db.submit({ kind: "sync", sessionId: "s-clock", file, stamp, workspace })).toBe("stale");
+		const holder = await holdLock(12_000);
+		let deadline: NodeJS.Timeout | undefined;
+		try {
+			// After its first wall-clock read, the command sees a one-minute clock rollback.
+			const result = await Promise.race([
+				db.submit(save("s-clock", file, stamp, records)).then(
+					() => "saved",
+					(error: unknown) => error,
+				),
+				new Promise<string>((resolve) => {
+					deadline = setTimeout(() => resolve("retry budget did not expire"), 8_000);
+				}),
+			]);
+			expect(result).toBeInstanceOf(DbWriterCommandError);
+			expect(writerErrorKind(result)).toBe("db-busy");
+		} finally {
+			clearTimeout(deadline);
+			db.close();
+			holder.stop();
+			await holder.released();
+		}
 	});
 
 	it("reports a worker that stops before acknowledging, then restarts for the next command", async () => {
@@ -251,6 +310,24 @@ describe("database writer worker", () => {
 		expect(results).toEqual(["saved", "current"]);
 		expect(db.mode).toBe("inline");
 		expect(rows("s-inline")).toHaveLength(3);
+	});
+
+	it("on this thread, waits as briefly for another process's lock on the transcript mirror as on the coordination file", async () => {
+		const db = writer(new URL("./missing-db-writer-entry.ts", import.meta.url));
+		const { file, stamp, records } = sessionFile("s-mirror-held", 2);
+		expect(await db.submit({ kind: "sync", sessionId: "s-mirror-held", file, stamp, workspace })).toBe("stale");
+		expect(db.mode).toBe("inline");
+		const holder = await holdLock(3_000, locations.mirrorFile);
+		try {
+			const started = performance.now();
+			const error = await db.submit(save("s-mirror-held", file, stamp, records)).catch((each: unknown) => each);
+			// The screen's thread gives up after the short inline wait, not the connection's five-second busy timeout.
+			expect(writerErrorKind(error)).toBe("db-busy");
+			expect(performance.now() - started).toBeLessThan(1_500);
+		} finally {
+			holder.stop();
+			await holder.released();
+		}
 	});
 
 	it("keeps rows another process saved from more of the same file over an older full snapshot", async () => {

@@ -52,6 +52,10 @@ export class SessionWatch {
 		} finally {
 			connection.close();
 			if (this.connection === connection) this.connection = undefined;
+			if (!this.stopped && this.state !== undefined) {
+				this.state = undefined;
+				this.changed();
+			}
 		}
 		this.later();
 	}

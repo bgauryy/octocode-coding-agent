@@ -30,9 +30,10 @@ export function templateBaseUrl(template: ProviderTemplate, host?: string): stri
 	try {
 		url = new URL(given);
 	} catch {
-		throw new Error(`Not a URL: ${given}. Give the full address, for example ${template.hostHint}.`);
+		throw new Error(`Not a valid URL. Give the full address, for example ${template.hostHint}.`);
 	}
-	if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("The host must start with https://.");
+	if (url.protocol !== "https:" && url.protocol !== "http:")
+		throw new Error("The host must start with http:// or https://.");
 	const problem = urlCredentialProblem(given);
 	if (problem) throw new Error(`The host must not carry a key (${problem}); the key is asked for next.`);
 	return given.replace(/\/+$/, "");
@@ -54,7 +55,13 @@ export function templateProviderEntry(
 		api: template.api,
 		...(apiKey ? { apiKey } : {}),
 		...(template.compat ? { compat: { ...template.compat } } : {}),
-		models: options.models.map((model) => ({ ...model })),
+		models: options.models.map((model): ModelsJsonModel => ({
+			// A local alias must not inherit another host's prices, input types or reasoning claims from its model id.
+			...(template.kind === "local"
+				? { reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }
+				: {}),
+			...model,
+		})),
 	};
 }
 

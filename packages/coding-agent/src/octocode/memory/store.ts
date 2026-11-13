@@ -2,6 +2,7 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import {
 	type AgentDb,
+	type DbWriter,
 	type MemoryFilter,
 	type MemoryScope,
 	memories,
@@ -9,7 +10,7 @@ import {
 	type Row,
 	type ScopeFilter,
 } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
+import { agentDbWriter, sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 export type { MemoryFilter, ScopeFilter };
 import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";
@@ -98,10 +99,13 @@ export class MemoryStore {
 	private readonly agentDb: AgentDb;
 	readonly repoKey: string;
 	readonly workspaceId: string | undefined;
-	constructor(agentDb: AgentDb, repoKey: string, workspaceId?: string) {
+	/** The writer of the same database file (`sharedAgentDbWriter`): bookkeeping writes go there, off this thread. */
+	private readonly writer: () => DbWriter;
+	constructor(agentDb: AgentDb, repoKey: string, workspaceId?: string, writer?: () => DbWriter) {
 		this.agentDb = agentDb;
 		this.repoKey = repoKey;
 		this.workspaceId = workspaceId;
+		this.writer = writer ?? (() => agentDbWriter(agentDb));
 	}
 
 	private get context(): memories.MemoryContext {
@@ -319,6 +323,12 @@ export class MemoryStore {
 		this.agentDb.transaction(() => memories.markUsed(this.db, this.context, ids, now));
 	}
 
+	/** `markUsed` through the database writer: this thread never waits for another process's write lock. */
+	async markUsedLater(ids: readonly number[], now = Date.now()): Promise<void> {
+		if (ids.length === 0) return;
+		await this.writer().post({ kind: "memory-used", context: this.context, ids: [...ids], now });
+	}
+
 	/** `/memory auto on|off`, shared by every session (the environment can still turn it off). */
 	autoSetting(): boolean {
 		return meta.read(this.db, SETTING_AUTO) !== "off";
@@ -371,7 +381,7 @@ export function memoryToolLine(memory: Memory, bodyChars: number, now = Date.now
 export function memoryStore(cwd: string, env: NodeJS.ProcessEnv = process.env): MemoryStore {
 	const db = sharedAgentDb(env);
 	const workspace = registeredWorkspace(cwd, db);
-	return new MemoryStore(db, repoKey(workspace.root).key, workspace.id);
+	return new MemoryStore(db, repoKey(workspace.root).key, workspace.id, () => sharedAgentDbWriter(env));
 }
 
 /** The full view of one memory, for `get`. */

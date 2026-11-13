@@ -62,7 +62,7 @@ import { registerPromptOptimization } from "./prompt-optimization/register.ts";
 import { registerTerminal } from "./terminal/register.ts";
 import { registerSkillTool } from "./skill/tool.ts";
 import { statusCommand } from "./status-command.ts";
-import { currentCatalog } from "./subagents/catalog.ts";
+import { refreshCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
 import { registerModelsTool } from "./subagents/models-tool.ts";
@@ -140,7 +140,7 @@ export default function octocode(host: ExtensionAPI): void {
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
-	// Vendor CLIs signed in with their own plan, which run `agent` tasks over ACP (`external/connected.ts`).
+	// Vendor CLIs using their own sign-in run `agent` tasks over ACP (`external/connected.ts`).
 	const runners = connectedRunners(externalAgentsEnabled(), externalPermission(permission));
 	// With Claude Code connected on its plan, its models run this session's turns with Octocode's tools over MCP.
 	registerClaudeCode(api, runners.states);
@@ -368,8 +368,9 @@ export default function octocode(host: ExtensionAPI): void {
 		guard.restore(contextReads(ctx));
 		({ profiles, refused } = loadSessionProfiles(api, ctx, isSubagent));
 		await externalApi?.start(ctx);
-		// The models.dev index, refreshed in the background, so the first subagent of the day routes with it.
-		if (!isSubagent) currentCatalog();
+		// The models.dev index, refreshed in the background, so the first subagent of the day routes with it. A fresh saved
+		// index is not parsed here: its first reader does that, after the first paint.
+		if (!isSubagent) refreshCatalog();
 	});
 
 	// The tool-call pipeline, its cleanup and the user's own `!cmd` (`tool-gates.ts`).

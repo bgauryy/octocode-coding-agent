@@ -10,6 +10,7 @@ import {
 	type AssistantMessageEventStream,
 	createAssistantMessageEventStream,
 	describePayloadLayers,
+	PayloadLayerMemo,
 	type RequestTrace,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
@@ -20,12 +21,31 @@ function messageOf(event: AssistantMessageEvent): AssistantMessage | undefined {
 	return "partial" in event ? event.partial : undefined;
 }
 
+/** How many conversations keep a memo of their last request's layers; the least recently described is forgotten first. */
+const MEMO_CONVERSATIONS = 8;
+const memos = new Map<string, PayloadLayerMemo>();
+
+/**
+ * The memo of one conversation's requests (`describePayloadLayers`): consecutive requests of a session share their
+ * prefix, so only its new layers are serialized. Requests with their own routing id (compaction, summaries) keep their
+ * own memo; a missing id shares one. A memo never changes a trace, only how much of it is computed again.
+ */
+function memoFor(sessionId: string | undefined): PayloadLayerMemo {
+	const key = sessionId ?? "";
+	let memo = memos.get(key);
+	if (memo) memos.delete(key);
+	else memo = new PayloadLayerMemo();
+	memos.set(key, memo);
+	if (memos.size > MEMO_CONVERSATIONS) memos.delete(memos.keys().next().value as string);
+	return memo;
+}
+
 /**
  * Runs `start` with `options.onPayload` chained (the caller's hook runs first, and the payload it
  * returns is the one described) and returns a stream whose messages carry `requestTrace`.
  * Requests whose API has no describer pass through unchanged.
  */
-export function withRequestTrace<TOptions extends Pick<SimpleStreamOptions, "onPayload">>(
+export function withRequestTrace<TOptions extends Pick<SimpleStreamOptions, "onPayload" | "sessionId">>(
 	options: TOptions,
 	start: (options: TOptions) => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
@@ -35,7 +55,8 @@ export function withRequestTrace<TOptions extends Pick<SimpleStreamOptions, "onP
 		...options,
 		onPayload: async (payload, model) => {
 			const replaced = await upstream?.(payload, model);
-			trace = describePayloadLayers((model as { api: string }).api, replaced ?? payload);
+			const memo = memoFor(options.sessionId);
+			trace = describePayloadLayers((model as { api: string }).api, replaced ?? payload, memo);
 			return replaced;
 		},
 	});

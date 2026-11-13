@@ -9,7 +9,7 @@ import type { AgentContext, AgentMessage, ThinkingLevel } from "@octocodeai/octo
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
-import { estimateProjectedContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
+import { estimateLeafContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { convertToLlm } from "../messages.ts";
 import type { SessionProjection } from "../session-manager.ts";
@@ -40,7 +40,7 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 function requestTokens(host: AgentHooksHost, projection: SessionProjection): number {
 	const { session } = host;
 	return (
-		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
+		estimateLeafContextTokens(projection, session.sessionManager).tokens +
 		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations)
 	);
 }

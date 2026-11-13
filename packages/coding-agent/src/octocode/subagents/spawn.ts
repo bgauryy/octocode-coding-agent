@@ -33,7 +33,7 @@ import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
 import type { Runners } from "./runner-port.ts";
 import { runnerPlan } from "./runner-task.ts";
-import { runForeground, startBackground } from "./run-execution.ts";
+import { reportInFlight, runForeground, startBackground } from "./run-execution.ts";
 import type { RunDetails } from "./run-types.ts";
 import { spawnRefusal } from "./spawn-limits.ts";
 import { childCacheGroup, taskSkillPlan, taskSkillText, withRoleSkills } from "./task-skills.ts";
@@ -77,6 +77,8 @@ export async function spawnAgent(
 ): Promise<AgentToolResult<RunDetails>> {
 	const { api, runs, permission, lingering } = env;
 	const { team } = runs;
+	const generation = runs.session;
+	const current = () => generation === runs.session;
 	const launchSignal = env.withLaunch(signal);
 	launchSignal.throwIfAborted();
 	const tooDeep = nestingRefusal();
@@ -193,6 +195,7 @@ export async function spawnAgent(
 			slot,
 		);
 		if (resumed) lingering.forget(resumed.child.id);
+		runs.groups.join(claimed.identity.id, params.background === true);
 	} finally {
 		if (!claimed && slot.held) runs.slots.give();
 	}
@@ -204,12 +207,15 @@ export async function spawnAgent(
 	let lateNote = "";
 	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it; `lingers`: the child stays reachable after it.
 	const finish = (outcome?: SubagentOutcome, lingers?: boolean) =>
-		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers)
+		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers, current)
 			.then((note) => {
 				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
 				if (params.background && linked?.notice) runs.graph?.mark(run.identity.id, linked.notice);
 				// A run that reported may take delegated cost past a new multiple of this session's own: its report says so.
-				const cost = outcome ? delegatedCostNote(runs, ctx.sessionManager.getEntries(), outcome.usage.cost.total) : "";
+				const cost =
+					outcome && current()
+						? delegatedCostNote(runs, ctx.sessionManager.getEntries(), outcome.usage.cost.total)
+						: "";
 				return `${note}${lateNote}${cost}`;
 			})
 			.finally(() => {
@@ -265,7 +271,7 @@ export async function spawnAgent(
 			const cwd = params.isolate ? await isolation.start(ctx, run.identity, params.workingCopy, beginSignal) : ctx.cwd;
 			beginSignal.throwIfAborted();
 			const worktree = isolation.worktree;
-			const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
+			const onSpawn = worktree ? (pid: number) => void recordWorktreePid(worktree, pid) : undefined;
 			const archive = parentArchive();
 			const told = resumeText(resumed, params.task);
 			const skillText = told.prefix || !skillPlan.inTask ? "" : taskSkillText(skillResources, skillPlan.inline);
@@ -277,6 +283,7 @@ export async function spawnAgent(
 			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, turn: StaggerTurn) => {
 				const tracked = track(update);
 				const progress: typeof tracked = (change) => {
+					if (!current()) return;
 					if (change.responding) turn.warm();
 					tracked(change);
 				};
@@ -311,11 +318,16 @@ export async function spawnAgent(
 							onSpawn,
 							host,
 							ready: turn.ready,
+							exited: turn.lost,
+							// A background child that settled has its report in flight: sibling reports wait for it (`ReportQueue`).
+							settled: params.background ? () => reportInFlight(runs, run.identity.id) : undefined,
+							working: (probe) => runs.groups.working(run.identity.id, probe),
+							workingChanged: () => runs.reports.reportingChanged(),
 						});
 				return env.record(run, details, session, work);
 			};
 			return {
-				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch),
+				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch, run.identity.staggers === true),
 				warning: worktree?.warning ? `\n\n${worktree.warning}` : "",
 			};
 		};
@@ -373,7 +385,11 @@ export async function spawnAgent(
 			details,
 		);
 	} finally {
-		// A failure before the run started still removes the worktree.
-		if (!handedOff) await finish();
+		// A failure before the run started still removes the worktree, and leaves the step's group it joined.
+		if (!handedOff) {
+			runs.groups.leave(run.identity.id);
+			runs.reports.reportingChanged();
+			await finish();
+		}
 	}
 }

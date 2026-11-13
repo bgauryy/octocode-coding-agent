@@ -31,7 +31,7 @@ export abstract class SettingsAccessorBase {
 	}
 
 	protected save(): void {
-		this.persistence.save();
+		void this.persistence.save();
 	}
 
 	protected updateProjectSettings(

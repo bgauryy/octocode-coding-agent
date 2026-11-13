@@ -50,21 +50,29 @@ const block = (structuredContent: unknown, width = 80, shown?: string) =>
 describe("the purpose block below a tool result", () => {
 	beforeAll(() => initTheme("dark"));
 
-	it("states a goal shared by every row once, with a numbered reasoning per row", () => {
+	it("keeps shared goals and reasons associated with every numbered query", () => {
 		const structured = returned([
 			{ index: 0, mainGoal: "map the parser", reasoning: "entry point" },
 			{ index: 1, mainGoal: "map the parser", reasoning: "its callers" },
 		]);
 		for (const withRenderer of [true, false]) {
 			const lines = text(resultRow(MCP, {}, structured, withRenderer));
-			// The title's one-line reason already shows the goal, so only the rows follow the output.
+			// Each query retains the same shared goal with its own reason.
 			expect(
 				lines.map((line) => line.trim()),
 				String(withRenderer),
-			).toEqual(expect.arrayContaining(["↳ map the parser", "· #0 entry point", "· #1 its callers"]));
-			expect(lines.filter((line) => line.includes("map the parser"))).toHaveLength(1);
+			).toEqual(
+				expect.arrayContaining([
+					"Result",
+					"Query 1 · Goal: map the parser",
+					"Query 1 · Reason: entry point",
+					"Query 2 · Goal: map the parser",
+					"Query 2 · Reason: its callers",
+				]),
+			);
+			expect(lines.filter((line) => line.includes("map the parser"))).toHaveLength(2);
 			const output = lines.findIndex((line) => line.includes("found 3 files"));
-			expect(lines.findIndex((line) => line.includes("· #0"))).toBeGreaterThan(output);
+			expect(lines.findIndex((line) => line.includes("Query 1 · Reason:"))).toBeLessThan(output);
 		}
 	});
 
@@ -74,7 +82,7 @@ describe("the purpose block below a tool result", () => {
 			80,
 			"elsewhere",
 		);
-		expect(lines).toEqual(["  ◎ map the parser", "    · entry point"]);
+		expect(lines).toEqual(["  Result", "  Query 1 · Goal: map the parser", "  Query 1 · Reason: entry point"]);
 	});
 
 	it("draws one line per row when the rows state different goals", () => {
@@ -85,7 +93,13 @@ describe("the purpose block below a tool result", () => {
 				{ index: 2, reasoning: "just why" },
 			],
 		});
-		expect(lines).toEqual(["  #0 find the loader — where it starts", "  #1 find the writer", "  #2 just why"]);
+		expect(lines).toEqual([
+			"  Result",
+			"  Query 1 · Goal: find the loader",
+			"  Query 1 · Reason: where it starts",
+			"  Query 2 · Goal: find the writer",
+			"  Query 3 · Reason: just why",
+		]);
 	});
 
 	it("reads the purposes of any tool's result, native or MCP, from structured data or one JSON text", () => {
@@ -112,27 +126,36 @@ describe("the purpose block below a tool result", () => {
 			expect(native, String(withRenderer)).toEqual(
 				expect.arrayContaining([
 					"↳ look around the parser",
-					"◎ map the parser",
-					"· #0 entry point",
-					"· #1 its callers",
+					"Query 1 · Goal: map the parser",
+					"Query 1 · Reason: entry point",
+					"Query 2 · Reason: its callers",
 				]),
 			);
-			// An MCP tool whose server returned only JSON text: the goal is its title line, as with structured data.
+			// Supplied call metadata remains visible; the result adds its own goal and query reasons.
 			const external = jsonText(MCP, withRenderer);
 			expect(external, String(withRenderer)).toEqual(
-				expect.arrayContaining(["↳ map the parser", "· #0 entry point", "· #1 its callers"]),
+				expect.arrayContaining([
+					"Reason: look around the parser",
+					"Query 1 · Goal: map the parser",
+					"Query 1 · Reason: entry point",
+					"Query 2 · Reason: its callers",
+				]),
 			);
 			expect(external).not.toContain("↳ look around the parser");
 			// The same native tool with structured data.
 			const structured = text(resultRow("web", { reason: "look around the parser" }, returned(rows), withRenderer));
 			expect(structured.map((line) => line.trim())).toEqual(
-				expect.arrayContaining(["◎ map the parser", "· #0 entry point", "· #1 its callers"]),
+				expect.arrayContaining([
+					"Query 1 · Goal: map the parser",
+					"Query 1 · Reason: entry point",
+					"Query 2 · Reason: its callers",
+				]),
 			);
 		}
 		// Text that is not one JSON value shows no block.
 		const prose = new ToolExecutionComponent("web", "c", {}, {}, undefined, ui, process.cwd());
 		prose.updateResult({ content: [{ type: "text", text: 'mainGoal: "map the parser"' }], isError: false });
-		expect(text(prose).join("\n")).not.toContain("◎");
+		expect(text(prose).filter((line) => line.trim() === "Result")).toEqual([]);
 	});
 
 	it("shows nothing before a result exists", () => {
@@ -147,15 +170,16 @@ describe("the purpose block below a tool result", () => {
 		expect(text(component).filter((line) => line.includes("a reason"))).toEqual(
 			collapsed.filter((line) => line.includes("a reason")),
 		);
-		expect(collapsed.join("\n")).toContain("· a reason");
+		expect(collapsed.join("\n")).toContain("Query 1 · Reason: a reason");
 	});
 
 	it("caps at six lines with the rest counted", () => {
 		const rows = Array.from({ length: 9 }, (_, index) => ({ index, mainGoal: `goal ${index}`, reasoning: "why" }));
 		const lines = block({ results: rows })!;
 		expect(lines).toHaveLength(7);
-		expect(lines[5]).toContain("#5 goal 5");
-		expect(lines[6].trim()).toBe("… +3 more");
+		expect(lines[5]).toContain("Query 3 · Goal: goal 2");
+		expect(lines[6].trim()).toContain("… +13 more");
+		expect(lines[6]).toContain("to expand");
 	});
 
 	it("cuts each line to the width and strips escapes and line breaks", () => {
@@ -169,7 +193,8 @@ describe("the purpose block below a tool result", () => {
 		const hostile = block({
 			results: [{ mainGoal: "one\n\u001b]0;title\u0007two", reasoning: "a\r\nb" }, { mainGoal: "other" }],
 		})!.join("\n");
-		expect(hostile).toContain("#0 one two — a b");
+		expect(hostile).toContain("Query 1 · Goal: one two");
+		expect(hostile).toContain("Query 1 · Reason: a b");
 		expect(hostile).not.toContain("title");
 	});
 
@@ -201,8 +226,9 @@ describe("the purpose block below a tool result", () => {
 
 	it("uses the toolReason color, italic for reasoning, upright for a goal", () => {
 		const rendered = purposeRows(MCP, undefined, { results: [{ mainGoal: "g", reasoning: "r" }] })!.render(40);
-		expect(rendered[0]).toContain(theme.fg("toolReason", "◎ g"));
-		expect(rendered[0]).not.toContain(theme.italic(theme.fg("toolReason", "◎ g")));
-		expect(rendered[1]).toContain(theme.italic(theme.fg("toolReason", "  · r")));
+		expect(rendered[1]).toContain(theme.bold(theme.fg("accent", "Query 1 · Goal: ")));
+		expect(rendered[1]).toContain(theme.fg("text", "g"));
+		expect(rendered[1]).not.toContain(theme.italic(theme.fg("text", "g")));
+		expect(rendered[2]).toContain(theme.italic(theme.fg("toolReason", "Query 1 · Reason: r")));
 	});
 });

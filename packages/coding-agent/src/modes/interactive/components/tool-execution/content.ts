@@ -9,7 +9,7 @@ import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { formatDuration } from "../../../../octocode/shared/format.ts";
 import { keyHint } from "../../../../theme/theme-tui-helpers.ts";
-import { purposeRows, reasonRow } from "../../../../octocode/ui/reason-row.ts";
+import { purposeRows, reasonRow, toolArgsForDisplay } from "../../../../octocode/ui/reason-row.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
 interface GenericToolDisplay {
@@ -46,20 +46,33 @@ export class GenericToolContent extends Container {
 	update(display: GenericToolDisplay): void {
 		this.clear();
 		this.assets.clear();
+		const reason = reasonRow(display.toolName, display.args, resultPurposeData(display.result), display.expanded);
+		const purpose =
+			display.result &&
+			purposeRows(display.toolName, display.args, resultPurposeData(display.result), display.expanded);
+		const hasPurpose = Boolean(reason ?? purpose);
+		const args = reason ? toolArgsForDisplay(display.toolName, display.args, display.expanded) : display.args;
 		this.addChild(
 			new Text(
-				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), display.args, theme, display.expanded)}${
+				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), hasPurpose && display.expanded ? undefined : args, theme, display.expanded)}${
 					display.durationMs === undefined ? "" : theme.fg("muted", ` · ${formatDuration(display.durationMs)}`)
 				}`,
 				display.outputPad,
-				1,
+				hasPurpose && display.expanded ? 0 : 1,
 				display.background,
 			),
 		);
-		const reason = reasonRow(display.toolName, display.args, resultPurposeData(display.result));
-		if (reason) {
+		if (hasPurpose && display.expanded) {
+			const detail = formatToolCallWithArgs("", args, theme, true).split("\n").slice(1).join("\n");
+			if (detail)
+				this.addChild(
+					new Text(`${theme.fg("muted", "Arguments")}\n${detail}`, display.outputPad, 0, display.background),
+				);
+		}
+		for (const metadata of [reason, purpose]) {
+			if (!metadata) continue;
 			const row = new Box(display.outputPad, 0, display.background);
-			row.addChild(reason);
+			row.addChild(metadata);
 			this.addChild(row);
 		}
 		let content: ApplicationContentBlock[];
@@ -119,11 +132,5 @@ export class GenericToolContent extends Container {
 					display.background,
 				),
 			);
-		const purpose = display.result && purposeRows(display.toolName, display.args, resultPurposeData(display.result));
-		if (purpose) {
-			const row = new Box(display.outputPad, 0, display.background);
-			row.addChild(purpose);
-			this.addChild(row);
-		}
 	}
 }

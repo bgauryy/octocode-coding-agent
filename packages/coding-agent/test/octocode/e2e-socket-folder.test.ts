@@ -27,8 +27,8 @@ beforeAll(async () => {
 	temp = fs.mkdtempSync(path.join(fs.realpathSync("/tmp"), "oc-e-"));
 });
 afterAll(async () => {
-	await endpoint.close();
-	fs.rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	await endpoint?.close();
+	if (temp) fs.rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());

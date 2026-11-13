@@ -27,3 +27,9 @@ export function setReadableFrom(db: DatabaseSync, version: number): void {
 export function vacuumInto(db: DatabaseSync, target: string): void {
 	db.prepare("VACUUM INTO ?").run(target);
 }
+
+/** `PRAGMA quick_check`: whether a copy is a whole, readable database (a torn or truncated one is not). */
+export function wholeCopy(db: DatabaseSync): boolean {
+	const rows = db.prepare("PRAGMA quick_check").all() as { quick_check?: unknown }[];
+	return rows.length === 1 && rows[0]?.quick_check === "ok";
+}

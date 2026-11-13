@@ -19,6 +19,8 @@ export interface LayoutBox {
 	scrollView?: ScrollView;
 	/** A scroll view's whole content; reading it measures any rows a virtualized frame left unmeasured. */
 	scrollContentLines?: readonly string[];
+	/** The scroll view's content height as laid out (estimated for rows a virtualized frame left unmeasured). */
+	scrollContentHeight?: number;
 	/** One row of a scroll view's content near the rows in view, without measuring the rest. */
 	scrollContentRow?: (row: number) => string | undefined;
 	/** Measure a virtualized scroll view's whole content now, settling its scroll position. */

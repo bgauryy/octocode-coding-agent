@@ -19,6 +19,7 @@ import { runForeground, startBackground } from "../../src/octocode/subagents/run
 import { runDetails } from "../../src/octocode/subagents/tracking.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 
 const { DatabaseSync } = loadSqlite();
 let root: string;
@@ -73,11 +74,19 @@ afterEach(() => {
 
 describe("the end_hint migration", () => {
 	const open = (file: string, plan?: typeof SCHEMA_PLAN) =>
-		openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
+		openDatabase(
+			{
+				file,
+				mirrorFile: `${file}.transcripts`,
+				archiveDir: path.join(path.dirname(file), "archive"),
+				privateParent: false,
+			},
+			plan,
+		);
 
 	it("is the first step, additive, and a migrated file has the shape of a new one", () => {
-		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`), 8 (`cache_write`) and 9 (`shell_history`) came after these.
-		expect(SCHEMA_PLAN.version).toBe(9);
+		// The pinned history is append-only: steps 5 (`backlog.closed`), 6 (the widened `timers`), 7 (`backlog.rank`), 8 (`cache_write`), 9 (`shell_history`) and 10 (the transcript mirror's own file) came after these.
+		expect(SCHEMA_PLAN.version).toBe(10);
 		expect(SCHEMA_PLAN.migrations).toEqual([
 			expect.objectContaining({ to: 2, additive: true }),
 			expect.objectContaining({ to: 3, additive: true }),
@@ -87,6 +96,7 @@ describe("the end_hint migration", () => {
 			expect.objectContaining({ to: 7, additive: true }),
 			expect.objectContaining({ to: 8, additive: true }),
 			expect.objectContaining({ to: 9, additive: true }),
+			expect.objectContaining({ to: 10, additive: false }),
 		]);
 		const old = path.join(root, "old.db");
 		const first = open(old, { version: 1, migrations: [] });
@@ -117,15 +127,15 @@ describe("the end_hint migration", () => {
 		raw.close();
 	});
 
-	it("leaves a file the previous Octocode (version 1) can still use", () => {
+	it("is refused by an Octocode from before the transcript mirror moved out (step 10 is not additive)", () => {
 		const file = path.join(root, "both.db");
 		open(file).close();
-		const previous = open(file, { version: 1, migrations: [] });
-		previous.db.prepare("INSERT INTO meta (key, value) VALUES ('from-v1', 'yes')").run();
-		previous.close();
+		expect(() => open(file, { version: 9, migrations: SCHEMA_PLAN.migrations.slice(0, 8) })).toThrow(
+			/needs an Octocode that supports schema version 10/,
+		);
+		// No floor row: the floor is the file's own version, which an Octocode at 9 cannot read.
 		const raw = new DatabaseSync(file, { readOnly: true });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'from-v1'").get()).toEqual({ value: "yes" });
+		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toBeUndefined();
 		raw.close();
 	});
 });
@@ -235,7 +245,8 @@ describe("the parent's side", () => {
 				},
 				editLog: () => undefined,
 			},
-			reports: { add: (report: Report) => reports.push(report) },
+			reports: { add: (report: Report) => reports.push(report), reportingChanged: () => undefined },
+			groups: new ReportGroups(),
 		}) as unknown as AgentRuns;
 	const runOf = (id: string) => ({ identity: { id, role: "general", goal: "Check" }, route: {} }) as Run;
 	const neverEnds = (signal: AbortSignal) =>

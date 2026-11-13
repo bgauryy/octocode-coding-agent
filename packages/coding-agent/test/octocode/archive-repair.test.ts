@@ -38,11 +38,11 @@ it("parses shared ancestors once per recovery batch and observes new entries in 
 		const repair = new HistoryRepair(db, env);
 		for (const file of forks) await repair.transcript(file);
 		expect(opened).toHaveBeenCalledTimes(4);
-		expect(compactions.forSession(db.db, "parent")).toHaveLength(1);
-		for (let i = 0; i < 3; i++) expect(compactions.forSession(db.db, `fork-${i}`)).toHaveLength(0);
+		expect(compactions.forSession(db.mirror.db, "parent")).toHaveLength(1);
+		for (let i = 0; i < 3; i++) expect(compactions.forSession(db.mirror.db, `fork-${i}`)).toHaveLength(0);
 		write(parent, [header, entry, { ...entry, id: "second", summary: "new decision" }]);
 		await new HistoryRepair(db, env).transcript(forks[0]);
-		expect(compactions.forSession(db.db, "parent")).toHaveLength(2);
+		expect(compactions.forSession(db.mirror.db, "parent")).toHaveLength(2);
 		const stop = new AbortController();
 		stop.abort();
 		await expect(new HistoryRepair(db, env, stop.signal).transcript(parent)).rejects.toThrow();
@@ -80,7 +80,7 @@ it("reads every compaction of a transcript larger than one read, across multibyt
 	try {
 		expect(fs.statSync(file).size).toBeGreaterThan(3 * 64 * 1024);
 		await new HistoryRepair(db, env).transcript(file);
-		expect(compactions.forSession(db.db, "long").map((row) => row.summary)).toEqual([
+		expect(compactions.forSession(db.mirror.db, "long").map((row) => row.summary)).toEqual([
 			"décision ✓ one",
 			"décision ✓ two",
 		]);
@@ -112,6 +112,32 @@ it("an abort during a read rejects the repair and closes the file, with no stray
 		expect(stray).not.toHaveBeenCalled();
 	} finally {
 		process.off("uncaughtException", stray);
+		db.close();
+	}
+});
+
+it("skips a sealed torn line that holds a compaction mark, as the loader does, and reads the records after it", async () => {
+	const { db, env, file } = transcriptFixture();
+	try {
+		// Part of a compaction record a stopped writer left, sealed by the next write, then a whole one.
+		const torn = '{"type":"compaction","id":"cut","summary":"d\\u00e9ci';
+		const after = {
+			type: "compaction",
+			id: "three",
+			parentId: null,
+			timestamp: "2026-01-01T00:00:00Z",
+			summary: "after the seal",
+			firstKeptEntryId: "kept",
+			tokensBefore: 100,
+		};
+		fs.appendFileSync(file, `${torn}\n${JSON.stringify(after)}\n`);
+		await new HistoryRepair(db, env).transcript(file);
+		expect(compactions.forSession(db.mirror.db, "long").map((row) => row.summary)).toEqual([
+			"décision ✓ one",
+			"décision ✓ two",
+			"after the seal",
+		]);
+	} finally {
 		db.close();
 	}
 });

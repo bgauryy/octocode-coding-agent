@@ -1,13 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-	CATALOG_TTL_MS,
-	indexCatalog,
-	loadCatalog,
-	lookup,
-	readCatalog,
-} from "../../src/octocode/subagents/catalog.ts";
+import { indexCatalog, loadCatalog, lookup, readCatalog } from "../../src/octocode/subagents/catalog.ts";
+// The catalog is fresh for a day.
+import { DAY_MS as CATALOG_TTL_MS } from "../../src/octocode/shared/util.ts";
 import { type ModelRef, resolveTier, routeModel } from "../../src/octocode/subagents/model.ts";
 import { describeModels } from "../../src/octocode/subagents/models-command.ts";
 import { tmp } from "./helpers.ts";

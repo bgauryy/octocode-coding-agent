@@ -1,7 +1,7 @@
 import { closeSync, constants, copyFileSync, existsSync, fstatSync, openSync, readSync, truncateSync } from "node:fs";
 import { resolvePath } from "../../../../common/src/paths.ts";
 import { withSessionFileLock } from "./shared-file.ts";
-import { endOfLastRecord } from "./storage.ts";
+import { endOfLastRecord } from "./session-tail.ts";
 
 /** What `repairSessionFile` changed. */
 export interface SessionRepair {

@@ -2,9 +2,10 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { type CacheMetrics, computeCacheMetrics } from "./cache-stats.ts";
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
-import { estimateProjectedContextTokens } from "./compaction/index.ts";
+import { estimateLeafContextTokens } from "./compaction/index.ts";
 import type { ContextUsage } from "./features/index.ts";
-import { getLatestCompactionEntry, type ReadonlySessionManager } from "./session-manager.ts";
+import type { ReadonlySessionManager } from "./session-manager.ts";
+import { ancestors } from "./session-manager/ancestors.ts";
 import { addUsageToTotals, createUsageTotals, entryUsage } from "./usage-totals.ts";
 
 /** Session statistics for /session command */
@@ -110,9 +111,12 @@ export function computeContextUsage(
 	// After compaction, the last assistant usage reflects pre-compaction context size.
 	// We can only trust usage from an assistant that responded after the latest compaction.
 	// If no such assistant exists, context token count is unknown until the next LLM response.
+	// The branch is read from the leaf back, only as far as needed. Its latest compaction leads the projection, which
+	// otherwise holds none; without a leaf entry the branch is empty.
 	const projection = sessionManager.buildSessionProjection();
-	const branch = sessionManager.getBranch();
-	const latestCompaction = getLatestCompactionEntry(branch);
+	const leaf = sessionManager.getLeafEntry();
+	const head = projection.entries[0]?.sourceEntry;
+	const latestCompaction = leaf && head?.type === "compaction" ? head : undefined;
 
 	if (latestCompaction) {
 		const projectedAssistants = new Set(
@@ -128,12 +132,18 @@ export function computeContextUsage(
 					: [],
 			),
 		);
-		const compactionIndex = branch.findIndex((entry) => entry.id === latestCompaction.id);
-		const hasPostCompactionUsage = branch.slice(compactionIndex + 1).some((entry) => projectedAssistants.has(entry.id));
+		let hasPostCompactionUsage = false;
+		for (const entry of ancestors(leaf, (id) => sessionManager.getEntry(id))) {
+			if (entry.id === latestCompaction.id) break;
+			if (projectedAssistants.has(entry.id)) {
+				hasPostCompactionUsage = true;
+				break;
+			}
+		}
 		if (!hasPostCompactionUsage) return { tokens: null, contextWindow, percent: null };
 	}
 
-	const estimate = estimateProjectedContextTokens(projection, branch);
+	const estimate = estimateLeafContextTokens(projection, sessionManager);
 	const percent = (estimate.tokens / contextWindow) * 100;
 
 	return {

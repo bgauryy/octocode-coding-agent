@@ -10,11 +10,12 @@ import { parseJsonStrings, splitIds } from "./tool-arguments.ts";
 import { batchGet } from "./tool-batch.ts";
 import { backlogRenderers } from "./tool-render.ts";
 import { runBacklog } from "./tool-run.ts";
+import { completeStep } from "./tool-step.ts";
 import { closeField, completionField, legacyEntityFields } from "./tool-schema.ts";
 import { oneWrite } from "./tool-support.ts";
 import { backlogPrompt } from "./tool-text.ts";
 
-const OPS = ["get", "claim", "note", "done", "close"] as const;
+const OPS = ["get", "claim", "note", "done", "close", "step"] as const;
 type Op = (typeof OPS)[number];
 /** The operations `backlog` had before planning moved to `backlogPlan`: still validated, so the refusal names where each went. */
 const MOVED_OPS = ["list", "add", "update"] as const;
@@ -26,6 +27,7 @@ const OP_FIELDS: Record<Op, readonly string[]> = {
 	note: ["id", "note", "version"],
 	done: ["id", "completion", "note", "version"],
 	close: ["id", "close", "note", "version"],
+	step: ["id", "note", "version"],
 };
 const DECLARED = ["id", "note", "why", "goal", "completion", "close"];
 
@@ -75,9 +77,9 @@ export function registerBacklogTool(
 	const parameters = Type.Object(
 		{
 			op: StringEnum(OPS, { description: ops }),
-			id: Type.Optional(Type.String({ description: "item id, e.g. B12; get takes several" })),
-			note: Type.Optional(Type.String({ description: "progress or findings to append" })),
-			why: Type.Optional(Type.String({ description: "claim: why it matters, if unset" })),
+			id: Type.Optional(Type.String({ description: "B12; get: several; step: T12" })),
+			note: Type.Optional(Type.String({ description: "progress; step: result/check evidence" })),
+			why: Type.Optional(Type.String({ description: "claim: why, if unset" })),
 			goal: Type.Optional(Type.String({ description: "claim: checkable Definition of Done, if unset" })),
 			completion: completionField("done: the result"),
 			close: Type.Optional(closeField),
@@ -131,7 +133,10 @@ export function registerBacklogTool(
 						`${op} does not take ${extra.join(", ")}: it takes ${OP_FIELDS[op].filter((key) => DECLARED.includes(key)).join(", ")}.`,
 					);
 				if (op === "get") return work(openBacklog(ctx, options), args, op);
-				const result = await oneWrite(async () => work(openBacklog(ctx, options), args, op));
+				const result = await oneWrite(async () => {
+					signal?.throwIfAborted();
+					return work(openBacklog(ctx, options), args, op);
+				});
 				options.changed?.(ctx);
 				return result;
 			},
@@ -143,6 +148,7 @@ export function registerBacklogTool(
 	function work(backlog: Backlog, args: Params, op: Op) {
 		const run = (params: Parameters<typeof runBacklog>[1]) => runBacklog(backlog, params, { subagent, word: op });
 		const { id, note, version } = args;
+		if (op === "step") return completeStep(backlog, { id, note, version });
 		const one = { op: "update" as const, id, note, version };
 		if (op === "get") {
 			const { ids: listed, limit, offset, changes } = args;

@@ -2,6 +2,7 @@ import {
 	Editor,
 	type EditorOptions,
 	type EditorTheme,
+	type Keybinding,
 	matchesKey,
 	splitDoubleEscape,
 	type TUI,
@@ -37,6 +38,8 @@ export class CustomEditor extends Editor {
 	public onPasteText?: (text: string) => string | undefined;
 	/** Handler for extension-registered shortcuts. Returns true if handled. */
 	public onExtensionShortcut?: (data: string) => boolean;
+	/** Whether `onExtensionShortcut` would take `data`, without running it; unset, typed runs go key by key. */
+	public isExtensionShortcut?: (data: string) => boolean;
 	/** Up in an empty editor without autocomplete; return true to take it, false to browse prompt history as usual. */
 	public onEmptyUp?: () => boolean;
 
@@ -111,6 +114,52 @@ export class CustomEditor extends Editor {
 		if (content.includes(start) || content.includes(end)) return undefined;
 		const replacement = this.onPasteText(content);
 		return replacement === undefined ? undefined : `${start}${replacement}${end}`;
+	}
+
+	/** Whether `handleInput` passes printable `char` straight to the editor: no app or extension key takes it. */
+	private reachesEditor(char: string): boolean {
+		if (this.onExtensionShortcut) {
+			try {
+				if (!this.isExtensionShortcut || this.isExtensionShortcut(char)) return false;
+			} catch {
+				return false;
+			}
+		}
+		const appKeys: Keybinding[] = [
+			"app.clipboard.pasteImage",
+			"app.interrupt",
+			"app.exit",
+			"tui.editor.historyPrevious",
+			"tui.editor.historyNext",
+			...this.actionHandlers.keys(),
+		];
+		if (this.onEmptyUp) appKeys.push("tui.editor.cursorUp");
+		// A typed ASCII character: the bindings it matches are known, most often none.
+		const typed = this.keybindings.typedBindings(char);
+		if (typed) return !appKeys.some((action) => typed.has(action));
+		return !appKeys.some((action) => this.keybindings.matches(char, action));
+	}
+
+	protected override typedRunInput(): (data: string) => void {
+		return CustomEditor.prototype.handleInput;
+	}
+
+	/**
+	 * The characters before the first app or extension key reach the editor at once; that key goes through `handleInput`
+	 * alone and ends the call, since it may open a selector or overlay. Returns how much of `text` was handled.
+	 */
+	protected override insertTypedRun(text: string): number {
+		let run = 0;
+		for (const char of text) {
+			if (this.reachesEditor(char)) {
+				run += char.length;
+				continue;
+			}
+			if (run > 0) return super.insertTypedRun(text.slice(0, run));
+			CustomEditor.prototype.handleInput.call(this, char);
+			return char.length;
+		}
+		return run > 0 ? super.insertTypedRun(text) : 0;
 	}
 
 	handleInput(data: string): void {

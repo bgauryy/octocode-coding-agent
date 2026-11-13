@@ -12,6 +12,7 @@ import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, onRawStdoutFailure, writeRawStdout } from "../core/output-guard.ts";
 import { createEventOutput, waitForEventBackpressure } from "./event-output.ts";
 import { headlessCommandActions } from "./headless-actions.ts";
+import { createEventLines } from "./event-lines.ts";
 import { toJsonEvent } from "./json-event.ts";
 import { handleTerminationSignals } from "./termination-signals.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -41,8 +42,9 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;
 	let disposing: Promise<void> | undefined;
+	const eventLines = createEventLines();
 	const writeEvent = createEventOutput<AgentSessionEvent>((event) => {
-		writeRawStdout(`${JSON.stringify(toJsonEvent(event))}\n`);
+		for (const piece of eventLines(toJsonEvent(event))) writeRawStdout(piece);
 	});
 
 	const disposeRuntime = (): Promise<void> => {

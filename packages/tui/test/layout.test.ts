@@ -283,7 +283,7 @@ describe("viewport layout", () => {
 		assert.strictEqual(visible(alwaysOverflowingFrame.lines).filter((line) => line.endsWith("│")).length, 2);
 		for (const line of alwaysOverflowingFrame.lines) {
 			const scrollbarStyleIndex = Math.max(line.lastIndexOf(trackColor), line.lastIndexOf(thumbColor));
-			const reservedColumnResetIndex = line.lastIndexOf("\x1b[0m\x1b]8;;\x07", scrollbarStyleIndex);
+			const reservedColumnResetIndex = line.lastIndexOf("\x1b[0m", scrollbarStyleIndex);
 			assert.ok(reservedColumnResetIndex > line.lastIndexOf(contentBackground));
 		}
 
@@ -325,8 +325,26 @@ describe("viewport layout", () => {
 		for (const line of frame.lines) {
 			assert.ok(line.includes(background));
 			assert.ok(!line.includes(borderForeground));
-			assert.ok(line.includes(`\x1b[0m\x1b]8;;\x07${background}`));
+			assert.ok(line.includes(`\x1b[0m${background}`));
 		}
+	});
+
+	it("closes a hyperlink at the scrollbar cell only when one is open before it", () => {
+		const link = "\x1b]8;;https://example.com\x07";
+		const rows = ["plain row", `${link}linked row`, `${link}closed\x1b]8;;\x07 row`];
+		const scrollView = new ScrollView(
+			{
+				render: (width) => rows.map((row) => row.padEnd(width + row.length - stripTerminalSequences(row).length)),
+				invalidate() {},
+			},
+			{ scrollbar: "always", scrollbarTrackStyle: (text) => text, scrollbarThumbStyle: (text) => text },
+		);
+		const scrollbarCell = (line: string) => line.slice(line.lastIndexOf("\x1b[0m"));
+		const [plain, linked, closed] = renderLayoutFrame(scrollView, 8, 3, () => {}).lines.map(scrollbarCell);
+		// Hyperlinks off (or a row without one): no close sequence is written for the scrollbar.
+		assert.ok(!plain.includes("\x1b]8;"), JSON.stringify(plain));
+		assert.ok(!closed.includes("\x1b]8;"), JSON.stringify(closed));
+		assert.ok(linked.startsWith("\x1b[0m\x1b]8;;\x07"), JSON.stringify(linked));
 	});
 
 	it("updates reserved scrollbar layout at runtime", () => {

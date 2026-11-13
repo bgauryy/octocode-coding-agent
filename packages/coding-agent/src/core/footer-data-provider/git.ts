@@ -43,12 +43,19 @@ export function findGitPaths(cwd: string): GitPaths | null {
 	return null;
 }
 
+/**
+ * In its own session, without the terminal: a footer query must never join the terminal's foreground process group
+ * (Ctrl+C, Ctrl+Z) or open `/dev/tty` (a credential or pager prompt). Windows has no sessions and would open a console.
+ */
+const OFF_TERMINAL = { detached: process.platform !== "win32", windowsHide: true } as const;
+
 /** Ask git for the current branch. Returns null on detached HEAD or if git is unavailable. */
 export function resolveBranchWithGitSync(repoDir: string): string | null {
 	const result = spawnSync("git", ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"], {
 		cwd: repoDir,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		...OFF_TERMINAL,
 	});
 	const branch = result.status === 0 ? result.stdout.trim() : "";
 	return branch || null;
@@ -63,6 +70,7 @@ export function resolveBranchWithGitAsync(repoDir: string): Promise<string | nul
 			{
 				cwd: repoDir,
 				encoding: "utf8",
+				...OFF_TERMINAL,
 			},
 			(error: ExecFileException | null, stdout: string) => {
 				if (error) {

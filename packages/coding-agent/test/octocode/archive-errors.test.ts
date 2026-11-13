@@ -1,5 +1,5 @@
 import { getFileStamp } from "../../../common/src/paths.ts";
-import { transcripts } from "../../../db/src/api.ts";
+import { sessions, transcripts } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
@@ -76,10 +76,10 @@ function session(
 	if (mirrored) {
 		const workspaceId = registeredWorkspace(cwd).id;
 		const db = sharedAgentDb();
-		db.transaction(() => {
-			transcripts.bind(db.db, id, workspaceId);
+		sessions.bind(db.db, id, workspaceId);
+		db.mirror.transaction(() => {
 			transcripts.save(
-				db.db,
+				db.mirror.db,
 				id,
 				transcript,
 				JSON.stringify({ type: "session", id, cwd }),

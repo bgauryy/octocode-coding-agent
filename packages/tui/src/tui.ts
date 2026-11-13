@@ -9,6 +9,8 @@
 import { matchesKey } from "./keys/match.ts";
 import { isKeyRelease } from "./keys/sequences.ts";
 import { FOCUS_IN } from "./terminal/sequences.ts";
+import { isTypedRun } from "./stdin-buffer/typed-run.ts";
+import { routeKey, routeTypedRun, type TypedRunRouter } from "./tui/typed-run.ts";
 import type { Terminal } from "./terminal/types.ts";
 import type { TerminalColorScheme, TerminalColors } from "./terminal-colors.ts";
 import { kittyPlaceholderMode } from "./terminal-image/capabilities.ts";
@@ -16,6 +18,7 @@ import { TmuxImageReupload } from "./terminal-image/tmux-reupload.ts";
 import type { Component, TuiMouseDispatchResult, TuiMouseDispatchTarget, TuiMouseEvent } from "./tui/component.ts";
 import { applyLineResets } from "./tui/composite.ts";
 import { Container } from "./tui/container.ts";
+import { readChildren } from "./tui/container-state.ts";
 import { extractCursorPosition, resolveFakeCursors } from "./tui/cursor.ts";
 import { FocusManager } from "./tui/focus-manager.ts";
 import { ResizeDebounce } from "./tui/resize-debounce.ts";
@@ -56,7 +59,11 @@ export abstract class TuiBase extends Container implements TUI {
 		hideCursor: () => this.hideTerminalCursor(),
 	});
 	private readonly overlays = new OverlayCompositor(this.focus);
-	private readonly resizeDebounce = new ResizeDebounce(() => this.stopped || this.requestRender());
+	private readonly resizeDebounce = new ResizeDebounce(() => {
+		if (this.stopped) return;
+		this.onTerminalResized();
+		this.requestRender();
+	});
 	protected readonly scheduler = new RenderScheduler({
 		terminal: () => this.terminal,
 		isStopped: () => this.stopped,
@@ -102,6 +109,9 @@ export abstract class TuiBase extends Container implements TUI {
 	protected afterTerminalStart(): void {}
 
 	protected onTerminalCapabilitiesChanged(): void {}
+
+	/** The terminal settled at a new size; the frame at that size follows. */
+	protected onTerminalResized(): void {}
 
 	protected beforeTerminalStop(_options: TuiStopOptions): void {}
 
@@ -163,7 +173,8 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	protected getMountedRoots(): readonly Component[] {
-		return this.children;
+		// Read without counting as an edit of the children list (focus checks run on every render request).
+		return readChildren(this) ?? this.children;
 	}
 
 	/** A retained mouse gesture must not outlive its component or visible overlay. */
@@ -280,8 +291,35 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	private handleTerminalInput(received: string): void {
+		if (isTypedRun(received)) routeTypedRun(this.typedRunRouter, received);
+		else routeKey(this.typedRunRouter, received);
+	}
+
+	private readonly typedRunRouter: TypedRunRouter = {
+		route: (data) => this.routeInput(data),
+		// Global debug key handler (Shift+Ctrl+D)
+		debugKey: (data) => {
+			if (!matchesKey(data, "shift+ctrl+d") || !this.onDebug) return false;
+			this.onDebug();
+			return true;
+		},
+		focused: () => {
+			this.focus.reconcileFocus();
+			return this.focus.focusedComponent;
+		},
+		deliver: (data) => this.deliverInput(data),
+		deliverRun: (component, text) => {
+			this.scheduler.noteInput();
+			const used = component.handleTextRun!(text);
+			this.scheduler.requestImmediate();
+			return used;
+		},
+	};
+
+	/** Terminal replies, the focus-in image reupload and the input listeners: what is left for the focused component. */
+	private routeInput(received: string): string | undefined {
 		if (this.queries.consumeReply(received)) {
-			return;
+			return undefined;
 		}
 		// tmux sends a focus-in when a client attaches; it does not consume the event.
 		if (received === FOCUS_IN && kittyPlaceholderMode()) {
@@ -292,21 +330,10 @@ export abstract class TuiBase extends Container implements TUI {
 				},
 			);
 		}
+		return this.inputListeners.filter(received);
+	}
 
-		const filtered = this.inputListeners.filter(received);
-		if (filtered === undefined) {
-			return;
-		}
-		const data = filtered;
-
-		// Global debug key handler (Shift+Ctrl+D)
-		if (matchesKey(data, "shift+ctrl+d") && this.onDebug) {
-			this.onDebug();
-			return;
-		}
-
-		this.focus.reconcileFocus();
-
+	private deliverInput(data: string): void {
 		// Pass input to focused component (including Ctrl+C)
 		// The focused component can decide how to handle Ctrl+C
 		const focused = this.focus.focusedComponent;

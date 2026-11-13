@@ -1,95 +1,44 @@
 import type { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../binding.ts";
 
-export const TRANSCRIPTS_SCHEMA = `
-CREATE TABLE session_transcripts (
-  session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  file TEXT NOT NULL UNIQUE, header TEXT NOT NULL, byte_size INTEGER NOT NULL, mtime TEXT NOT NULL, file_binding TEXT NOT NULL);
-CREATE TABLE session_forks (
-  child_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  parent_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  child_file TEXT NOT NULL, CHECK(child_id <> parent_id));
-CREATE INDEX session_forks_parent ON session_forks(parent_id);
-CREATE TABLE session_entries (
-  session_id TEXT NOT NULL REFERENCES session_transcripts(session_id) ON DELETE CASCADE,
-  position INTEGER NOT NULL, entry_id TEXT NOT NULL, parent_id TEXT, type TEXT NOT NULL, data TEXT NOT NULL,
-  PRIMARY KEY(session_id, position));
-CREATE INDEX session_entries_tree ON session_entries(session_id, parent_id);
-CREATE INDEX session_entries_id ON session_entries(session_id, entry_id);
-`;
+/**
+ * The transcript mirror's `session_transcripts` and `session_entries` (`schema-mirror.ts`). Every function takes the
+ * mirror's connection (`AgentDb.mirror.db`), never the coordination one: the session and workspace a transcript belongs
+ * to are rows of the coordination file (`sessions.ts`), read there.
+ */
 
 interface TranscriptStamp {
 	file: string;
 	byte_size: number;
 	mtime: string;
 	file_binding: string;
-	workspace_id: string | null;
 }
 
 /** The saved stamp of a transcript; `file_binding` is `ino:birth` whatever format the row stores (see `binding.ts`). */
 export function stamp(db: DatabaseSync, sessionId: string): TranscriptStamp | undefined {
 	const row = db
-		.prepare(`SELECT t.file,t.byte_size,t.mtime,t.file_binding,s.workspace_id FROM session_transcripts t
-		JOIN sessions s ON s.id=t.session_id WHERE t.session_id=?`)
+		.prepare("SELECT file,byte_size,mtime,file_binding FROM session_transcripts WHERE session_id=?")
 		.get(sessionId) as TranscriptStamp | undefined;
 	return row && { ...row, file_binding: bindingKey(row.file_binding) };
 }
 
-/** Which workspace has indexed this exact transcript path, including transcripts stored outside its checkout. */
-export function fileOwner(db: DatabaseSync, file: string): { id: string; workspace_id: string | null } | undefined {
+/** The session whose transcript is this exact path, including transcripts stored outside its checkout. */
+export function fileOwner(db: DatabaseSync, file: string): string | undefined {
+	const row = db.prepare("SELECT session_id FROM session_transcripts WHERE file=?").get(file);
+	return row ? String(row.session_id) : undefined;
+}
+
+/** The ids of a transcript's stored entries of `type`, in file order. */
+export function entryIds(db: DatabaseSync, sessionId: string, type: string): string[] {
 	return db
-		.prepare(`SELECT s.id,s.workspace_id FROM session_transcripts t JOIN sessions s ON t.session_id=s.id
-		WHERE t.file=?`)
-		.get(file) as { id: string; workspace_id: string | null } | undefined;
+		.prepare("SELECT entry_id FROM session_entries WHERE session_id=? AND type=? ORDER BY position")
+		.all(sessionId, type)
+		.map((row) => String(row.entry_id));
 }
 
-/** Bind once. A copied file with an existing ID cannot replace another workspace's history. */
-export function bind(db: DatabaseSync, id: string, workspaceId: string | null): void {
-	const result = db
-		.prepare(`INSERT INTO sessions(id,workspace_id) VALUES (?,?)
-		ON CONFLICT(id) DO UPDATE SET workspace_id=COALESCE(sessions.workspace_id,excluded.workspace_id)
-		WHERE sessions.workspace_id IS NULL OR excluded.workspace_id IS NULL OR sessions.workspace_id=excluded.workspace_id`)
-		.run(id, workspaceId);
-	if (!result.changes) throw new Error("Session ID is already bound to another workspace");
-}
-
-/**
- * Only the host operation which creates a fork supplies this edge. An imported JSONL header cannot grant archive access.
- * Recording the same edge again (a retry whose first commit lost its acknowledgement) succeeds; a different edge for the
- * child is refused.
- */
-export function linkFork(db: DatabaseSync, child: string, file: string, parent: string): void {
-	const result = db
-		.prepare(`INSERT INTO session_forks(child_id,child_file,parent_id) SELECT ?,?,?
-		WHERE NOT EXISTS(SELECT 1 FROM session_transcripts WHERE session_id=? AND file<>?)
-		ON CONFLICT(child_id) DO UPDATE SET child_file=excluded.child_file
-		WHERE session_forks.child_file=excluded.child_file AND session_forks.parent_id=excluded.parent_id`)
-		.run(child, file, parent, child, file);
-	if (!result.changes) throw new Error("Another transcript already uses this session ID");
-}
-
-/** A materialized fork inherited these compaction entries from its saved parent snapshot. */
-export function inheritedCompactions(db: DatabaseSync, child: string): Set<string> | undefined {
-	const rows = db
-		.prepare(`SELECT e.entry_id FROM session_forks f LEFT JOIN session_entries e
-		ON e.session_id=f.parent_id AND e.type='compaction' WHERE f.child_id=?`)
-		.all(child);
-	return rows.length
-		? new Set(rows.flatMap((row) => (typeof row.entry_id === "string" ? [row.entry_id] : [])))
-		: undefined;
-}
-
-/** Follow recorded edges, anchoring the first one to the same checkout and transcript file that the host actually opened. */
-export function lineage(db: DatabaseSync, child: string, file: string, workspace: string): string[] {
-	return db
-		.prepare(`WITH RECURSIVE parents(id,depth) AS (
-		SELECT f.parent_id,1 FROM session_forks f JOIN sessions s ON s.id=f.child_id
-		LEFT JOIN session_transcripts t ON t.session_id=f.child_id
-		WHERE f.child_id=? AND COALESCE(t.file,f.child_file)=? AND s.workspace_id=?
-		UNION ALL SELECT f.parent_id,p.depth+1 FROM parents p JOIN session_forks f ON f.child_id=p.id WHERE p.depth<32)
-		SELECT id FROM parents ORDER BY depth`)
-		.all(child, file, workspace)
-		.map((row) => String(row.id));
+/** Whether a transcript of `sessionId` is stored. */
+export function has(db: DatabaseSync, sessionId: string): boolean {
+	return db.prepare("SELECT 1 FROM session_transcripts WHERE session_id=?").get(sessionId) !== undefined;
 }
 
 /**
@@ -231,6 +180,42 @@ export function storedTail(
 	}
 }
 
+/**
+ * Where the stored transcript ends, read from one snapshot: its stamp, header, how many entries are stored (0 when the
+ * range has a gap) and the last of them as stored (the line the file holds). A process that opens the file checks that
+ * line against the file's bytes before the stamp's size, then sends only the lines after it.
+ */
+export function storedEnd(
+	db: DatabaseSync,
+	sessionId: string,
+): { stamp: TranscriptStamp | undefined; header: string | undefined; stored: number; last: EntryRow | undefined } {
+	const own = !db.isTransaction;
+	if (own) db.exec("BEGIN");
+	try {
+		const saved = stamp(db, sessionId);
+		const range = storedRange(db, sessionId);
+		if (!saved || range.n === 0 || range.last !== range.n - 1)
+			return { stamp: saved, header: undefined, stored: 0, last: undefined };
+		const header = db.prepare("SELECT header FROM session_transcripts WHERE session_id=?").get(sessionId);
+		const last = db
+			.prepare("SELECT entry_id,parent_id,type,data FROM session_entries WHERE session_id=? AND position=?")
+			.get(sessionId, range.last);
+		return {
+			stamp: saved,
+			header: header ? String(header.header) : undefined,
+			stored: range.n,
+			last: last && {
+				id: String(last.entry_id),
+				parentId: last.parent_id === null ? null : String(last.parent_id),
+				type: String(last.type),
+				json: String(last.data),
+			},
+		};
+	} finally {
+		if (own) db.exec("COMMIT");
+	}
+}
+
 /** Reconstruct the durable transcript in JSONL order, including branches, tool results and compactions. */
 export function records(db: DatabaseSync, sessionId: string): string[] {
 	return db
@@ -266,4 +251,53 @@ export function* scan(db: DatabaseSync, types: readonly string[]): Generator<{ s
 /** Explicit transcript deletion (the workspace catalog and independently retained summaries survive it). */
 export function removeFile(db: DatabaseSync, file: string, sessionId: string): void {
 	db.prepare("DELETE FROM session_transcripts WHERE file=? AND session_id=?").run(file, sessionId);
+}
+
+/** Rows `erase` and `expire` removed: transcripts and their entries. */
+export interface RemovedTranscripts {
+	transcripts: number;
+	entries: number;
+}
+
+/** Removes the stored transcripts of `ids` with their entries (a user's deletion of those sessions). */
+export function erase(db: DatabaseSync, ids: readonly string[]): RemovedTranscripts {
+	const json = JSON.stringify([...new Set(ids)]);
+	return {
+		entries: Number(
+			db.prepare("DELETE FROM session_entries WHERE session_id IN (SELECT value FROM json_each(?))").run(json).changes,
+		),
+		transcripts: Number(
+			db.prepare("DELETE FROM session_transcripts WHERE session_id IN (SELECT value FROM json_each(?))").run(json)
+				.changes,
+		),
+	};
+}
+
+/**
+ * Removes the stored transcripts of `ids` whose last save, `mtime` (the file's modification time, ns, at that save), is
+ * before `before` (ms since epoch), with their entries: the age rule for sessions whose file is gone (`expire.orphans`).
+ */
+export function expire(db: DatabaseSync, ids: readonly string[], before: number): RemovedTranscripts {
+	const json = JSON.stringify([...new Set(ids)]);
+	const stale = `session_id IN (SELECT value FROM json_each(?1)) AND mtime GLOB '[0-9]*' AND CAST(mtime AS INTEGER) / 1000000 < ?2`;
+	return {
+		entries: Number(
+			db
+				.prepare(
+					`DELETE FROM session_entries WHERE session_id IN (SELECT session_id FROM session_transcripts WHERE ${stale})`,
+				)
+				.run(json, before).changes,
+		),
+		transcripts: Number(db.prepare(`DELETE FROM session_transcripts WHERE ${stale}`).run(json, before).changes),
+	};
+}
+
+/** Removes every stored transcript except those of the sessions in `kept` (`purge.all`). */
+export function keepOnly(db: DatabaseSync, kept: readonly string[]): RemovedTranscripts {
+	const json = JSON.stringify([...new Set(kept)]);
+	const outside = "session_id NOT IN (SELECT value FROM json_each(?))";
+	return {
+		entries: Number(db.prepare(`DELETE FROM session_entries WHERE ${outside}`).run(json).changes),
+		transcripts: Number(db.prepare(`DELETE FROM session_transcripts WHERE ${outside}`).run(json).changes),
+	};
 }

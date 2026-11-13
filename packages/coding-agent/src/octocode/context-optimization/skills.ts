@@ -20,23 +20,27 @@ import {
 	type SkillSource,
 	type SkillsStore,
 	syncSkills,
-	writeSkillsStore,
+	updateSkillsStore,
 } from "./skills-store.ts";
 
 /** Skills whose description reaches the model; the others are listed nowhere it reads. */
 const listed = (skill: Skill) => !skill.disableModelInvocation && skill.description.trim() !== "";
 
 /** Record `sources` in the store at `dir` and return it; a failed write only costs the record. */
-function record(dir: string, sources: readonly SkillSource[]): SkillsStore {
-	const synced = syncSkills(readSkillsStore(dir), sources);
-	if (synced.dirty) {
-		try {
-			writeSkillsStore(dir, synced.store);
-		} catch {
-			// The store is a record for the next session and for tooling; this prompt reads it from memory.
-		}
+async function record(dir: string, sources: readonly SkillSource[]): Promise<SkillsStore> {
+	try {
+		return await updateSkillsStore(
+			dir,
+			(current) => {
+				const synced = syncSkills(current, sources);
+				return synced.dirty ? synced.store : current;
+			},
+			"record",
+		);
+	} catch {
+		// The store is a record for the next session and for tooling; this prompt reads it from memory.
+		return syncSkills(readSkillsStore(dir), sources).store;
 	}
-	return synced.store;
 }
 
 export function registerSkillDescriptions(
@@ -67,11 +71,11 @@ export function registerSkillDescriptions(
 				const bundled = getNativeSkillsDir();
 				const inProject = (source: SkillSource) =>
 					!isWithin(path.resolve(source.file), bundled) && inContextProject(dirs, source.file);
-				const user = record(
+				const user = await record(
 					dirs.user,
 					sources.filter((source) => !inProject(source)),
 				);
-				stores = project ? [record(project.dir, sources.filter(inProject)), user] : [user];
+				stores = project ? [await record(project.dir, sources.filter(inProject)), user] : [user];
 			}
 			frozen = { key, stores };
 		}

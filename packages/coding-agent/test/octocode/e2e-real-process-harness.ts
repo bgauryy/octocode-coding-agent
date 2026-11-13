@@ -1,4 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -147,7 +148,9 @@ export async function startEndpoint(): Promise<Endpoint> {
 			response.end("data: [DONE]\n\n");
 		});
 	});
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const listening = once(server, "listening");
+	server.listen(0, "127.0.0.1");
+	await listening;
 	return {
 		url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
 		requests,

@@ -1,7 +1,6 @@
 import {
 	closeSync,
 	existsSync,
-	fstatSync,
 	fsyncSync,
 	mkdirSync,
 	openSync,
@@ -18,7 +17,6 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../storage/workspace.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
-import { forkHint } from "./shared-file.ts";
 import {
 	assertValidSessionId,
 	createSessionHeader,
@@ -29,52 +27,6 @@ import {
 } from "./entries.ts";
 import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
-
-/** Offset just past the last newline of `fd` (0 when there is none), reading backwards in blocks. */
-export function endOfLastRecord(fd: number, size: number): number {
-	const block = Buffer.alloc(64 * 1024);
-	for (let end = size; end > 0;) {
-		const start = Math.max(0, end - block.length);
-		const read = readSync(fd, block, 0, end - start, start);
-		const at = block.subarray(0, read).lastIndexOf(10);
-		if (at >= 0) return start + at + 1;
-		end = start;
-	}
-	return 0;
-}
-
-/**
- * Throws unless the file ends with a whole record. Returns true when that record lacks only its newline (a hand edit,
- * or a writer that stopped just before it); a caller about to append, holding the session lock, writes the newline
- * first. `loadEntriesFromFile` keeps such a record and never writes the file itself.
- */
-export function assertCompleteSessionTail(file: string): boolean {
-	const fd = openSync(file, "r");
-	try {
-		const size = fstatSync(fd).size;
-		const last = Buffer.alloc(1);
-		if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] === 10) return false;
-		const start = endOfLastRecord(fd, size);
-		const tail = Buffer.alloc(size - start);
-		if (size > 0 && readSync(fd, tail, 0, tail.length, start) === tail.length) {
-			if (parseSessionEntryLine(tail.toString("utf8"))) return true;
-		}
-		throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
-	} finally {
-		closeSync(fd);
-	}
-}
-
-/** Whether `file` ends in part of a record, so it cannot be appended to. A read-only check for a UI to offer a fork. */
-export function hasTornTail(file: string): boolean {
-	try {
-		if (statSync(file).size === 0) return false;
-		assertCompleteSessionTail(file);
-		return false;
-	} catch {
-		return existsSync(file);
-	}
-}
 
 /** Default transcript directory shared by all working directories in this checkout. */
 export function getDefaultSessionDirPath(cwd: string): string {
@@ -340,7 +292,7 @@ export function forkSessionFile(
 		sourceEntries = loadEntriesFromFile(resolvedSourcePath);
 	} else {
 		const agent = sharedAgentDb();
-		const old = transcripts.stamp(agent.db, sourcePath.storedId);
+		const old = transcripts.stamp(agent.mirror.db, sourcePath.storedId);
 		if (!old) throw new Error(`No saved transcript for session ${sourcePath.storedId}`);
 		resolvedSourcePath = old.file;
 		// The file is the record: its database copy is stale exactly when a mirror rebuild failed. The copy serves when
@@ -350,7 +302,7 @@ export function forkSessionFile(
 			onDisk[0]?.type === "session" && onDisk[0].id === sourcePath.storedId
 				? onDisk
 				: decodeSessionRecords(
-						transcripts.records(agent.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry),
+						transcripts.records(agent.mirror.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry),
 					);
 	}
 	const resolvedTargetCwd = resolvePath(targetCwd);

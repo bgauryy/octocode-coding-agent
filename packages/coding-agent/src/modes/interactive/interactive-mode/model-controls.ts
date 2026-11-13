@@ -7,6 +7,7 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { DEFAULT_THINKING_LEVEL } from "../../../core/defaults.ts";
+import { DefaultModelSaveError } from "../../../core/agent-session/model-default.ts";
 import { findExactModelReferenceMatch, resolveModelScopeFromModels } from "../../../core/model-resolver.ts";
 import { ModelSelectorComponent } from "../components/model-selector.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
@@ -200,27 +201,47 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 }
 
 export function showModelSelector(host: ModelControlsHost, initialSearchInput?: string): void {
+	// The picker and its pending save belong to the session that opened it.
+	const { session, settingsManager } = host;
 	host.showSelector((done) => {
 		const selectModel = async (model: Model<any>, persist: boolean) => {
+			if (persist) host.showStatus(`Saving default model: ${model.provider}/${model.id}…`);
 			try {
-				await getApplicationPort(host.session).invoke("setModel", model, { persist });
+				await getApplicationPort(session).invoke("setModel", model, { persist });
 				host.updateAvailableProviderCount();
 				host.updateEditorBorderColor();
 				done();
-				host.showStatus(persist ? `Default model: ${model.provider}/${model.id}` : `Model: ${model.id}`);
+				const scopedOverride =
+					Boolean(settingsManager.getEnabledModels()?.length) &&
+					JSON.stringify(settingsManager.getEnabledModels()) !==
+						JSON.stringify(settingsManager.getGlobalSettings().enabledModels);
+				const overridden =
+					persist &&
+					(settingsManager.getDefaultProvider() !== model.provider ||
+						settingsManager.getDefaultModel() !== model.id ||
+						scopedOverride);
+				host.showStatus(
+					persist
+						? `Saved global default: ${model.provider}/${model.id}${overridden ? ". Workspace or run settings take precedence here." : ""}`
+						: `Model: ${model.id}`,
+				);
 				void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 			} catch (error) {
 				done();
-				host.showError(errorMessage(error));
+				if (error instanceof DefaultModelSaveError) {
+					host.updateAvailableProviderCount();
+					host.updateEditorBorderColor();
+					host.showWarning(error.message);
+				} else host.showError(errorMessage(error));
 			}
 		};
-		const defaultProvider = host.settingsManager.getDefaultProvider();
-		const defaultModel = host.settingsManager.getDefaultModel();
+		const defaultProvider = settingsManager.getDefaultProvider();
+		const defaultModel = settingsManager.getDefaultModel();
 		const selector = new ModelSelectorComponent(
 			host.ui,
-			host.session.model,
-			host.session.modelRuntime,
-			host.session.scopedModels,
+			session.model,
+			session.modelRuntime,
+			session.scopedModels,
 			(model) => void selectModel(model, false),
 			() => {
 				done();

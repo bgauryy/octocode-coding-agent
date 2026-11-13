@@ -34,18 +34,16 @@ let installed = false;
 function runHooks(): void {
 	// The event loop will not run again after exit hooks, so restore sequences are written synchronously; stdout stays
 	// nonblocking while they are, so a terminal that stopped reading costs a bounded wait (`writeOnExit`), not a hang.
-	const errors: unknown[] = [];
 	while (hooks.length > 0) {
 		try {
 			hooks.pop()?.();
-		} catch (error) {
-			// The remaining hooks still run: one failed write must not leave the other modes on.
-			errors.push(error);
+		} catch {
+			// Best effort, and never a throw: a terminal that hung up (EIO) takes no restore, the remaining hooks still run,
+			// and a throw here would skip the process's later `exit` listeners (the ones that stop child processes).
 		}
 	}
 	// The shell gets the terminal back as it lent it: the nonblocking flag lives on the open file it shares.
 	setTerminalOutputBlocking(true);
-	if (errors.length > 0) throw errors[0];
 }
 
 /** Run `restore` on process exit unless the returned function removes it first. `restore` must write synchronously. */

@@ -19,6 +19,8 @@ export const APPLICATION_EVENT_ROUTES = {
 	tool_execution_end: "tool",
 	queue_update: "queue",
 	compaction_start: "status+activity",
+	// Once a second while a summary streams: the status line shows it; the activity log would only repeat it.
+	compaction_progress: "status",
 	compaction_end: "status+activity",
 	entry_appended: "activity",
 	session_info_changed: "activity",

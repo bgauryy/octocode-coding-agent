@@ -84,6 +84,7 @@ export class ManagePageComponent implements Component {
 	}
 
 	render(width: number): string[] {
+		if (width <= 0) return [];
 		const { title, notes = [], alerts = [], facts = [], hints } = this.options;
 		const border = theme.fg("border", "─".repeat(Math.max(1, width)));
 		const out = [border, truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…")];
@@ -107,7 +108,7 @@ export class ManagePageComponent implements Component {
 			out.push(this.renderLine(line, width, nameWidth, selectedRow));
 		}
 		if (lines.length > MAX_LINES) {
-			out.push(theme.fg("muted", `  (${this.selected + 1}/${this.selectable.length})`));
+			out.push(truncateToWidth(theme.fg("muted", `  (${this.selected + 1}/${this.selectable.length})`), width, "…"));
 		}
 		for (const alert of alerts) out.push(truncateToWidth(` ${theme.fg("error", alert)}`, width, "…"));
 		for (const note of notes) out.push(truncateToWidth(` ${theme.fg("muted", note)}`, width, "…"));
@@ -125,9 +126,12 @@ export class ManagePageComponent implements Component {
 		const name = pad(row.name, nameWidth);
 		const left = `${selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  "}${selected ? theme.fg("accent", name) : theme.fg("text", name)}${row.detail ? `  ${theme.fg("muted", row.detail)}` : ""}`;
 		if (!row.badge) return truncateToWidth(` ${left}`, width, "…");
-		const badge = theme.fg(row.tone ?? "muted", row.badge);
-		const room = width - visibleWidth(row.badge) - 3;
-		const head = pad(truncateToWidth(` ${left}`, Math.max(1, room), "…"), Math.max(1, room));
+		// Keep the selection marker and a name column while reserving room for the status.
+		const badge = truncateToWidth(theme.fg(row.tone ?? "muted", row.badge), Math.max(0, width - 5), "…");
+		const badgeWidth = visibleWidth(badge);
+		if (badgeWidth === 0) return truncateToWidth(` ${left}`, width, "…");
+		const room = width - badgeWidth - 2;
+		const head = pad(truncateToWidth(` ${left}`, room, "…"), room);
 		return `${head}  ${badge}`;
 	}
 

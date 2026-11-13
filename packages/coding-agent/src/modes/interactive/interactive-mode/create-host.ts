@@ -185,6 +185,7 @@ export function createInteractiveModeHost(
 		onRightClickPaste: host.onRightClickPaste,
 		fullscreenCopyOnSelect: host.settingsManager.getFullscreenCopyOnSelect(),
 		fullscreenWheelScrollLines: host.settingsManager.getFullscreenWheelScrollLines(),
+		replayRows: host.settingsManager.getReplayRows(),
 	});
 	host.ui = createInteractiveTuiReference(() => host.renderer);
 	installRenderErrorNotices(host);

@@ -83,7 +83,17 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		externalEditor: Type.Optional(
-			Type.String({ description: "Editor for prompts, references and diffs; overrides VISUAL and EDITOR." }),
+			Type.String({
+				description:
+					"Editor for prompt text (Ctrl+G and edit dialogs); overrides VISUAL and EDITOR. referenceOpener decides how file references and editor diffs open.",
+			}),
+		),
+		referenceOpener: Type.Optional(
+			Type.String({
+				description:
+					'How file references and /diff --editor open: "auto" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the prompt editor; "editor" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.',
+				default: SETTINGS_DEFAULTS.referenceOpener,
+			}),
 		),
 		shellPath: Type.Optional(
 			Type.String({
@@ -282,7 +292,8 @@ export const SettingsSchema = Type.Object(
 		),
 		httpIdleTimeoutMs: Type.Optional(
 			timeoutSetting({
-				description: 'HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it.',
+				description:
+					'HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or "disabled" disables both.',
 			}),
 		),
 		remote: Type.Optional(

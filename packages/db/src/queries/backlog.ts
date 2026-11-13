@@ -5,6 +5,14 @@ import { allRows, num } from "../rows.ts";
 // Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
 export * from "./backlog-items.ts";
 
+/** Only the reference number and title of every workspace item, including done and closed items. */
+export function itemTitles(db: DatabaseSync, repo: string): Array<{ seq: number; title: string }> {
+	return allRows<{ seq: number; title: string }>(
+		db.prepare("SELECT seq, title FROM backlog WHERE workspace_id = ?"),
+		repo,
+	);
+}
+
 /** Every item's row id, type, state, whether it is closed and its parent's row id: the least the counts need (an epic's state comes from its children). */
 export function countHeads(
 	db: DatabaseSync,

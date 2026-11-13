@@ -3,9 +3,9 @@ import { EntityFieldsSchema, type EntityInput, type BacklogRef } from "@octocode
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Db, backlog } from "../../../../db/src/api.ts";
 import { entityInput } from "./entities.ts";
-import { checkHierarchy, openTasksRefusal } from "./hierarchy.ts";
+import { checkHierarchy, checkWaitingCycle, openTasksRefusal } from "./hierarchy.ts";
 import { type Actor, type Item, BacklogError, refuseSecrets } from "./item.ts";
-import { getItem, list } from "./reads.ts";
+import { getItem } from "./reads.ts";
 
 /** Why a file path is not repository-relative, naming it, or undefined when it is. */
 function pathRefusal(path: string): string | undefined {
@@ -89,40 +89,19 @@ export function applyEntities(
 		backlog.clearLinks(db, before.rowId, false);
 		for (const link of input.links) backlog.addLink(db, before.rowId, link.relation, JSON.stringify(link.target));
 	}
-	const items = list(db, repo).items;
-	const current = items.find((i) => i.rowId === before.rowId)!;
-	const byRef = new Map(items.map((i) => [i.ref, i]));
-	// One pass for every item's children, so the edge map stays linear in the board's size.
-	const children = new Map<string, Item[]>();
-	for (const i of items)
-		if (i.parentId) (children.get(i.parentId) ?? children.set(i.parentId, []).get(i.parentId)!).push(i);
-	const edges = new Map(
-		items.map((i) => [i.ref, [...i.dependsOn.map((r) => r.id), ...(children.get(i.ref) ?? []).map((c) => c.ref)]]),
-	);
-	const active = new Set<string>();
-	const visited = new Set<string>();
-	const visit = (ref: string): void => {
-		if (active.has(ref)) throw new BacklogError("Hierarchy and dependencies would create a waiting cycle.");
-		if (visited.has(ref)) return;
-		active.add(ref);
-		for (const next of edges.get(ref) ?? []) visit(next);
-		active.delete(ref);
-		visited.add(ref);
-	};
-	for (const item of items) visit(item.ref);
-	const unresolved = current.dependsOn.filter((r) => byRef.get(r.id)?.state !== "done");
+	// A note, result or field edit cannot introduce an edge: only graph writes scan the board.
+	if (input.dependsOn !== undefined || input.parentId !== undefined) checkWaitingCycle(db, repo);
+	const current = getItem(db, repo, before.ref)!;
 	const closing = current.state === "done" && (before.state !== "done" || input.completion !== undefined);
 	const completing = closing && !current.closed;
 	const starting = input.state === "ongoing" && (before.state !== "ongoing" || before.assignee !== current.assignee);
-	const addedPrerequisite = unresolved.some(
-		(ref) => !before.dependsOn.some((old) => old.id === ref.id && old.repositoryKey === ref.repositoryKey),
-	);
-	if (["ongoing", "done"].includes(current.state) && unresolved.length && (completing || starting || addedPrerequisite))
-		throw new BacklogError(`Blocked by ${unresolved.map((r) => r.id).join(", ")}.`);
-
-	const descendants = (parent: string): Item[] =>
-		(children.get(parent) ?? []).flatMap((child) => [child, ...descendants(child.ref)]);
-	if (closing && descendants(current.ref).some((i) => i.state !== "done"))
+	if (["ongoing", "done"].includes(current.state) && (completing || starting || input.dependsOn !== undefined)) {
+		const unresolved = backlog.openPrerequisites(db, repo, current.seq);
+		const addedPrerequisite = unresolved.some((ref) => !before.dependsOn.some((old) => old.id === ref));
+		if (unresolved.length && (completing || starting || addedPrerequisite))
+			throw new BacklogError(`Blocked by ${unresolved.join(", ")}.`);
+	}
+	if (closing && backlog.openDescendants(db, repo, [current.rowId]).get(current.rowId)?.length)
 		throw new BacklogError("Finish child items before completing their parent.");
 	const openTasks =
 		current.state === "done" && before.state !== "done" ? openTasksRefusal(db, repo, current) : undefined;

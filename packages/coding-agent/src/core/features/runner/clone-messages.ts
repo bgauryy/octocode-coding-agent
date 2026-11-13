@@ -51,3 +51,20 @@ export function cloneMessages(messages: AgentMessage[]): AgentMessage[] {
 	}
 	return cloneValue(messages, seen) as AgentMessage[];
 }
+
+const readOnlyHandlers = new WeakSet<object>();
+
+/**
+ * Declares a `context` handler that never edits a message (or anything inside one) in place; it may still return a new
+ * list, or edit the `messages` array itself. Such a handler is handed the messages themselves instead of a copy, so a
+ * request whose handlers only read copies nothing. Returns `handler`.
+ */
+export function readsMessagesOnly<T extends object>(handler: T): T {
+	readOnlyHandlers.add(handler);
+	return handler;
+}
+
+/** Whether `handler` was declared with `readsMessagesOnly`. */
+export function onlyReadsMessages(handler: unknown): boolean {
+	return typeof handler === "function" && readOnlyHandlers.has(handler);
+}

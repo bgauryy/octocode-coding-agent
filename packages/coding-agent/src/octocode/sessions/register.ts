@@ -2,9 +2,9 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { transcripts } from "../../../../db/src/api.ts";
+import { sessions as sessionRows } from "../../../../db/src/api.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
+import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
 import { reportSweep } from "./sweep-report.ts";
@@ -26,7 +26,7 @@ import {
 	type TeamNotes,
 	teamBrief,
 } from "./brief.ts";
-import { recordSession, recordTitle } from "./catalog.ts";
+import { recordSession, recordSessionLater, recordTitle } from "./catalog.ts";
 import { registerSessionsCommand } from "./command.ts";
 import { registerPurgeCommand } from "./purge-command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
@@ -134,32 +134,43 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	const scan = new SpendScan();
 	let unpriced = false;
 	let gitRevision = 0;
-	const index = () => new SessionIndex(sharedAgentDb());
+	const index = () => new SessionIndex(sharedAgentDb(), () => sharedAgentDbWriter());
 	const titler = createAutoTitler(api, {
 		...options.titleCall,
 		enabled: () => api.getSettings().sessions?.autoTitle !== false,
 	});
+	const warn = (ctx: ExtensionContext, error: unknown) => {
+		// A background git result can arrive after the host invalidates this
+		// context. The optional warning must not turn that failure into a rejection.
+		try {
+			if (warned || !ctx.hasUI) return;
+			warned = true;
+			notify(ctx.ui, `Octocode session index unavailable: ${errorMessage(error)}`, "warning");
+		} catch {
+			// The UI context was replaced while the background work completed.
+		}
+	};
 	const safely = (ctx: ExtensionContext, work: (sessions: SessionIndex) => void) => {
 		try {
 			if (ctx.sessionManager.getSessionFile()) work(index());
 		} catch (error) {
-			// A background git result can arrive after the host invalidates this
-			// context. The optional warning must not turn that failure into a rejection.
-			try {
-				if (warned || !ctx.hasUI) return;
-				warned = true;
-				notify(ctx.ui, `Octocode session index unavailable: ${errorMessage(error)}`, "warning");
-			} catch {
-				// The UI context was replaced while the background work completed.
-			}
+			warn(ctx, error);
+		}
+	};
+	/** `safely` for the per-turn writes, which go through the database writer (`SessionIndex` `…Later`). */
+	const later = async (ctx: ExtensionContext, work: (sessions: SessionIndex) => Promise<void>) => {
+		try {
+			if (ctx.sessionManager.getSessionFile()) await work(index());
+		} catch (error) {
+			warn(ctx, error);
 		}
 	};
 	/** Records where git stands now, without waiting for it. */
 	const recordGit = (ctx: ExtensionContext, id: string) => {
 		const revision = ++gitRevision;
-		return gitState(ctx.cwd).then((state) => {
+		return gitState(ctx.cwd).then(async (state) => {
 			// A newer request or session shutdown makes this result stale, including its Octocode context.
-			if (revision === gitRevision) safely(ctx, (sessions) => sessions.git(id, state));
+			if (revision === gitRevision) await later(ctx, (sessions) => sessions.gitLater(id, state));
 		});
 	};
 
@@ -181,8 +192,10 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		titler.cancel();
 		pending = undefined;
 		const id = ctx.sessionManager.getSessionId();
-		const entries = (ctx.sessionManager.getEntries?.() ?? []) as readonly Entry[];
-		({ usage, unpriced } = totals(entries, ctx.sessionManager.getHeader?.(), modelLookup(ctx), (scan.reset(), scan)));
+		// Read through the scan, so the first reply's look starts after these entries.
+		scan.reset();
+		const entries = scan.appended(ctx.sessionManager).entries as readonly Entry[];
+		({ usage, unpriced } = totals(entries, ctx.sessionManager.getHeader?.(), modelLookup(ctx), scan));
 		safely(ctx, (sessions) => {
 			const previous = sessions.get(id);
 			const resumed = event?.reason === "resume" || (event?.reason === "startup" && hasUserMessage(entries));
@@ -217,7 +230,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			// One transaction: a bind that succeeds with no start would leave a row without the pid that marks it running.
 			const workspaceId = registeredWorkspace(ctx.cwd, sessions.agent).id;
 			sessions.agent.transaction(() => {
-				transcripts.bind(sessions.agent.db, id, workspaceId);
+				sessionRows.bind(sessions.agent.db, id, workspaceId);
 				sessions.start(id, dir);
 			});
 			recordSession(sessions, ctx.sessionManager);
@@ -240,7 +253,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	};
 	/** Spend recorded outside a reply (a compaction summary request, a cache refresh, a side question) since the last look. */
 	const addRecorded = (ctx: ExtensionContext) => {
-		for (const spend of scan.recorded(ctx.sessionManager.getEntries())) add(spend, ctx);
+		for (const spend of scan.recordedIn(ctx.sessionManager)) add(spend, ctx);
 	};
 	api.on("message_end", async (event, ctx) => {
 		add(spendOf(event.message), ctx);
@@ -285,9 +298,10 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			filesChanged: options.filesChanged?.() ?? 0,
 			unpriced,
 		};
-		safely(ctx, (sessions) => {
-			sessions.stats(id, stats);
-			recordSession(sessions, ctx.sessionManager);
+		// Through the database writer, in this order: the turn's bookkeeping never waits on another process's lock here.
+		await later(ctx, async (sessions) => {
+			const written = sessions.statsLater(id, stats);
+			await Promise.all([written, recordSessionLater(sessions, ctx.sessionManager)]);
 		});
 		void recordGit(ctx, id);
 		// In the background: a turn never waits for its title.
@@ -300,13 +314,14 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	});
 
 	api.on("session_info_changed", async (event, ctx) => {
-		safely(ctx, (sessions) => recordTitle(sessions, ctx.sessionManager, event.name, event.source));
+		await later(ctx, (sessions) => recordTitle(sessions, ctx.sessionManager, event.name, event.source));
 	});
 
 	api.on("session_shutdown", async (_event, ctx) => {
 		gitRevision++;
 		titler.cancel();
-		safely(ctx, (sessions) => sessions.end(ctx.sessionManager.getSessionId()));
+		// After the turn's writes still queued, so the row cannot be marked live again once it ended.
+		await later(ctx, (sessions) => sessions.endLater(ctx.sessionManager.getSessionId()));
 	});
 
 	registerSessionsCommand(api, options.commands, { index, current: currentSessionId });

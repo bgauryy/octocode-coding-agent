@@ -30,7 +30,13 @@ interface ToolHtmlRendererDeps {
 	purposeRows: ToolRowView;
 }
 
-export type ToolRowView = (toolName: string, args: unknown, structuredContent?: unknown) => Component | undefined;
+export type ToolRowView = (
+	toolName: string,
+	args: unknown,
+	structuredContent?: unknown,
+	expanded?: boolean,
+	shownReason?: string,
+) => Component | undefined;
 
 /**
  * Create a tool HTML renderer.
@@ -100,8 +106,11 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				renderedArgs.set(toolCallId, args);
 				const toolDef = getToolRenderers(toolName);
 				// A tool with a display is drawn from it, like every other surface; terminal output is the fallback.
-				if (toolDef?.display)
-					return displayCallHtml(buildToolDisplay(toolDef.display, { toolName, args, text: "", status: "running" }));
+				if (toolDef?.display) {
+					const display = buildToolDisplay(toolDef.display, { toolName, args, text: "", status: "running" });
+					const metadata = reasonRow(toolName, args, undefined, true, display.reason)?.render(width) ?? [];
+					return displayCallHtml(display) + ansiLinesToHtml(metadata);
+				}
 				if (!toolDef?.renderCall) {
 					return undefined;
 				}
@@ -114,7 +123,7 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				renderedCallComponents.set(toolCallId, component);
 				const lines = component.render(width);
 				// The shared reason row of the TUI, so an exported native call states its goal under its header.
-				lines.push(...(reasonRow(toolName, args)?.render(width) ?? []));
+				lines.push(...(reasonRow(toolName, args, undefined, true)?.render(width) ?? []));
 				return ansiLinesToHtml(lines);
 			} catch {
 				// On error, return undefined so HTML export can fall back to structured result rendering
@@ -147,10 +156,12 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 						? `<div class="tool-reason">↳ ${reason.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`
 						: "";
 					const html = displayResultHtml(display);
-					return {
-						...(html.collapsed !== html.expanded ? { collapsed: lead + html.collapsed } : {}),
-						expanded: lead + html.expanded,
-					};
+					const stated = resultPurposeData({ structuredContent, content: result });
+					const metadata = (expanded: boolean) =>
+						ansiLinesToHtml(purposeRows(toolName, renderedArgs.get(toolCallId), stated, expanded)?.render(width) ?? []);
+					const collapsed = lead + html.collapsed + metadata(false);
+					const expanded = lead + html.expanded + metadata(true);
+					return { ...(collapsed !== expanded ? { collapsed } : {}), expanded };
 				}
 				if (!toolDef?.renderResult) {
 					return undefined;
@@ -158,9 +169,10 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				// An MCP call's purpose comes from its result, so it opens the result, right under the call. Without the
 				// arguments a native tool's reason row (drawn with its call) is not repeated here.
 				const stated = resultPurposeData({ structuredContent, content: result });
-				const purpose = reasonRow(toolName, undefined, stated)?.render(width) ?? [];
+				const purpose = (expanded: boolean) => reasonRow(toolName, undefined, stated, expanded)?.render(width) ?? [];
 				// Under the result message, below its output, and not repeating the reason row above.
-				const returned = purposeRows(toolName, renderedArgs.get(toolCallId), stated)?.render(width) ?? [];
+				const returned = (expanded: boolean) =>
+					purposeRows(toolName, renderedArgs.get(toolCallId), stated, expanded)?.render(width) ?? [];
 
 				// Build AgentToolResult from content array
 				// Cast content since session storage uses generic object types
@@ -178,9 +190,9 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				);
 				renderedResultComponents.set(toolCallId, collapsedComponent);
 				const collapsed = ansiLinesToHtml([
-					...purpose,
+					...purpose(false),
 					...trimRenderedResultLines(collapsedComponent.render(width)),
-					...returned,
+					...returned(false),
 				]);
 
 				const expandedComponent = toolDef.renderResult(
@@ -191,9 +203,9 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				);
 				renderedResultComponents.set(toolCallId, expandedComponent);
 				const expanded = ansiLinesToHtml([
-					...purpose,
+					...purpose(true),
 					...trimRenderedResultLines(expandedComponent.render(width)),
-					...returned,
+					...returned(true),
 				]);
 
 				return {

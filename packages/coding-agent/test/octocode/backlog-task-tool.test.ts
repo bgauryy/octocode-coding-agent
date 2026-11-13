@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 /**
- * The backlog tools of one session, and `step`, which stores a step as the user does on the board (no tool writes steps):
+ * The backlog tools of one session, and `step`, which adds a step as the user does on the board (tools finish existing steps):
  * a subagent when `env` names its parent, in the repository `repo`.
  */
 function setup(options: { subagent?: { id: string; env: Record<string, string> } } = {}) {
@@ -164,7 +164,7 @@ describe("backlog tools over stored steps", () => {
 		t.step("Step one", "B1");
 		t.step("Step two", "B1");
 		await expect(t.backlog({ op: "done", id: "B1", completion: completed() })).rejects.toThrow(
-			/^B1 has open tasks: T1, T2: the user finishes or drops them on the backlog board \(\/backlog\) first\./,
+			/^B1 has open tasks: T1, T2: finish completed steps with backlog step \(id T…, note: result and checks\); the user drops unneeded steps on the backlog board \(\/backlog\)\./,
 		);
 		t.store().tasks.update("T1", { state: "done" }, { id: SESSION });
 		t.store().tasks.update("T2", { state: "dropped", result: "not needed" }, { id: SESSION });
@@ -203,5 +203,17 @@ describe("backlog tools over stored steps", () => {
 		const detail = await t.backlog({ op: "get", id: "B1" });
 		expect(detail).toContain("B1 [backlog p2 epic] Group");
 		expect(detail).toContain("State from its items: ongoing");
+	});
+
+	it("retrieves a saved completion lesson without inventing one for other items", async () => {
+		const t = setup();
+		await t.backlog({ op: "add", items: [{ title: "Work", state: "ongoing", ...READY }] });
+		const lesson = "Check invalidation after resume";
+		await t.backlog({ op: "done", id: "B1", completion: { ...completed(), lesson } });
+		expect(t.store().get("B1")!.completions.at(-1)?.lesson).toBe(lesson);
+		expect(await t.backlog({ op: "get", id: "B1" })).toContain(`Lesson: ${lesson}`);
+		await t.backlog({ op: "add", items: [{ title: "Other work", state: "ongoing", ...READY }] });
+		await t.backlog({ op: "done", id: "B2", completion: completed() });
+		expect(await t.backlog({ op: "get", id: "B2" })).not.toContain("Lesson:");
 	});
 });

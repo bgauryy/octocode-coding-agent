@@ -171,7 +171,8 @@ export function registerEditor(api: ExtensionAPI, permission: EditorPermission):
 		if (installed && previous === installed) return;
 		installed = (tui, theme, keybindings) => {
 			const editor = previous?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-			const handleInput = editor.handleInput?.bind(editor);
+			const inner = editor.handleInput;
+			const handleInput = inner?.bind(editor);
 			// Preserve the editor object: Octocode copies its native action handlers and appearance onto this instance.
 			editor.handleInput = (data) => {
 				if (keybindings.matches(data, "app.permission.cycle")) {
@@ -182,6 +183,14 @@ export function registerEditor(api: ExtensionAPI, permission: EditorPermission):
 				if (keybindings.matches(data, "app.thinking.toggle") && (isKeyRelease(data) || isKeyRepeat(data))) return;
 				handleInput?.(data);
 			};
+			// A typed run passes through this wrapper only at the keys it takes (read from the live bindings).
+			if (inner) {
+				Object.assign(editor.handleInput, {
+					wraps: inner,
+					takesTyped: (char: string) =>
+						keybindings.matches(char, "app.permission.cycle") || keybindings.matches(char, "app.thinking.toggle"),
+				});
+			}
 			return isEditor(editor)
 				? decorateEditor(
 						editor,

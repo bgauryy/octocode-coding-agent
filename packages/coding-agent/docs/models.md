@@ -22,7 +22,7 @@ flowchart TD
 | A provider API key                                  | `/providers`, or the provider's environment variable      |
 | A local GGUF model                                  | `/llama`                                                  |
 | Another API-key host, a gateway or a local server   | [`/providers` → Add from a template](#provider-templates) |
-| Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [`models.json`](#configure-a-compatible-endpoint)         |
+| Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [Provider templates](#provider-templates), or [`models.json`](#configure-a-compatible-endpoint) |
 
 Octocode starts with a bundled catalog; cached catalog data works offline. `OCTOCODE_MODEL_CATALOG_URL` points at a compatible catalog service for remote overlays (there is no default service) and `octocode update --models` refreshes from it. Catalog entries whose id holds a control character are dropped; control sequences are removed from names; a bad catalog response is reported without quoting its body.
 
@@ -42,9 +42,35 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 - Model details show catalog context, maximum output, thinking support, input/output/cache prices and known cache lifetimes. A time-limited price (`cost.until` with `cost.after`) shows today's rates. Prices are provider-specific estimates; reasoning output, cache-write retention, long-context tiers, service tiers, subscription billing, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
+### Save a startup default
+
+Open `/model`, highlight the model, then press **Ctrl+S** (or your configured **set as default** key). This selects it for the current chat and saves its provider, model ID and any required shortcut-list addition together. Success is shown after the write finishes. If saving fails, the chat keeps the selected model and a warning explains that the default was not saved.
+
+The saved global default applies to new sessions. Trusted workspace or run settings can override it; the picker says when they do. Resuming an existing session restores its prior available model. Disabled or unavailable providers are skipped rather than reactivated by a saved selection.
+
+Saving a global default preserves existing global shortcut ordering. Workspace/run shortcut lists keep their own scope and are not copied into global settings.
+
+| Surface | Select for the current chat/run | Save a startup default |
+| --- | --- | --- |
+| Terminal picker | Enter, or `/model <provider>/<id>` | Ctrl+S in `/model` |
+| CLI | `octocode --model <provider>/<id>` | `octocode configuration set defaultProvider <provider>` and `octocode configuration set defaultModel <id>` |
+| Configuration/web settings | Changing defaults keeps the current chat's model | Set global defaults or trusted workspace defaults; new sessions use them |
+| SDK | `await session.setModel(model)` | `await session.setModel(model, { persist: true })` |
+| RPC | `set_model` | No persistence option; use configuration separately |
+
+The CLI configuration commands edit the two fields independently. Prefer the picker or SDK paired save when changing provider and model together.
+
+API/subscription models, configured local-server models and connected `claude-code/*` models can be defaults. Codex, OpenCode and Gemini **CLI task runners** are separate task backends; their CLI models cannot be this chat's default. Omit a runner task's model to use that vendor's own default, or pass its model ID for that task when its adapter supports model configuration.
+
 ## Connect local models
 
 Octocode integrates with the llama.cpp router, which discovers GGUF files and loads models on demand. `/llama` manages the router (loaded models, downloads, connection); `/model` selects a loaded model.
+
+For an existing Ollama, LM Studio or vLLM server, open `/providers` → **Add from a template**, choose the server, enter its API base URL and the model IDs it serves, then select the model in `/model`. The templates use the defaults below and offer a no-key option for servers without authentication; a local model ID must match your server's installed or loaded model.
+
+Local templates also ask for each model's loaded context window and maximum output. Enter positive token counts (`k` and `m` suffixes work); maximum output cannot exceed the context window. These values describe your running server and do not reconfigure it. Local definitions start with text input, no declared thinking and zero configured token rates; add verified vision, reasoning or pricing metadata explicitly. Templates do not start servers, pull models or infer their capabilities.
+
+Cached llama.cpp models can be restored as defaults and used by explicit CLI selections. A first headless run with an empty llama cache needs prior model discovery through `/model` or `/llama`.
 
 - Loading a model in place of loaded ones unloads them first, with a status line each; an unload unfinished after 60 seconds is reported with the model's state.
 - When a load fails or is stopped, `/llama` restores the previous models in a progress view (Esc asks `Stop restoring?`).

@@ -2,6 +2,7 @@ export type { CatalogEntry, CatalogRow, SessionExtra, SessionLinks };
 import {
 	type AgentDb,
 	type CatalogEntry,
+	type DbWriter,
 	type CatalogRow,
 	meta,
 	type SessionExtra,
@@ -9,6 +10,7 @@ import {
 	sessionLinks,
 	sessions,
 } from "../../../../db/src/api.ts";
+import { agentDbWriter } from "../../storage/database.ts";
 import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
@@ -77,8 +79,46 @@ export async function gitCommitsBetween(cwd: string, from: string, to: string): 
 /** The session extras: one row per Octocode session this extension has run. */
 export class SessionIndex {
 	readonly agent: AgentDb;
-	constructor(agent: AgentDb) {
+	/** The writer of the same database file: the per-turn bookkeeping (`…Later`) goes there, off this thread. */
+	private readonly writer: () => DbWriter;
+	constructor(agent: AgentDb, writer?: () => DbWriter) {
 		this.agent = agent;
+		this.writer = writer ?? (() => agentDbWriter(agent));
+	}
+
+	/*
+	 * The writes a live session makes after every turn and at its end (`…Later`: usage, git state, catalog row, name,
+	 * end) go through the database writer in the order asked: this thread never waits for another process's write lock.
+	 * Each resolves after its commit and rejects when the writer could not run it.
+	 */
+
+	statsLater(id: string, stats: SessionStats): Promise<void> {
+		return this.writer().post({ kind: "session-stats", id, stats: statsRow(stats) });
+	}
+
+	/** Records where git stood, without touching the stats. */
+	gitLater(id: string, state: { branch?: string; head?: string }): Promise<void> {
+		return this.writer().post({ kind: "session-git", id, branch: state.branch ?? null, head: state.head ?? null });
+	}
+
+	/** `saveCatalog` through the writer. */
+	catalogLater(id: string, entry: CatalogEntry): Promise<void> {
+		return this.writer().post({ kind: "session-catalog", id, entry });
+	}
+
+	/** Records session `id`'s new name (undefined clears it) and the file's modification time after the name was written. */
+	titleLater(
+		id: string,
+		title: string | undefined,
+		source: string | undefined,
+		fileMtime: number | null,
+	): Promise<void> {
+		return this.writer().post({ kind: "session-title", id, ...titleRow(title, source), fileMtime });
+	}
+
+	/** `end` through the writer, after this session's writes still queued. */
+	endLater(id: string): Promise<void> {
+		return this.writer().post({ kind: "session-end", id, pid: process.pid });
 	}
 
 	get(id: string): SessionExtra | undefined {
@@ -110,24 +150,6 @@ export class SessionIndex {
 		sessions.start(this.agent.db, id, process.pid, processStartTime(process.pid) ?? null, dir ?? null);
 	}
 
-	stats(id: string, stats: SessionStats): void {
-		sessions.saveStats(this.agent.db, id, {
-			cost: stats.cost,
-			tokens: stats.tokens,
-			filesChanged: stats.filesChanged,
-			unpriced: stats.unpriced,
-			branch: stats.branch ?? null,
-			head: stats.head ?? null,
-			pid: process.pid,
-			pidStarted: processStartTime(process.pid) ?? null,
-		});
-	}
-
-	/** Records where git stood, without touching the stats. */
-	git(id: string, state: { branch?: string; head?: string }): void {
-		sessions.saveGit(this.agent.db, id, state.branch ?? null, state.head ?? null);
-	}
-
 	/** The session's process has ended: it is no longer live. */
 	end(id: string): void {
 		sessions.clearPid(this.agent.db, id, process.pid);
@@ -143,22 +165,17 @@ export class SessionIndex {
 		sessions.saveCatalog(this.agent.db, id, entry);
 	}
 
-	/** Records session `id`'s new name (undefined clears it) and the file's modification time after the name was written. */
-	saveTitle(id: string, title: string | undefined, source: string | undefined, fileMtime: number | null): void {
-		sessions.saveTitle(this.agent.db, id, title ?? null, title ? (source ?? "user") : null, fileMtime);
-	}
-
 	all(): SessionExtra[] {
 		return sessions.all(this.agent.db);
 	}
 
 	forget(id: string): void {
-		sessions.forget(this.agent.db, id);
+		sessions.forget(this.agent.db, this.agent.mirror.db, id);
 	}
 
-	/** Removes everything the database holds for the given sessions, mirror included, in one transaction (`sessions.erase`). */
+	/** Removes everything the database holds for the given sessions, mirror included (`sessions.erase`). */
 	erase(ids: readonly string[]): void {
-		sessions.erase(this.agent.db, ids);
+		sessions.erase(this.agent.db, this.agent.mirror.db, ids);
 	}
 
 	/** Session dirs other than Octocode's default that a session ran from (meta `session_dirs`): the sweep lists their sessions too. */
@@ -180,3 +197,21 @@ export class SessionIndex {
 }
 
 const SESSION_DIRS_KEY = "session_dirs";
+
+/** The stored stats of this process's session. */
+const statsRow = (stats: SessionStats) => ({
+	cost: stats.cost,
+	tokens: stats.tokens,
+	filesChanged: stats.filesChanged,
+	unpriced: stats.unpriced,
+	branch: stats.branch ?? null,
+	head: stats.head ?? null,
+	pid: process.pid,
+	pidStarted: processStartTime(process.pid) ?? null,
+});
+
+/** A name and who gave it (`user` unless said); both null clear it. */
+const titleRow = (title: string | undefined, source: string | undefined) => ({
+	title: title ?? null,
+	source: title ? (source ?? "user") : null,
+});

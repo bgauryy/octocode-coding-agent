@@ -301,14 +301,16 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
-		// description and its top-level fields, and the full schema comes back on a rejected call.
+		// description and its field names and types (nested ones too, without descriptions or bounds), and the full
+		// schema comes back on a rejected call.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
 		expect(turn.systemPrompt).toContain("A tool listed as `- name` is declared with its description");
 		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
 		expect(declared?.description.length).toBeGreaterThan(60);
 		expect(JSON.stringify(declared?.parameters)).toContain('"queries"');
-		expect(JSON.stringify(declared?.parameters)).not.toContain('"matchString"');
+		expect(JSON.stringify(declared?.parameters)).toContain('"matchString":{"type":"array"}');
+		expect(JSON.stringify(declared?.parameters)).not.toMatch(/"(description|required|minItems|maxItems)"/);
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
@@ -966,7 +968,7 @@ describe("a subagent session with MCP enabled", () => {
 		expect(schema).toContain('"enum":["list","search","get"]');
 		expect(schema).toContain('"enum":["all","sessions","compactions","agents"]');
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
-			properties: { op: { enum: ["get", "claim", "note", "done", "close"] } },
+			properties: { op: { enum: ["get", "claim", "note", "done", "close", "step"] } },
 		});
 		for (const name of ["agent", "backlog", "archive", "memory"]) expect(turn.tools).toContain(name);
 		// Planning stays with the coordinator: a child works the item its task names.

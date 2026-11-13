@@ -3,7 +3,7 @@ import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "../../../../common/src/env.ts";
 import { registerMemoryCommand } from "./command.ts";
-import { headerInContext, injectedIds, MEMORY_MESSAGE_TYPE, selectInjection, unchangedIds } from "./inject.ts";
+import { MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import { memoryStore } from "./store.ts";
 import { createMemoryTool } from "./tool.ts";
@@ -52,12 +52,12 @@ export function registerMemory(
 			if (!autoEnv()) return undefined;
 			const store = storeFor(ctx);
 			if (!store.autoSetting()) return undefined;
-			const branch = ctx.sessionManager.getBranch();
+			const earlier = sessionInjections(ctx.sessionManager);
 			const injection = selectInjection(store, {
 				query: agentStartQuery(event, goal),
 				scope: "all",
-				seen: unchangedIds(store, injectedIds(branch)),
-				headerInContext: headerInContext(branch),
+				seen: unchangedIds(store, earlier.injected),
+				headerInContext: earlier.headerInContext,
 				topK: options.isSubagent ? SUBAGENT_TOP_K : TOP_K,
 				// Owner decision, 2026-11-11: a subagent gets pinned memories of kind `preference` only, within the same
 				// pinned budget; pinned facts, decisions and other kinds stay out, and it reads those with the `memory` tool.
@@ -100,9 +100,10 @@ export function registerMemory(
 		if (ctx.hasUI && !options.isSubagent && used.length > 0)
 			notify(ctx.ui, `Recalled ${used.map(memoryLabel).join(", ")} (/memory last shows them)`, "info");
 		try {
-			storeFor(ctx).markUsed(used);
+			// Through the database writer: another process holding the write lock never stalls this thread.
+			await storeFor(ctx).markUsedLater(used);
 		} catch {
-			// A missing agent DB never blocks a turn.
+			// A missing agent DB or a busy writer never blocks a turn; only the usage mark is lost.
 		}
 	});
 

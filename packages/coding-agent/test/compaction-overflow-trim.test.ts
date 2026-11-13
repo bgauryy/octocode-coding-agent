@@ -2,6 +2,7 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { generateSummaryWithUsage, generateTurnPrefixSummary } from "../src/core/compaction/index.ts";
+import { SUMMARY_MAX_OUTPUT_TOKENS } from "../src/core/compaction/settings.ts";
 
 const model = {
 	id: "m",
@@ -180,6 +181,27 @@ describe("summarization retries on context overflow", () => {
 		await expect(summarize(streamFn, undefined, [user("ONLY")])).rejects.toThrow(/prompt is too long/);
 		expect(calls).toHaveBeenCalledTimes(1);
 		expect(prompts[0]).toContain("ONLY");
+	});
+
+	it("sends the split parts and the trimmed retries with the summary cap and thinking ceiling", async () => {
+		const reasoningModel = { ...model, reasoning: true, maxTokens: 128_000 } as Model<"anthropic-messages">;
+		const { streamFn, calls } = fakeStream(2);
+		await generateSummaryWithUsage(
+			longHistory,
+			reasoningModel,
+			undefined,
+			"key",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"high",
+			streamFn,
+		);
+		// The whole request, the older part's overflow, its trimmed retry and the newer part.
+		expect(calls.mock.calls.length).toBeGreaterThanOrEqual(3);
+		for (const call of calls.mock.calls as unknown as Array<[unknown, unknown, Record<string, unknown>]>)
+			expect(call[2]).toMatchObject({ maxTokens: SUMMARY_MAX_OUTPUT_TOKENS, reasoning: "low" });
 	});
 
 	it("does not retry other errors", async () => {

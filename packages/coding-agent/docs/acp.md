@@ -108,7 +108,7 @@ Then `{"type":"external","externalAction":"prompt","connection":"peer","promptTe
 
 Tool policy and process ownership: [external-agent lifecycle](native-features.md#external-agent-lifecycle).
 
-To hand a whole task to a vendor CLI on its own plan, with a worktree, report and stop like any child, use an `agent` task with `runner` instead: [external runners](native-features.md#external-runners).
+To hand a whole task to a vendor CLI using its own sign-in, with a worktree, report and stop like any child, use an `agent` task with `runner` instead: [external runners](native-features.md#external-runners).
 
 ### Connect to Codex
 

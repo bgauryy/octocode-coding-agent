@@ -133,10 +133,7 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 			// One description for every role (it leads the cached tool list); `source` and the field texts say what this
 			// one reads.
 			description:
-				"Complete compaction summaries, session history and, where source lists them, agent lifecycle events " +
-				"and profile (a session's agents, cache findings and request layers). " +
-				"A session search reads this session first, then newer sessions, and stops at a match or time budget with a cursor; " +
-				"narrow it with sessionId, file or since. keywords ranks, query filters; together they rank only matching passages.",
+				"Read complete compaction summaries and session history; source may also list lifecycle events and profile (session agents, cache findings, request layers). Session search reads this session, then newer sessions, stopping at a match or time budget with a cursor. Narrow by sessionId, file or since. keywords ranks; query filters; together they rank matching passages.",
 			// `execute` reads the main session's fields; a subagent's schema declares fewer of them and refuses the rest.
 			parameters: subagent ? (child as unknown as typeof main) : main,
 			// Validation runs on the result, so the declared type is checked there, not here.

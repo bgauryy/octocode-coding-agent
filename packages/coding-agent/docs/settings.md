@@ -43,7 +43,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `retry.maxDelayMs` | number |  | Legacy retry delay setting. Use provider.maxRetryDelayMs instead. |
 | `showCacheMissNotices` | boolean | `false` | Show cache cost and provider recovery notices. |
 | `httpProxy` | string |  | Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients. |
-| `httpIdleTimeoutMs` | `number \| "disabled"` |  | HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it. |
+| `httpIdleTimeoutMs` | `number \| "disabled"` |  | HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or "disabled" disables both. |
 | `cacheWarming` | `"off" \| "streaming" \| "idle"` | `"idle"` | Cache-warming profile. "idle" also warms between agent runs. Global only because each refresh costs money. |
 | `websocketConnectTimeoutMs` | `number \| "disabled"` |  | WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it. |
 
@@ -58,7 +58,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `branchSummary.skipPrompt` | boolean | `false` | When true, skips the "Summarize branch?" prompt and defaults to no summary. |
 | `toolExecution` | object |  | When tool calls start. |
 | `toolExecution.earlyStart` | boolean | `false` | Start read-only tool calls that need no approval while the model is still writing its message, instead of after it ends. |
-| `mcpPresentation` | `"declared" \| "compact" \| "json"` | `"declared"` | How MCP tools reach the model. "declared": each tool's provider declaration carries the server's own description and full input JSON Schema, and the system prompt holds only each server's instructions. "compact": thin declarations (a one-line trigger and the top-level field types), with every enabled server's instructions and each tool's description and schema in one block of the system prompt, written as a generated TypeScript file (a tool it cannot express faithfully is described in plain form). "json": thin declarations, with that block in plain form, as the server sent it. Calls are validated against the server's own JSON Schema in every mode. |
+| `mcpPresentation` | `"declared" \| "compact" \| "json"` | `"declared"` | How MCP tools reach the model. "declared": each tool's provider declaration carries the server's own description and full input JSON Schema, and the system prompt holds only each server's instructions. "compact": thin declarations (a one-line trigger and the field names and types, without descriptions), with every enabled server's instructions and each tool's description and schema in one block of the system prompt, written as a generated TypeScript file (a tool it cannot express faithfully is described in plain form). "json": thin declarations, with that block in plain form, as the server sent it. Calls are validated against the server's own JSON Schema in every mode. |
 | `defaultTools` | `string[]` |  | Initial tool selection. Plain names replace the inherited selection; +name and -name entries add or remove tools. |
 | `doubleEscapeAction` | `"fork" \| "tree" \| "none"` | `"tree"` | Action for double-escape with an empty editor. |
 | `treeFilterMode` | `"default" \| "no-tools" \| "user-only" \| "labeled-only" \| "all"` | `"default"` | Default filter when opening /tree. |
@@ -131,13 +131,15 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `lastChangelogVersion` | string |  | Version whose changelog was last recorded. Octocode sets it; it decides whether to show the changelog and send the install ping after an update. |
 | `theme` | string |  | Name of the active interface theme. |
 | `hideThinkingBlock` | boolean | `true` | Collapse each finished thinking block to one line (`Thought for 4s`); `app.thinking.toggle` (ctrl+t) or a click expands it. |
-| `externalEditor` | string |  | Editor for prompts, references and diffs; overrides VISUAL and EDITOR. |
+| `externalEditor` | string |  | Editor for prompt text (Ctrl+G and edit dialogs); overrides VISUAL and EDITOR. referenceOpener decides how file references and editor diffs open. |
+| `referenceOpener` | string | `"auto"` | How file references and /diff --editor open: "auto" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the prompt editor; "editor" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit. |
 | `quietStartup` | `boolean \| "header"` | `false` | When true, hide all startup output. When "header", keep only the startup header. |
 | `collapseChangelog` | boolean | `false` | Show the condensed changelog after update; use /changelog for the full changelog. |
 | `terminal` | object |  | Terminal rendering. See [Terminal images](configuration.md#terminal-images) and [Reduced motion](configuration.md#reduced-motion). |
 | `terminal.showImages` | boolean | `true` | Show images when the terminal supports them. |
 | `terminal.imageWidthCells` | number | `60` | Preferred inline image width in terminal cells. |
 | `terminal.clearOnShrink` | boolean | `false` | Clear empty rows when content shrinks. |
+| `terminal.replayRows` | integer | `5000` | Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row. |
 | `terminal.showTerminalProgress` | boolean | `false` | Show OSC 9;4 terminal progress indicators. |
 | `terminal.reduceMotion` | `boolean \| "auto"` | `"auto"` | Freeze spinners, shimmer and glow; elapsed times still tick. "auto" follows OCTOCODE_REDUCE_MOTION (1 or true). |
 | `terminal.hyperlinks` | `boolean \| "auto"` |  | OSC 8 hyperlinks: `true`, `false` or `auto`. `OCTOCODE_HYPERLINKS` overrides detection. |

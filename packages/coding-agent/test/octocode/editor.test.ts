@@ -137,7 +137,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		expect(cycle).toHaveBeenCalledOnce();
 	});
 
-	it("chains a prior factory without replacing its editor or input behavior", async () => {
+	it("chains a prior factory without replacing its editor or input behavior; an unmarked prior handler receives a typed run one key at a time, in order", async () => {
 		const fake = fakeHost();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
@@ -155,9 +155,85 @@ describe("permission shortcut in the Octocode editor", () => {
 		input("hello");
 		input("\x1b[Z");
 		expect(editor.getText()).toBe("hello");
-		expect(originalInput).toHaveBeenCalledWith("hello");
+		// A typed run reaches an unmarked prior handler one key at a time, in order, as a terminal sends keys.
+		expect(originalInput.mock.calls.map(([data]) => data)).toEqual(["h", "e", "l", "l", "o"]);
 		expect(originalInput).not.toHaveBeenCalledWith("\x1b[Z");
 		expect(cycle).toHaveBeenCalledOnce();
+		// A caller that hands the editor several characters directly still reaches the prior handler in one call.
+		editor.handleInput(" world");
+		expect(originalInput).toHaveBeenLastCalledWith(" world");
+		expect(editor.getText()).toBe("hello world");
+	});
+
+	it("leaves a chained editor as typing key by key does when a run arrives at once", async () => {
+		const run = async (send: (input: (data: string) => void) => void) => {
+			const fake = fakeHost();
+			const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
+			const { tui, input, keys } = terminal();
+			const original = new CustomEditor(tui, editorTheme, keys);
+			const originalInput = vi.spyOn(original, "handleInput");
+			ctx.ui.setEditorComponent(vi.fn(() => original));
+			registerEditor(fake.api, { cycle: vi.fn() });
+			await fake.fire("session_start", {}, ctx);
+			const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
+			tui.setFocus(editor);
+			send(input);
+			return {
+				text: editor.getText(),
+				cursor: (editor as CustomEditor).getCursor(),
+				calls: originalInput.mock.calls.map(([data]) => data),
+			};
+		};
+		const together = await run((input) => input("hello world"));
+		const apart = await run((input) => {
+			for (const char of "hello world") input(char);
+		});
+		expect(together).toEqual(apart);
+		expect(together.text).toBe("hello world");
+	});
+
+	it("runs its own key inside a typed run once, in order, with the characters around it in place", async () => {
+		const fake = fakeHost();
+		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
+		registerEditor(fake.api, { cycle: vi.fn() });
+		await fake.fire("session_start", {}, ctx);
+		const { tui, input, keys } = terminal();
+		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
+		const seen: string[] = [];
+		editor.onAction("app.thinking.toggle", () => seen.push(editor.getText()));
+		tui.setFocus(editor);
+		keys.setUserBindings({ "app.thinking.toggle": "~" });
+		input("ab~cd");
+		expect(seen).toEqual(["ab"]);
+		expect(editor.getText()).toBe("abcd");
+		expect(editor.getCursor()).toEqual({ line: 0, col: 4 });
+		// Bindings changed after the editor was made count at once.
+		keys.setUserBindings({ "app.thinking.toggle": "!" });
+		input("x!y~");
+		expect(seen).toEqual(["ab", "abcdx"]);
+		expect(editor.getText()).toBe("abcdxy~");
+	});
+
+	it("sends the keys after an app key that opens an overlay to the overlay, not the editor", async () => {
+		// The app editor alone (its own action handler) and wrapped by Octocode (the wrapper takes the key).
+		for (const wrapped of [false, true]) {
+			const fake = fakeHost();
+			const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
+			registerEditor(fake.api, { cycle: vi.fn() });
+			await fake.fire("session_start", {}, ctx);
+			const { tui, input, keys } = terminal();
+			const editor = wrapped
+				? (ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor)
+				: new CustomEditor(tui, editorTheme, keys);
+			const overlayKeys: string[] = [];
+			const overlay = { render: () => [], invalidate: () => {}, handleInput: (data: string) => overlayKeys.push(data) };
+			editor.onAction("app.thinking.toggle", () => tui.showOverlay(overlay));
+			tui.setFocus(editor);
+			keys.setUserBindings({ "app.thinking.toggle": "?" });
+			input("ab?cd");
+			expect(editor.getText(), `wrapped ${wrapped}`).toBe("ab");
+			expect(overlayKeys, `wrapped ${wrapped}`).toEqual(["c", "d"]);
+		}
 	});
 
 	it("keeps the installed factory across session changes and uses the latest context", async () => {

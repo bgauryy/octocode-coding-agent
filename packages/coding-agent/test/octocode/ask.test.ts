@@ -231,6 +231,15 @@ describe("askUser", () => {
 		]);
 	});
 
+	it("keeps a pasted draft whole when its free-text question is left and reopened", async () => {
+		const pasted = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
+		const { result } = await drive(
+			[scope, { question: "Why?", header: "Why", options: [] }],
+			[KEY.enter, `\x1b[200~${pasted}\x1b[201~`, KEY.escape, KEY.shiftTab, KEY.tab, KEY.enter, KEY.enter],
+		);
+		expect(result.answers.at(-1)).toEqual({ question: "Why?", answer: pasted, custom: true });
+	});
+
 	it("opens the editor directly for free-text questions", async () => {
 		const { result, frames } = await drive([{ question: "Which region?", options: [] }], [..."eu-west-1", KEY.enter]);
 		expect(frames[0]).toContain("enter submit");
@@ -474,7 +483,7 @@ describe("askUser tool", () => {
 		// Strict-mode schemas refuse maxItems: the limit is in the description and enforced in code.
 		expect(JSON.stringify(tool.parameters)).not.toContain("maxItems");
 		expect(tool.description).toContain("2-4 options");
-		expect(tool.description).toContain("At most 4 questions");
+		expect(tool.description).toContain("at most 4 (more refused)");
 		const questions = Array.from({ length: 6 }, (_, i) => ({
 			question: `Q${i}?`,
 			options: ["A", "B", "C", "D", "E"].map((label) => ({ label })),

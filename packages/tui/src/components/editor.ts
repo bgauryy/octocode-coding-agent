@@ -4,13 +4,14 @@ import { CURSOR_MARKER, renderFakeCursor } from "../tui/cursor.ts";
 import type { TUI } from "../tui/types.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
-import { insertTextAtCursorInternal } from "./editor/editing.ts";
+import { type DraftText, insertTextAtCursorInternal, prependedDraft, submitValue } from "./editor/editing.ts";
 import { dimGhost, ghostSuffix } from "./editor/ghost.ts";
 import { addToHistory } from "./editor/history.ts";
 import { handleEditorInput } from "./editor/input.ts";
 import { createScrollBorder } from "./editor/layout.ts";
 import { EditorModel } from "./editor/model.ts";
 import { handleEditorMouse } from "./editor/movement.ts";
+import { handleEditorTextRun, routeTextRun } from "./editor/text-run.ts";
 import type { EditorBorderDecorator, EditorOptions, EditorTheme } from "./editor/types.ts";
 
 export class Editor implements Component, Focusable {
@@ -45,6 +46,8 @@ export class Editor implements Component, Focusable {
 				getText: () => this.getText(),
 				handleInput: (data) => this.handleInput(data),
 				notifyChange: () => {
+					// The submitted draft is restorable only into the editor its submit left empty.
+					if (this.model.submitted && !this.model.isEditorEmpty()) this.model.submitted = undefined;
 					if (this.onChange) this.onChange(this.getText());
 				},
 				notifySubmit: (text) => {
@@ -240,6 +243,7 @@ export class Editor implements Component, Focusable {
 		// Add autocomplete list if active
 		this.model.renderedAutocompleteHeight = 0;
 		if (this.model.autocomplete.autocompleteState && this.model.autocomplete.autocompleteList) {
+			this.model.autocomplete.listWidth = contentWidth;
 			const autocompleteResult = this.model.autocomplete.autocompleteList.render(contentWidth);
 			this.model.renderedAutocompleteHeight = autocompleteResult.length;
 			for (const line of autocompleteResult) {
@@ -258,6 +262,34 @@ export class Editor implements Component, Focusable {
 
 	handleInput(data: string): void {
 		handleEditorInput(this.model, data);
+	}
+
+	/**
+	 * Typed characters from one terminal read: the result of `handleInput` for each, with one `onChange`. A `handleInput`
+	 * replaced on the editor gets every character, unless it marks itself (`routeTextRun`): then only the characters it takes.
+	 * Returns how much of `text` it handled: it stops after a key that did more than insert text (see `Component`).
+	 */
+	handleTextRun(text: string): number {
+		return routeTextRun(
+			this.handleInput,
+			this.typedRunInput(),
+			text,
+			(run) => this.insertTypedRun(run),
+			(char) => this.handleInput(char),
+		);
+	}
+
+	/** The `handleInput` that `insertTypedRun` stands in for; a subclass that overrides both returns its own. */
+	protected typedRunInput(): (data: string) => void {
+		return Editor.prototype.handleInput;
+	}
+
+	/**
+	 * Typed characters that `typedRunInput` would pass straight to the editing model, inserted together. Returns how much
+	 * of `text` it handled, stopping after a key that did more than insert text.
+	 */
+	protected insertTypedRun(text: string): number {
+		return handleEditorTextRun(this.model, text);
 	}
 
 	getText(): string {
@@ -281,18 +313,58 @@ export class Editor implements Component, Focusable {
 	}
 
 	setText(text: string): void {
+		this.replaceDraft({ text: this.model.normalizeText(text), pastes: new Map(), pasteCounter: 0 });
+	}
+
+	/** Put `text` before the draft, a blank line between them, keeping the draft's paste markers (`prependedDraft`). */
+	prependText(text: string): void {
+		this.replaceDraft(prependedDraft(this.model, this.model.normalizeText(text)));
+	}
+
+	private replaceDraft(draft: DraftText): void {
+		this.model.submitted = undefined;
 		this.model.autocomplete.cancelAutocomplete();
 		this.model.inlineSuggestion = undefined;
 		this.model.lastAction = null;
 		this.model.exitHistoryBrowsing();
-		const normalized = this.model.normalizeText(text);
 		// Push undo snapshot if content differs (makes programmatic changes undoable)
-		if (this.getText() !== normalized) {
+		if (this.getText() !== draft.text) {
 			this.model.pushUndoSnapshot();
 		}
-		this.model.pastes.clear();
-		this.model.pasteCounter = 0;
-		this.model.setTextInternal(normalized);
+		this.model.pastes = draft.pastes;
+		this.model.pasteCounter = draft.pasteCounter;
+		this.model.setTextInternal(draft.text);
+	}
+
+	/** Submit the text as the submit key does; nothing while submit is disabled. */
+	submit(): void {
+		if (this.disableSubmit) return;
+		submitValue(this.model);
+	}
+
+	/**
+	 * Put `text` back after the app refused its submit (a busy shell, an unknown command): when `text` is what the last
+	 * submit sent and the editor is still empty, the submitted draft returns whole, with its paste markers, cursor and
+	 * undo history; otherwise this is `setText(text)`.
+	 */
+	restoreSubmitted(text: string): void {
+		const draft = this.model.submitted;
+		if (!draft || draft.text !== text || !this.model.isEditorEmpty()) {
+			this.setText(text);
+			return;
+		}
+		this.model.submitted = undefined;
+		this.model.autocomplete.cancelAutocomplete();
+		this.model.inlineSuggestion = undefined;
+		this.model.lastAction = null;
+		this.model.exitHistoryBrowsing();
+		this.model.state = draft.state;
+		this.model.pastes = draft.pastes;
+		this.model.pasteCounter = draft.pasteCounter;
+		this.model.undoStack = draft.undo;
+		this.model.setCursorCol(draft.state.cursorCol);
+		this.model.scrollOffset = 0;
+		this.model.notifyChange();
 	}
 
 	/**

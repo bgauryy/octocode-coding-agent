@@ -8,6 +8,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConfigView } from "../src/app/config/ConfigView.tsx";
+import { SettingEditor } from "../src/app/config/SettingEditor.tsx";
 
 const base: ConfigSnapshot = {
 	protocolVersion: CONFIG_PROTOCOL_VERSION,
@@ -40,7 +41,7 @@ describe("ConfigView settings editing", () => {
 		expect(screen.queryByRole("form")).toBeNull();
 	});
 
-	it("saves a global value, then shows the host's fresh snapshot and a reload note", async () => {
+	it("saves a global value, then shows the host's fresh snapshot and when the default applies", async () => {
 		const save = vi.fn(async (command: ConfigSettingCommand): Promise<ConfigSnapshot> => ({
 			...base,
 			settings: [{ key: command.key, value: command.value ?? undefined, source: "global" }, base.settings[1]],
@@ -56,7 +57,7 @@ describe("ConfigView settings editing", () => {
 
 		expect(save).toHaveBeenCalledWith({ key: "defaultProvider", scope: "global", value: "anthropic" });
 		expect(await form.findByRole("status")).toHaveTextContent(
-			"Saved to global settings. Running sessions pick it up with /reload.",
+			"Saved to global settings. Model defaults apply to new sessions; the current chat keeps its model.",
 		);
 		const row = screen.getByText("defaultProvider").closest("li") as HTMLElement;
 		expect(within(row).getAllByText("anthropic").length).toBeGreaterThan(0);
@@ -117,5 +118,35 @@ describe("ConfigView settings editing", () => {
 		await userEvent.type(form.getByLabelText("Value for defaultModel"), "gpt-5");
 		await userEvent.click(form.getByRole("button", { name: "Save" }));
 		expect(save).toHaveBeenCalledWith({ key: "defaultModel", scope: "workspace", value: "gpt-5", repoId: "r1" });
+	});
+});
+
+describe("setting save timing", () => {
+	it.each([
+		{ key: "defaultProvider", action: "Save" },
+		{ key: "defaultProvider", action: "Clear" },
+		{ key: "defaultModel", action: "Save" },
+		{ key: "defaultModel", action: "Clear" },
+	])("explains that $action of $key affects new sessions", async ({ key, action }) => {
+		const save = vi.fn().mockResolvedValue(undefined);
+		render(<SettingEditor setting={{ key, value: "fixture-value", source: "global" }} save={save} />);
+
+		await userEvent.click(screen.getByRole("button", { name: action }));
+
+		expect(save).toHaveBeenCalledWith({ key, scope: "global", value: action === "Clear" ? null : "fixture-value" });
+		const status = await screen.findByRole("status");
+		expect(status).toHaveTextContent("Model defaults apply to new sessions; the current chat keeps its model.");
+		expect(status).not.toHaveTextContent("/reload");
+	});
+
+	it("retains reload guidance for other settings", async () => {
+		const save = vi.fn().mockResolvedValue(undefined);
+		render(<SettingEditor setting={{ key: "theme", value: "dark", source: "global" }} save={save} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			"Saved to global settings. Running sessions pick it up with /reload.",
+		);
 	});
 });

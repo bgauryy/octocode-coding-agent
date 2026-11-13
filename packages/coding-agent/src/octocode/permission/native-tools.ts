@@ -3,7 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
-import { withNativeDeferral } from "./native-deferral.ts";
+import { settleNativeDeferral, withNativeDeferral } from "./native-deferral.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
@@ -77,8 +77,12 @@ function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, 
 	};
 }
 
-/** Fail before an unreviewed native tool enters the registry, including late registrations. */
+/**
+ * Fail before an unreviewed native tool enters the registry, including late registrations. The deferrable tools'
+ * declarations are settled first thing at `session_start` (`settleNativeDeferral`), before any request declares them.
+ */
 export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
+	api.on("session_start", (_event, ctx) => settleNativeDeferral(api, ctx));
 	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
 		if (!isNativeTool(tool.name)) {
 			throw new Error(`Native tool ${tool.name} has no permission owner; register its gate or internal check first.`);

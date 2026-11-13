@@ -1,7 +1,14 @@
-import { layoutPurposes, returnedPurposes } from "@octocodeai/octocode-contracts";
-import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import {
+	type Component,
+	renderChanged,
+	trackRenderChanges,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import { theme } from "../../theme/theme.ts";
+import { keyHint } from "../../theme/theme-tui-helpers.ts";
+import { cleanPurposeText, statedPurposes, type StatedPurpose } from "./purpose-data.ts";
 
 const INDENT = "  ";
 /** Lines shown before the rest fold into `… +N more`. */
@@ -9,55 +16,110 @@ const MAX_LINES = 6;
 
 interface PurposeLine {
 	text: string;
+	heading?: boolean;
+	/** Goal values use readable text, with an accent label; any trailing reason remains secondary. */
+	goalEnd?: number;
+	labelEnd?: number;
 	/** Reasoning reads italic; a goal reads upright. */
 	italic: boolean;
-}
-
-const clean = (text: string): string => sanitizeTerminalText(text).replace(/\s+/g, " ").trim();
-
-/** The lines of a purpose block, from the purposes a result returned. Pure in (result, shown). */
-function purposeLines(structuredContent: unknown, shown: string | undefined): PurposeLine[] {
-	const layout = layoutPurposes(returnedPurposes(structuredContent), shown);
-	const lines: PurposeLine[] = [];
-	if (layout.goal) lines.push({ text: `◎ ${clean(layout.goal)}`, italic: false });
-	for (const row of layout.rows) {
-		const label = layout.numbered && row.row !== undefined ? `#${row.row} ` : "";
-		if (layout.shared) lines.push({ text: `${INDENT}· ${label}${clean(row.reasoning ?? "")}`, italic: true });
-		else {
-			const body = [row.mainGoal, row.reasoning].flatMap((part) => (part ? [clean(part)] : [])).join(" — ");
-			lines.push({ text: `${label}${body}`, italic: !row.mainGoal });
-		}
-	}
-	return lines;
 }
 
 /** The block under a tool result: every goal and reasoning the result's own data states, one line each, in the `toolReason` color. */
 class PurposeBlock implements Component {
 	private readonly lines: PurposeLine[];
-	constructor(lines: PurposeLine[]) {
+	private readonly expanded: boolean;
+	constructor(lines: PurposeLine[], expanded = false) {
 		this.lines = lines;
+		this.expanded = expanded;
 	}
 	render(width: number): string[] {
-		const room = width - INDENT.length;
+		const indent = width > INDENT.length ? INDENT : "";
+		const room = width - indent.length;
 		if (room <= 0) return [];
 		const paint = (line: PurposeLine) => {
-			const colored = theme.fg("toolReason", truncateToWidth(line.text, room));
-			return `${INDENT}${line.italic ? theme.italic(colored) : colored}`;
+			const styled = line.heading
+				? theme.bold(theme.fg("muted", line.text))
+				: line.goalEnd === undefined
+					? theme.fg("toolReason", line.text)
+					: theme.bold(theme.fg("accent", line.text.slice(0, line.labelEnd))) +
+						theme.fg("text", line.text.slice(line.labelEnd, line.goalEnd)) +
+						theme.italic(theme.fg("toolReason", line.text.slice(line.goalEnd)));
+			const rows = this.expanded ? wrapTextWithAnsi(styled, room) : [truncateToWidth(styled, room)];
+			return rows.map((row) => {
+				return `${indent}${line.italic ? theme.italic(row) : row}`;
+			});
 		};
-		const shown = this.lines.slice(0, MAX_LINES).map(paint);
-		const more = this.lines.length - MAX_LINES;
-		return more > 0 ? [...shown, `${INDENT}${theme.italic(theme.fg("muted", `… +${more} more`))}`] : shown;
+		const selected = this.expanded ? this.lines : this.lines.slice(0, MAX_LINES);
+		const shown = selected.flatMap(paint);
+		const more = this.lines.length - selected.length;
+		const truncated = !this.expanded && selected.some((line) => visibleWidth(line.text) > room);
+		if (more > 0 || truncated) {
+			const detail = more > 0 ? `… +${more} more` : "… more detail";
+			shown.push(
+				...wrapTextWithAnsi(`${theme.fg("muted", detail)} ${keyHint("app.tools.expand", "to expand")}`, room).map(
+					(row) => indent + row,
+				),
+			);
+		}
+		return shown;
 	}
-	invalidate(): void {}
+	/** A theme change redraws the block in the new colors. */
+	invalidate(): void {
+		renderChanged(this);
+	}
+}
+trackRenderChanges(PurposeBlock.prototype);
+
+/** The result's explicit purpose fields, with query association and the same Goal/Reason hierarchy as the call. */
+export function purposeBlock(structuredContent: unknown, shown?: string, expanded = false): Component | undefined {
+	return returnedPurposeBlock(statedPurposes(structuredContent, true), shown, expanded);
 }
 
-/**
- * The purpose block of a tool result: one `◎` goal when every row shares it with a `·` reasoning per row, else a line per
- * row (`#row goal — reasoning`). Read only from the result's own data (never the call's arguments), whatever the tool;
- * `shown` is the text the tool row already draws as its one-line reason, which is not repeated. Undefined when nothing
- * is left to say.
- */
-export function purposeBlock(structuredContent: unknown, shown?: string): Component | undefined {
-	const lines = purposeLines(structuredContent, shown);
-	return lines.length ? new PurposeBlock(lines) : undefined;
+/** Already-read entries keep top-level metadata separate from numbered query metadata. */
+export function returnedPurposeBlock(
+	entries: StatedPurpose[],
+	shown?: string,
+	expanded = false,
+): Component | undefined {
+	const keep = (text: string | undefined) => (text === cleanPurposeText(shown) ? undefined : text);
+	return suppliedPurposeBlock(
+		entries.map((entry) => ({
+			...entry,
+			mainGoal: keep(entry.mainGoal),
+			reasoning: keep(entry.reasoning),
+			reason: keep(entry.reason),
+		})),
+		expanded,
+		"Result",
+	);
+}
+
+/** Supplied call metadata stays with its query, including distinct reason and reasoning values. */
+export function suppliedPurposeBlock(
+	purposes: StatedPurpose[],
+	expanded = false,
+	section?: string,
+): Component | undefined {
+	const lines: PurposeLine[] = [];
+	for (const purpose of purposes) {
+		const query = purpose.row === undefined ? "" : `Query ${purpose.row + 1} · `;
+		const seen = new Set<string>();
+		for (const [label, value] of [
+			["Goal", purpose.mainGoal],
+			[purpose.reasoning && purpose.reason ? "Reasoning" : "Reason", purpose.reasoning],
+			["Reason", purpose.reason],
+		] as const) {
+			if (!value || seen.has(value)) continue;
+			seen.add(value);
+			const text = `${query}${label}: ${value}`;
+			lines.push({
+				text,
+				italic: label !== "Goal",
+				...(label === "Goal" ? { labelEnd: query.length + label.length + 2, goalEnd: text.length } : {}),
+			});
+		}
+	}
+	if (!lines.length) return undefined;
+	if (section) lines.unshift({ text: section, italic: false, heading: true });
+	return new PurposeBlock(lines, expanded);
 }

@@ -5,7 +5,7 @@ import type { Orphan } from "./classify.ts";
 export interface StopDeps {
 	/** The orphans as the records and the process table show them right now. */
 	current: () => Promise<readonly Orphan[]>;
-	match: (pid: number, started: string) => "same" | "other" | "unknown";
+	match: (pid: number, started: string) => Promise<"same" | "other" | "unknown">;
 	/** SIGTERM, then SIGKILL after the grace period (`stopTree`). */
 	stop: (pid: number) => Promise<void>;
 }
@@ -42,7 +42,7 @@ export async function stopOrphans(requested: readonly Orphan[], deps: StopDeps):
 		} else if (!fresh.some((each) => each.pid === target.pid && each.started === target.started)) {
 			results.push(skip("not an orphan any more"));
 		} else {
-			const match = deps.match(target.pid, target.started);
+			const match = await deps.match(target.pid, target.started);
 			if (match === "other") results.push(skip("the pid belongs to another process now"));
 			else if (match === "unknown") results.push(skip("its start time could not be verified"));
 			else {

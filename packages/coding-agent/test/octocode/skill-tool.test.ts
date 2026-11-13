@@ -295,7 +295,7 @@ describe("skill policy", () => {
 		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("finish your task yourself.");
 		// The skills section carries the rule for whichever loader the session has; the tool says only what it does.
 		expect(formatSkillsForPrompt(fixtures().loaded.skills.slice(0, 1), "skill")).toContain(
-			`Use the skill tool, one call per name, to load every skill ${trigger}; several can apply.`,
+			`Use the skill tool (one call per name) to load every skill ${trigger} before other work; several can apply.`,
 		);
 		const { tool } = setup(fixtures().snapshot);
 		// The tool list points to the skills section instead of restating its trigger.
@@ -345,7 +345,7 @@ describe("a session with skills", () => {
 		]);
 		await h.session.prompt("do alpha work");
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
-		expect(sections?.skills).toContain("Use the skill tool, one call per name, to load every skill");
+		expect(sections?.skills).toContain("Use the skill tool (one call per name) to load every skill");
 		expect(sections?.skills).toContain('<skill name="alpha">');
 		expect(sections?.skills).not.toContain('<skill name="hidden"');
 		const result = getToolResult(h, "skill");

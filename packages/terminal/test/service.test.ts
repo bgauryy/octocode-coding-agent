@@ -202,3 +202,38 @@ describe.skipIf(!bash)("bash driver", () => {
 		service.dispose();
 	});
 });
+
+describe.skipIf(!bash)("bash driver start", () => {
+	const service = () =>
+		new ShellCompletionService({
+			cwd: root,
+			env: { ...process.env, HOME: join(root, "home") },
+			shell: "bash",
+			loadRc: false,
+			carapace: false,
+			trusted: () => true,
+		});
+	const internals = (target: ShellCompletionService) =>
+		target as unknown as { driver?: DriverProcess; dir?: string; starts: number };
+
+	it("writes its startup files off the event loop and starts one shell for requests that arrive together", async () => {
+		const target = service();
+		const first = target.complete("ech", signal());
+		const second = target.complete("ech", signal());
+		// Nothing was created synchronously: the first Tab returns before any file is written.
+		expect(internals(target).dir).toBeUndefined();
+		await Promise.all([first, second]);
+		expect(internals(target).starts).toBe(1);
+		expect(internals(target).driver).toBeDefined();
+		target.dispose();
+	});
+
+	it("starts no shell when it is stopped while its files are written", async () => {
+		const target = service();
+		const request = target.complete("ech", signal());
+		target.dispose();
+		await request;
+		expect(internals(target).driver).toBeUndefined();
+		expect(internals(target).dir).toBeUndefined();
+	});
+});

@@ -12,6 +12,7 @@ import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../defaults.ts";
 import { findLatestResponse, getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import type { SessionInternals } from "./host.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
+import { persistDefaultModel } from "./model-default.ts";
 
 export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
@@ -204,7 +205,7 @@ export class SessionModelControl {
 
 	/** `fallback`: `retry.fallbackModels` replaces a model that hit a usage limit, at `level` when the entry names one. */
 	async setModel(model: Model<any>, options: SetModelOptions): Promise<void> {
-		if (!(await this.host.session.modelRuntime.checkAuth(model.provider))) {
+		if (!(await this.host.session.modelRuntime.checkAuth(model.provider, { signal: AbortSignal.timeout(15_000) }))) {
 			throw new Error(`No API key for ${model.provider}/${model.id}`);
 		}
 		await this._switchTo(model, options, options.source ?? "set", options.level);
@@ -226,28 +227,24 @@ export class SessionModelControl {
 		const selectedModel = this.withContextBudget(model);
 		session.agent.state.model = selectedModel;
 		this.recordModel(model);
-		if (options.persist) {
-			session.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
-			this._addPersistedDefaultToNonEmptyScope(model);
-		}
 		this.applyThinkingLevel(thinkingLevel, false);
 		await this._emitModelSelect(selectedModel, previousModel, source);
+		if (options.persist)
+			await persistDefaultModel(session.settingsManager, model, this._addPersistedDefaultToNonEmptyScope(model));
 		return selectedModel;
 	}
 
-	private _addPersistedDefaultToNonEmptyScope(model: Model<any>): void {
-		if (this.scopedModels.length === 0) return;
-		if (this.scopedModels.some((scoped) => modelsAreEqual(scoped.model, model))) return;
-
-		this.scopedModels = [...this.scopedModels, { model }];
+	private _addPersistedDefaultToNonEmptyScope(model: Model<any>): string[] | undefined {
+		if (this.scopedModels.length > 0 && !this.scopedModels.some((scoped) => modelsAreEqual(scoped.model, model)))
+			this.scopedModels = [...this.scopedModels, { model }];
 
 		const settingsManager = this.host.session.settingsManager;
-		const enabledModels = settingsManager.getEnabledModels();
+		const enabledModels = settingsManager.getGlobalSettings().enabledModels;
 		if (!enabledModels?.length) return;
 
 		const modelReference = `${model.provider}/${model.id}`;
 		if (enabledModels.some((pattern) => pattern.toLowerCase() === modelReference.toLowerCase())) return;
-		settingsManager.setEnabledModels([...enabledModels, modelReference]);
+		return [...enabledModels, modelReference];
 	}
 
 	async cycleModel(

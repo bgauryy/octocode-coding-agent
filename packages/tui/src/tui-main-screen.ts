@@ -1,13 +1,12 @@
 import { hasTmuxSession } from "./multiplexer.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "./terminal/sequences.ts";
 import { isImageLine } from "./terminal-image.ts";
-import { clipLineToWidth, FinishedLines } from "./tui/clip.ts";
-import { applyLineReset } from "./tui/composite.ts";
+import { renderRowFrame } from "./tui/container-walk.ts";
 import { LayoutRecorder, recordLayout } from "./tui/layout-recorder.ts";
 import type { RenderCounters } from "./tui/render-counters.ts";
 import { type Component, type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
-import { CursorRows } from "./tui-main-screen/cursor-rows.ts";
+import { FrameFinisher } from "./tui-main-screen/frame-finish.ts";
 import { writeChangedRows, writeDeletedRows } from "./tui-main-screen/frame-write.ts";
 import {
 	collectKittyImageIds,
@@ -17,17 +16,16 @@ import {
 } from "./tui-main-screen/kitty-images.ts";
 import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
 import { appendFullRenderLines, cursorMoveSequence } from "./tui-main-screen/render-output.ts";
-import { ScrollbackPolicy } from "./tui-main-screen/scrollback.ts";
+import { DEFAULT_REPLAY_ROWS, replayTail, ScrollbackPolicy } from "./tui-main-screen/scrollback.ts";
 import { BoundedTerminalWriter } from "./tui-main-screen/terminal-writer.ts";
 
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {
 	readonly mode = "regular" as const;
 	private previousLines: string[] = [];
-	/** Resets and clipping of the rows, once per changed row. */
-	private readonly finishedLines = new FinishedLines((line, width) => clipLineToWidth(applyLineReset(line), width));
+	/** Cursor resolution, overlays, resets and clipping of the rows, once per changed row. */
+	private readonly finisher = new FrameFinisher();
 	private previousKittyImageIds = new Set<number>();
-	private readonly cursorRows = new CursorRows();
 	private readonly kittyRows = new KittyImageRowCache();
 	private previousWidth = 0;
 	private previousHeight = 0;
@@ -35,17 +33,23 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private hardwareCursorRow = 0;
 	private maxLinesRendered = 0;
 	private previousViewportTop = 0;
-	/** Start rows of the last frame's components. */
-	private componentStarts: ReadonlyMap<Component, number> = new Map();
+	/** The last frame's layout: start rows of its components. */
+	private componentLayout: LayoutRecorder | undefined;
 	private readonly scrollback = new ScrollbackPolicy();
+	/** Rows a replay writes at most; 0 writes all of them. */
+	private replayRows = DEFAULT_REPLAY_ROWS;
 
 	get renderCounters(): Readonly<RenderCounters> {
 		return this.ledger.snapshot(this.fullRedrawCount);
 	}
 
 	isAboveViewport(component: Component): boolean {
-		const start = this.componentStarts.get(component);
+		const start = this.componentLayout?.starts.get(component);
 		return start !== undefined && start < this.previousViewportTop;
+	}
+
+	setReplayRows(rows: number): void {
+		this.replayRows = Number.isFinite(rows) ? Math.max(0, Math.floor(rows)) : 0;
 	}
 
 	/** Replay the whole transcript if a row above the viewport changed (default: left alone; `invalidate` asks too). */
@@ -112,23 +116,27 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		const previousBufferLength = this.previousHeight > 0 ? this.previousViewportTop + this.previousHeight : height;
 		const viewportTop = heightChanged ? Math.max(0, previousBufferLength - height) : this.previousViewportTop;
 
-		// Render, resolve fake cursors (so overlays and line slicing see plain SGR codes), composite overlays, then
-		// extract the cursor position: all before line resets and the differential compare.
+		// Render the rows (as a row frame: the transcript is not joined into a new array), then finish them for the
+		// terminal: all before the differential compare.
 		const layout = new LayoutRecorder();
-		const renderedLines = recordLayout(layout, () => this.render(width));
-		this.componentStarts = layout.starts;
-		const previousLayout = this.scrollback.advance(layout.leaves);
+		const source = recordLayout(layout, () => renderRowFrame(this, width) ?? this.render(width));
+		this.componentLayout = layout;
+		const previousLayout = this.scrollback.advance(layout);
 		const repaintRequested = this.ledger.takeRepaint();
 		const overlays = this.hasOverlayEntries
 			? (lines: string[]) => this.compositeOverlays(lines, width, height)
 			: undefined;
-		const frame = this.cursorRows.resolve(renderedLines, this.getShowHardwareCursor(), height, overlays);
+		const frame = this.finisher.finish(source, this.getShowHardwareCursor(), width, height, overlays);
 		const cursorPos = frame.cursor;
-
-		// A row wider than the terminal would wrap and shift every row below it, in the full render and the diff alike.
-		const newLines = this.finishedLines.apply(frame.lines, width);
+		const newLines = frame.lines;
+		// Every pass below starts at the first row that can differ from the rows on the terminal: those above it are the
+		// same strings when the terminal shows the last frame's rows.
+		const sharedRows = this.previousLines === frame.previous ? frame.unchanged : 0;
 		const previousImageRows = this.kittyRows.of(this.previousLines);
-		const imageRows = this.kittyRows.of(newLines);
+		const imageRows = this.kittyRows.of(
+			newLines,
+			frame.previous ? { from: frame.previous, unchanged: frame.unchanged } : undefined,
+		);
 		const commit = { newLines, imageRows, width, height, cursorPos };
 
 		// Helper to clear scrollback and viewport and render all new lines
@@ -140,7 +148,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				output.append(deleteKittyImages(this.previousKittyImageIds));
 				output.append("\x1b[2J\x1b[H\x1b[3J"); // Clear screen, home, then clear scrollback
 			}
-			appendFullRenderLines(output, newLines, height, hasTmuxSession());
+			appendFullRenderLines(
+				output,
+				clear ? replayTail(newLines, this.replayRows, height) : newLines,
+				height,
+				hasTmuxSession(),
+			);
 			output.append(END_SYNCHRONIZED_OUTPUT);
 			this.flush(output);
 			this.cursorRow = Math.max(0, newLines.length - 1);
@@ -182,26 +195,31 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 
 		const bothImageRows = { previous: previousImageRows, next: imageRows };
-		let range = findChangedLineRange(this.previousLines, newLines, 0, bothImageRows);
+		let range = findChangedLineRange(this.previousLines, newLines, sharedRows, bothImageRows);
 		// Scrollback cannot be edited: rows that changed in place above the viewport are left as the terminal has them.
 		const deferred =
 			range.firstChanged !== -1 &&
 			range.firstChanged < viewportTop &&
 			this.scrollback.canDefer({
 				previousLayout,
-				layout: layout.leaves,
+				layout,
 				previousLines: this.previousLines,
 				newLines,
 				viewportTop,
 				repaintRequested,
+				firstChanged: range.firstChanged,
 			});
-		if (deferred) range = findChangedLineRange(this.previousLines, newLines, viewportTop, bothImageRows);
+		if (deferred)
+			range = findChangedLineRange(this.previousLines, newLines, Math.max(viewportTop, sharedRows), bothImageRows);
 		const { firstChanged, lastChanged, appendedLines } = range;
 
 		// No changes - but still need to update hardware cursor position if it moved
 		if (firstChanged === -1) {
 			if (deferred) {
 				this.ledger.counters.deferredAboveViewport += 1;
+				this.previousLines = newLines;
+			} else if (newLines.length === this.previousLines.length) {
+				// Row for row the same strings: keeping the new array lets the next frame start where this one changed.
 				this.previousLines = newLines;
 			}
 			this.positionHardwareCursor(cursorPos, newLines.length);

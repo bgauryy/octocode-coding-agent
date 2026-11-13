@@ -305,9 +305,12 @@ export async function findInitialModel(options: {
 		};
 	}
 
-	// 2. Try saved default from settings if auth is configured.
+	const availableModels = [...modelRuntime.getAvailableSnapshot()];
+	// 2. A saved default must still be available; stored credentials do not re-enable a disabled or paused provider.
 	if (defaultProvider && defaultModelId) {
-		const found = modelRuntime.getModel(defaultProvider, defaultModelId);
+		const found = availableModels.find(
+			(candidate) => candidate.provider === defaultProvider && candidate.id === defaultModelId,
+		);
 		if (found && modelRuntime.hasConfiguredAuth(found.provider)) {
 			model = found;
 			const perModel = modelThinkingLevels?.[`${defaultProvider}/${defaultModelId}`];
@@ -320,7 +323,6 @@ export async function findInitialModel(options: {
 		}
 	}
 
-	const availableModels = [...modelRuntime.getAvailableSnapshot()];
 	const withLevel = (match: Model<Api>): InitialModelResult => ({
 		model: match,
 		thinkingLevel: DEFAULT_THINKING_LEVEL,
@@ -353,10 +355,10 @@ export async function findInitialModel(options: {
 				const match = providerDefault(provider);
 				if (match) return withLevel(match);
 			}
+			// CLI and custom providers may have no named default; a connected plan still comes before metered credit.
+			const fallback = candidates.find((candidate) => modelRuntime.getProviderBilling(candidate.provider) === billing);
+			if (fallback) return withLevel(fallback);
 		}
-
-		// If no default found, use first available
-		return withLevel(candidates[0]);
 	}
 
 	// 5. No model found

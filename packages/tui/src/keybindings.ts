@@ -1,4 +1,6 @@
-import { matchesKey } from "./keys/match.ts";
+import { matchesParsedKey } from "./keys/match.ts";
+import { type ParsedKeyId, parseKeyId } from "./keys/parse-key-id.ts";
+import { isKittyProtocolActive } from "./keys/state.ts";
 import type { KeyId } from "./keys/key-id.ts";
 
 /**
@@ -233,6 +235,11 @@ export class KeybindingsManager {
 	private definitions: KeybindingDefinitions;
 	private userBindings: KeybindingsConfig;
 	private keysById = new Map<Keybinding, KeyId[]>();
+	/** Each binding's keys parsed once, so a key event is matched without parsing key ids again. */
+	private parsedById = new Map<Keybinding, ParsedKeyId[]>();
+	/** Per printable ASCII character, the bindings its key matches; built on first use for the Kitty state. */
+	private typedByChar: Map<string, ReadonlySet<Keybinding>> | undefined;
+	private typedKitty = false;
 	private conflicts: KeybindingConflict[] = [];
 
 	constructor(definitions: KeybindingDefinitions, userBindings: KeybindingsConfig = {}) {
@@ -243,6 +250,8 @@ export class KeybindingsManager {
 
 	private rebuild(): void {
 		this.keysById.clear();
+		this.parsedById.clear();
+		this.typedByChar = undefined;
 		this.conflicts = [];
 
 		const userClaims = new Map<KeyId, Set<Keybinding>>();
@@ -265,15 +274,46 @@ export class KeybindingsManager {
 			const userKeys = this.userBindings[id];
 			const keys = userKeys === undefined ? normalizeKeys(definition.defaultKeys) : normalizeKeys(userKeys);
 			this.keysById.set(id as Keybinding, keys);
+			this.parsedById.set(
+				id as Keybinding,
+				keys.map((key) => parseKeyId(key)).filter((parsed): parsed is ParsedKeyId => parsed !== null),
+			);
 		}
 	}
 
 	matches(data: string, keybinding: Keybinding): boolean {
-		const keys = this.keysById.get(keybinding) ?? [];
+		const keys = this.parsedById.get(keybinding);
+		if (!keys) return false;
+		// A typed character is checked against every binding: answer from the bindings each character matches.
+		const typed = this.typedBindings(data);
+		if (typed) return typed.has(keybinding);
 		for (const key of keys) {
-			if (matchesKey(data, key)) return true;
+			if (matchesParsedKey(data, key)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * The bindings `data` matches when it is one printable ASCII character (found with the matcher itself, per Kitty
+	 * protocol state), else undefined. Most characters match none, so a typed character is routed without matching.
+	 */
+	typedBindings(data: string): ReadonlySet<Keybinding> | undefined {
+		const code = data.length === 1 ? data.charCodeAt(0) : 0;
+		if (code < 0x20 || code >= 0x7f) return undefined;
+		const kitty = isKittyProtocolActive();
+		if (!this.typedByChar || kitty !== this.typedKitty) {
+			this.typedByChar = new Map();
+			this.typedKitty = kitty;
+			for (let char = 0x20; char < 0x7f; char++) {
+				const text = String.fromCharCode(char);
+				const bindings = new Set<Keybinding>();
+				for (const [id, keys] of this.parsedById) {
+					if (keys.some((key) => matchesParsedKey(text, key))) bindings.add(id);
+				}
+				this.typedByChar.set(text, bindings);
+			}
+		}
+		return this.typedByChar.get(data);
 	}
 
 	getKeys(keybinding: Keybinding): KeyId[] {

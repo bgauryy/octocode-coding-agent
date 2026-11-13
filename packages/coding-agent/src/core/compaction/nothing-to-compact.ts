@@ -1,4 +1,5 @@
-import { buildSessionProjection, type SessionEntry } from "../session-manager.ts";
+import type { SessionEntry } from "../session-manager.ts";
+import { buildPathProjection } from "../session-manager/context.ts";
 import { estimateTokens } from "./tokens.ts";
 
 /** Why a manual compaction has nothing to summarize, in words that match the cause, for the error and a short notice. */
@@ -7,7 +8,7 @@ export function explainNothingToCompact(
 	keepRecentTokens: number,
 ): { message: string; notice: string } {
 	// The system prompt and tool declarations are not history; neither is an earlier summary.
-	const history = buildSessionProjection(pathEntries).messages.reduce(
+	const history = buildPathProjection(pathEntries).messages.reduce(
 		(sum, message) =>
 			message.role === "system" || message.role === "compactionSummary" ? sum : sum + estimateTokens(message),
 		0,

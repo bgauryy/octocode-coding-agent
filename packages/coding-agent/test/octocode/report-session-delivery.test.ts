@@ -23,7 +23,7 @@ describe("report delivery through the real session runtime", () => {
 		});
 		const errors: string[] = [];
 		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
-		const queue = new ReportQueue(host, 60_000);
+		const queue = new ReportQueue(host);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
 		const preparation = vi
@@ -71,7 +71,7 @@ describe("report delivery through the real session runtime", () => {
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(host, 60_000);
+		const queue = new ReportQueue(host);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
 		try {
@@ -106,7 +106,7 @@ describe("report delivery through the real session runtime", () => {
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(host, 60_000);
+		const queue = new ReportQueue(host);
 		queue.start(manager, undefined, undefined, (details, content) =>
 			harness.session.replaceQueuedCustomMessage(details, content),
 		);

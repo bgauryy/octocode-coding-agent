@@ -2,7 +2,9 @@ import {
 	Box,
 	type Component,
 	Text,
+	renderChanged,
 	stripTerminalSequences,
+	trackRenderChanges,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
@@ -132,6 +134,7 @@ export class Lines implements Component {
 		const version = index === -1 ? { rows, drawn: undefined } : this.versions.splice(index, 1)[0];
 		this.versions.unshift(version);
 		this.versions.length = Math.min(this.versions.length, VERSIONS_KEPT);
+		renderChanged(this);
 		return this;
 	}
 
@@ -164,8 +167,11 @@ export class Lines implements Component {
 		for (const version of this.versions) version.drawn = undefined;
 		this.drawnHeader = undefined;
 		this.output = undefined;
+		renderChanged(this);
 	}
 }
+// Its rows read only what `set` stores (styled when set) and the width: a transcript keeps them between frames.
+trackRenderChanges(Lines.prototype);
 
 function lines(context: RenderContext): Lines {
 	return context.lastComponent instanceof Lines ? context.lastComponent : new Lines();

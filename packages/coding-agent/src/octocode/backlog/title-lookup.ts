@@ -6,5 +6,5 @@ import type { BacklogStore } from "./store.ts";
  * have changed (session start, a backlog write, the end of a run), never per frame: rendering reads `itemTitle`.
  */
 export function refreshItemTitles(store: BacklogStore): void {
-	setItemTitles(new Map(store.list().items.map((item) => [item.ref, item.title])));
+	setItemTitles(store.titles());
 }

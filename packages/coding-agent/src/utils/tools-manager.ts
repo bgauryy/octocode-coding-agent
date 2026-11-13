@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
+import { findOnPath } from "../../../common/src/find-on-path.ts";
 import { APP_NAME, getBinDir } from "../config.ts";
 import { isOfflineModeEnabled } from "./env-flag.ts";
 import { fetchWithRetry } from "./management-http.ts";
@@ -64,8 +65,13 @@ const TOOLS: Record<string, ToolConfig> = {
 	},
 };
 
-// Check if a command exists in PATH by trying to run it
+/**
+ * Whether `cmd` runs from PATH. A PATH lookup answers without starting a process (a `--version` run took 13–16 ms on the
+ * startup path); only when it finds nothing is the command tried, as before, which also covers a launcher PATH alone
+ * does not show.
+ */
 function commandExists(cmd: string): boolean {
+	if (findOnPath(cmd) !== undefined) return true;
 	try {
 		const result = spawnSync(cmd, ["--version"], { stdio: "pipe" });
 		// Check for ENOENT error (command not found)

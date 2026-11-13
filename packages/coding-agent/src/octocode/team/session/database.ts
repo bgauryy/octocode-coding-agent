@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/features/index.ts";
-import { type agentEvents, AgentDbError } from "../../../../../db/src/api.ts";
+import { type agentEvents, AgentDbError, isBusy } from "../../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
 import type { Ask } from "../asks.ts";
@@ -27,6 +27,8 @@ export class TeamDatabase {
 	private events: { emit(channel: string, data: unknown): void } | undefined;
 	/** Every agent's join, state change and end, whichever process wrote it (`lifecycle-bus.ts`); the ticker feeds it when the database changes. */
 	readonly lifecycle: AgentLifecycleBus;
+	/** The last view a read returned, shown again while another process holds the database. */
+	private shown: TeamView | undefined;
 	/** Why the database cannot be used at all (a foreign file); shown in /agents and the footer. */
 	private schemaProblem: string | undefined;
 
@@ -114,9 +116,13 @@ export class TeamDatabase {
 	snapshot(): TeamView {
 		try {
 			const db = this.existing();
-			return db ? { members: db.list(), traffic: db.recent() } : { members: [], traffic: [] };
+			const view = db ? { members: db.list(), traffic: db.recent() } : { members: [], traffic: [] };
+			this.shown = view;
+			return view;
 		} catch (error) {
 			if (this.schemaProblem) return { members: [], traffic: [], error: this.schemaProblem };
+			// Another process held the database for this instant (reads never wait for it): keep showing the last view.
+			if (isBusy(error) && this.shown) return { ...this.shown, retrying: true };
 			return {
 				members: [],
 				traffic: [],

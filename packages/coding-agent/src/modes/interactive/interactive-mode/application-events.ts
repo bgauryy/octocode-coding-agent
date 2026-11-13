@@ -49,6 +49,9 @@ function renderRebuild(host: Host): void {
 	for (const entry of entries) host.entriesRenderedByRebuild.add(entry.id);
 }
 
+/** Assistant rows tracked before the first check for rows that left the transcript (`forgetDetached`). */
+const SWEEP_MIN = 64;
+
 /** Both live transcript adapters consume these semantic events; native events retain terminal controls and diagnostics. */
 export function applicationRenderer(host: Host, port: ApplicationService): (event: ApplicationEvent) => void {
 	const messages = new Map<string, ApplicationMessage>();
@@ -70,14 +73,20 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		requestRender: () => host.ui.requestRender(),
 	});
 	// A rebuild or compaction disposes rendered messages without an event here; drop what left the transcript, so the
-	// maps do not keep disposed components (and their content) alive for the rest of the session.
+	// maps do not keep disposed components (and their content) alive for the rest of the session. The check reads every
+	// row of the transcript (and reading the rows makes the next frame walk them all), so it runs once the map has doubled
+	// since the last check, not per message: the map holds at most twice the rows still shown, at a cost that does not
+	// grow with the transcript per message.
+	let sweepAt = SWEEP_MIN;
 	const forgetDetached = () => {
+		if (assistants.size < sweepAt) return;
 		const mounted = new Set(host.chatContainer.children);
 		for (const [id, component] of assistants)
 			if (!mounted.has(component)) {
 				assistants.delete(id);
 				messages.delete(id);
 			}
+		sweepAt = Math.max(SWEEP_MIN, assistants.size * 2);
 	};
 	const showMessage = (received: ApplicationMessage) => {
 		const message = fullContent.message(received, readAsset);
@@ -147,6 +156,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 			case "session.reset":
 				messages.clear();
 				assistants.clear();
+				sweepAt = SWEEP_MIN;
 				host.pendingTools.clear();
 				host.streamingComponent = undefined;
 				disposeTranscript(host.chatContainer);

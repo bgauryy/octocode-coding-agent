@@ -80,15 +80,26 @@ export function updateTask(
 				if (getItem(db, repo, task.owner.ref)?.state === "done")
 					throw new TaskError(`Reopen ${task.owner.ref} before reopening its task ${task.ref}.`);
 			}
-			const at = now();
 			const assignee = state === "ongoing" ? actor.id : state === "todo" ? null : (task.assignee ?? null);
+			const reason = input.reason === undefined ? task.reason : storedText(input.reason);
+			const result = input.result === undefined ? task.result : storedText(input.result);
+			// An authorized retry with the same result must not advance the version or duplicate the audit entry.
+			if (
+				state === task.state &&
+				goal === task.goal &&
+				reason === task.reason &&
+				result === task.result &&
+				assignee === (task.assignee ?? null)
+			)
+				return task;
+			const at = now();
 			const changed = tasks.updateTask(
 				db,
 				task.rowId,
 				{
 					goal,
-					reason: input.reason === undefined ? task.reason : storedText(input.reason),
-					result: input.result === undefined ? task.result : storedText(input.result),
+					reason,
+					result,
 					state,
 					assignee,
 					at,

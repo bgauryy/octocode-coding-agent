@@ -1,4 +1,5 @@
 import { HistoryRepair } from "./repair.ts";
+import { repairOnStart, writeOwnRows } from "./repair-stamps.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { agentEvents } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
@@ -25,8 +26,11 @@ export function registerArchiveLifecycle(
 	let unsubscribe: (() => void) | undefined;
 	let lastProblem: string | undefined;
 	let retry: ReturnType<typeof setTimeout> | undefined;
-	let queued: { timer: ReturnType<typeof setImmediate>; project: () => void } | undefined;
+	let queued: { timer: ReturnType<typeof setImmediate>; project: () => Promise<void> } | undefined;
+	/** Moves at each session start and stop: a projection of an ended session schedules no retry. */
+	let generation = 0;
 	const stop = () => {
+		generation += 1;
 		unsubscribe?.();
 		unsubscribe = undefined;
 		// A projection the last commits asked for runs now: the session is ending or being replaced.
@@ -34,12 +38,26 @@ export function registerArchiveLifecycle(
 		queued = undefined;
 		if (pending) {
 			clearImmediate(pending.timer);
-			pending.project();
+			void pending.project();
 		}
 		if (retry) clearTimeout(retry);
 		retry = undefined;
 	};
+	/**
+	 * Whether `ctx` still belongs to the live session. A disposed session marks its ctx stale without a
+	 * `session_shutdown`, so this instance would stay subscribed to the shared database's commits: it stops itself.
+	 */
+	const live = (ctx: ExtensionContext): boolean => {
+		try {
+			void ctx.hasUI;
+			return true;
+		} catch {
+			stop();
+			return false;
+		}
+	};
 	const report = (ctx: ExtensionContext, error: unknown) => {
+		if (!live(ctx)) return;
 		const message = `Archive persistence: ${errorMessage(error)}`;
 		if (message === lastProblem) return;
 		lastProblem = message;
@@ -56,37 +74,59 @@ export function registerArchiveLifecycle(
 			const workspace = registeredWorkspace(ctx.cwd, agent);
 			let busy = 0;
 			let projectedSequence: number | undefined;
-			const project = () => {
-				if (!options.canProject()) return;
-				try {
-					const sequence = agentEvents.latestSequence(agent.db, workspace.id);
-					if (sequence === projectedSequence) return;
-					projectAgents(agent, workspace.root, workspace);
-					projectedSequence = sequence;
-					lastProblem = undefined;
-					busy = 0;
-				} catch (error) {
-					// Another process is writing the same generated view; the events are already committed. Project again
-					// shortly (one pending retry, however many commits arrive) and warn only when the lock never frees.
-					if (isRecord(error) && error.code === "ELOCKED" && busy < PROJECTION_RETRIES) {
-						busy += 1;
-						retry ??= setTimeout(() => {
-							retry = undefined;
-							project();
-						}, PROJECTION_RETRY_MS);
-						retry.unref?.();
-						return;
+			// At most one projection writes at a time; a request meanwhile runs once after it, with the newest events.
+			let running: Promise<void> | undefined;
+			let again = false;
+			const run = (): Promise<void> => {
+				running = (async () => {
+					try {
+						const sequence = agentEvents.latestSequence(agent.db, workspace.id);
+						if (sequence === projectedSequence) return;
+						await projectAgents(agent, workspace.root, workspace);
+						projectedSequence = sequence;
+						lastProblem = undefined;
+						busy = 0;
+					} catch (error) {
+						// The session ended or was replaced while this ran (its last projection runs at stop): its ctx is stale
+						// and must not be touched. The view is derived from committed events, so the next session projects again.
+						if (generation !== session) return;
+						// Another process is writing the same generated view; the events are already committed. Project again
+						// shortly (one pending retry, however many commits arrive) and warn only when the lock never frees.
+						if (isRecord(error) && error.code === "ELOCKED" && busy < PROJECTION_RETRIES) {
+							busy += 1;
+							retry ??= setTimeout(() => {
+								retry = undefined;
+								void project();
+							}, PROJECTION_RETRY_MS);
+							retry.unref?.();
+							return;
+						}
+						report(ctx, error);
 					}
-					report(ctx, error);
-				}
+				})().finally(() => {
+					running = undefined;
+					if (!again) return;
+					again = false;
+					void run();
+				});
+				return running;
 			};
+			const project = (): Promise<void> => {
+				if (!options.canProject() || !live(ctx)) return Promise.resolve();
+				if (running) {
+					again = true;
+					return running;
+				}
+				return run();
+			};
+			const session = ++generation;
 			// The view is derived: a commit only asks for it. However many commits land in one turn of the event loop, one
 			// projection runs after it, off the committing caller's path, and skips when the newest event is already shown.
 			unsubscribe = agent.onCommit(() => {
 				queued ??= {
 					timer: setImmediate(() => {
 						queued = undefined;
-						project();
+						void project();
 					}),
 					project,
 				};
@@ -108,8 +148,9 @@ export function registerArchiveLifecycle(
 					},
 				}),
 			);
-			await new HistoryRepair(agent).transcript(file);
-			project();
+			// Only what the transcript appended since the last complete repair of this file is read (a whole read otherwise).
+			await repairOnStart(agent, new HistoryRepair(agent), file);
+			await project();
 		} catch (error) {
 			report(ctx, error);
 		}
@@ -120,11 +161,14 @@ export function registerArchiveLifecycle(
 		try {
 			const agent = sharedAgentDb();
 			const sessionId = ctx.sessionManager.getSessionId();
-			saveCompaction(agent, ctx.cwd, sessionId, event.compactionEntry, {
-				transcript,
-				activationId: activationId(ctx.sessionManager),
-				agentId: options.agentId(),
-			});
+			// The start offset of this transcript stays usable after this process's own row (`writeOwnRows`).
+			writeOwnRows(agent, transcript, sessionId, () =>
+				saveCompaction(agent, ctx.cwd, sessionId, event.compactionEntry, {
+					transcript,
+					activationId: activationId(ctx.sessionManager),
+					agentId: options.agentId(),
+				}),
+			);
 			await writeSummaryLibrary(agent, sessionId, process.env, ctx.cwd);
 		} catch (error) {
 			report(ctx, error);

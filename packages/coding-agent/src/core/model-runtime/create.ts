@@ -11,7 +11,7 @@ import { personalizeOpenRouterCatalog } from "@octocodeai/octocode-ai/providers/
 import { setUserAgentVersion } from "@octocodeai/octocode-ai/utils/user-agent";
 import { getAgentDir, getLegacyProviderDirs, VERSION } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
-import { AuthStorage as DefaultAuthStorage } from "../auth-storage.ts";
+import { AuthStorage as DefaultAuthStorage, ReadOnlyAuthStorage } from "../auth-storage.ts";
 import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
 import { ModelConfig } from "../model-config.ts";
 import { withCopilotEnvSource } from "../provider-sources/copilot-env.ts";
@@ -42,7 +42,7 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
 	const providers = createBuiltinProviders(options.catalogBaseUrl);
 	const credentials = new RuntimeCredentials(
-		options.credentials ?? defaultCredentialStore(options.authPath, modelsPath, providers),
+		options.credentials ?? createDefaultCredentialStore({ ...options, modelsPath: modelsPath ?? null }, providers),
 	);
 	const config = await ModelConfig.load(modelsPath);
 	const modelsStore =
@@ -58,13 +58,14 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
  * auth.json files back it read-only (the same rule that layers their models.json under Octocode's in `ModelConfig.load`).
  * A provider keyed in Octocode's own models.json, or a built-in provider without an OAuth sign-in, skips their entries.
  */
-function defaultCredentialStore(
-	authPathOption: string | undefined,
-	modelsPath: string | undefined,
-	providers: readonly Provider[],
+export function createDefaultCredentialStore(
+	options: Pick<CreateModelRuntimeOptions, "authPath" | "modelsPath" | "readOnlyCredentials"> = {},
+	providers: readonly Provider[] = createBuiltinProviders(undefined),
 ) {
-	const authPath = authPathOption ?? join(getAgentDir(), "auth.json");
-	const storage = DefaultAuthStorage.create(authPath);
+	const authPath = options.authPath ?? join(getAgentDir(), "auth.json");
+	const modelsPath =
+		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
+	const storage = options.readOnlyCredentials ? new ReadOnlyAuthStorage(authPath) : DefaultAuthStorage.create(authPath);
 	const fallbackDirs = getLegacyProviderDirs(dirname(authPath));
 	if (!fallbackDirs.length) return storage;
 	const builtin = new Map(providers.map((provider) => [provider.id, provider]));

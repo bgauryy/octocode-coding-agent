@@ -1,4 +1,5 @@
 import type { Component } from "../tui.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 
 /**
  * Spacer component that renders empty lines
@@ -12,8 +13,10 @@ export class Spacer implements Component {
 	}
 
 	setLines(lines: number): void {
-		if (lines !== this.lines) this.cached = undefined;
+		if (lines === this.lines) return;
+		this.cached = undefined;
 		this.lines = lines;
+		renderChanged(this);
 	}
 
 	invalidate(): void {
@@ -29,3 +32,5 @@ export class Spacer implements Component {
 		return this.cached;
 	}
 }
+
+trackRenderChanges(Spacer.prototype);

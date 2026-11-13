@@ -100,6 +100,28 @@ describe("a subagent child over RPC", () => {
 		expect(outcome.text).toContain("TASK");
 	});
 
+	it("does not stop a child as stalled while its turn waits longer than its idle limit", async () => {
+		let open: () => void = () => undefined;
+		const ready = new Promise<void>((resolve) => (open = resolve));
+		const spawned: number[] = [];
+		const run = runSubagent({
+			task: "echo task held",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-held" },
+			onProgress: () => undefined,
+			onSpawn: (pid) => spawned.push(pid),
+			ready: () => ready,
+			// The watchdog ticks every 250 ms: four idle limits pass while the turn waits.
+			limits: { idleMs: 500, busyMs: 60_000 },
+		});
+		await vi.waitFor(() => expect(spawned).toHaveLength(1));
+		await new Promise((resolve) => setTimeout(resolve, 2_000));
+		open();
+		const outcome = await run;
+		expect(outcome.text).toContain("TASK");
+	}, 15_000);
+
 	it("sends no task when the run is stopped while its turn waits", async () => {
 		const log = childLog();
 		const controller = new AbortController();

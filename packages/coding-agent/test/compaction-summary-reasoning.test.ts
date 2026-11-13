@@ -9,6 +9,7 @@ import {
 	generateSummary,
 	generateSummaryWithUsage,
 } from "../src/core/compaction/index.ts";
+import { SUMMARY_MAX_OUTPUT_TOKENS, SUMMARY_THINKING_CEILING } from "../src/core/compaction/settings.ts";
 
 const { completeSimpleMock } = vi.hoisted(() => ({
 	completeSimpleMock: vi.fn(),
@@ -74,7 +75,7 @@ describe("generateSummary reasoning options", () => {
 		completeSimpleMock.mockResolvedValue(mockSummaryResponse);
 	});
 
-	it("uses the provided thinking level for reasoning-capable models", async () => {
+	it("caps the session's thinking level at low for reasoning-capable models", async () => {
 		const result = await generateSummaryWithUsage(
 			messages,
 			createModel(true),
@@ -92,9 +93,63 @@ describe("generateSummary reasoning options", () => {
 
 		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
 		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
-			reasoning: "medium",
+			reasoning: SUMMARY_THINKING_CEILING,
 			apiKey: "test-key",
 		});
+	});
+
+	it.each([
+		["minimal", "minimal"],
+		["low", "low"],
+		["high", "low"],
+		["xhigh", "low"],
+		["max", "low"],
+	] as const)("sends a %s session's summary at %s thinking", async (session, sent) => {
+		await generateSummary(
+			messages,
+			createModel(true),
+			undefined,
+			"k",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			session,
+		);
+		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({ reasoning: sent });
+	});
+
+	it("caps a summary's output at the summary cap, within the model's own limit", async () => {
+		await generateSummary(
+			messages,
+			createModel(true, 128_000),
+			undefined,
+			"k",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"high",
+		);
+		await generateSummary(messages, createModel(false, 8192), undefined, "k");
+		expect(completeSimpleMock.mock.calls.map((call) => call[2].maxTokens)).toEqual([SUMMARY_MAX_OUTPUT_TOKENS, 8192]);
+		expect(SUMMARY_MAX_OUTPUT_TOKENS).toBe(32_768);
+	});
+
+	it("sends every request of a split-turn compaction with the same cap and thinking ceiling", async () => {
+		const preparation: CompactionPreparation = {
+			firstKeptEntryId: "entry-keep",
+			messagesToSummarize: messages,
+			turnPrefixMessages: messages,
+			isSplitTurn: true,
+			tokensBefore: 100,
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { enabled: true, reserveTokens: 2000, keepRecentTokens: 20 },
+		};
+		await compact(preparation, createModel(true, 128_000), "k", undefined, undefined, undefined, "xhigh");
+		expect(completeSimpleMock).toHaveBeenCalledTimes(2);
+		for (const call of completeSimpleMock.mock.calls)
+			expect(call[2]).toMatchObject({ maxTokens: SUMMARY_MAX_OUTPUT_TOKENS, reasoning: "low" });
 	});
 
 	it("preserves the string result from generateSummary", async () => {

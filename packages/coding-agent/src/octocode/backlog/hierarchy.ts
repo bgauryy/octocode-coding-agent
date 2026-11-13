@@ -28,6 +28,26 @@ export function checkHierarchy(db: Db, repo: string, before: Item, input: Entity
 		throw new BacklogError(`${before.ref} is an epic with child items: move them elsewhere before changing its type.`);
 }
 
+/** Checks changed hierarchy/dependency edges without recursion, including boards with long chains. */
+export function checkWaitingCycle(db: Db, repo: string): void {
+	const items = list(db, repo).items;
+	const edges = new Map(items.map((item) => [item.ref, item.dependsOn.map((ref) => ref.id)]));
+	for (const item of items) if (item.parentId) edges.get(item.parentId)?.push(item.ref);
+	const incoming = new Map(items.map((item) => [item.ref, 0]));
+	for (const targets of edges.values())
+		for (const target of targets) if (incoming.has(target)) incoming.set(target, incoming.get(target)! + 1);
+	const ready = items.filter((item) => incoming.get(item.ref) === 0).map((item) => item.ref);
+	for (let index = 0; index < ready.length; index += 1) {
+		for (const target of edges.get(ready[index]) ?? []) {
+			const count = incoming.get(target);
+			if (count === undefined) continue;
+			incoming.set(target, count - 1);
+			if (count === 1) ready.push(target);
+		}
+	}
+	if (ready.length !== items.length) throw new BacklogError("Hierarchy and dependencies would create a waiting cycle.");
+}
+
 /**
  * An epic with items takes its state from them (`deriveEpicState`), so a direct move between backlog, todo and ongoing is
  * refused, as the board does. Closing it (state done: the tool supplies the completion once its items are done, see
@@ -53,13 +73,12 @@ export function checkEpicState(db: Db, repo: string, item: Item, input: { state?
 }
 
 /**
- * The refusal for closing an item that still has open tasks, naming them on one line; undefined when none is open. Tasks
- * are the user's checklist (`/backlog` and the web board write them; no tool does), so the refusal names where they end.
+ * The refusal for closing an item with open steps. Completed steps can be reported by tool; the board drops unneeded ones.
  */
 export function openTasksRefusal(db: Db, repo: string, item: Item): string | undefined {
 	const open = tasks.listTasks(db, { repo, itemId: item.rowId, states: ["todo", "ongoing"] });
 	if (!open.length) return undefined;
 	const names = open.slice(0, 5).map((task) => `T${task.seq}`);
 	const more = open.length > names.length ? ` and ${open.length - names.length} more` : "";
-	return `${item.ref} has open tasks: ${names.join(", ")}${more}: the user finishes or drops them on the backlog board (/backlog) first.`;
+	return `${item.ref} has open tasks: ${names.join(", ")}${more}: finish completed steps with backlog step (id T…, note: result and checks); the user drops unneeded steps on the backlog board (/backlog).`;
 }

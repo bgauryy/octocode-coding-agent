@@ -1,4 +1,4 @@
-import { agentEvents, agents, compactions } from "../../../../db/src/api.ts";
+import { agentEvents, agents, compactions, type Db } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { matchTexts, HISTORY_BYTES } from "../history/search.ts";
@@ -72,7 +72,7 @@ export function getRecord(cwd: string, id: string): string {
 		if (event) return JSON.stringify(event, null, 2);
 	} else if (id.startsWith("compaction:")) {
 		const [, sessionId, entryId] = id.split(":");
-		const row = sessionId && entryId ? compactions.get(agent.db, sessionId, entryId) : undefined;
+		const row = sessionId && entryId ? compactions.get(agent.mirror.db, sessionId, entryId) : undefined;
 		const own = new Set(ownArchives().map((folder) => path.basename(path.dirname(folder))));
 		if (row && (row.workspace === workspace || own.has(row.sessionId))) return summaryText(row);
 	} else if (id.startsWith("session:")) {
@@ -80,7 +80,7 @@ export function getRecord(cwd: string, id: string): string {
 		const history = historyScope(cwd).find((row) => row.id === sessionId);
 		const own = new Set(ownArchives().map((folder) => path.basename(path.dirname(folder))));
 		const summaries = compactions
-			.forSession(agent.db, sessionId)
+			.forSession(agent.mirror.db, sessionId)
 			.filter((row) => row.workspace === workspace || own.has(sessionId));
 		if (summaries.length || history)
 			return JSON.stringify(
@@ -130,12 +130,12 @@ const field = (label: string, value: unknown): string | undefined =>
 /** A source's rows below `before` (newest first), at most `count`, each with its full text and its index line. */
 function sourceRows(
 	source: DataSource,
-	scope: { db: ReturnType<typeof sharedAgentDb>["db"]; workspace: string; own: string[] },
+	scope: { db: Db; mirror: Db; workspace: string; own: string[] },
 	before: number,
 	count: number,
 	params: ReadParams,
 ): RecordHit[] {
-	const { db, workspace, own } = scope;
+	const { db, mirror, workspace, own } = scope;
 	if (source === "events")
 		return agentEvents.list(db, workspace, before, count, params).map((row) => ({
 			id: `event:${row.id}`,
@@ -150,7 +150,7 @@ function sourceRows(
 			source,
 		}));
 	if (source === "compactions")
-		return compactions.visible(db, workspace, own, before, count, params.keywords).map((row) => {
+		return compactions.visible(mirror, workspace, own, before, count, params.keywords).map((row) => {
 			const id = `compaction:${row.sessionId}:${row.entryId}`;
 			const tldr = summarySection(splitSummary(row.summary).body, TLDR_HEADING)
 				.filter((line) => !/^topics:/i.test(line))
@@ -165,7 +165,7 @@ function sourceRows(
 			};
 		});
 	if (source === "sessions")
-		return compactions.sessionIndex(db, workspace, own, before, count).map((row) => {
+		return compactions.sessionIndex(mirror, workspace, own, before, count).map((row) => {
 			const id = `session:${row.sessionId}`;
 			return {
 				id,
@@ -233,6 +233,7 @@ export async function readRecords(
 	const agent = sharedAgentDb();
 	const scope = {
 		db: agent.db,
+		mirror: agent.mirror.db,
 		workspace: registeredWorkspace(cwd, agent).id,
 		own: ownArchives().map((folder) => path.basename(path.dirname(folder))),
 	};

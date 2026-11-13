@@ -39,6 +39,20 @@ describe("backlog discovery in the native footer", () => {
 		expect(footerLines(state, "main", statuses, theme, 60)[1]).toContain("/web");
 	});
 
+	it("keeps completed step progress and the web entry point at ordinary terminal widths", () => {
+		const statuses = new Map([
+			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],
+			[STATUS.steps, { text: "2/3 steps done · 1 dropped" }],
+		]);
+		for (const width of [80, 100, 120, 200]) {
+			const lines = footerLines(state, "main", statuses, theme, width);
+			expect(lines[1]).toContain("2/3 steps done");
+			expect(lines[1]).toContain("1 dropped");
+			expect(lines[1]).toContain("/web");
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+		}
+	});
+
 	it("shortens the hint to /web while preserving location and usage at common terminal widths", () => {
 		const statuses = new Map([
 			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],

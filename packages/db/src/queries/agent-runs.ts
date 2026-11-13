@@ -381,7 +381,13 @@ export function openForItems(
 	return rows.map((row) => ({ seq: num(row.backlog_seq), agentId: String(row.agent_id) }));
 }
 
-/** Deletes the runs that ended (or, never ended, began) before `cutoff`: the retention window (`retention.ts`). Returns how many went. */
+/** Deletes ended or orphaned old runs; a matching registered agent keeps its active run regardless of age. */
 export function purgeBefore(db: DatabaseSync, cutoff: number): number {
-	return Number(db.prepare("DELETE FROM agent_runs WHERE COALESCE(ended_at, started_at) < ?").run(cutoff).changes);
+	return Number(
+		db
+			.prepare(`DELETE FROM agent_runs WHERE COALESCE(ended_at, started_at) < ? AND
+			(ended_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM agents
+			WHERE agents.id = agent_runs.agent_id AND agents.registration_id = agent_runs.registration_id))`)
+			.run(cutoff).changes,
+	);
 }

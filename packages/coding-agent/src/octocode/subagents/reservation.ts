@@ -88,8 +88,10 @@ export async function awaitSiblings<T>(
 	while (current.waitOn.length > 0) {
 		onWait?.(current);
 		await team.childLeases.released(current.waitOn, signal);
+		signal.throwIfAborted();
 		current = replan();
 	}
+	signal.throwIfAborted();
 	return use(current);
 }
 

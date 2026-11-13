@@ -70,7 +70,7 @@ export class TimerScheduler {
 	refresh(): void {
 		if (this.stopped) return;
 		const db = this.deps.db().db;
-		this.syncWatchers();
+		this.syncUntil();
 		this.next = timers.nextDue(db, this.deps.sessionId);
 		for (const id of this.held) if (timers.get(db, id)?.status !== "active") this.held.delete(id);
 		if (this.held.size === 0) this.release();
@@ -149,11 +149,17 @@ export class TimerScheduler {
 		}
 	}
 
-	/** Starts an event source for each active watched row that has none, and stops those of rows that ended. */
-	private syncWatchers(): void {
+	/** Caps condition checks at their deadline and reconciles their event sources. */
+	private syncUntil(): void {
 		const { watch } = this.deps;
 		const db = this.deps.db().db;
 		const active = new Map(timers.activeUntil(db, this.deps.sessionId).map((row) => [row.id, row]));
+		for (const row of active.values()) {
+			if (row.deadline_at !== null && row.due_at > row.deadline_at) {
+				timers.reschedule(db, row.id, row.deadline_at);
+				this.deps.wrote?.();
+			}
+		}
 		for (const id of this.seen) if (!active.has(id)) this.unwatch(id);
 		this.seen = new Set(active.keys());
 		if (!watch) return;
@@ -166,10 +172,20 @@ export class TimerScheduler {
 			const entry = { stop: (): void => undefined, live: true, retryAt: 0 };
 			this.watchers.set(row.id, entry);
 			const failed = () => {
+				if (this.stopped || this.watchers.get(row.id) !== entry) return;
 				entry.live = false;
 				entry.retryAt = this.now() + WATCH_RETRY_MS;
 				// Polling covers a dead event source: bring the next check forward to the no-event interval.
-				if (!this.stopped) timers.reschedule(this.deps.db().db, row.id, this.now() + conditionTiming(condition).pollMs);
+				try {
+					const current = timers.get(db, row.id);
+					if (current?.status !== "active") return;
+					const due = Math.min(current.due_at, this.now() + conditionTiming(condition).pollMs);
+					timers.reschedule(db, row.id, due);
+					this.deps.wrote?.();
+					this.next = Math.min(this.next ?? due, due);
+				} catch (error) {
+					this.deps.failed?.(error);
+				}
 			};
 			try {
 				entry.stop = watch(condition, row.cwd ?? process.cwd(), () => this.poke(row.id), failed);

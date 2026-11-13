@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { probeAcpSignIn } from "../../../../acp/src/client/probe.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
+import { spawnProcess, waitForChildProcess } from "../../../../common/src/child-process.ts";
 import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 import { findOnPath } from "../../../../common/src/find-on-path.ts";
 import { getAgentDir } from "../../config.ts";
@@ -58,7 +58,15 @@ function stamp(spec: RunnerSpec, env: NodeJS.ProcessEnv): { cli?: string; adapte
 	return {
 		cli,
 		adapter,
-		key: JSON.stringify([cli, cli && mtime(cli), adapter, adapter && mtime(adapter), ...files.map(mtime)]),
+		key: JSON.stringify([
+			cli,
+			cli && mtime(cli),
+			adapter,
+			adapter && mtime(adapter),
+			...files.map((file) => [file, mtime(file)]),
+			// A runner may use an exported token instead of a file; never store the token itself.
+			sha256(JSON.stringify(spec.keep.map((name) => [name, env[name]]))),
+		]),
 	};
 }
 
@@ -82,37 +90,40 @@ function writeCache(agentDir: string, cache: Cache): void {
 }
 
 /** Runs a status command with the cleaned environment; resolves with its output (read, never kept) and exit code. */
-function quiet(command: string, args: readonly string[], env: NodeJS.ProcessEnv, signal?: AbortSignal) {
-	return new Promise<{ output: string; code: number | null }>((resolve, reject) => {
-		const child = spawn(command, [...args], {
-			env,
-			cwd: os.tmpdir(),
-			stdio: ["ignore", "pipe", "pipe"],
-			timeout: CHECK_MS,
-			windowsHide: true,
-			...(signal ? { signal } : {}),
-		});
-		let output = "";
-		const take = (chunk: Buffer) => {
-			if (output.length < MAX_OUTPUT) output += chunk.toString("utf8");
-		};
-		child.stdout.on("data", take);
-		child.stderr.on("data", take);
-		child.on("error", reject);
-		child.on("close", (code) => resolve({ output, code }));
+async function quiet(command: string, args: readonly string[], env: NodeJS.ProcessEnv, signal?: AbortSignal) {
+	const deadline = AbortSignal.timeout(CHECK_MS);
+	const giveUp = signal ? AbortSignal.any([signal, deadline]) : deadline;
+	giveUp.throwIfAborted();
+	const child = spawnProcess(command, [...args], {
+		env,
+		cwd: os.tmpdir(),
+		stdio: ["ignore", "pipe", "pipe"],
+		signal: giveUp,
+		killSignal: "SIGKILL",
+		windowsHide: true,
 	});
+	let output = "";
+	const take = (chunk: Buffer) => {
+		if (output.length < MAX_OUTPUT) output += chunk.toString("utf8").slice(0, MAX_OUTPUT - output.length);
+	};
+	child.stdout.on("data", take);
+	child.stderr.on("data", take);
+	const code = await waitForChildProcess(child, giveUp);
+	giveUp.throwIfAborted();
+	return { output, code };
 }
 
 /** The session check for a runner without a status command: in an empty folder of its own, removed afterwards. */
 async function sessionCheck(
 	spec: RunnerSpec,
 	adapter: string,
+	env: NodeJS.ProcessEnv,
 	signal?: AbortSignal,
 ): Promise<Pick<RunnerState, "auth" | "error">> {
 	const cwd = mkdtempSync(path.join(os.tmpdir(), "octocode-runner-check-"));
 	try {
 		const found = await probeAcpSignIn(
-			acpClientHost,
+			{ ...acpClientHost, childEnv: () => env },
 			{ command: adapter, args: [...spec.adapter.args], vendor: spec.id, cwd, timeoutMs: CHECK_MS },
 			signal,
 		);
@@ -135,7 +146,7 @@ async function check(spec: RunnerSpec, found: ReturnType<typeof stamp>, env: Nod
 			const status = await quiet(found.cli, spec.status.args, clean, signal);
 			state.auth = spec.status.read(status.output, status.code);
 		}
-		if (!state.auth && found.adapter) Object.assign(state, await sessionCheck(spec, found.adapter, signal));
+		if (!state.auth && found.adapter) Object.assign(state, await sessionCheck(spec, found.adapter, clean, signal));
 		if (!state.auth && !state.error) state.error = "its status could not be read";
 	} catch (error) {
 		state.error = errorMessage(error);
@@ -168,7 +179,7 @@ export async function checkRunners(
 			const cached = cache[spec.id];
 			if (!options.refresh && cached?.stamp === found.key) return cached.state;
 			const state = await check(spec, found, env, options.signal);
-			cache[spec.id] = { stamp: found.key, state };
+			if (!options.signal?.aborted) cache[spec.id] = { stamp: found.key, state };
 			return state;
 		}),
 	);

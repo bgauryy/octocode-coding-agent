@@ -16,7 +16,8 @@ import { mirrorOpened, mirrorReplaced, recordFork } from "./mirror.ts";
 import { backupSessionFile, repairSessionFile, type SessionRepair } from "./repair.ts";
 import { isSessionLockTimeout, lockSessionFile, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
-import { assertCompleteSessionTail, loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
+import { adoptRecovery, assertCompleteSessionTail, endSessionTail } from "./session-tail.ts";
+import { loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
 import { CURRENT_SESSION_VERSION, type FileEntry, type NewSessionOptions, type SessionEntry } from "./types.ts";
 import { blockWrites, liftWriteBlock } from "./write-recovery.ts";
@@ -265,7 +266,10 @@ export function persistEntry(state: SessionState, entry?: SessionEntry): void {
 		const file = state.sessionFile;
 		withSessionFileLock(file, () => {
 			const pending = entry && !state.unwritten.includes(entry) ? [...state.unwritten, entry] : [...state.unwritten];
+			// Part of a record a stopped writer left is sealed first, and the record naming it is merged like any other.
+			const recovery = endSessionTail(state, file, pending);
 			mergeForeignEntries(state, file, pending);
+			adoptRecovery(state, recovery, pending);
 			appendRecords(state, file, pending);
 		});
 	}

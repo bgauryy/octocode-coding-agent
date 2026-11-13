@@ -1,5 +1,3 @@
-import { TRANSCRIPTS_SCHEMA } from "./queries/transcripts.ts";
-
 /**
  * `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions.
  * Migration 9 creates it; a new file gets the same statement. `IF NOT EXISTS` keeps the step a no-op on a file that has
@@ -331,13 +329,6 @@ CREATE INDEX agent_events_agent ON agent_events(workspace_id, name, seq DESC);
 CREATE INDEX agent_events_session ON agent_events(workspace_id, session_id, seq DESC);
 ${AGENT_RUNS_SCHEMA}
 ${TIMERS_SCHEMA}
-CREATE TABLE compaction_summaries (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL, entry_id TEXT NOT NULL,
-  summary TEXT NOT NULL, committed_at INTEGER, origin_verified INTEGER NOT NULL DEFAULT 0,
-  metadata TEXT NOT NULL DEFAULT '{}', detail_file TEXT, detail_state TEXT NOT NULL DEFAULT 'missing',
-  UNIQUE(session_id, entry_id),
-  FOREIGN KEY(session_id, workspace_id) REFERENCES sessions(id, workspace_id) ON DELETE CASCADE);
-CREATE INDEX compaction_summaries_workspace ON compaction_summaries(workspace_id, seq DESC);
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL, workspace_id TEXT NOT NULL REFERENCES workspaces(id), sender TEXT NOT NULL, body TEXT NOT NULL,
   reply_required INTEGER NOT NULL DEFAULT 1, reply_to INTEGER REFERENCES messages(id) ON DELETE SET NULL,
@@ -366,7 +357,11 @@ CREATE TABLE trusted_folders (
   source TEXT NOT NULL, surface TEXT NOT NULL, decided_by TEXT NOT NULL, decided_at INTEGER NOT NULL,
   from_path TEXT, revoked_at INTEGER, revoked_by TEXT);
 CREATE UNIQUE INDEX trusted_folders_live ON trusted_folders(dev, ino) WHERE revoked_at IS NULL;
-${TRANSCRIPTS_SCHEMA}
+CREATE TABLE session_forks (
+  child_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  parent_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  child_file TEXT NOT NULL, CHECK(child_id <> parent_id));
+CREATE INDEX session_forks_parent ON session_forks(parent_id);
 ${SHELL_HISTORY_SCHEMA_V9}
 `;
 

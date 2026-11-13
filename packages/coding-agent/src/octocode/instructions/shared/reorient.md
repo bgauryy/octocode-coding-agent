@@ -1,1 +1,1 @@
-- After a compaction, resume, long run or surprise, and before reporting, reorient from the latest `<summary>` and the {{#if main}}`[After compaction]` or `[Resumed]` notes{{else}}`[After compaction]` notes or your coordinator's follow-up{{/if}}, then current state.
+- After compaction, resume, surprises, long runs and before reporting, check the latest `<summary>`, {{#if main}}`[After compaction]`/`[Resumed]`{{else}}`[After compaction]`/coordinator follow-up{{/if}} and current state; recheck changed assumptions and pending effects before retrying.

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { recordLockOwner } from "../../../common/src/lock-owner.ts";
 import { createHarness } from "./harness.ts";
 
 const lockfile = createRequire(new URL("../../src/core/session-manager/shared-file.ts", import.meta.url))(
@@ -98,7 +99,15 @@ describe("a write failure at the end of a run", () => {
 							{ triggerTurn: false },
 						);
 						const file = box.session.sessionManager.getSessionFile();
-						release = lockfile.lockSync(file, { realpath: false, lockfilePath: `${file}.lock` });
+						const unlock = lockfile.lockSync(file, { realpath: false, lockfilePath: `${file}.lock` });
+						const forget = recordLockOwner(`${file}.lock`);
+						release = () => {
+							try {
+								unlock();
+							} finally {
+								forget();
+							}
+						};
 						return { content: [{ type: "text", text: "ok" }], details: {} };
 					},
 				},
@@ -111,23 +120,35 @@ describe("a write failure at the end of a run", () => {
 			fauxAssistantMessage("done"),
 			fauxAssistantMessage("second"),
 		]);
-		return { harness, dir, release: () => release?.() };
+		return {
+			harness,
+			dir,
+			release: () => {
+				const unlock = release;
+				release = undefined;
+				unlock?.();
+			},
+		};
 	}
 
 	it("still settles, so abort, waits and the next prompt do not hang", async () => {
 		const { harness, dir, release } = await wedgeAttempt();
-		// The reply was produced, so the held message's failed write does not fail the run: it stays queued, with a warning.
-		await harness.session.prompt("go");
-		expect(harness.session.lastRunOutcome?.status).toBe("completed");
-		expect(harness.session.lastRunOutcome?.warning).toMatch(/lock/i);
-		expect(harness.session.isStreaming).toBe(false);
-		expect(harness.session.isIdle).toBe(true);
-		await harness.session.waitForIdle();
-		await harness.session.abort();
-		release();
-		await harness.session.prompt("again");
-		expect(harness.session.lastRunOutcome?.status).toBe("completed");
-		harness.cleanup();
-		rmSync(dir, { recursive: true, force: true });
+		try {
+			// The reply was produced, so the held message's failed write does not fail the run: it stays queued, with a warning.
+			await harness.session.prompt("go");
+			expect(harness.session.lastRunOutcome?.status).toBe("completed");
+			expect(harness.session.lastRunOutcome?.warning).toMatch(/lock/i);
+			expect(harness.session.isStreaming).toBe(false);
+			expect(harness.session.isIdle).toBe(true);
+			await harness.session.waitForIdle();
+			await harness.session.abort();
+			release();
+			await harness.session.prompt("again");
+			expect(harness.session.lastRunOutcome?.status).toBe("completed");
+		} finally {
+			release();
+			harness.cleanup();
+			rmSync(dir, { recursive: true, force: true });
+		}
 	}, 30000);
 });

@@ -24,10 +24,14 @@ function readJson<S extends TSchema>(file: string, schema: S): Static<S> | undef
 	}
 }
 
-/** Owner-only atomic replacement: a reader sees the old record or the new one, and a failed write leaves no temporary file. */
+/**
+ * Owner-only atomic replacement: a reader sees the old record or the new one, and a failed write leaves no temporary
+ * file. Not flushed to disk (`durability: "none"`): a record names a live process, which a crash ends, and readers drop a
+ * record that does not parse or whose process is gone, so a flush would only hold up the writer.
+ */
 function writeJson(file: string, value: unknown): void {
 	privateDir(path.dirname(file));
-	atomicWriteFileSync(file, `${JSON.stringify(value)}\n`, { mode: PRIVATE_FILE_MODE });
+	atomicWriteFileSync(file, `${JSON.stringify(value)}\n`, { mode: PRIVATE_FILE_MODE, durability: "none" });
 }
 
 export const readDaemonRecord = (file: string): DaemonRecord | undefined => readJson(file, DaemonRecordSchema);

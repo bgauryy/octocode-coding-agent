@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import { type ExtensionAPI, readsMessagesOnly } from "../../../core/features/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
@@ -144,16 +144,20 @@ export function registerMessageHooks(
 		);
 	};
 
-	api.on("context", async (event, ctx) => {
-		const signal = messageAbort.signal;
-		for (const message of event.messages) {
-			for (const envelope of receivedMessages(message)) {
-				if (signal.aborted) return undefined;
-				await messageReceive(envelope, ctx);
+	// Observers get envelopes built from each message, never the message itself.
+	api.on(
+		"context",
+		readsMessagesOnly(async (event, ctx) => {
+			const signal = messageAbort.signal;
+			for (const message of event.messages) {
+				for (const envelope of receivedMessages(message)) {
+					if (signal.aborted) return undefined;
+					await messageReceive(envelope, ctx);
+				}
 			}
-		}
-		return undefined;
-	});
+			return undefined;
+		}),
+	);
 
 	return { messageSend, messageReceive };
 }

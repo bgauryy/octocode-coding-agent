@@ -102,6 +102,7 @@ export function switchTuiMode(
 		onRightClickPaste: host.onRightClickPaste,
 		fullscreenCopyOnSelect: settingsManager.getFullscreenCopyOnSelect(),
 		fullscreenWheelScrollLines: settingsManager.getFullscreenWheelScrollLines(),
+		replayRows: settingsManager.getReplayRows(),
 	});
 	nextUi.setClearOnShrink(clearOnShrink);
 	nextUi.onDebug = onDebug;

@@ -31,6 +31,11 @@ export interface TUI extends Component {
 	 * Fullscreen redraws any row freely and answers false.
 	 */
 	isAboveViewport?(component: Component): boolean;
+	/**
+	 * Regular mode: the most rows a replay of the transcript writes (after a width change, a resume from the background,
+	 * or a change above the viewport); earlier rows are left out behind one marker row. 0 replays every row.
+	 */
+	setReplayRows?(rows: number): void;
 	setFocus(component: Component | null): void;
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
 	hideOverlay(): void;

@@ -1,13 +1,17 @@
 import fs from "node:fs";
 import { bindingKey } from "../binding.ts";
 import type { AgentDb } from "../db.ts";
+import * as forks from "../queries/forks.ts";
+import * as sessions from "../queries/sessions.ts";
 import * as transcripts from "../queries/transcripts.ts";
 import * as workspaces from "../queries/workspaces.ts";
 import { planSave, type SaveSteps, startSave } from "./transcript-save.ts";
 
 /**
  * The session-mirror commands the database writer runs (`client.ts`, `worker.ts`). The session file is the record; these
- * rows are a derived copy. Every command is plain data: its stamps were taken by the session writer under its file lock,
+ * rows are a derived copy in the transcript mirror file (`agent.mirror`). The session's workspace binding and fork edges
+ * are coordination rows (`agent.db`), written in a coordination transaction nested inside the mirror's (the mirror's lock
+ * first, always). Every command is plain data: its stamps were taken by the session writer under its file lock,
  * right after the bytes they describe, and are never re-read here, so a stored stamp cannot get ahead of the stored entries.
  */
 
@@ -61,17 +65,20 @@ export type TranscriptCommand =
 export type TranscriptResult = "saved" | "current" | "stale" | "skipped";
 
 /**
- * Run one command as one transaction of `agent`; a `save` writes only what differs from the stored rows, and with
- * `steps` a large difference goes in several bounded transactions (`transcript-save.ts`). Throws what the caller reports
- * as a pending mirror.
+ * Run one command as one transaction of the mirror (with a nested coordination one for the session's workspace); a
+ * `save` writes only what differs from the stored rows, and with `steps` a large difference goes in several bounded
+ * transactions (`transcript-save.ts`). Throws what the caller reports as a pending mirror.
  */
 export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand, steps?: SaveSteps): TranscriptResult {
+	const mirror = agent.mirror;
 	if (command.kind === "fork") return agent.transaction(() => linkFork(agent, command));
 	// Read before the write lock: comparing a large transcript must not hold other writers.
-	const plan = command.kind === "save" ? planSave(agent, command) : undefined;
+	const plan = command.kind === "save" ? planSave(mirror, command) : undefined;
 	let rest: (() => TranscriptResult) | undefined;
-	const result = agent.transaction((): TranscriptResult => {
-		const previous = transcripts.stamp(agent.db, command.sessionId);
+	const result = mirror.transaction((): TranscriptResult => {
+		const previous = transcripts.stamp(mirror.db, command.sessionId);
+		// The workspace a stored transcript's session is bound to: a transcript bound to another one is refused.
+		const bound = () => (previous ? sessions.byId(agent.db, command.sessionId)?.workspace_id : undefined);
 		const level =
 			previous?.file === command.file &&
 			previous.file_binding === bindingKey(command.stamp.binding) &&
@@ -80,7 +87,7 @@ export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand,
 				: previous.byte_size === command.stamp.size && previous.mtime === command.stamp.mtime);
 		if (command.kind === "sync" && !command.entries) {
 			if (!level) return "stale";
-			claimWorkspace(agent, previous.workspace_id, command.workspace);
+			agent.transaction(() => claimWorkspace(agent, bound(), command.workspace));
 			return "current";
 		}
 		if (command.kind === "sync" && !level) return "stale";
@@ -100,23 +107,25 @@ export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand,
 			previous.byte_size > command.stamp.size
 		)
 			return "current";
-		const workspaceId = claimWorkspace(agent, previous?.workspace_id, command.workspace);
-		if (!previous?.workspace_id || previous.file !== command.file)
-			transcripts.bind(agent.db, command.sessionId, workspaceId);
+		agent.transaction(() => {
+			const owner = bound();
+			const workspaceId = claimWorkspace(agent, owner, command.workspace);
+			if (!owner || previous?.file !== command.file) sessions.bind(agent.db, command.sessionId, workspaceId);
+		});
 		if (command.kind === "save") {
-			rest = startSave(agent, command, previous, plan, steps);
+			rest = startSave(mirror, command, previous, plan, steps);
 			return "saved";
 		}
 		if (command.entries?.length) {
 			transcripts.writeStamp(
-				agent.db,
+				mirror.db,
 				command.sessionId,
 				command.file,
 				command.header ?? "{}",
 				command.stamp,
 				previous?.file,
 			);
-			transcripts.insertEntries(agent.db, command.sessionId, command.entries);
+			transcripts.insertEntries(mirror.db, command.sessionId, command.entries);
 		}
 		return "saved";
 	});
@@ -138,12 +147,15 @@ function claimWorkspace(
 /** Record an explicitly created fork; its parent must already be mirrored (this queue saved it first). */
 function linkFork(agent: AgentDb, command: Extract<TranscriptCommand, { kind: "fork" }>): TranscriptResult {
 	const source = command.parent;
+	const mirror = agent.mirror.db;
 	// A stored ID came from SQLite. Its historical path is descriptive and is never resolved or opened.
-	const parent = "storedId" in source ? source.storedId : transcripts.fileOwner(agent.db, source.file)?.id;
-	if (!parent || ("expectedId" in source && source.expectedId !== parent)) return "skipped";
+	const parent = "storedId" in source ? source.storedId : transcripts.fileOwner(mirror, source.file);
+	// The parent is a session of this database (its coordination row), as the edge's foreign key requires.
+	if (!parent || ("expectedId" in source && source.expectedId !== parent) || !sessions.byId(agent.db, parent))
+		return "skipped";
 	workspaces.register(agent.db, command.workspace);
-	transcripts.bind(agent.db, command.child, command.workspace.id);
-	transcripts.linkFork(agent.db, command.child, command.childFile, parent);
+	sessions.bind(agent.db, command.child, command.workspace.id);
+	forks.link(agent.db, mirror, command.child, command.childFile, parent);
 	return "saved";
 }
 

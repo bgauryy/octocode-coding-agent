@@ -46,7 +46,7 @@ async function setup() {
 	fs.mkdirSync(cwd, { recursive: true });
 	const ctx = fakeCtx({ cwd });
 	/** Runs a call as the agent loop does: validated against the tool's validation schema, then executed. */
-	const call = async (params: Record<string, unknown>) => {
+	const call = async (params: Record<string, unknown>, signal?: AbortSignal) => {
 		const name = backlogToolName(params.op);
 		const tool = fake.tools.get(name);
 		const args = validateToolArguments(tool, {
@@ -55,7 +55,7 @@ async function setup() {
 			name,
 			arguments: { ...params, reason: "test" },
 		});
-		const result = (await tool.execute("id", args, undefined, undefined, ctx)) as { content: Array<{ text: string }> };
+		const result = (await tool.execute("id", args, signal, undefined, ctx)) as { content: Array<{ text: string }> };
 		return result.content[0].text;
 	};
 	await call({ op: "add", items: [{ ...READY, title: "first", state: "todo" }] });
@@ -93,6 +93,37 @@ describe("G1: reads run shared, writes exclusive", () => {
 		await held;
 		expect(await note).toContain("B1");
 		expect(await call({ op: "get", id: "B1" })).toContain("progress");
+	});
+
+	it.each([
+		{ op: "add", items: [{ ...READY, title: "Cancelled proposal" }] },
+		{ op: "edit", items: [{ id: "B1", title: "Cancelled edit" }] },
+	])("does not apply a queued $op after cancellation", async (params) => {
+		const { call, store } = await setup();
+		const before = store().get("B1");
+		let release!: () => void;
+		let entered!: () => void;
+		const started = new Promise<void>((resolve) => (entered = resolve));
+		const held = oneWrite(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+					entered();
+				}),
+		);
+		await started;
+		const controller = new AbortController();
+		const queued = call(params, controller.signal);
+		const refused = expect(queued).rejects.toThrow("Cancelled queued plan");
+		controller.abort(new Error("Cancelled queued plan"));
+		release();
+		await held;
+		await refused;
+		expect(store().list().total).toBe(1);
+		expect(store().get("B1")).toEqual(before);
+		// The aborted callback must release the write queue for the next operation.
+		await call({ op: "edit", items: [{ id: "B1", priority: "p1" }] });
+		expect(store().get("B1")!.priority).toBe(1);
 	});
 });
 

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSessionsDir } from "../../config.ts";
 import { WORKSPACE_STATE } from "../../storage/workspace.ts";
-import { SessionManager } from "../../core/session-manager.ts";
+import { listSessionHeaders } from "../../core/session-manager/header-listing.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { type Db, type SessionExtra, workspaces } from "../../../../db/src/api.ts";
 import { runningPid } from "../shared/session-liveness.ts";
@@ -19,9 +19,10 @@ import type { SweepSkip } from "./sweep-types.ts";
  * then removes nothing.
  */
 export async function sessionIds(dirs: readonly string[]): Promise<Set<string>> {
+	// Ids only: each file's header, never its transcript (a full listing parses every session and keeps its text).
 	const lists = await Promise.all([
 		fs.promises.readdir(getSessionsDir()).then(
-			() => SessionManager.listAll(),
+			() => listSessionHeaders(undefined),
 			(error: NodeJS.ErrnoException) => {
 				if (error.code === "ENOENT") return [];
 				throw error;
@@ -29,7 +30,7 @@ export async function sessionIds(dirs: readonly string[]): Promise<Set<string>> 
 		),
 		...dirs.map(async (dir) => {
 			await fs.promises.readdir(dir);
-			return SessionManager.listAll(dir);
+			return listSessionHeaders(undefined, dir);
 		}),
 	]);
 	return new Set(lists.flat().map((info) => info.id));

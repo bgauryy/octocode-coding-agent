@@ -359,8 +359,8 @@ async function soak(fx: Fixture): Promise<Observed> {
 	const agent = openAgentDb(agentDbPath(process.env), process.env);
 	try {
 		seen.mirror = {
-			records: transcripts.records(agent.db, reopened.getSessionId()).length,
-			byteSize: transcripts.stamp(agent.db, reopened.getSessionId())?.byte_size ?? -1,
+			records: transcripts.records(agent.mirror.db, reopened.getSessionId()).length,
+			byteSize: transcripts.stamp(agent.mirror.db, reopened.getSessionId())?.byte_size ?? -1,
 		};
 	} finally {
 		agent.close();

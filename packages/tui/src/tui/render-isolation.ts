@@ -49,10 +49,15 @@ function errorMessage(error: unknown): string {
 
 /** Render a child at a composite's boundary; the innermost boundary around a throwing component isolates it. */
 export function renderIsolated(component: Component, width: number): string[] {
+	return renderIsolatedWith(component, width, () => component.render(width));
+}
+
+/** `renderIsolated`, with `render` producing the component's rows in another form; a failure paints the fallback row. */
+export function renderIsolatedWith<T>(component: Component, width: number, render: () => T): T | string[] {
 	const listener = activeListener;
-	if (!listener) return component.render(width);
+	if (!listener) return render();
 	try {
-		const lines = component.render(width);
+		const lines = render();
 		if (reportedFailures.has(component)) reportedFailures.delete(component);
 		return lines;
 	} catch (error) {
@@ -71,6 +76,11 @@ export function renderIsolated(component: Component, width: number): string[] {
 		const text = `⚠ ${name} failed to render: ${firstLine}`;
 		return [truncateToWidth(text, Math.max(1, width))];
 	}
+}
+
+/** Whether the last isolated render of `component` failed and painted the fallback row instead. */
+export function renderFailed(component: Component): boolean {
+	return reportedFailures.has(component);
 }
 
 /** Default reporter: append the error to `octocode-tui-render-errors.log` beside the TUI's other debug logs. */

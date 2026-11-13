@@ -73,6 +73,24 @@ describe("session watch", () => {
 		expect(session.connects).toHaveLength(2);
 	});
 
+	it("forgets stale attention state while recovering a lost stream", async () => {
+		const session = fakeSession("s");
+		const changes = vi.fn();
+		const watch = new SessionWatch(session.workspace.application!, "s", changes);
+		try {
+			session.push(snapshot(true, { kind: "approval", title: "Stale approval" }));
+			await vi.waitFor(() => expect(watch.state?.needsYou).toBe("Stale approval"));
+			session.push({ ...at(9), type: "resync", reason: "overflow" });
+			await vi.waitFor(() => expect(watch.state).toBeUndefined());
+			expect(changes).toHaveBeenCalledTimes(2);
+			await vi.waitFor(() => expect(session.connects).toHaveLength(2), { timeout: 3000 });
+			session.push(snapshot(false));
+			await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		} finally {
+			watch.close();
+		}
+	});
+
 	it("orders sessions by attention: blocked first, then working, then idle, newest first within each", () => {
 		const sessions = [
 			{ id: "idle-new", startedAt: 5 },

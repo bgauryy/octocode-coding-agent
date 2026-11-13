@@ -372,7 +372,7 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 		const dir = tmp();
 		const group = await leaderlessGroup();
 		try {
-			const started = Number(groupStartTimes(group)![0].started);
+			const started = Number((await groupStartTimes(group))![0].started);
 			// The pid was reused as this group's leader after the job started: its member is older than the recorded job.
 			const reused = write(dir, "bash-1-1.job.json", { pid: group, started: String(started + 3600) });
 			expect(await reapOrphanJobs([dir])).toEqual([expect.objectContaining({ pid: group, stopped: false })]);

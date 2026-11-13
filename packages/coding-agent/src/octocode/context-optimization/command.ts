@@ -31,7 +31,7 @@ import {
 	readSkillsStore,
 	SKILL_DESCRIPTION_MAX_CHARS,
 	type SkillsStore,
-	writeSkillsStore,
+	updateSkillsStore,
 } from "./skills-store.ts";
 
 const CONTEXT_USAGE = `${APP_NAME} context list [--json]
@@ -279,7 +279,12 @@ export async function runContextCommand(args: readonly string[], options: Contex
 				planned.filter((entry) => entry.scope === scope).map((entry) => [entry.name, entry.description]),
 			);
 			if (Object.keys(mine).length)
-				writeSkillsStore(scope.dir, applySkillOverrides(scope.store, mine, values["optimized-by"]));
+				await updateSkillsStore(scope.dir, (current) => {
+					for (const name of Object.keys(mine))
+						if (current.skills[name]?.hash !== scope.store.skills[name]?.hash)
+							throw new Error(`${name}: its source changed; check the overrides again before applying.`);
+					return applySkillOverrides(current, mine, values["optimized-by"]);
+				});
 		}
 		log(
 			`Applied ${planned.length} skill description${planned.length === 1 ? "" : "s"}; agents read them from the next session start or /reload.`,

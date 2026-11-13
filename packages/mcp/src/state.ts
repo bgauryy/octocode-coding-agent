@@ -257,6 +257,8 @@ export class McpExtensionState {
 
 	readonly #uses = new RecentUseRecorder(() => join(hostPaths().agentDir(), "tool-use.json"));
 	#recent: ReadonlySet<string> | undefined;
+	/** The set the resumed session saved (`recent-session.ts`), used in place of the record. */
+	#restored: ReadonlySet<string> | undefined;
 
 	/**
 	 * The tools in use, for `mcpExposure: "recent"`: read once and kept until the session changes (`forgetRecentTools`),
@@ -268,13 +270,23 @@ export class McpExtensionState {
 		this.#recent ??=
 			this.options.recentTools ??
 			(envFlag(process.env, SUBAGENT_ENV) ? recentToolsFromEnv(process.env) : undefined) ??
+			this.#restored ??
 			recentlyUsed(join(hostPaths().agentDir(), "tool-use.json"), this.sessionCwd);
 		return this.#recent;
 	}
 
-	/** A new session reads the record again. */
-	forgetRecentTools(): void {
+	/** Whether the in-use set comes from this instance's option or the coordinator: nothing to save or restore. */
+	recentToolsHandedIn(): boolean {
+		return (
+			this.options.recentTools !== undefined ||
+			(envFlag(process.env, SUBAGENT_ENV) && recentToolsFromEnv(process.env) !== undefined)
+		);
+	}
+
+	/** A new session reads the record again; a resumed one passes the set it saved. */
+	forgetRecentTools(restored?: ReadonlySet<string>): void {
 		this.#recent = undefined;
+		this.#restored = restored;
 	}
 
 	/** Records a call of the tool, whatever the setting, so switching to `recent` starts from real use. */

@@ -31,7 +31,7 @@
 		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
 		"test": "node scripts/test-workspaces.mjs",
 		"test:changed": "yarn workspace @octocodeai/octocodecode run vitest --run --config vitest.octocode.config.ts --changed",
-		"test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/*.test.ts\" \"scripts/agent-eval/test/*.test.mjs\" \"scripts/agent-capture/test/*.test.mjs\"",
+		"test:scripts": "node --test --test-global-setup=node-test.global.ts \"scripts/*.test.mjs\" \"scripts/*.test.ts\" \"scripts/agent-eval/test/*.test.mjs\" \"scripts/agent-capture/test/*.test.mjs\"",
 		"test:tmux": "yarn workspace @octocodeai/octocode-tui run test:tmux && yarn workspace @octocodeai/octocodecode run test:tmux",
 		"test:mcp-conformance": "node packages/mcp/test/conformance/run.ts",
 		"version:patch": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo version patch --immediate && node scripts/sync-versions.js && yarn install --mode=update-lockfile",

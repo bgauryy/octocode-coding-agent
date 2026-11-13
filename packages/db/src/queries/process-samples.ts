@@ -141,3 +141,15 @@ export function pruneBefore(db: DatabaseSync, at: number): number {
 	ensure(db);
 	return Number(db.prepare("DELETE FROM process_samples WHERE at < ?").run(at).changes);
 }
+
+/** All-data purge: drops samples except those belonging to kept sessions, without creating the optional table. */
+export function keepOnly(db: DatabaseSync, sessions: readonly string[]): number {
+	if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='process_samples'").get()) return 0;
+	return Number(
+		db
+			.prepare(
+				"DELETE FROM process_samples WHERE session_id IS NULL OR session_id NOT IN (SELECT value FROM json_each(?))",
+			)
+			.run(JSON.stringify(sessions)).changes,
+	);
+}

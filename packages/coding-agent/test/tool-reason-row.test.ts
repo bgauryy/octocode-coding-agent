@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { reasonRow } from "../src/octocode/ui/reason-row.ts";
+import { purposeRows, reasonRow } from "../src/octocode/ui/reason-row.ts";
 import { setItemTitles } from "../src/octocode/render/item-titles.ts";
 import { initTheme } from "../src/theme/theme.ts";
 
@@ -21,14 +21,16 @@ describe("reasonRow", () => {
 		expect(reasonRow("bash", { command: "ls" })).toBeUndefined();
 	});
 
-	it("shows an MCP call's purpose only from its returned data, never from its arguments", () => {
+	it("shows an MCP call's supplied purpose before its returned purpose", () => {
 		const args = { queries: [{ path: "a", mainGoal: "from the input" }], reason: "copied from a native tool" };
-		expect(reasonRow("mcp__octocode__localFetch", args)).toBeUndefined();
+		expect(reasonRow("mcp__octocode__localFetch", args)?.render(80).join("\n")).toContain("from the input");
 		expect(
 			reasonRow("mcp__octocode__localFetch", args, { content: [], structuredContent: { results: [] } }),
-		).toBeUndefined();
+		).toBeDefined();
 		const returned = { content: [], structuredContent: { results: [{ data: { mainGoal: "trace the parser" } }] } };
-		expect(reasonRow("mcp__octocode__localFetch", args, returned)?.render(80).join("\n")).toContain("trace the parser");
+		expect(purposeRows("mcp__octocode__localFetch", args, returned)?.render(80).join("\n")).toContain(
+			"trace the parser",
+		);
 	});
 
 	it("draws a backlog ID with its title in a native reason only, never in a server's returned purpose", () => {
@@ -37,7 +39,7 @@ describe("reasonRow", () => {
 			const native = reasonRow("bash", { command: "ls", reason: "Close B92: x" })?.render(80).join("\n");
 			expect(native).toContain("Close B92 “Clickable IDs”: x");
 			const returned = { content: [], structuredContent: { results: [{ data: { mainGoal: "Close B92: x" } }] } };
-			const external = reasonRow("mcp__octocode__localFetch", {}, returned)?.render(80).join("\n");
+			const external = purposeRows("mcp__octocode__localFetch", {}, returned)?.render(80).join("\n");
 			expect(external).toContain("Close B92: x");
 			expect(external).not.toContain("Clickable");
 		} finally {

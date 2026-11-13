@@ -290,7 +290,8 @@ export function sanitizeBinaryOutput(str: string): string {
  * (SIGHUP/SIGTERM), an emergency or uncaught-exception exit, and any `process.exit` that comes before they stopped:
  * their process groups survive the death of this process. A normal stop untracks them first. A `graceful` child (a
  * subagent) is stopped by the graceful shutdown itself, so it can report and save its work: a signal handler spares it
- * (`sparingGraceful`), and only an exit, crash or emergency exit kills it.
+ * (`sparingGraceful`), and only an exit, crash or emergency exit kills it. Ctrl+Z does not stop them: each runs in a
+ * session of its own without a controlling terminal, outside the foreground group the suspend stops (`lifecycle.ts`).
  */
 const trackedDetachedChildPids = new Set<number>();
 const gracefulDetachedChildPids = new Set<number>();
@@ -311,15 +312,18 @@ export function untrackDetachedChildPid(pid: number): void {
 	gracefulDetachedChildPids.delete(pid);
 }
 
-/** Stops (`SIGSTOP`) or continues (`SIGCONT`) the process group of every tracked child, as this process is suspended or resumed. */
-export function signalTrackedDetachedChildren(signal: "SIGSTOP" | "SIGCONT"): void {
-	for (const pid of trackedDetachedChildPids) signalTree(pid, signal);
-}
-
 export function killTrackedDetachedChildren(options?: { sparingGraceful?: boolean }): void {
 	for (const pid of trackedDetachedChildPids) {
 		if (options?.sparingGraceful && gracefulDetachedChildPids.has(pid)) continue;
-		signalTree(pid, "SIGKILL");
+		if (process.platform === "win32") signalTree(pid, "SIGKILL");
+		else {
+			try {
+				// Every tracked POSIX child leads a group. Its root PID may be reused after it exits.
+				process.kill(-pid, "SIGKILL");
+			} catch {
+				// The group is gone; never fall back to a possibly unrelated positive PID.
+			}
+		}
 		untrackDetachedChildPid(pid);
 	}
 }

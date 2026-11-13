@@ -11,7 +11,7 @@ import {
 } from "../../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
 import { agentDbPath } from "../shared/home.ts";
-import { sameProcess } from "../shared/process.ts";
+import { liveProcess } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
 import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
@@ -25,6 +25,7 @@ import {
 	resumeMembers,
 	saveMember,
 	retireOwned,
+	rowLive,
 } from "./store/members.ts";
 import { asks, deadLetters, insertMessage, pending, pendingUrgent, recent, type SignProof } from "./store/mail.ts";
 import {
@@ -190,15 +191,14 @@ export class TeamStore {
 	}
 
 	/**
-	 * Retires every member whose process is gone (`sameProcess`: dead, or a later process that got its pid): the one place
-	 * a member that did not leave is dropped and its unread mail dead-lettered. A stale member (alive, silent) is kept.
+	 * Retires every member whose process is gone (`rowLive`: dead, or a later process that got its pid; no `ps` for a fresh
+	 * heartbeat): the one place a member that did not leave is dropped and its mail dead-lettered. A stale member is kept.
 	 * Each is judged outside the write lock and retired only if its row still names the process judged, so a member that
 	 * joined again under the same name meanwhile is left alone. What was retired is read back with `names`.
 	 */
 	sweep(now = Date.now()): void {
-		for (const { id, ...identity } of agents.allProcesses(this.db)) {
-			if (!sameProcess(identity.pid, identity.started, now)) this.reap(id, identity, now);
-		}
+		for (const { id, seenAt, ...identity } of agents.allProcesses(this.db))
+			if (!rowLive({ ...identity, seenAt }, now)) this.reap(id, identity, now);
 	}
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */
@@ -335,10 +335,10 @@ export class TeamStore {
 		);
 	}
 
-	/** Retires a lease owner that is gone (it has no row, or its process died or was replaced); whether it was. */
+	/** Retires a lease owner that is gone (no row, or its process died or was replaced; never a `ps` here); whether it was. */
 	private retireOwner(owner: string, now: number): boolean {
 		const judged = agents.processOf(this.db, owner);
-		if (judged && sameProcess(judged.pid, judged.started, now)) return false;
+		if (judged && liveProcess(judged.pid, judged.started, now)) return false;
 		return this.reap(owner, judged, now);
 	}
 

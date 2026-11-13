@@ -77,6 +77,30 @@ describe("animationClock", () => {
 		stopCount();
 	});
 
+	it("holds decoration still while the user scrolls, keeps counters, and resumes after the hold", () => {
+		mock.timers.enable({ apis: ["setInterval", "Date"] });
+		let spinner = 0;
+		let counter = 0;
+		const stopSpinner = animationClock.subscribe(() => spinner++, { everyMs: 80, kind: "decor" });
+		const stopCounter = animationClock.subscribe(() => counter++, { everyMs: 1_000, kind: "info" });
+		advance(400);
+		assert.strictEqual(spinner, 5);
+		const frozenAt = animationClock.decorationTime();
+		// A wheel event every 200 ms for 2 s, each holding decoration 300 ms.
+		for (let wheel = 0; wheel < 10; wheel++) {
+			animationClock.holdDecoration(300);
+			advance(200);
+		}
+		assert.strictEqual(spinner, 5, "the spinner did not repaint while scrolling");
+		assert.strictEqual(animationClock.decorationTime(), frozenAt, "time-drawn decoration shows where it stopped");
+		assert.strictEqual(counter, 2, "the elapsed-seconds counter kept its tick");
+		advance(400);
+		assert.ok(spinner > 5, "the spinner resumes after the hold");
+		assert.ok(animationClock.decorationTime() > frozenAt);
+		stopSpinner();
+		stopCounter();
+	});
+
 	it("freezes decoration in reduced motion but keeps counters, repainting decor once on each switch", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let decor = 0;

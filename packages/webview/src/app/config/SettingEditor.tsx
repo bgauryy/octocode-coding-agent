@@ -36,9 +36,13 @@ export function SettingEditor({ setting, save, workspace }: SettingEditorProps) 
 				...(target === "workspace" && workspace ? { repoId: workspace.id } : {}),
 			});
 			if (next === null) setValue("");
+			const timing =
+				setting.key === "defaultProvider" || setting.key === "defaultModel"
+					? "Model defaults apply to new sessions; the current chat keeps its model."
+					: "Running sessions pick it up with /reload.";
 			setMessage({
 				tone: "ok",
-				text: `${next === null ? "Cleared in" : "Saved to"} ${target} settings. Running sessions pick it up with /reload.`,
+				text: `${next === null ? "Cleared in" : "Saved to"} ${target} settings. ${timing}`,
 			});
 		} catch (error) {
 			setMessage({ tone: "error", text: errorMessage(error) });

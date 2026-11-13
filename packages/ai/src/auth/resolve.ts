@@ -179,7 +179,7 @@ async function resolveStoredOAuth(
 		// The normal five-minute window triggers a refresh but does not impose a
 		// provider contract. Explicit callers (such as bearer-token export) do
 		// require the requested minimum after the refresh.
-		if (minOAuthValidityMs !== undefined && expiresSoon(credential)) {
+		if (minOAuthValidityMs !== undefined && Date.now() + minOAuthValidityMs >= credential.expires) {
 			throw new ModelsError("oauth", `OAuth refresh returned a token that expires too soon for ${providerId}`);
 		}
 	}

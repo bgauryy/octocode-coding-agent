@@ -1,36 +1,10 @@
 import { ignoredSettingsKeys } from "../../core/settings-manager/ignored-keys.ts";
-import type { SettingsManager } from "../../core/settings-manager.ts";
 import { applied, closestIds, kindOf, refused } from "../result.ts";
 import { coerceSettingValue, findLeaf, OWNED_SETTINGS, type SettingLeaf, settingLeaves } from "../settings-leaves.ts";
-import { type FileScope, nestPath, readPath, writeSettingsKey } from "../settings-write.ts";
+import { nestPath, readPath, writeSettingsKey } from "../settings-write.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "../types.ts";
 
-/**
- * Typed setters the manager already has, preferred over the generic write for the keys they own. `scope` is
- * only passed where the setter has a project form.
- */
-type TypedSetter = (manager: SettingsManager, value: never, scope: FileScope) => void;
-const TYPED_SETTERS: Readonly<Record<string, { set: TypedSetter; projectToo: boolean }>> = {
-	defaultProvider: {
-		set: (m, value: string, scope) => m.setDefaultSelection(scope, "defaultProvider", value),
-		projectToo: true,
-	},
-	defaultModel: {
-		set: (m, value: string, scope) => m.setDefaultSelection(scope, "defaultModel", value),
-		projectToo: true,
-	},
-	defaultThinkingLevel: {
-		set: (m, value: Parameters<SettingsManager["setDefaultThinkingLevel"]>[0]) => m.setDefaultThinkingLevel(value),
-		projectToo: false,
-	},
-	steeringMode: { set: (m, value: "all" | "one-at-a-time") => m.setSteeringMode(value), projectToo: false },
-	followUpMode: { set: (m, value: "all" | "one-at-a-time") => m.setFollowUpMode(value), projectToo: false },
-	transport: {
-		set: (m, value: Parameters<SettingsManager["setTransport"]>[0]) => m.setTransport(value),
-		projectToo: false,
-	},
-	enableSkillCommands: { set: (m, value: boolean) => m.setEnableSkillCommands(value), projectToo: false },
-};
+const MODEL_DEFAULTS = new Set(["defaultProvider", "defaultModel"]);
 
 function toEntry(leaf: SettingLeaf, ctx: ConfigContext): ConfigEntry {
 	const global = readPath(ctx.settings.getGlobalSettings(), leaf.key);
@@ -50,8 +24,8 @@ function toEntry(leaf: SettingLeaf, ctx: ConfigContext): ConfigEntry {
 		},
 		setBy,
 		...(leaf.default !== undefined ? { default: leaf.default } : {}),
-		// Most keys are read when a session is created or reloaded; a few are read on every use, but the schema does not say which.
-		appliesWhen: "reload",
+		// Model defaults choose new sessions; other keys are read on reload or every use.
+		appliesWhen: MODEL_DEFAULTS.has(leaf.key) ? "next-session" : "reload",
 	};
 }
 
@@ -59,14 +33,15 @@ async function set(op: ConfigOp, leaf: SettingLeaf, value: unknown, ctx: ConfigC
 	const scope: ConfigScope = op.scope ?? "global";
 	if (scope === "run") {
 		ctx.settings.applyOverrides(nestPath(leaf.key, value), { durable: true });
-		return applied(op, "now", `${leaf.key} = ${JSON.stringify(value)} for this run only.`);
+		const message = `${leaf.key} = ${JSON.stringify(value)} for this run only.`;
+		return MODEL_DEFAULTS.has(leaf.key)
+			? applied(op, "next-session", `${message} New sessions use this default; the current chat keeps its model.`)
+			: applied(op, "now", message);
 	}
-	const typed = TYPED_SETTERS[leaf.key];
-	if (typed && (scope === "global" || typed.projectToo)) {
-		typed.set(ctx.settings, value as never, scope);
-		await ctx.settings.flush();
-	} else await writeSettingsKey(ctx, scope, leaf.key, value);
+	await writeSettingsKey(ctx, scope, leaf.key, value);
 	const saved = `${leaf.key} = ${JSON.stringify(value)} saved ${scope === "project" ? "for this project" : "globally"}.`;
+	if (MODEL_DEFAULTS.has(leaf.key))
+		return applied(op, "next-session", `${saved} New sessions use this default; the current chat keeps its model.`);
 	// A session applies the keys its live settings list changes at once, through the same appliers.
 	if (scope === "global" && ctx.live?.applySetting?.(leaf.key, value)) return applied(op, "now", saved);
 	return applied(
@@ -119,7 +94,11 @@ export const settingsAdapter: ConfigAdapter = {
 			case "unset":
 				if (op.scope === "run") return refused(op, "A per-run setting cannot be unset: it lasts only this process.");
 				await writeSettingsKey(ctx, op.scope ?? "global", leaf.key, undefined);
-				return applied(op, "reload", `${leaf.key} removed from the ${op.scope ?? "global"} settings.`);
+				return applied(
+					op,
+					MODEL_DEFAULTS.has(leaf.key) ? "next-session" : "reload",
+					`${leaf.key} removed from the ${op.scope ?? "global"} settings.`,
+				);
 			default:
 				return refused(op, `Settings keys take enable, disable, set and unset, not "${op.verb}".`);
 		}

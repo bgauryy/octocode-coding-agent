@@ -9,12 +9,8 @@ import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
-import {
-	buildSessionProjection,
-	type CompactionEntry,
-	type ProjectedSessionEntry,
-	type SessionEntry,
-} from "../session-manager.ts";
+import { type CompactionEntry, type ProjectedSessionEntry, type SessionEntry } from "../session-manager.ts";
+import { buildPathProjection } from "../session-manager/context.ts";
 import { combineUsage } from "../usage-totals.ts";
 import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
@@ -133,7 +129,8 @@ export function prepareCompaction(
 		return undefined;
 	}
 
-	const projection = buildSessionProjection(pathEntries);
+	// The branch as `getBranch` returns it: projected without indexing it, as `checkpoint.ts` does.
+	const projection = buildPathProjection(pathEntries);
 	const projectedEntries = projection.entries;
 	const sourceEntries = projectedEntries.map((entry) => entry.sourceEntry);
 	// The newest compaction is projected first. Older compaction entries can still

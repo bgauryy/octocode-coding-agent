@@ -165,8 +165,8 @@ export interface AuthInteraction {
 /** Normalized interaction passed to provider login implementations. */
 export type ProviderAuthInteraction = AuthInteraction & { signal: AbortSignal };
 
-/** What a provider said about a key: accepted, refused (401/403), not reachable or answered otherwise, or not checkable. */
-export type ApiKeyVerdict = "valid" | "rejected" | "unreachable" | "unchecked";
+/** What a provider said about a key; a forbidden check endpoint does not prove the key cannot make model requests. */
+export type ApiKeyVerdict = "valid" | "rejected" | "forbidden" | "unreachable" | "unchecked";
 
 /**
  * Api-key auth: stored key/provider env plus ambient sources (env vars, AWS

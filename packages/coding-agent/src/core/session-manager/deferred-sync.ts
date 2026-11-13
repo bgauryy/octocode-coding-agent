@@ -9,8 +9,9 @@
  * `SYNC_IDLE_MS` after the last append, and at most `SYNC_MAX_DELAY_MS` after the first unsynced one, so a burst of
  * appends costs one `fsync` and none of them waits for one (an `fsync` running on APFS delays the next append's lock
  * directory). A process that exits syncs what is still unsynced (`syncPendingSessions`). A power loss or kernel crash
- * inside that window can lose those last records; the torn-tail check (`assertCompleteSessionTail`) already repairs a
- * half-written line on the next open. A rewrite or a new file (fork) is synced by its own write, as before.
+ * inside that window can lose those last records or leave part of one at the end of the file; nothing is cut then
+ * either: the next append seals that part as a line every reader skips and records where it is (`session-tail.ts`). A
+ * rewrite or a new file (fork) is synced by its own write, as before.
  *
  * A sync that fails (a full disk, an I/O error, a network file system) must not stay silent: the synchronous flush
  * used to raise it inside the append. The file is then marked (`sessionSyncFailed`), and the next append to it flushes
@@ -50,11 +51,18 @@ function sync(file: string): void {
 	};
 	// A file that is gone (a removed session, a test's temporary folder) has nothing left to sync.
 	open(file, "r+", (openError, fd) => {
-		if (openError) return done();
+		if (openError) {
+			if (openError.code === "ENOENT") failed.delete(file);
+			else failed.add(file);
+			return done();
+		}
 		fsync(fd, (syncError) => {
 			if (syncError) failed.add(file);
 			else failed.delete(file);
-			close(fd, done);
+			close(fd, (closeError) => {
+				if (closeError) failed.add(file);
+				done();
+			});
 		});
 	});
 }
@@ -79,11 +87,11 @@ export function scheduleSessionSync(file: string): void {
 }
 
 /**
- * Sync now, on this thread, every file with appends not yet synced (waiting, or with a sync still running). For the
- * moment the process exits; never throws.
+ * Sync now, on this thread, every file with appends not yet synced (waiting, running, or a previous sync failed). For
+ * the moment the process exits; never throws.
  */
 export function syncPendingSessions(): void {
-	const files = new Set([...waiting.keys(), ...running]);
+	const files = new Set([...waiting.keys(), ...running, ...failed]);
 	for (const [file, pending] of waiting) {
 		clearTimeout(pending.timer);
 		waiting.delete(file);
@@ -93,10 +101,13 @@ export function syncPendingSessions(): void {
 			const fd = openSync(file, "r+");
 			try {
 				fsyncSync(fd);
+				failed.delete(file);
 			} finally {
 				closeSync(fd);
 			}
-		} catch {
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") failed.delete(file);
+			else failed.add(file);
 			// Gone, or not syncable: the records were written; the system flushes them.
 		}
 	}

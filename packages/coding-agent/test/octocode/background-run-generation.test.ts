@@ -4,6 +4,7 @@ import { runDetails } from "../../src/octocode/subagents/tracking.ts";
 import type { AgentRuns, Run } from "../../src/octocode/subagents/claim.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";
+import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 
 it("keeps the launch generation when the ordinary background report path fails", async () => {
 	const reports: Report[] = [];
@@ -16,7 +17,9 @@ it("keeps the launch generation when the ordinary background report path fails",
 		// The run's audit row opens, takes an end hint and closes (`run-audit.ts`, `end-hint.ts`); nothing else of the team
 		// is reached here.
 		team: { audit: { begin: () => undefined, hint: () => undefined, finish: () => undefined } },
+		groups: new ReportGroups(),
 		reports: {
+			reportingChanged: () => undefined,
 			add: (report: Report) => {
 				if (++attempts <= 2) throw new Error("report delivery unavailable");
 				reports.push(report);

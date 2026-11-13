@@ -13,6 +13,17 @@ import type { LayoutBox, ScrollbarGeometry } from "./types.ts";
 const cutRows = new Map<string, string>();
 const CUT_ROWS_LIMIT = 2048;
 
+/** OSC 8 sequences: parameters, then the URI (empty for a close), ended by BEL or ST. */
+const OSC8 = /\x1b\]8;[^;\x07\x1b]*;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+
+/** Whether the last OSC 8 sequence of `text` opens a link. */
+function linkOpen(text: string): boolean {
+	if (!text.includes("\x1b]8;")) return false;
+	let open = false;
+	for (const match of text.matchAll(OSC8)) open = match[1] !== "";
+	return open;
+}
+
 function replaceScrollbarCell(
 	line: string,
 	column: number,
@@ -56,7 +67,10 @@ function cutScrollbarCell(
 	const beforePadding = " ".repeat(Math.max(0, start - visibleWidth(before)));
 	const cellPaddingBefore = " ".repeat(Math.max(0, column - start));
 	const cellPaddingAfter = " ".repeat(Math.max(0, end - column - 1));
-	const targetStyle = `\x1b[0m\x1b]8;;\x07${preserveTargetBackground ? getActiveBackgroundAnsi(targetPrefix) : ""}`;
+	// A link open before the cell would run into it: close it then, and only then. A row without links, every row where
+	// hyperlinks are off, spends no bytes on a close.
+	const closeLink = linkOpen(before) ? "\x1b]8;;\x07" : "";
+	const targetStyle = `\x1b[0m${closeLink}${preserveTargetBackground ? getActiveBackgroundAnsi(targetPrefix) : ""}`;
 	return `${before}${beforePadding}${targetStyle}${cellPaddingBefore}${replacement}${cellPaddingAfter}${after}`;
 }
 

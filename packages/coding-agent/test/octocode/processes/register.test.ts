@@ -37,7 +37,7 @@ const live = (env: NodeJS.ProcessEnv = {}, extra: Partial<Parameters<typeof regi
 		mcpPids: () => [],
 		intervalMs: 60_000,
 		stop: async (pid) => void stopped.push(pid),
-		match: () => "same",
+		match: async () => "same",
 		...extra,
 	});
 	return { ...host, commands, stopped };
@@ -193,7 +193,7 @@ describe("/processes", () => {
 
 	it("refuses a recorded pid that another process now holds", async () => {
 		orphanSetup();
-		const host = live({}, { match: () => "other" });
+		const host = live({}, { match: async () => "other" });
 		await host.commands
 			.get("processes")!
 			.handler("stop", fakeCtx({ cwd: tmp(), hasUI: true, mode: "tui", ui: { confirms: [true] } }));

@@ -77,19 +77,21 @@ describe("bash tool", () => {
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
 		// The result header carries exit code, time and size itself; the rule says only what trimmed output needs, and no rule asks for `| tail -n 50`.
-		const guideline = tool.promptGuidelines.find((line: string) => line.startsWith("Trimmed output is saved in full"));
+		const guideline = tool.promptGuidelines.find((line: string) =>
+			line.startsWith("Full output, when trimmed, is saved"),
+		);
 		expect(guideline).not.toContain("Each result starts with");
-		expect(guideline).toContain("read that file by line range instead of rerunning");
+		expect(guideline).toContain("read line ranges instead of rerunning");
 		// The output-limit hint was dropped; agents copied it into tools whose schemas lack that field.
 		expect(guideline).not.toContain("output limit");
 		expect(guideline).not.toContain("maxOutputTokens");
 		expect(guideline).toContain(
-			"While another agent reserves a path, bash refuses a command that writes or names it, or whose writes cannot be checked (`$f`, `$((…))`, an inline interpreter): spell paths literally, and use `file` for edits.",
+			"While another agent reserves a path, bash refuses commands naming or writing it, or whose writes it cannot check (`$f`, `$((…))`, inline interpreters): spell paths literally; edit with `file`.",
 		);
 		expect(guideline).toContain("`set -o pipefail;` before an explicit pipe");
 		expect(tool.promptGuidelines.join("\n")).not.toContain("tail -n 50");
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
-		expect(tool.description).toContain("moves to the background");
+		expect(tool.description).toContain("moves to background");
 		expect(tool.parameters.properties.timeout.description).not.toContain("Separately");
 		// When to background is stated once, in the tool description; the parameter says only what it does.
 		expect(tool.description).toContain("servers");

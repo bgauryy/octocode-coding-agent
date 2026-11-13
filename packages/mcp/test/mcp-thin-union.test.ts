@@ -83,7 +83,7 @@ describe("thin MCP declarations of union inputs", () => {
 					label: { anyOf: [{ type: "string" }, { type: "null" }] },
 					limit: { anyOf: [{ type: "integer" }, { type: "null" }] },
 					ids: { anyOf: [{ type: "array" }, { type: "string" }] },
-					filter: { type: "object" },
+					filter: open({ a: { type: "string" } }),
 					anything: {},
 					partlyKnown: {},
 					combined: {},
@@ -145,7 +145,7 @@ describe("thin MCP declarations of union inputs", () => {
 		expect(thinParameters(conflicting)).toEqual(open({ reason: { type: "string" }, value: stringOrNumber }));
 	});
 
-	it("leaves the current Octocode catalogs byte-identical: each root field with only its declared type", () => {
+	it("keeps the current Octocode catalogs' root fields: the same keys, order and declared types", () => {
 		for (const file of ["catalog-research.json", "catalog-research-nokey.json"]) {
 			const catalog = JSON.parse(readFileSync(new URL(`fixtures/compact/${file}`, import.meta.url), "utf8")) as {
 				tools: { name: string; inputSchema: { properties: Record<string, { type: string }> } }[];
@@ -157,7 +157,15 @@ describe("thin MCP declarations of union inputs", () => {
 					Object.fromEntries(Object.entries(inputSchema.properties).map(([key, value]) => [key, { type: value.type }])),
 				);
 				expect(Object.values(inputSchema.properties).every((value) => typeof value.type === "string")).toBe(true);
-				expect(JSON.stringify(thinParameters(inputSchema)), `${file} ${name}`).toBe(JSON.stringify(before));
+				// Nested field names are added below a root field (mcp-thin-nested.test.ts); its own type is unchanged.
+				const thin = thinParameters(inputSchema) as { properties: Record<string, { type?: unknown }> };
+				const roots = {
+					...thin,
+					properties: Object.fromEntries(
+						Object.entries(thin.properties).map(([key, value]) => [key, { type: value.type }]),
+					),
+				};
+				expect(JSON.stringify(roots), `${file} ${name}`).toBe(JSON.stringify(before));
 			}
 		}
 	});

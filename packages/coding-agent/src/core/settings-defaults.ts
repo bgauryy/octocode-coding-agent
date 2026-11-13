@@ -40,6 +40,8 @@ export const SETTINGS_DEFAULTS = {
 	hideThinkingBlock: true,
 	showCacheMissNotices: false,
 	quietStartup: false,
+	/** How file references open: `auto` picks the IDE or GUI editor, `editor` the prompt editor, else a command. */
+	referenceOpener: "auto",
 	bashBackgroundAfterSeconds: 90,
 	bashOutputMaxBytes: RESULT_DEFAULT_BYTES,
 	bash: {
@@ -63,6 +65,7 @@ export const SETTINGS_DEFAULTS = {
 		showImages: true,
 		imageWidthCells: 60,
 		clearOnShrink: false,
+		replayRows: 5000,
 		showTerminalProgress: false,
 		reduceMotion: "auto" as boolean | "auto",
 		completion: { shell: "auto" as "auto" | "zsh" | "bash" | "fish" | "pwsh" | "none", loadRc: true, carapace: true },

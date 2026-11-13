@@ -1,20 +1,22 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
+import { join } from "node:path";
 import { stripJsonComments } from "../../common/src/json.ts";
 
 /**
  * Fails a run that leaves transcript folders of its own temporary projects under the developer's real
- * `~/.octocode`, or that removes a provider from the developer's real `auth.json` or `models.json`, and gives the run
- * its temporary home (`VITEST_TEST_USER_HOME`). The per-file setup files point HOME and OCTOCODE_HOME at temporary
- * folders; this is the check that they did, for every test and every child process a test starts.
+ * `~/.octocode`, or that removes a provider from the developer's real `auth.json` or `models.json`. The run's isolation
+ * (`vitest.tmp.global.ts`: temporary home, `VITEST_TEST_USER_HOME`, and the guard on the real agent database) and the
+ * per-file setup files point HOME and OCTOCODE_HOME at temporary folders; this is the check that they did, for every
+ * test and every child process a test starts.
  *
  * A running Octocode (often the one that started this suite) writes to the same folders, so only folders named after a
  * temporary directory count: a session folder is named after its working directory, and a test project lives in the
  * temporary directory. For the same reason a provider a running session adds, or a token it refreshes, is not a leak;
  * only a provider that disappears is.
  */
-const realHome = homedir();
+// From the user database: the run's isolation (`vitest.tmp.global.ts`) has moved HOME by the time this runs.
+const realHome = userInfo().homedir;
 const SESSION_FOLDERS = [
 	join(realHome, ".octocode", "octocodecode", "agent", "sessions"),
 	join(realHome, ".octocode", "octocodecode", "sessions"),
@@ -89,14 +91,9 @@ function snapshot(): Map<string, string[]> {
 export default function setup(): () => void {
 	const before = snapshot();
 	const providersBefore = providerSnapshot();
-	// One home for the run, beside the run's temporary directory rather than inside it: the folder trust gate ignores a
-	// trusted subtree that contains the home folder, and tests trust the temporary directory.
-	const userHome = mkdtempSync(join(dirname(tmpdir()), "octocode-test-userhome-"));
-	process.env.VITEST_TEST_USER_HOME = userHome;
 	// vitest.tmp.global.ts has already pointed TMPDIR at this run's folder, so its encoded name is a marker too.
 	const markers = temporaryProjectMarkers();
 	return () => {
-		rmSync(userHome, { recursive: true, force: true, maxRetries: 3 });
 		const leaked: string[] = [];
 		for (const [dir, names] of snapshot()) {
 			const known = new Set(before.get(dir));

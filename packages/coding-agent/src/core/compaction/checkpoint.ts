@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
-import { buildSessionProjection, type CompactionEntry, type SessionEntry } from "../session-manager.ts";
-import { getCompactionBoundarySystem } from "../session-manager/context.ts";
+import type { CompactionEntry, SessionEntry } from "../session-manager.ts";
+import { buildPathProjection, getCompactionBoundarySystem } from "../session-manager/context.ts";
 import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
 import { GOAL_HEADING, summarySection, TLDR_HEADING } from "./summary-format.ts";
@@ -137,7 +137,7 @@ export function projectAfterCompaction(
 	};
 	return (summary: string) => {
 		const entries = [...branchEntries, { ...boundary, summary }];
-		return estimateProjectedContextTokens(buildSessionProjection(entries), entries).tokens;
+		return estimateProjectedContextTokens(buildPathProjection(entries), entries).tokens;
 	};
 }
 

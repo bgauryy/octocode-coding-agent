@@ -56,6 +56,11 @@ class RecordingTerminal extends VirtualTerminal {
 		this.events.push({ type: "stop" });
 		super.stop();
 	}
+
+	/** Writes other than terminal mode switches (focus-in writes the screen's modes again). */
+	repaints(): number {
+		return this.events.filter((event) => event.type === "write" && !/^(\x1b\[\?\d+[hl])+$/.test(event.data)).length;
+	}
 }
 
 describe("TuiAltScreen", () => {
@@ -386,7 +391,10 @@ describe("TuiAltScreen", () => {
 				.filter((event): event is { type: "write"; data: string } => event.type === "write")
 				.map((event) => event.data)
 				.join("");
-			assert.ok(directWrites.includes("\x1b[?1003h"));
+			// Outside a multiplexer bare movement is tracked only while something reacts to hover (see
+			// alt-screen-terminal-modes.test.ts); a fresh screen starts with button-motion tracking.
+			assert.ok(directWrites.includes("\x1b[?1002h"));
+			assert.ok(!directWrites.includes("\x1b[?1003h"));
 			directTui.stop();
 
 			const multiplexers = [
@@ -1652,7 +1660,7 @@ describe("TuiAltScreen", () => {
 		tui.start();
 		await terminal.waitForRender();
 
-		const writeCount = () => terminal.events.filter((event) => event.type === "write").length;
+		const writeCount = () => terminal.repaints();
 		const clipboardWriteCount = () =>
 			terminal.events.filter((event) => event.type === "write" && event.data.includes("\x1b]52;c;")).length;
 
@@ -1729,11 +1737,11 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("\x1b[<32;4;2M");
 		terminal.sendInput("\x1b[<0;4;2m");
 		await terminal.waitForRender();
-		const completedWriteCount = terminal.events.filter((event) => event.type === "write").length;
+		const completedWriteCount = terminal.repaints();
 		terminal.sendInput("\x1b[O");
 		terminal.sendInput("\x1b[I");
 		await terminal.waitForRender();
-		assert.strictEqual(terminal.events.filter((event) => event.type === "write").length, completedWriteCount);
+		assert.strictEqual(terminal.repaints(), completedWriteCount);
 
 		const redrawEventCount = terminal.events.length;
 		tui.renderNow(true);

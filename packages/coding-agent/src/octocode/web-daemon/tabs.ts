@@ -10,6 +10,7 @@ import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
 import { ownOrigin, readHello } from "../workspace/page-access.ts";
 import { readerStalled } from "../workspace/socket-pressure.ts";
+import { BacklogProjection } from "../workspace/backlog-projection.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { tokenAccess, type DaemonTokens, type TokenAccess } from "./http-util.ts";
 import type { RepoCatalog, RepoInfo } from "./repos.ts";
@@ -39,6 +40,12 @@ interface Tab {
 	profilerOff?: () => void;
 }
 
+interface WorkspaceRefresh {
+	pending: boolean;
+	force: boolean;
+	promise: Promise<void>;
+}
+
 /**
  * The browser tabs of the daemon. One authenticated hello per socket (token, protocol, optional cursor), then the
  * repository's board and, for a session scope, that session's workspace and application stream. One timer per daemon
@@ -57,7 +64,8 @@ export class TabHub {
 	private stamp: string;
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private lastWorkspace = new Map<string, { revision: string | null; text: string }>();
-	private checking = false;
+	private readonly workspaceRefreshes = new Map<string, WorkspaceRefresh>();
+	private readonly backlogs = new Map<string, BacklogProjection>();
 
 	constructor(options: {
 		tokens: DaemonTokens;
@@ -92,7 +100,7 @@ export class TabHub {
 	}
 
 	start(): void {
-		this.timer = setInterval(() => void this.check(), TICK_MS);
+		this.timer = setInterval(() => this.check(), TICK_MS);
 		this.timer.unref();
 	}
 
@@ -135,6 +143,8 @@ export class TabHub {
 				this.activity();
 				const id = scope.session?.id;
 				if (id && ![...this.tabs].some((other) => other.scope.session?.id === id)) this.lastWorkspace.delete(id);
+				const key = this.backlogKey(scope);
+				if (![...this.tabs].some((other) => this.backlogKey(other.scope) === key)) this.backlogs.delete(key);
 			}
 		});
 		socket.on("message", (data, binary) => {
@@ -159,10 +169,12 @@ export class TabHub {
 	private async begin(tab: Tab, cursor: ApplicationCursor | undefined): Promise<void> {
 		// Nothing watched the database while no tab was open: the first tab's snapshot is the new baseline.
 		if (this.tabs.size <= 1) this.stamp = dbStamp(agentDbPath(this.env));
-		this.sendBacklog(tab);
+		const cache = new Map<string, string>();
+		for (const other of this.tabs)
+			if (this.backlogKey(other.scope) === this.backlogKey(tab.scope)) this.sendBacklog(other, cache);
 		const session = tab.scope.session;
 		if (!session) return;
-		await this.sendWorkspace(tab, session.client);
+		await this.workspaceChanged(session.id, true);
 		// Live request frames of this session's agents: the session sends them to the daemon once it is subscribed.
 		tab.profilerOff = session.client.profiler.onUpdate((update) =>
 			this.post(tab, { type: "profiler", data: redactData(update) }),
@@ -191,16 +203,34 @@ export class TabHub {
 		tab.socket.send(JSON.stringify(event));
 	}
 
+	private backlogKey(scope: TabScope): string {
+		return `${scope.repo.id}|${scope.session?.id ?? ""}`;
+	}
+
+	private projectionFor(scope: TabScope): BacklogProjection {
+		const key = this.backlogKey(scope);
+		let projection = this.backlogs.get(key);
+		if (!projection) {
+			const store = this.catalog.store(scope.repo.id);
+			projection = new BacklogProjection(
+				(now) => backlogSnapshot(store, scope.repo.name, now, scope.session?.id),
+				(id) => store.liveHolder(id, true) !== undefined,
+				scope.session?.id,
+			);
+			this.backlogs.set(key, projection);
+		}
+		return projection;
+	}
+
 	private snapshotFor(scope: TabScope): string {
-		const store = this.catalog.store(scope.repo.id);
 		return JSON.stringify({
 			type: "snapshot",
-			data: backlogSnapshot(store, scope.repo.name, Date.now(), scope.session?.id),
+			data: this.projectionFor(scope).read(),
 		} satisfies WorkspaceServerEvent);
 	}
 
 	private sendBacklog(tab: Tab, cache?: Map<string, string>): void {
-		const key = `${tab.scope.repo.id}|${tab.scope.session?.id ?? ""}`;
+		const key = this.backlogKey(tab.scope);
 		let text = cache?.get(key);
 		if (text === undefined) {
 			text = this.snapshotFor(tab.scope);
@@ -211,13 +241,28 @@ export class TabHub {
 		tab.socket.send(text);
 	}
 
-	private async sendWorkspace(tab: Tab, client: AttachClient): Promise<void> {
-		const data = await client.workspace.snapshot();
-		this.post(tab, { type: "workspace", data });
+	/** Coalesces overlapping requests for one session; snapshots reach its tabs in read order. */
+	workspaceChanged(sessionId: string, force = false): Promise<void> {
+		const running = this.workspaceRefreshes.get(sessionId);
+		if (running) {
+			running.pending = true;
+			running.force ||= force;
+			return running.promise;
+		}
+		const refresh: WorkspaceRefresh = { pending: false, force: false, promise: Promise.resolve() };
+		refresh.promise = Promise.resolve()
+			.then(() => this.refreshWorkspace(sessionId, force))
+			.finally(() => {
+				this.workspaceRefreshes.delete(sessionId);
+				// A new tab can begin streaming after this read even while updates continue arriving.
+				if (refresh.pending) void this.workspaceChanged(sessionId, refresh.force).catch(() => undefined);
+			});
+		this.workspaceRefreshes.set(sessionId, refresh);
+		return refresh.promise;
 	}
 
 	/** Tells every tab of `sessionId` to refresh its workspace if the session's stamp or snapshot changed. */
-	async workspaceChanged(sessionId: string, force = false): Promise<void> {
+	private async refreshWorkspace(sessionId: string, force: boolean): Promise<void> {
 		const tabs = [...this.tabs].filter((tab) => tab.scope.session?.id === sessionId);
 		const client = tabs[0]?.scope.session?.client;
 		if (!client?.connected) return;
@@ -233,27 +278,44 @@ export class TabHub {
 		for (const tab of tabs) this.post(tab, { type: "workspace", data });
 	}
 
-	private async check(): Promise<void> {
-		if (this.checking || this.tabs.size === 0) return;
-		this.checking = true;
-		try {
-			const stamp = dbStamp(agentDbPath(this.env));
-			if (stamp !== this.stamp) {
-				this.stamp = stamp;
-				const cache = new Map<string, string>();
-				for (const tab of this.tabs) {
-					try {
-						this.sendBacklog(tab, cache);
-					} catch {
-						tab.socket.terminate();
-					}
+	private check(): void {
+		if (this.tabs.size === 0) return;
+		const stamp = dbStamp(agentDbPath(this.env));
+		if (stamp !== this.stamp) {
+			this.stamp = stamp;
+			const cache = new Map<string, string>();
+			for (const tab of this.tabs) {
+				try {
+					this.sendBacklog(tab, cache);
+				} catch {
+					tab.socket.terminate();
 				}
 			}
-			const sessions = new Set([...this.tabs].flatMap((tab) => (tab.scope.session ? [tab.scope.session.id] : [])));
-			for (const id of sessions) await this.workspaceChanged(id).catch(() => undefined);
-		} finally {
-			this.checking = false;
+		} else {
+			const updates = new Map<string, string | undefined>();
+			for (const tab of this.tabs) {
+				try {
+					const key = this.backlogKey(tab.scope);
+					if (!updates.has(key)) {
+						const data = this.backlogs.get(key)?.refresh();
+						updates.set(
+							key,
+							data ? JSON.stringify({ type: "snapshot", data } satisfies WorkspaceServerEvent) : undefined,
+						);
+					}
+					const text = updates.get(key);
+					if (text && tab.socket.readyState === WebSocket.OPEN) {
+						if (readerStalled(tab.socket)) tab.socket.terminate();
+						else tab.socket.send(text);
+					}
+				} catch {
+					tab.socket.terminate();
+				}
+			}
 		}
+		const sessions = new Set([...this.tabs].flatMap((tab) => (tab.scope.session ? [tab.scope.session.id] : [])));
+		// A slow session cannot delay another session or the next database tick. Per-session refreshes stay bounded.
+		for (const id of sessions) void this.workspaceChanged(id).catch(() => undefined);
 	}
 
 	/** Tells open pages that a newer daemon is taking over. */
@@ -265,6 +327,7 @@ export class TabHub {
 		clearInterval(this.timer);
 		for (const socket of this.sockets.clients) socket.terminate();
 		this.pending.clear();
+		this.backlogs.clear();
 		this.sockets.close();
 	}
 }

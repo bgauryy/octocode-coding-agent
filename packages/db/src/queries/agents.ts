@@ -10,9 +10,10 @@ export interface ProcessIdentity {
 	started?: string | undefined;
 }
 
-/** The identity of an `agents` row. */
+/** The identity of an `agents` row, with its last heartbeat (`seen_at`). */
 export interface MemberProcess extends ProcessIdentity {
 	id: string;
+	seenAt: number;
 }
 
 /** The agent's origin and, only for delegated file reservations, the checkout those reservations protect. */
@@ -36,6 +37,7 @@ const processRow = (row: Row): MemberProcess => ({
 	id: String(row.id),
 	pid: num(row.pid),
 	...(typeof row.started === "string" ? { started: row.started } : {}),
+	seenAt: num(row.seen_at),
 });
 
 /** The heartbeat's `UPDATE`: matches the row only while it still names this process (and records its `checkout` and session); whether it did. */
@@ -197,12 +199,12 @@ export function setProcess(db: DatabaseSync, id: string, process: ProcessIdentit
 
 /** The process of every agent of `team`. */
 export function processes(db: DatabaseSync, team: string): MemberProcess[] {
-	return (db.prepare("SELECT id, pid, started FROM agents WHERE team = ?").all(team) as Row[]).map(processRow);
+	return (db.prepare("SELECT id, pid, started, seen_at FROM agents WHERE team = ?").all(team) as Row[]).map(processRow);
 }
 
 /** The process of every agent in the database, whatever its workspace. */
 export function allProcesses(db: DatabaseSync): MemberProcess[] {
-	return (db.prepare("SELECT id, pid, started FROM agents").all() as Row[]).map(processRow);
+	return (db.prepare("SELECT id, pid, started, seen_at FROM agents").all() as Row[]).map(processRow);
 }
 
 /** Every agent name in the database (ids are unique across workspaces). */

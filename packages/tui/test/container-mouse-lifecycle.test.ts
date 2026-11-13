@@ -62,3 +62,31 @@ it("does not route an old displayed row to an unpainted replacement", () => {
 	container.handleMouse(click);
 	assert.equal(clicks, 1);
 });
+
+// A virtualized frame releases the transcript containers' joined rows; a click or wheel event that reached them then
+// rendered every child again to find the row.
+it("finds the clicked child from the painted heights after releaseRenderCache, without rendering children", () => {
+	const container = new Container();
+	let renders = 0;
+	const clicked: string[] = [];
+	const child = (name: string, rows: number): Component => ({
+		invalidate: () => {},
+		render: () => {
+			renders++;
+			return Array.from({ length: rows }, () => name);
+		},
+		handleMouse: () => {
+			clicked.push(name);
+			return { handled: true };
+		},
+	});
+	container.addChild(child("first", 3));
+	container.addChild(child("second", 2));
+	container.render(80);
+	container.releaseRenderCache();
+	renders = 0;
+	container.handleMouse({ ...click, y: 3, height: 5 });
+	container.handleMouse({ ...click, y: 1, height: 5 });
+	assert.deepEqual(clicked, ["second", "first"]);
+	assert.equal(renders, 0);
+});

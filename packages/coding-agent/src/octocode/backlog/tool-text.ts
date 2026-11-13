@@ -42,9 +42,9 @@ export function backlogPrompt(subagent: boolean): {
 	return {
 		promptSnippet: renderInstruction("tools/backlog/snippet.md"),
 		description:
-			"Work one repository item. States: backlog proposed, todo accepted, ongoing claimed, done completed. " +
-			"An item another running session holds takes only notes. Items are never deleted.",
-		ops: "get: read (follow Next); claim: start work; note: add progress; done: finish; close: end an unneeded item",
+			"Repository work: backlog proposed, todo accepted, ongoing claimed, done complete. " +
+			"Other live claims: notes only unless delegated. Never deleted.",
+		ops: "get: read (follow Next); claim: start; note: progress; step: finish existing step (note: result/check evidence); done: finish item; close: end unneeded item",
 		promptGuidelines: renderInstruction("tools/backlog/guidelines.md", { subagent }).split("\n"),
 	};
 }

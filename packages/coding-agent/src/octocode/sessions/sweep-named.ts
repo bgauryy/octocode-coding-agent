@@ -19,7 +19,7 @@ export async function namedByCheckpoint(
 ): Promise<Set<string>> {
 	if (!session || files.length === 0) return new Set();
 	try {
-		const latest = compactions.forSession(agent.db, session).at(-1);
+		const latest = compactions.forSession(agent.mirror.db, session).at(-1);
 		if (!latest) return new Set();
 		const inSummary = namedSavedFiles(latest.summary, files);
 		const named = new Set(inSummary);

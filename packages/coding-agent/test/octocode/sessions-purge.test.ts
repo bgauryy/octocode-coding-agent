@@ -73,7 +73,7 @@ describe("/purge", () => {
 		for (const file of ["auth.json", "mcp-auth.json", "settings.json"]) write(path.join(home, file), "{}");
 		write(path.join(home, "child-credentials", "c.json"));
 
-		const compaction = sharedAgentDb().db.prepare(
+		const compaction = sharedAgentDb().mirror.db.prepare(
 			"INSERT INTO compaction_summaries(workspace_id, session_id, entry_id, summary) VALUES (?, ?, 'c', 's')",
 		);
 		compaction.run(here.id, "cur");
@@ -82,7 +82,7 @@ describe("/purge", () => {
 		const outcome = await executePurge(index, "workspace", { cwd: here.root, current: "cur" });
 		expect("result" in outcome && outcome.result.failed).toEqual([]);
 		// The current session keeps its compaction summaries (the archive tool's recall); the others' go.
-		expect(sharedAgentDb().db.prepare("SELECT session_id FROM compaction_summaries").all()).toEqual([
+		expect(sharedAgentDb().mirror.db.prepare("SELECT session_id FROM compaction_summaries").all()).toEqual([
 			{ session_id: "cur" },
 		]);
 

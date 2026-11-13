@@ -59,7 +59,7 @@ describe("TUI input isolation", () => {
 		}
 	});
 
-	it("drops an input listener that throws, so later keys reach the focused component", () => {
+	it("keeps an input listener that throws: the key passes on, later keys still reach it", () => {
 		const terminal = new VirtualTerminal(80, 24);
 		const tui: TUI = new TuiMainScreen(terminal);
 		const recorder = new InputRecorder();
@@ -74,9 +74,41 @@ describe("TUI input isolation", () => {
 			captureReports((reported) => {
 				terminal.sendInput("a");
 				terminal.sendInput("b");
-				assert.strictEqual(calls, 1);
+				assert.strictEqual(calls, 2);
 				assert.deepStrictEqual(recorder.inputs, ["a", "b"]);
 				assert.deepStrictEqual(messages(reported), ["stale extension listener"]);
+			});
+		} finally {
+			tui.stop();
+		}
+	});
+
+	// Live: a listener removed after one failure sent every later wheel event to the editor, and scrolling died.
+	it("a listener that fails once keeps consuming the input it owns afterwards", () => {
+		const terminal = new VirtualTerminal(80, 24);
+		const tui: TUI = new TuiMainScreen(terminal);
+		const recorder = new InputRecorder();
+		let wheel = 0;
+		let failNext = true;
+		tui.addInputListener((data) => {
+			if (!data.startsWith("\x1b[<")) return undefined;
+			if (failNext) {
+				failNext = false;
+				throw new Error("layout not ready");
+			}
+			wheel++;
+			return { consume: true };
+		});
+		tui.setFocus(recorder);
+		tui.start();
+		try {
+			captureReports((reported) => {
+				terminal.sendInput("\x1b[<64;1;1M");
+				terminal.sendInput("\x1b[<64;1;1M");
+				terminal.sendInput("\x1b[<65;1;1M");
+				assert.strictEqual(wheel, 2);
+				assert.deepStrictEqual(messages(reported), ["layout not ready"]);
+				assert.ok(recorder.inputs.length <= 1, "only the failed event passed on");
 			});
 		} finally {
 			tui.stop();

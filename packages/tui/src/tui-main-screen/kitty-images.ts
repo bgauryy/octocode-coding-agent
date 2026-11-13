@@ -60,9 +60,11 @@ export function carryKittyImageRows(
 	knownLines: readonly string[],
 	knownRows: KittyImageRows,
 	lines: readonly string[],
+	unchanged = 0,
 ): KittyImageRows {
 	const shared = Math.min(knownLines.length, lines.length);
-	let first = 0;
+	// The caller vouches that the first `unchanged` rows are the same strings.
+	let first = Math.max(0, Math.min(unchanged, shared));
 	while (first < shared && knownLines[first] === lines[first]) first++;
 	let last = shared - 1;
 	while (last >= first && knownLines[last] === lines[last]) last--;
@@ -84,11 +86,13 @@ export function carryKittyImageRows(
 export class KittyImageRowCache {
 	private entries: Array<{ lines: readonly string[]; rows: KittyImageRows }> = [];
 
-	of(lines: readonly string[]): KittyImageRows {
+	/** `same`: `lines` shares its first `unchanged` rows (same strings) with the `from` lines. */
+	of(lines: readonly string[], same?: { from: readonly string[]; unchanged: number }): KittyImageRows {
 		const hit = this.entries.find((entry) => entry.lines === lines);
 		if (hit) return hit.rows;
 		const known = this.entries.at(-1);
-		const rows = known ? carryKittyImageRows(known.lines, known.rows, lines) : findKittyImageRows(lines);
+		const unchanged = known && same?.from === known.lines ? same.unchanged : 0;
+		const rows = known ? carryKittyImageRows(known.lines, known.rows, lines, unchanged) : findKittyImageRows(lines);
 		this.entries = [...this.entries.slice(-1), { lines, rows }];
 		return rows;
 	}

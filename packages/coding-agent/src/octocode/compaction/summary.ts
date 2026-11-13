@@ -228,8 +228,11 @@ export async function writeSummary(
 	try {
 		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
 		const recordUsage = api.createUsageRecorder("compaction_attempt");
-		const stream = (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
-			const response = ctx.modelRegistry.streamSimple(request, context, options);
+		// Watched as the session watches its own summary (progress, a silent attempt retried), inside the usage record.
+		const send = event.summaryRequest?.watch(ctx.modelRegistry.streamSimple.bind(ctx.modelRegistry));
+		const stream = async (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
+			const response = await (send?.(request, context, options) ??
+				ctx.modelRegistry.streamSimple(request, context, options));
 			const result = response.result().then((message) => {
 				recordUsage(message);
 				return message;
@@ -299,8 +302,8 @@ export async function writeSummary(
 					api.getThinkingLevel(),
 					stream,
 					undefined,
-					undefined,
-					undefined,
+					event.summaryRequest?.retry,
+					event.summaryRequest?.callbacks,
 					ctx.sessionManager.getSessionId(),
 					{ ...sessionCachePreferences(ctx, model, api.getSettings()), cacheRetention: "none" },
 				));

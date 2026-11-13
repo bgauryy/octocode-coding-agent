@@ -15,7 +15,7 @@ export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Run the task in this vendor CLI over ACP, on its own sign-in (plan or metered key; see models), instead of an Octocode child. Worktree, report and stop work the same; model is its own model option; skills, mcp, profile and resume do not apply.",
+				"Vendor CLI over ACP, using its own sign-in (plan or metered key; models). Worktree, report and stop behave as for children; model is its own option. No skills, mcp, profile, resume or headless.",
 		}),
 	);
 
@@ -58,7 +58,7 @@ export function registerChildRunnerTask(
 		name: "agent",
 		label: "Agent",
 		description:
-			"Run a self-contained task in a connected vendor CLI (its own plan) and return its report; the call waits for it.",
+			"Run a self-contained task in a connected vendor CLI using its own sign-in and return its report; the call waits for it.",
 		parameters: Type.Object({
 			runner: StringEnum(runners.ids, { description: "The connected vendor CLI that does the task (see models)" }),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),

@@ -37,12 +37,14 @@ const usable = (model: ListedModel): boolean => model.toolCall !== false && mode
 
 /** The models a template offers, vendor models first (gateways), then the host's catalog listing (hosted services). */
 export function templateModels(template: ProviderTemplate, sources: TemplateModelSources): TemplateModel[] {
-	const vendor = (sources.vendorModels?.(template.api) ?? []).map((model): TemplateModel => ({
-		id: model.id,
-		name: model.name,
-		contextWindow: model.contextWindow,
-		source: "vendor",
-	}));
+	const vendor = (template.kind === "gateway" ? (sources.vendorModels?.(template.api) ?? []) : []).map(
+		(model): TemplateModel => ({
+			id: model.id,
+			name: model.name,
+			contextWindow: model.contextWindow,
+			source: "vendor",
+		}),
+	);
 	const listed = template.catalog
 		? (sources.listed?.(template.catalog) ?? [])
 				.filter(usable)

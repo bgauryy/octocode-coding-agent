@@ -548,6 +548,14 @@ async function scenario() {
 			emit({ type: "agent_settled", aborted: true });
 		});
 		setTimeout(() => undefined, 60_000);
+	} else if (task.startsWith("settle then crash")) {
+		// Answers and settles, then dies on its way out once its input closes (a crash in its own shutdown).
+		emit(say("SETTLED REPORT"));
+		emit({ type: "agent_settled" });
+		end = "hold";
+		ignoreClose = true;
+		process.stdin.on("end", () => process.kill(process.pid, "SIGKILL"));
+		setTimeout(() => undefined, 60_000);
 	} else if (task.startsWith("settled but alive")) {
 		// Answers and settles, then keeps its process alive past a closed input: only the parent's stop ends it.
 		emit(say("FINAL REPORT"));

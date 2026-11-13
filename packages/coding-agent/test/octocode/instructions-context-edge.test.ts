@@ -78,7 +78,7 @@ describe("instruction context edges", () => {
 	it("asks the coordinator for a brief with boundaries, objective, answer shape and a Definition of Done", () => {
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		const brief = root.split("\n").find((line) => line.startsWith("- Write for a fresh agent:")) ?? "";
-		expect(brief).toContain("hard limits first, then what to produce and why");
+		expect(brief).toContain("hard limits first; output and purpose");
 		expect(brief).toContain("when to stop (Definition of Done as evidence");
 		// The child returns a conclusion the coordinator can use, not material it must digest again.
 		expect(brief).toContain("Ask for the answer, not raw material or advice");
@@ -89,8 +89,8 @@ describe("instruction context edges", () => {
 		// the rule here keeps logs and listings out of the report in the first place, without cutting anything.
 		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
-		for (const child of [writer, reader])
-			expect(child).toContain("Put substantial results in a Markdown doc in your scratch folder and cite its path");
+		expect(writer).toContain("Put substantial results in a Markdown doc in your scratch folder and cite its path");
+		expect(reader).toContain("Save substantial results as Markdown in scratch and cite the path.");
 		expect(writer).toContain("Be concise and refer to files by their paths.");
 		const lean = leanPromptSections({ canShell: true, canSave: true, readOnly: false }).lean;
 		expect(lean).toContain("Put long output in a file in your scratch folder and cite its path.");

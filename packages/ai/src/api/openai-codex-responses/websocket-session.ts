@@ -2,6 +2,7 @@ import type { ResponseInput } from "openai/resources/responses/responses.js";
 import type { ProviderEnv } from "../../types.ts";
 import { formatThrownValue } from "../../utils/diagnostics.ts";
 import { resolveHttpProxyUrlForTarget } from "../../utils/node-http-proxy.ts";
+import { createAbortError } from "../../utils/abort.ts";
 import type { RequestBody } from "./types.ts";
 import {
 	closeWebSocketSilently,
@@ -48,6 +49,20 @@ export interface OpenAICodexWebSocketDebugStats {
 const websocketSessionCache = new Map<string, Map<string, CachedWebSocketConnection>>();
 const websocketDebugStats = new Map<string, OpenAICodexWebSocketDebugStats>();
 const websocketSseFallbackSessions = new Set<string>();
+const sessionConnections = new Set<{ sessionId: string | undefined; controller: AbortController }>();
+const uncachedConnections = new Map<WebSocketLike, string | undefined>();
+
+function uncachedLease(socket: WebSocketLike, sessionId: string | undefined) {
+	uncachedConnections.set(socket, sessionId);
+	return {
+		socket,
+		reused: false,
+		release: () => {
+			uncachedConnections.delete(socket);
+			closeWebSocketSilently(socket);
+		},
+	};
+}
 
 export function getOrCreateWebSocketDebugStats(sessionId: string): OpenAICodexWebSocketDebugStats {
 	let stats = websocketDebugStats.get(sessionId);
@@ -85,6 +100,16 @@ export function resetOpenAICodexWebSocketDebugStats(sessionId?: string): void {
 }
 
 export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
+	for (const connection of sessionConnections) {
+		if (sessionId && connection.sessionId !== sessionId) continue;
+		sessionConnections.delete(connection);
+		connection.controller.abort();
+	}
+	for (const [socket, owner] of uncachedConnections) {
+		if (sessionId && owner !== sessionId) continue;
+		uncachedConnections.delete(socket);
+		closeWebSocketSilently(socket);
+	}
 	const closeEntry = (entry: CachedWebSocketConnection) => {
 		if (entry.idleTimer) clearTimeout(entry.idleTimer);
 		closeWebSocketSilently(entry.socket, 1000, "debug_close");
@@ -136,9 +161,40 @@ function scheduleSessionWebSocketExpiry(sessionId: string, accountId: string, en
 		if (accountEntries?.get(accountId) === entry) accountEntries.delete(accountId);
 		if (accountEntries?.size === 0) websocketSessionCache.delete(sessionId);
 	}, SESSION_WEBSOCKET_CACHE_TTL_MS);
+	entry.idleTimer.unref?.();
 }
 
 export async function acquireWebSocket(
+	...args: Parameters<typeof acquireSessionWebSocket>
+): Promise<Awaited<ReturnType<typeof acquireSessionWebSocket>> & { signal: AbortSignal }> {
+	const controller = new AbortController();
+	const connection = { sessionId: args[7] ?? args[2], controller };
+	sessionConnections.add(connection);
+	const signal = args[4];
+	const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+	args[4] = requestSignal;
+	try {
+		if (requestSignal.aborted) throw createAbortError();
+		const lease = await acquireSessionWebSocket(...args);
+		if (requestSignal.aborted) {
+			lease.release();
+			throw createAbortError();
+		}
+		return {
+			...lease,
+			signal: requestSignal,
+			release: (options) => {
+				sessionConnections.delete(connection);
+				lease.release(options);
+			},
+		};
+	} catch (error) {
+		sessionConnections.delete(connection);
+		throw error;
+	}
+}
+
+async function acquireSessionWebSocket(
 	url: string,
 	headers: Headers,
 	sessionId: string | undefined,
@@ -146,19 +202,24 @@ export async function acquireWebSocket(
 	signal?: AbortSignal,
 	connectTimeoutMs?: number,
 	env?: ProviderEnv,
+	ownerSessionId: string | undefined = sessionId,
 ): Promise<{
 	socket: WebSocketLike;
 	entry?: CachedWebSocketConnection;
 	reused: boolean;
 	release: (options?: { keep?: boolean }) => void;
 }> {
-	if (!sessionId) {
+	const connect = async () => {
 		const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
-		return {
-			socket,
-			reused: false,
-			release: () => closeWebSocketSilently(socket),
-		};
+		if (signal?.aborted) {
+			closeWebSocketSilently(socket);
+			throw createAbortError();
+		}
+		return socket;
+	};
+	if (!sessionId) {
+		const socket = await connect();
+		return uncachedLease(socket, ownerSessionId);
 	}
 
 	// A session/account can change endpoints, credentials, headers or proxy routing between turns.
@@ -198,14 +259,8 @@ export async function acquireWebSocket(
 			};
 		}
 		if (cached.busy) {
-			const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
-			return {
-				socket,
-				reused: false,
-				release: () => {
-					closeWebSocketSilently(socket);
-				},
-			};
+			const socket = await connect();
+			return uncachedLease(socket, ownerSessionId);
 		}
 		if (!isWebSocketReusable(cached.socket)) {
 			closeWebSocketSilently(cached.socket);
@@ -214,9 +269,13 @@ export async function acquireWebSocket(
 		}
 	}
 
-	const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
+	const socket = await connect();
 	const entry: CachedWebSocketConnection = { socket, identity, busy: true, createdAt: Date.now() };
 	accountEntries = websocketSessionCache.get(sessionId);
+	// Another first request may have connected while this one waited. Its lease keeps the cache slot.
+	if (accountEntries?.has(accountId)) {
+		return uncachedLease(socket, ownerSessionId);
+	}
 	if (!accountEntries) {
 		accountEntries = new Map();
 		websocketSessionCache.set(sessionId, accountEntries);

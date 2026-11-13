@@ -20,7 +20,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shortPath } from "../../utils/display-path.ts";
 import { readPaths } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
-import { saveContentCopy } from "../shared/spill.ts";
+import { outputDirOnce, saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
 import { cachePrices, clearingPays, expectedRemainingRequests } from "./clearing-cost.ts";
 
@@ -132,9 +132,9 @@ function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<str
 }
 
 /** Where a result's whole text is: Octocode's spill file of a `bash` command when it still exists, else a copy saved now. */
-function savedCopy(candidate: Candidate): string | undefined {
+function savedCopy(candidate: Candidate, outputDir: () => string): string | undefined {
 	if (candidate.spilled !== undefined && fs.existsSync(candidate.spilled)) return shortPath(candidate.spilled);
-	return saveContentCopy(candidate.text, `cleared-${candidate.tool}`);
+	return saveContentCopy(candidate.text, `cleared-${candidate.tool}`, "txt", outputDir);
 }
 
 /**
@@ -208,8 +208,10 @@ export function clearStaleResults(
 		return clearingPays({ oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway });
 	};
 	if (!pays(older)) return;
+	// One output folder for the batch: resolving it per result repeated the workspace's realpath and folder checks.
+	const outputDir = outputDirOnce();
 	const saved = older.flatMap((candidate) => {
-		const file = savedCopy(candidate);
+		const file = savedCopy(candidate, outputDir);
 		return file ? [{ candidate, file }] : [];
 	});
 	// Results that could not be saved stay; if what is left no longer pays, the saved copies stay unused.

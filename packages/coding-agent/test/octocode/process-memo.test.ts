@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as importedModule2 from "../../src/octocode/shared/process.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import * as importedModule3 from "../../src/octocode/team/store.ts";
+import * as importedModule4 from "../../src/octocode/shared/process-table.ts";
 import { tmp } from "./helpers.ts";
 
-const ps = vi.hoisted(() => ({ calls: 0 }));
+/** `calls`: `ps` run on the calling thread (`execFileSync`); `async`: `ps` run without blocking (`execFile`). */
+const ps = vi.hoisted(() => ({ calls: 0, async: 0 }));
 vi.mock("node:child_process", async (actual) => {
 	const real = await actual<typeof importedModule1>();
 	return {
@@ -16,10 +18,16 @@ vi.mock("node:child_process", async (actual) => {
 			if (command === "ps") ps.calls++;
 			return (real.execFileSync as (...args: unknown[]) => unknown)(command, ...rest);
 		}) as typeof real.execFileSync,
+		execFile: ((command: string, ...rest: unknown[]) => {
+			if (command === "ps") ps.async++;
+			return (real.execFile as (...args: unknown[]) => unknown)(command, ...rest);
+		}) as typeof real.execFile,
 	};
 });
-const { processMatch, processStartTime, sameProcess, VERDICT_TTL_MS } = await Promise.resolve(importedModule2);
+const { killTree, liveProcess, processAlive, processMatch, processStartTime, sameProcess, VERDICT_TTL_MS } =
+	await Promise.resolve(importedModule2);
 const { TeamStore } = await Promise.resolve(importedModule3);
+const { refreshProcessTable, resetProcessTable } = await Promise.resolve(importedModule4);
 
 const children: ChildProcess[] = [];
 /** A live process other than this one, with the start time a row would record for it. */
@@ -33,6 +41,7 @@ async function peer(): Promise<{ pid: number; started: string }> {
 }
 afterEach(() => {
 	for (const child of children.splice(0)) child.kill("SIGKILL");
+	resetProcessTable();
 });
 
 const member = (id: string, who: { pid: number; started: string }): Member => ({
@@ -96,15 +105,47 @@ describe("sameProcess is one memoized judgement", () => {
 		expect(sameProcess(who.pid, who.started, t0 + 1)).toBe(false);
 	});
 
-	it("leaves processMatch fresh: before a signal the comparison is never reused", async () => {
+	it("leaves processMatch fresh: before a signal the comparison is never reused, and never blocks", async () => {
 		const who = await peer();
 		ps.calls = 0;
-		expect(processMatch(who.pid, who.started)).toBe("same");
-		expect(processMatch(who.pid, who.started)).toBe("same");
-		expect(ps.calls).toBe(2);
+		ps.async = 0;
+		expect(await processMatch(who.pid, who.started)).toBe("same");
+		expect(await processMatch(who.pid, who.started)).toBe("same");
+		expect(await processMatch(who.pid, String(Number(who.started) - 5))).toBe("other");
+		expect(ps.async).toBe(3);
+		expect(ps.calls).toBe(0);
 	});
 
-	it("serves the team store sweep and the lease-owner check from the same verdict", async () => {
+	it("answers liveness on a timer without running ps on the calling thread: one asynchronous ps -A serves every caller", async () => {
+		const who = await peer();
+		resetProcessTable();
+		ps.calls = 0;
+		ps.async = 0;
+		// Nothing known yet: alive counts, and one table read is asked for, however many callers ask.
+		for (let i = 0; i < 20; i++) expect(liveProcess(who.pid, who.started)).toBe(true);
+		expect(ps.calls).toBe(0);
+		expect(ps.async).toBe(1);
+		await refreshProcessTable();
+		expect(ps.async).toBe(1);
+		// The table now judges: a reused pid is gone, the real process is not, and neither asks `ps` again.
+		expect(liveProcess(who.pid, String(Number(who.started) - 5))).toBe(false);
+		expect(liveProcess(who.pid, who.started)).toBe(true);
+		// The one-off `sameProcess` answers from the same table.
+		expect(sameProcess(who.pid, String(Number(who.started) - 5))).toBe(false);
+		expect(sameProcess(who.pid, who.started)).toBe(true);
+		expect(ps.calls).toBe(0);
+		expect(ps.async).toBe(1);
+		// A table older than the TTL asks for a new one before it vouches for a process again (alive counts meanwhile);
+		// a reused pid it saw stays gone without asking.
+		expect(liveProcess(who.pid, String(Number(who.started) - 5), Date.now() + VERDICT_TTL_MS)).toBe(false);
+		expect(ps.async).toBe(1);
+		expect(liveProcess(who.pid, who.started, Date.now() + VERDICT_TTL_MS)).toBe(true);
+		expect(ps.async).toBe(2);
+		await refreshProcessTable();
+		expect(ps.calls).toBe(0);
+	});
+
+	it("never runs ps on the calling thread for the team's sweep, list and lease-owner check", async () => {
 		const who = await peer();
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
 		try {
@@ -113,18 +154,31 @@ describe("sameProcess is one memoized judgement", () => {
 			store.save(member("asker", { pid: process.pid, started: processStartTime(process.pid)! }));
 			const file = path.join(store.workspace, "src", "a.ts");
 			expect(store.lock("owner", [{ path: file, kind: "file", reason: "edit" }], now).ok).toBe(true);
-			// Past the TTL of whatever the setup remembered, so the sweep's comparisons are fresh.
-			const later = now + VERDICT_TTL_MS + 1;
+			resetProcessTable();
 			ps.calls = 0;
-			store.sweep(later);
-			// One comparison for the owner (this process's own start time is read once and kept); the owner's verdict then
-			// serves the lease check and the member list too.
-			expect(ps.calls).toBe(1);
-			expect(store.conflict(file, "asker", "file", later)?.owner).toBe("owner");
-			expect(store.list(later).map((row) => row.id)).toContain("owner");
-			expect(ps.calls).toBe(1);
+			// The sweep and the list run every second: they judge from the shared table and never call `ps` themselves.
+			store.sweep(now);
+			expect(store.list(now).map((row) => row.id)).toContain("owner");
+			expect(ps.calls).toBe(0);
+			await refreshProcessTable();
+			expect(store.conflict(file, "asker", "file", Date.now())?.owner).toBe("owner");
+			expect(ps.calls).toBe(0);
 		} finally {
 			store.close();
 		}
+	});
+
+	it("lists a tree's descendants without blocking before it signals the tree", async () => {
+		const child = spawn("/bin/sh", ["-c", "sleep 30 & wait"], { detached: true, stdio: "ignore" });
+		children.push(child);
+		const exited = new Promise((resolve) => child.once("exit", resolve));
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		ps.calls = 0;
+		ps.async = 0;
+		killTree(child.pid, 50);
+		expect(processAlive(child.pid)).toBe(true);
+		await exited;
+		expect(ps.calls).toBe(0);
+		expect(ps.async).toBe(1);
 	});
 });

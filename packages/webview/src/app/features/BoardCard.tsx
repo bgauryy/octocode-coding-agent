@@ -1,6 +1,6 @@
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import type { SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";
-import { type ComponentType, type DragEvent, type KeyboardEvent, memo, useEffect, useRef } from "react";
+import { type ComponentType, type DragEvent, type KeyboardEvent, memo, useLayoutEffect, useRef } from "react";
 import { PRIORITY_TITLES } from "../model/backlog.ts";
 import { isEpic, shownState } from "../model/hierarchy.ts";
 import { CommentIcon, LinkIcon } from "../ui/icons.tsx";
@@ -104,10 +104,12 @@ export const BoardCard = memo(function BoardCard({
 	const movable = Boolean(flow.actions) && !isEpic(it);
 	const lifted = flow.lifted?.ref === it.ref;
 	const link = useRef<HTMLAnchorElement>(null);
-	const wantsFocus = flow.focusRef === it.ref;
-	useEffect(() => {
-		if (wantsFocus) link.current?.focus();
-	}, [wantsFocus]);
+	const focusRequest = flow.focusRequest?.ref === it.ref ? flow.focusRequest : undefined;
+	const consumeFocus = flow.consumeFocus;
+	useLayoutEffect(() => {
+		if (!focusRequest || !consumeFocus(focusRequest.id)) return;
+		link.current?.focus();
+	}, [focusRequest, consumeFocus]);
 	function start(event: DragEvent) {
 		const transfer = event.dataTransfer as DataTransfer | null;
 		if (transfer) {

@@ -1,4 +1,4 @@
-import { Container, GLYPH, Markdown, type MarkdownTheme } from "@octocodeai/octocode-tui";
+import { Container, GLYPH, Markdown, type MarkdownTheme, trackRenderChanges } from "@octocodeai/octocode-tui";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
@@ -32,6 +32,9 @@ class MarkedMarkdown extends Markdown {
 	}
 }
 
+// The bar follows the theme, and a theme switch invalidates (which signals): the rows change only with a signal.
+trackRenderChanges(MarkedMarkdown.prototype);
+
 /**
  * Component that renders a user message
  */
@@ -42,6 +45,7 @@ export class UserMessageComponent extends Container {
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private contentOptions: ContentOptions;
 	private readonly zone = new Osc133ZoneMarker();
+	private bar: string | undefined;
 
 	constructor(
 		text: string | ApplicationMessage,
@@ -108,6 +112,13 @@ export class UserMessageComponent extends Container {
 	}
 
 	override render(width: number): string[] {
+		// The UI invalidates on a theme switch; a message drawn on its own (no parent to invalidate it) checks its bar.
+		const bar = theme.fg("accent", GLYPH.userBar);
+		if (this.bar !== undefined && bar !== this.bar) this.invalidate();
+		this.bar = bar;
 		return this.zone.mark(super.render(width));
 	}
 }
+
+// Rows come from its children and change only when they do (each rebuild replaces them).
+trackRenderChanges(UserMessageComponent.prototype);

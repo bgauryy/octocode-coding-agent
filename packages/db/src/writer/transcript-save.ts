@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { AgentDb } from "../db.ts";
+import type { MirrorDb } from "../db.ts";
 import * as transcripts from "../queries/transcripts.ts";
 
 /**
@@ -36,9 +36,9 @@ type Stored = ReturnType<typeof transcripts.stamp>;
 /** What the stored rows share with `target`, read before the write lock (`storedPrefix`). */
 export type SavePlan = ReturnType<typeof transcripts.storedPrefix>;
 
-export function planSave(agent: AgentDb, target: SaveTarget): SavePlan {
+export function planSave(mirror: MirrorDb, target: SaveTarget): SavePlan {
 	return transcripts.storedPrefix(
-		agent.db,
+		mirror.db,
 		target.sessionId,
 		target.records.map((record) => record.json),
 	);
@@ -62,13 +62,13 @@ interface Cursor {
 }
 
 /** One step's work: delete the old tail from its end, then insert the new tail, within the bounds. Returns true when done. */
-function advance(agent: AgentDb, target: SaveTarget, cursor: Cursor, bounded: boolean): boolean {
+function advance(mirror: MirrorDb, target: SaveTarget, cursor: Cursor, bounded: boolean): boolean {
 	let rows = 0;
 	let bytes = 0;
 	const full = () => bounded && (rows >= CHUNK_ROWS || bytes >= CHUNK_BYTES);
 	if (cursor.end > cursor.common) {
 		const from = bounded ? Math.max(cursor.common, cursor.end - CHUNK_ROWS) : cursor.common;
-		transcripts.deleteEntriesFrom(agent.db, target.sessionId, from);
+		transcripts.deleteEntriesFrom(mirror.db, target.sessionId, from);
 		rows += cursor.end - from;
 		cursor.end = from;
 		if (cursor.end > cursor.common) return false;
@@ -81,7 +81,7 @@ function advance(agent: AgentDb, target: SaveTarget, cursor: Cursor, bounded: bo
 		bytes += record.json.length;
 		cursor.next += 1;
 	}
-	transcripts.insertEntries(agent.db, target.sessionId, batch);
+	transcripts.insertEntries(mirror.db, target.sessionId, batch);
 	return cursor.next >= target.records.length;
 }
 
@@ -91,7 +91,7 @@ function advance(agent: AgentDb, target: SaveTarget, cursor: Cursor, bounded: bo
  * `previous` is the stamp read in this transaction; a plan read from another stamp is not used (everything is replaced).
  */
 export function startSave(
-	agent: AgentDb,
+	mirror: MirrorDb,
 	target: SaveTarget,
 	previous: Stored,
 	plan: SavePlan | undefined,
@@ -100,30 +100,30 @@ export function startSave(
 	const usable = plan !== undefined && previous !== undefined && sameStamp(plan.stamp, previous);
 	const common = usable ? plan.common : 0;
 	const cursor: Cursor = { end: usable ? plan.stored : 0, next: common, common };
-	if (!usable) transcripts.deleteEntriesFrom(agent.db, target.sessionId, 0);
+	if (!usable) transcripts.deleteEntriesFrom(mirror.db, target.sessionId, 0);
 	const rows = cursor.end - common + (target.records.length - common);
 	let bytes = 0;
 	for (let n = common; n < target.records.length && bytes < CHUNK_BYTES; n++) bytes += target.records[n].json.length;
 	if (!steps || (rows <= CHUNK_ROWS && bytes < CHUNK_BYTES)) {
-		transcripts.writeStamp(agent.db, target.sessionId, target.file, target.header, target.stamp, previous?.file);
-		advance(agent, target, cursor, false);
+		transcripts.writeStamp(mirror.db, target.sessionId, target.file, target.header, target.stamp, previous?.file);
+		advance(mirror, target, cursor, false);
 		return undefined;
 	}
 	const marker = { ...target.stamp, mtime: `${target.stamp.mtime}~${randomBytes(6).toString("hex")}` };
-	transcripts.writeStamp(agent.db, target.sessionId, target.file, target.header, marker, previous?.file);
-	if (advance(agent, target, cursor, true)) {
-		transcripts.writeStamp(agent.db, target.sessionId, target.file, target.header, target.stamp, target.file);
+	transcripts.writeStamp(mirror.db, target.sessionId, target.file, target.header, marker, previous?.file);
+	if (advance(mirror, target, cursor, true)) {
+		transcripts.writeStamp(mirror.db, target.sessionId, target.file, target.header, target.stamp, target.file);
 		return undefined;
 	}
 	return () => {
 		for (;;) {
 			steps.pause();
-			const outcome = agent.transaction(() => {
-				const stored = transcripts.stamp(agent.db, target.sessionId);
+			const outcome = mirror.transaction(() => {
+				const stored = transcripts.stamp(mirror.db, target.sessionId);
 				if (!stored) return "skipped";
 				if (stored.file !== target.file || stored.mtime !== marker.mtime) return "current";
-				if (!advance(agent, target, cursor, true)) return undefined;
-				transcripts.writeStamp(agent.db, target.sessionId, target.file, target.header, target.stamp, target.file);
+				if (!advance(mirror, target, cursor, true)) return undefined;
+				transcripts.writeStamp(mirror.db, target.sessionId, target.file, target.header, target.stamp, target.file);
 				return "saved";
 			});
 			if (outcome) return outcome;

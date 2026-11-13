@@ -5,7 +5,6 @@ import {
 	LEGACY_SHIFT_SEQUENCES,
 	type LegacyModifierKey,
 	LOCK_MASK,
-	MODIFIER_NAMES,
 	MODIFIERS,
 	SHIFTED_SYMBOL_KEYS,
 	SYMBOL_KEYS,
@@ -131,7 +130,26 @@ function parseEventType(eventTypeStr: string | undefined): KeyEventType {
 	return "press";
 }
 
-export function parseKittySequence(data: string): ParsedKittySequence | null {
+/** Every sequence parsed below starts with ESC [: other input (a typed letter) is rejected before any regex runs. */
+const isCsi = (data: string): boolean => data.charCodeAt(0) === 0x1b && data.charCodeAt(1) === 0x5b;
+
+// Each binding check of one key event parses the same input: the last result is kept, frozen, so it is parsed once.
+let lastKittyData: string | undefined;
+let lastKitty: Readonly<ParsedKittySequence> | null = null;
+let lastModifyOtherKeysData: string | undefined;
+let lastModifyOtherKeys: Readonly<ParsedModifyOtherKeysSequence> | null = null;
+
+export function parseKittySequence(data: string): Readonly<ParsedKittySequence> | null {
+	if (!isCsi(data)) return null;
+	if (data !== lastKittyData) {
+		const parsed = parseKittySequenceUncached(data);
+		lastKitty = parsed && Object.freeze(parsed);
+		lastKittyData = data;
+	}
+	return lastKitty;
+}
+
+function parseKittySequenceUncached(data: string): ParsedKittySequence | null {
 	// CSI u format with alternate keys (flag 4):
 	// \x1b[<codepoint>u
 	// \x1b[<codepoint>;<mod>u
@@ -247,12 +265,16 @@ export function matchesKittySequence(data: string, expectedCodepoint: number, ex
 	return false;
 }
 
-export function parseModifyOtherKeysSequence(data: string): ParsedModifyOtherKeysSequence | null {
-	const match = data.match(/^\x1b\[27;(\d+);(\d+)~$/);
-	if (!match) return null;
-	const modValue = parseInt(match[1], 10);
-	const codepoint = parseInt(match[2], 10);
-	return { codepoint, modifier: modValue - 1 };
+export function parseModifyOtherKeysSequence(data: string): Readonly<ParsedModifyOtherKeysSequence> | null {
+	if (!isCsi(data)) return null;
+	if (data !== lastModifyOtherKeysData) {
+		const match = data.match(/^\x1b\[27;(\d+);(\d+)~$/);
+		lastModifyOtherKeys = match
+			? Object.freeze({ codepoint: parseInt(match[2], 10), modifier: parseInt(match[1], 10) - 1 })
+			: null;
+		lastModifyOtherKeysData = data;
+	}
+	return lastModifyOtherKeys;
 }
 
 /**
@@ -339,26 +361,4 @@ export function formatKeyNameWithModifiers(keyName: string, modifier: number): s
 	if (effectiveMod & MODIFIERS.alt) mods.push("alt");
 	if (effectiveMod & MODIFIERS.super) mods.push("super");
 	return mods.length > 0 ? `${mods.join("+")}+${keyName}` : keyName;
-}
-
-export function parseKeyId(
-	keyId: string,
-): { key: string; ctrl: boolean; shift: boolean; alt: boolean; super: boolean } | null {
-	let key = keyId.toLowerCase();
-	const modifiers = new Set<(typeof MODIFIER_NAMES)[number]>();
-	while (true) {
-		const modifier = MODIFIER_NAMES.find((name) => key.startsWith(`${name}+`));
-		if (!modifier) break;
-		if (modifiers.has(modifier)) return null;
-		modifiers.add(modifier);
-		key = key.slice(modifier.length + 1);
-	}
-	if (!key || (key.includes("+") && key !== "+")) return null;
-	return {
-		key,
-		ctrl: modifiers.has("ctrl"),
-		shift: modifiers.has("shift"),
-		alt: modifiers.has("alt"),
-		super: modifiers.has("super"),
-	};
 }

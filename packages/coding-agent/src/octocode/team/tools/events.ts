@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import { type ExtensionAPI, readsMessagesOnly } from "../../../core/features/index.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { modelLookup, optionalString, unpricedModel } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -35,10 +35,13 @@ export function registerTeamEvents(
 	});
 	// Team mail is delivered when the model is called with it. Octocode emits `context` before every model call, whichever way
 	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
-	api.on("context", async (event) => {
-		team.onContext(event.messages);
-		return undefined;
-	});
+	api.on(
+		"context",
+		readsMessagesOnly(async (event) => {
+			team.onContext(event.messages);
+			return undefined;
+		}),
+	);
 	// Mail that reached the transcript and was then compacted away is carried by the summary: no later `context` event
 	// lists it, so it would stay unseen and hold back newer mail. Mail in the kept range is still seen by the next call.
 	api.on("session_compact", async (event, ctx) => {

@@ -29,7 +29,8 @@ export interface RunnerReply {
 	usage?: ExternalUsage;
 	/** The cost the runner reported, in dollars; a plan-billed run counts none of it. */
 	cost?: number;
-	billing: RunnerBilling;
+	/** Absent when the runner's sign-in probe did not establish who pays. */
+	billing?: RunnerBilling;
 }
 
 /** The connected runners of this session, fixed when the `agent` tool is declared, and how a turn runs in one. */

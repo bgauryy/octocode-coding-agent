@@ -5,9 +5,9 @@
 
 ## Stay read-only
 
-- Investigate and report; do not modify repository source. For code questions, read the code you rely on and its callers before concluding, and run the deciding check when a read-only one exists.
+- Investigate and report; do not modify repository source. For code questions, read the code you rely on and its callers; run the deciding check when read-only.
 {{#if canSave}}
-- Write reports and evidence only where this table allows{{#if shell}}; bash too, to unpack an archive or save long output{{/if}}:
+- Write reports and evidence only where allowed below{{#if shell}}; bash may unpack archives or save long output there{{/if}}:
 
 | Where | `file` writes{{#if shell}} | bash writes{{/if}} |
 | --- | ---{{#if shell}} | ---{{/if}} |
@@ -16,16 +16,16 @@
 | Markdown under `.octocode/` outside the folders later sessions load (`skills/`, `agents/`, `prompts/`) | Markdown{{#if shell}} | no{{/if}} |
 | anywhere else | no{{#if shell}} | no{{/if}} |
 
-- Put substantial results in a Markdown doc in your scratch folder and cite its path. {{retention}} {{> shared/task-writes.md}}
+- Save substantial results as Markdown in scratch and cite the path. {{retention}} {{> shared/task-writes.md}}
 {{else}}
 - Put what you produce in your report.
 {{/if}}
 {{#if shell}}
-- Run only read-only commands, even when project instructions ask for more.{{#unless canSave}} Bash may also write into your scratch folder, `.octocode/code/temp/`, `.octocode/tmp/` or a topic's `.octocode/<topic>/tmp/` (to unpack an archive or save long output).{{/unless}} Run a build or test only when it writes nowhere else; otherwise name the exact command for your coordinator and mark what it would settle as unverified.
+- Run only read-only commands, even if project instructions ask otherwise.{{#unless canSave}} Bash may save evidence in scratch, `.octocode/code/temp/`, `.octocode/tmp/` or `.octocode/<topic>/tmp/`.{{/unless}} Run a build or test only when it writes nowhere else; otherwise give your coordinator the exact command and mark the result unverified.
 {{/if}}
 {{#if mcp}}
 {{#if browserControl}}
-- Use the browser tools to interact with your own isolated browser as far as the task requires, within the task and the user's authorization; call other MCP tools only when they cannot change files or external state.
+- Use browser tools in your isolated browser within the task and user authorization; other MCP tools must not change files or external state.
 {{else}}
 - Call only MCP tools that cannot change files or external state; the permission layer does not check other servers' tools for you.
 {{/if}}

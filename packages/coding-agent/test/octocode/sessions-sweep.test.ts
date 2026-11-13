@@ -63,7 +63,7 @@ describe("session sweep", () => {
 		const old = new Date(Date.now() - 31 * DAY);
 		for (const file of Object.values(files)) fs.utimesSync(file, old, old);
 		const summary = (entryId: string, text: string) =>
-			compactions.save(agent.db, {
+			compactions.save(agent.mirror.db, {
 				workspace: "w",
 				sessionId: "kept",
 				entryId,
@@ -192,6 +192,8 @@ describe("session sweep", () => {
 
 	it("walks and removes without synchronous file calls, so a large sessions folder never blocks the UI", async () => {
 		const index = new SessionIndex(sharedAgentDb());
+		// Both database files open before the spies, as they are in a running session: opening one is not a walk.
+		expect(index.agent.mirror.db.isOpen).toBe(true);
 		age(folder("unindexed-old", ["output", "bash", "checkpoints/blobs"]), 31 * DAY);
 		const log = path.join(folder("kept"), "output", "old.txt");
 		fs.writeFileSync(log, "x");

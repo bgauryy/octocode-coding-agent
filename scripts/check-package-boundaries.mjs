@@ -69,6 +69,7 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 			for (const rule of layerRules) {
 				if (
 					`${source.package}/${source.path}`.startsWith(rule.from) &&
+					!(rule.except ?? []).some((prefix) => `${source.package}/${source.path}`.startsWith(prefix)) &&
 					[rule.to].flat().some((to) => reached.startsWith(to))
 				) {
 					layerEdges.add(`${rule.name}: ${source.package}/${source.path}`);

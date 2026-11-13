@@ -21,6 +21,8 @@ Part of the [`@octocodeai/octocode-tui` guide](../README.md).
 | `onTerminalColorSchemeChange(fn)` / `setTerminalColorSchemeNotifications(on)` | Light/dark scheme reports                                                                 |
 | `mode`, `fullRedraws`, `terminal`, `children`                                 | Read-only state                                                                           |
 
+Input listeners see each key before the focused component. Printable characters that arrive in one terminal read (a typed run, such as a paste without bracketed paste mode) are each passed to the listeners first, then reach the focused component together: a listener that reads component state during a run (an editor's text) sees it as it was before the run. A listener that needs the state after each key should act on a later event (the editor's `onChange`, or the next render).
+
 A component that throws in `render` does not stop the frame: it draws as `⚠ <Component> failed to render: <first error line>` until it renders again. Without an `onRenderError` listener the error is appended to `octocode-tui-render-errors.log` in the log directory given to the renderer, else the system temp folder. A direct `render()` call outside a frame still throws.
 
 ## Component interface
@@ -29,19 +31,34 @@ A component that throws in `render` does not stop the frame: it draws as `⚠ <C
 interface Component {
 	render(width: number): string[];
 	handleInput?(data: string): void;
+	handleTextRun?(text: string): number;
 	handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
 	invalidate(): void;
 }
 ```
 
-| Method                | Contract                                                                    |
-| --------------------- | --------------------------------------------------------------------------- |
-| `render(width)`       | One string per line, none wider than `width`; see below for reuse           |
-| `handleInput?(data)`  | Focused components get raw input, possibly ANSI escapes                     |
-| `handleMouse?(event)` | Alternate-screen pointer input aimed at the component                       |
-| `invalidate()`        | Required: clear cached render state (an empty body is fine without a cache) |
+| Method                 | Contract                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `render(width)`        | One string per line, none wider than `width`; see below for reuse                                                                                            |
+| `handleInput?(data)`   | Focused components get raw input, possibly ANSI escapes                                                                                                      |
+| `handleTextRun?(text)` | Printable characters from one terminal read, with the result of one `handleInput` each; returns the length handled, stopping after a key that may move focus |
+| `handleMouse?(event)`  | Alternate-screen pointer input aimed at the component                                                                                                        |
+| `invalidate()`         | Required: clear cached render state (an empty body is fine without a cache)                                                                                  |
 
 Return the same array from `render(width)` while nothing changed, and never change an array after returning it. Containers and the renderers reuse work by array identity, so a row changed inside an array they already hold is not redrawn.
+
+### Skipping unchanged components
+
+A container keeps each child's rows between frames. A child that declares its changes is not rendered again until it signals, so a frame where only the tail of a long transcript changed costs what changed. Any other component is rendered every frame, as before.
+
+| Call                                                                            | Where                                                                                                                                  |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `trackRenderChanges(Class.prototype)`                                           | Once, after the class: its rows change only after `renderChanged(this)`, in `invalidate()`, through linked children, or with the width |
+| `renderChanged(this)`                                                           | In every method that changes the rows, and in `invalidate()`                                                                           |
+| `linkRenderChild(this, child)`                                                  | A composite that renders a child itself (not through `Container`), in its constructor and in `render`                                  |
+| `renderSerial()`, `isRenderStable(child, serial)`, `settleRender(this, stable)` | A composite's `render`: it is stable only while every child it drew is                                                                 |
+
+`Container`, `Text`, `Markdown`, `Spacer`, `Box` and `MouseRegion` take part. A subclass that overrides `render` does not, until it declares its own `render`: a render that reads state set without a signal (a clock, a global) must not be declared. Code may still edit `container.children` directly; reading the array counts as a change, so the next frame renders every child once.
 
 The renderer ends every line with an SGR and OSC 8 reset, so styles never span lines.
 
@@ -94,7 +111,7 @@ tui.setLayoutRoot(
 | `scrollToEndIndicator`                                                       | `TuiAltScreenOptions` | Clickable label on the last row while a `follow: "end"` view is scrolled away    |
 | `copyOnSelect`                                                               | `TuiAltScreenOptions` | Copy drag selections with OSC 52 (default on)                                    |
 
-With `virtualize`, a view that follows the end lays out only the rows in view on its first frame and after a width change, and measures the rest over the next frames; search, selection and scrolling still see the whole content. It applies only when the view's child is a plain `Container` (nested plain containers count, a subclass or wrapper does not), the view gets its height from a stack, and no scrollbar is showing. Otherwise the view lays out every row, without notice.
+With `virtualize`, a view lays out only the rows in view on its first frame, after a width change and after a change to many items at once (expand all, a new theme), and measures the rest between frames and over the next frames; search, selection and scrolling still see the whole content. A view that follows the end stays at the end; one scrolled up keeps the item at the top of the view, at the same row within it. Each item is measured once per width and again only after it signals a change (`trackRenderChanges`); an untracked item is measured every frame. It applies only when the view's child is a plain `Container` (nested plain containers count, a subclass or wrapper is one item), the view gets its height from a stack, no scrollbar is showing and no item is listed twice. Otherwise the view lays out every row, without notice.
 
 The primary view also jumps between OSC 133 prompt markers. `Ctrl+Shift+F` opens or closes its search panel; `Enter`/`Ctrl+G` and `Shift+Enter`/`Ctrl+Shift+G` move between matches, `Escape` closes.
 

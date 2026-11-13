@@ -10,10 +10,13 @@
 				"scripts/agent-eval/fixtures/checks/*.mjs",
 				"scripts/agent-treeshake-smoke-entry.ts",
 				"scripts/browser-smoke-entry.ts",
+				"scripts/db-migrate.mjs",
 				"scripts/generate-thinking-capabilities.mjs",
 				"scripts/profile-render-backpressure.mjs",
 				"scripts/stage-registry-release.mjs",
 				"scripts/use-local-packages.mjs",
+				// `node --test --test-global-setup` (root and tui test scripts).
+				"node-test.global.ts",
 			],
 		},
 		"packages/ai": {

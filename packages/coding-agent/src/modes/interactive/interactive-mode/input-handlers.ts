@@ -216,6 +216,8 @@ async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> 
 	const content = host.editor.getExpandedText?.() ?? host.editor.getText();
 	host.ui.stop();
 	try {
+		// The restore sequences `stop` queued reach the terminal before the editor draws on it.
+		await host.ui.terminal?.drainOutput?.();
 		const result = await editInExternalEditor({
 			command: editorCmd,
 			content,

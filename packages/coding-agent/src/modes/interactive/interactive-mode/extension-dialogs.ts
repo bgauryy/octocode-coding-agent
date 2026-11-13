@@ -306,12 +306,14 @@ export async function showExtensionCustom<T>(
 	},
 ): Promise<T | undefined> {
 	const savedText = host.editor.getText();
+	const savedExpanded = host.editor.getExpandedText?.() ?? savedText;
 	const isOverlay = options?.overlay ?? false;
 
 	const restoreEditor = () => {
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.editor);
-		host.editor.setText(savedText);
+		// An untouched draft stays as it is, paste markers included; a changed one gets the saved text back, expanded.
+		if (host.editor.getText() !== savedText) host.editor.setText(savedExpanded);
 		host.ui.setFocus(host.editor);
 		host.ui.requestRender();
 	};

@@ -90,7 +90,7 @@ export function archiveHistory(
 			}
 			// Agent runs are the audit of who ran what: they stay for the keep window and are not archived.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => agentRuns.purgeBefore(db, now - keepMs));
-			// Timers likewise: ended ones, and active ones no session came back to fire within the window.
+			// Timers likewise: ended ones, and active ones left overdue and untouched for the whole window.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
 		});
 	} catch (error) {

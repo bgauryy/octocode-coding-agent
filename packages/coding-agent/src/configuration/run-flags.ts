@@ -9,11 +9,6 @@ export interface RunConfigFlags {
 	set?: string[];
 }
 
-/** Why a `--set` word is not `key=value`, or undefined when it is. */
-export function runSetError(word: string): string | undefined {
-	return word.indexOf("=") > 0 ? undefined : `expects <key>=<value>, got "${word}"`;
-}
-
 export const hasRunFlags = (flags: RunConfigFlags): boolean =>
 	[flags.enable, flags.disable, flags.set].some((list) => (list?.length ?? 0) > 0);
 

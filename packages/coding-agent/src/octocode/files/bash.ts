@@ -245,7 +245,7 @@ export function registerBashTool(
 						},
 						ctx,
 					);
-					const stray = group === undefined ? undefined : strayNote(group);
+					const stray = group === undefined ? undefined : await strayNote(group);
 					const quirk = raw.details?.exitCode ? hostQuirkHint(contentText(raw.content), params.command) : undefined;
 					const notices = [stray, clamped ? `(${CLAMP_NOTE})` : undefined, quirk].filter((note) => note !== undefined);
 					// For the model only, so it stays out of `notices`, which the terminal shows.

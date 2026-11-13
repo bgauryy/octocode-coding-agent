@@ -90,6 +90,9 @@ function haystack(it: SnapshotItem): string {
 			it.tags.join(" "),
 			...it.notes.map((note) => `${note.author} ${note.text}`),
 			...(it.comments ?? []).map((comment) => `${comment.author} ${comment.text}`),
+			...(it.tasks ?? []).map(
+				(task) => `${task.ref} ${task.goal} ${task.reason} ${task.result} ${task.state} ${task.assignee ?? ""}`,
+			),
 		]
 			.join("\n")
 			.toLowerCase();

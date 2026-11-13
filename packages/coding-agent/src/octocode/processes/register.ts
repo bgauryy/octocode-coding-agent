@@ -58,7 +58,7 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 			}),
 		);
 
-	api.on("session_start", async (_event, ctx) => {
+	api.on("session_start", (_event, ctx) => {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const subagent = subagentIdentity(env);
 		const role = subagent?.role ?? (ctx.mode === "rpc" ? "rpc" : "main");
@@ -67,7 +67,7 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 			? processTitle(role, id)
 			: sessionProcessTitle(ctx.mode === "rpc" ? "rpc" : "main", sessionId);
 		setProcessTitle(title);
-		await sampler?.stop();
+		sampler?.stop();
 		sampler = undefined;
 		const parent = subagent ? parentOf(env) : undefined;
 		const identity: SampleIdentity = {
@@ -86,8 +86,9 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 			warned = true;
 			ctx.ui.notify(`Process samples are not being recorded: ${errorMessage(error)}`, "warning");
 		};
+		// Not awaited: the first sample's `ps` runs while the session starts, so the first request and the editor never wait for it.
 		try {
-			sampler = await startProcessSampler({
+			sampler = startProcessSampler({
 				db: db(),
 				table,
 				identity: () => identity,
@@ -105,9 +106,10 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 		}
 	});
 
-	api.on("session_shutdown", async () => {
+	// The final sample is written at once from the last table read: a shutdown or a switch never waits for a `ps`.
+	api.on("session_shutdown", () => {
 		const stopping = sampler;
 		sampler = undefined;
-		await stopping?.stop();
+		stopping?.stop();
 	});
 }

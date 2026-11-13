@@ -4,7 +4,7 @@ import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-fi
 import { HOME_NAMES } from "../shared/home.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
-import { processStartTime } from "../shared/process.ts";
+import { processStartTime, processStartTimeAsync } from "../shared/process.ts";
 
 /** What isolated subagent worktrees share across the modules that create, save, merge and prune them (`worktree.ts` re-exports the public parts). */
 
@@ -75,14 +75,19 @@ export function ownersOf(record: { owners?: unknown }): Owner[] {
 	});
 }
 
-/** Adds the subagent's own process to the owner record, so a parent crash does not let a prune remove the worktree under a live child. */
-export function recordWorktreePid(worktree: Pick<Worktree, "path">, pid: number): void {
+/**
+ * Adds the subagent's own process to the owner record, so a parent crash does not let a prune remove the worktree under
+ * a live child. Its start time comes from one asynchronous `ps`, so a spawn never waits for it. Never rejects.
+ */
+export async function recordWorktreePid(worktree: Pick<Worktree, "path">, pid: number): Promise<void> {
 	const meta = `${worktree.path}.json`;
+	const started = await processStartTimeAsync(pid);
+	const entry: Owner = started ? { pid, started } : { pid };
 	try {
 		const record = JSON.parse(fs.readFileSync(meta, "utf8")) as Record<string, unknown>;
 		atomicWriteFileSync(
 			meta,
-			JSON.stringify({ ...record, owners: [...ownersOf(record).filter((each) => each.pid !== pid), owner(pid)] }),
+			JSON.stringify({ ...record, owners: [...ownersOf(record).filter((each) => each.pid !== pid), entry] }),
 		);
 	} catch {
 		// The record is gone: the worktree was already finished.

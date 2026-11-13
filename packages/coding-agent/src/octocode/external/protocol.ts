@@ -12,7 +12,7 @@ export const ExternalParamsSchema = Type.Object(
 	{
 		action: StringEnum(["list", "connect", "prompt", "cancel", "disconnect"] as const, {
 			description:
-				"list also shows running instances and installed ACP agents; prompt waits for the reply; cancel stops the prompt in flight",
+				"list also shows running instances and installed ACP agents; prompt: wait for reply; cancel: stop prompt in flight",
 		}),
 		id: Type.Optional(Type.String({ description: "prompt/cancel/disconnect: connection id" })),
 		transport: Type.Optional(

@@ -3,7 +3,6 @@ import { getFileStamp } from "../../../../common/src/paths.ts";
 import { scheduleSessionSync, sessionSyncFailed, sessionSyncRecovered } from "./deferred-sync.ts";
 import { mirrorAppended } from "./mirror.ts";
 import type { SessionState } from "./state.ts";
-import { assertCompleteSessionTail } from "./storage.ts";
 import type { SessionEntry } from "./types.ts";
 
 /** The file's size, or undefined when even that cannot be read. */
@@ -27,10 +26,6 @@ export function appendRecords(state: SessionState, file: string, pending: readon
 	const written: { entry: SessionEntry; line: string }[] = [];
 	let stamp: ReturnType<typeof getFileStamp> | undefined;
 	try {
-		if (assertCompleteSessionTail(file)) {
-			appendFileSync(file, "\n");
-			state.fileSize = (state.fileSize ?? 0) + 1;
-		}
 		for (const entry of pending) {
 			// Stored against the lines before it, and remembered for the lines after it only once it is written.
 			const line = `${JSON.stringify(state.codec.encode(entry))}\n`;

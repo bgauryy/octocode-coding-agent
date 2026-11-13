@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, transcripts } from "../../db/src/api.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { sessionMirrorSettled, setMirrorNoticeHandler } from "../src/core/session-manager/mirror.ts";
-import { sharedAgentDb, sharedAgentDbWriter } from "../src/storage/database.ts";
+import { sharedAgentDb, sharedTranscriptWriter } from "../src/storage/database.ts";
 
 let scratch: string;
 let cwd: string;
@@ -71,7 +71,7 @@ describe("database mirror failures", () => {
 			expect(performance.now() - started).toBeGreaterThan(500);
 			expect(notices).toEqual([]);
 			expect(readFileSync(session.getSessionFile()!, "utf8")).toContain("while held");
-			const rows = transcripts.records(sharedAgentDb().db, session.getSessionId()).join("\n");
+			const rows = transcripts.records(sharedAgentDb().mirror.db, session.getSessionId()).join("\n");
 			expect(rows).toContain("while held");
 		} finally {
 			remove();
@@ -103,7 +103,7 @@ describe("database mirror failures", () => {
 			session.appendMessage({ role: "user", content: "while the writer dies", timestamp: Date.now() });
 			await new Promise((resolve) => setTimeout(resolve, 50));
 			// The mirror command waits in the worker for the lock when the worker dies.
-			await (sharedAgentDbWriter() as unknown as { worker: { terminate(): Promise<number> } }).worker.terminate();
+			await (sharedTranscriptWriter() as unknown as { worker: { terminate(): Promise<number> } }).worker.terminate();
 			expect(await sessionMirrorSettled()).toBe(true);
 			expect(notices.some((line) => line.includes("Database writer stopped"))).toBe(true);
 			if (holder.exitCode === null && holder.signalCode === null)
@@ -112,7 +112,7 @@ describe("database mirror failures", () => {
 			expect(await sessionMirrorSettled()).toBe(true);
 			const file = readFileSync(session.getSessionFile()!, "utf8").trim().split("\n");
 			expect(file.join("\n")).toContain("while the writer dies");
-			expect(transcripts.records(sharedAgentDb().db, session.getSessionId())).toEqual(file);
+			expect(transcripts.records(sharedAgentDb().mirror.db, session.getSessionId())).toEqual(file);
 		} finally {
 			remove();
 			if (holder.exitCode === null && holder.signalCode === null) holder.kill();

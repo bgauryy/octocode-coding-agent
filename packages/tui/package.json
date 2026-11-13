@@ -34,8 +34,8 @@
 		"build:native:darwin": "native/darwin/build.sh",
 		"build:native:linux": "native/linux/build.sh",
 		"build:native:win32": "node native/win32/build.mjs",
-		"test": "node --test --test-reporter=dot --test-reporter-destination=stdout test/*.test.ts",
-		"test:tmux": "node --test --test-reporter=spec test/multiplexer.test.ts test/*tmux*.test.ts",
+		"test": "node --test --test-global-setup=../../node-test.global.ts --test-reporter=dot --test-reporter-destination=stdout test/*.test.ts",
+		"test:tmux": "node --test --test-global-setup=../../node-test.global.ts --test-reporter=spec test/multiplexer.test.ts test/*tmux*.test.ts",
 		"prepublishOnly": "yarn run clean && yarn run build"
 	},
 	"files": [

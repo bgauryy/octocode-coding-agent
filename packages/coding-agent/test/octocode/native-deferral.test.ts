@@ -4,7 +4,11 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_MCP_EXPOSURE_SETTING } from "../../../mcp/src/deferral.ts";
 import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
-import { nativeToolDeferred, withNativeDeferral } from "../../src/octocode/permission/native-deferral.ts";
+import {
+	nativeToolDeferred,
+	settleNativeDeferral,
+	withNativeDeferral,
+} from "../../src/octocode/permission/native-deferral.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -83,5 +87,71 @@ describe("native tool deferral", () => {
 		vi.stubEnv("OCTOCODE_MCP_RECENT_TOOLS", JSON.stringify(["native/archive"]));
 		expect(nativeToolDeferred("web", settings)).toBe(true);
 		expect(nativeToolDeferred("archive", settings)).toBe(false);
+	});
+
+	describe("settled when the session starts", () => {
+		/** An API whose settings read only after load, and the declarations a session's transcript holds. */
+		function host(settings: object | undefined) {
+			const registered: Array<{ name: string; parameters: unknown }> = [];
+			const loaded = {
+				getSettings: () => {
+					if (!settings) throw new Error("not initialized");
+					return settings;
+				},
+				registerTool: (definition: { name: string; parameters: unknown }) => registered.push(definition),
+			};
+			const ctx = (declared: Array<{ name: string; parameters: unknown }> | Error) => ({
+				sessionManager: {
+					buildSessionProjection: () => {
+						if (declared instanceof Error) throw declared;
+						return {
+							messages: [{ role: "system", content: "", toolsAdded: declared, timestamp: 0 }],
+						};
+					},
+				},
+			});
+			return { api: loaded, registered, ctx };
+		}
+		const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown;
+
+		it("declares a tool as the transcript declared it, in place, and fails open on anything else", () => {
+			agentDir();
+			const at = host(undefined);
+			const web = withNativeDeferral(at.api as never, tool("web") as never);
+			const full = tool("web");
+			// Registered deferred (nothing called it); the session declared it direct before.
+			expect(web.validationParameters).toBeDefined();
+			settleNativeDeferral(at.api as never, at.ctx([{ name: "web", parameters: json(full.parameters) }]) as never);
+			expect(at.registered.map((definition) => definition.name)).toEqual(["web"]);
+			expect(json(at.registered[0].parameters)).toEqual(json(full.parameters));
+
+			// The transcript holds the form now registered, a form neither declaration has, or cannot be read: nothing changes.
+			for (const declared of [
+				[{ name: "web", parameters: json(web.parameters) }],
+				[{ name: "web", parameters: { type: "object", properties: { other: { type: "string" } } } }],
+				[],
+				new Error("unreadable"),
+			]) {
+				const again = host(undefined);
+				withNativeDeferral(again.api as never, tool("web") as never);
+				settleNativeDeferral(again.api as never, again.ctx(declared) as never);
+				expect(again.registered).toEqual([]);
+			}
+		});
+
+		it("lets a pin or a setting other than recent win over the transcript", () => {
+			agentDir();
+			const settings: { current: object | undefined } = { current: undefined };
+			const at = host(undefined);
+			const api = { ...at.api, getSettings: () => settings.current ?? at.api.getSettings() };
+			withNativeDeferral(api as never, tool("web") as never);
+			withNativeDeferral(api as never, tool("archive") as never);
+			// Registered deferred; the session declared both direct; `web` is pinned deferred, the setting is not `recent`.
+			settings.current = { mcpExposure: "direct", nativeToolExposure: { web: "deferred" } };
+			const declared = ["web", "archive"].map((name) => ({ name, parameters: json(tool(name).parameters) }));
+			settleNativeDeferral(api as never, at.ctx(declared) as never);
+			expect(at.registered.map((definition) => definition.name)).toEqual(["archive"]);
+			expect(json(at.registered[0].parameters)).toEqual(json(tool("archive").parameters));
+		});
 	});
 });

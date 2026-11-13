@@ -59,6 +59,11 @@ function readMailFirst(runs: AgentRuns): void {
 	}
 }
 
+/** A background child settled: its report is in flight until its run ends, and its siblings' reports wait for it. */
+export function reportInFlight(runs: AgentRuns, id: string): void {
+	runs.groups.settled(id);
+}
+
 /**
  * Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot
  * back. `finish` gets the outcome when there is a report, so the parent's own notes on it (its backlog item) ride in the footer.
@@ -216,6 +221,9 @@ export function startBackground(
 			});
 		} finally {
 			background.delete(identity.id);
+			// Its report is queued, or the run ended without one: reports held for it go now.
+			runs.groups.leave(identity.id);
+			runs.reports.reportingChanged();
 			if (audit) finishRun(runs, identity.id, audit);
 			if (end) runs.ended?.(identity.id, end);
 			runs.changed();
@@ -295,6 +303,8 @@ export async function runForeground(
 	} finally {
 		signal?.removeEventListener("abort", abort);
 		runs.foreground.delete(identity.id);
+		runs.groups.leave(identity.id);
+		runs.reports.reportingChanged();
 	}
 	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
 	if (!outcome.error) closeAnswered(runs, identity.id);

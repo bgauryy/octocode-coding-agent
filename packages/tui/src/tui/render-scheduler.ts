@@ -25,17 +25,19 @@ export interface RenderSchedulerHost {
 const MIN_RENDER_INTERVAL_MS = 40;
 
 /**
- * Minimum time between frames a pointer asked for (wheel, scrollbar drag, selection). A wheel sends events a few
+ * Time between the starts of frames a pointer asked for (wheel, scrollbar drag, selection). A wheel sends events a few
  * milliseconds apart and each wants the viewport to follow the hand: at the 40 ms streaming cadence scrolling moved 25
  * times a second, in visible steps. Events inside one interval share a frame, so a fast spin cannot queue more frames
  * than the terminal can show, and the lines of all of them arrive as one scroll.
  *
  * A terminal without synchronized output paints whatever part of a frame it has read when its display refreshes
- * (Terminal.app: 60 Hz, no DECRQM reply). Frames faster than that only add half-painted states, so the floor is one
- * 60 Hz frame. A terminal that confirmed synchronized output shows each frame whole and gets up to 120 frames a second.
+ * (Terminal.app: 60 Hz, no DECRQM reply). Frames faster than that only add half-painted states, so the period is one
+ * 60 Hz refresh. It runs from the start of the last frame, not its end: counted from the end, a 5 ms frame made the
+ * period 21.5 ms (46 frames a second), beating against the display. A terminal that confirmed synchronized output
+ * shows each frame whole and gets up to 120 frames a second.
  */
-const INTERACTIVE_RENDER_INTERVAL_MS = 16;
-const SYNCHRONIZED_INTERACTIVE_RENDER_INTERVAL_MS = 8;
+const INTERACTIVE_FRAME_PERIOD_MS = 1000 / 60;
+const SYNCHRONIZED_INTERACTIVE_FRAME_PERIOD_MS = 1000 / 120;
 
 /**
  * The render loop: coalesces render requests into frames, throttles them to a minimum interval,
@@ -46,7 +48,11 @@ export class RenderScheduler {
 	private renderRequested = false;
 	private immediateRenderScheduled = false;
 	private renderTimer: NodeJS.Timeout | undefined;
+	/** When the last frame started and when its write ended. */
+	private lastFrameStartAt = 0;
 	private lastRenderAt = 0;
+	/** The pending frame follows the pointer: it keeps the interactive period, also when output pressure defers it. */
+	private pointerFrame = false;
 	private pacing: Required<RenderPacingOptions> = { ...DEFAULT_RENDER_PACING };
 	private stats: RenderPacingStats = emptyRenderPacingStats();
 	private lastFrameCostMs = 0;
@@ -160,10 +166,18 @@ export class RenderScheduler {
 
 	/** Paint now and mark the pending render request as served. */
 	private emitFrame(): void {
+		const start = performance.now();
+		if (this.pointerFrame && this.pacing.metrics) {
+			this.stats.pointerFrames++;
+			const gap = start - this.lastFrameStartAt;
+			this.stats.minPointerFrameGapMs = Math.min(this.stats.minPointerFrameGapMs ?? gap, gap);
+		}
 		this.renderRequested = false;
+		this.pointerFrame = false;
+		this.lastFrameStartAt = start;
 		this.paint(this.pacing.metrics || this.pacing.adaptiveCadence);
-		// The interval runs from the end of this frame's write: a slow frame followed by a fast one must not reach the
-		// terminal closer together than the interval (it paints what it was written, not when we started composing).
+		// The streaming interval runs from the end of this frame's write: a slow frame followed by a fast one must not
+		// reach the terminal closer together than the interval. Pointer frames keep the display's period from their start.
 		this.lastRenderAt = performance.now();
 	}
 
@@ -180,6 +194,12 @@ export class RenderScheduler {
 	requestImmediate(): void {
 		this.cancelTimer();
 		this.renderRequested = true;
+		// Keyboard input paints at once; the frame serves a pending pointer request too.
+		this.pointerFrame = false;
+		this.scheduleImmediate();
+	}
+
+	private scheduleImmediate(): void {
 		if (this.immediateRenderScheduled) return;
 		this.immediateRenderScheduled = true;
 		const lifecycle = this.lifecycle;
@@ -190,7 +210,7 @@ export class RenderScheduler {
 			// A previously queued schedule() can create a timer before this
 			// callback runs. User input must preempt that throttled frame.
 			this.cancelTimer();
-			if (this.outputIsPressured()) {
+			if (this.frameIsHeld()) {
 				if (this.pacing.metrics) this.stats.deferredFrames++;
 				this.schedule();
 				return;
@@ -200,24 +220,37 @@ export class RenderScheduler {
 		});
 	}
 
+	private interactivePeriod(): number {
+		return this.host.terminal().synchronizedOutput === true
+			? SYNCHRONIZED_INTERACTIVE_FRAME_PERIOD_MS
+			: INTERACTIVE_FRAME_PERIOD_MS;
+	}
+
 	/**
-	 * Ask for a frame that follows pointer input: at once when the last frame is older than the interactive interval,
-	 * otherwise when that interval ends, replacing a slower streaming timer. Output pressure still defers it.
+	 * Whether output pressure holds the pending frame back. A streaming frame waits at the output gate's high water. A
+	 * pointer frame is small and is what the user is waiting for: it waits only once the queue reached the frame cap,
+	 * where the terminal would drop it (or at the gate when the terminal drops no frames).
+	 */
+	private frameIsHeld(): boolean {
+		if (!this.pointerFrame) return this.outputIsPressured();
+		const terminal = this.host.terminal();
+		const cap = terminal.frameOutputCap;
+		if (cap === undefined || !this.pacing.outputGate) return this.outputIsPressured();
+		const pending = terminal.pendingOutputBytes;
+		return pending !== undefined && Number.isFinite(pending) && pending >= cap;
+	}
+
+	/**
+	 * Ask for a frame that follows pointer input: at once when the last frame started an interactive period ago or
+	 * earlier, otherwise when that period ends, replacing a slower streaming timer. A full frame queue still defers it.
 	 */
 	requestInteractive(): void {
-		const interval =
-			this.host.terminal().synchronizedOutput === true
-				? SYNCHRONIZED_INTERACTIVE_RENDER_INTERVAL_MS
-				: INTERACTIVE_RENDER_INTERVAL_MS;
-		const elapsed = performance.now() - this.lastRenderAt;
-		if (elapsed >= interval) {
-			this.requestImmediate();
-			return;
-		}
-		if (this.immediateRenderScheduled) return;
 		this.renderRequested = true;
+		this.pointerFrame = true;
+		if (this.immediateRenderScheduled) return;
 		this.cancelTimer();
-		this.schedule(interval);
+		if (performance.now() - this.lastFrameStartAt >= this.interactivePeriod()) this.scheduleImmediate();
+		else this.schedule();
 	}
 
 	private cancelTimer(): void {
@@ -226,11 +259,13 @@ export class RenderScheduler {
 		this.renderTimer = undefined;
 	}
 
-	private schedule(intervalMs = MIN_RENDER_INTERVAL_MS): void {
+	private schedule(): void {
 		if (this.host.isStopped() || this.renderTimer || !this.renderRequested) {
 			return;
 		}
-		const elapsed = performance.now() - this.lastRenderAt;
+		const pointer = this.pointerFrame;
+		const intervalMs = pointer ? this.interactivePeriod() : MIN_RENDER_INTERVAL_MS;
+		const elapsed = performance.now() - (pointer ? this.lastFrameStartAt : this.lastRenderAt);
 		const delay = computeRenderDelayMs(intervalMs, this.lastFrameCostMs, elapsed, this.pacing.adaptiveCadence);
 		const dueAt = this.pacing.metrics ? performance.now() + delay : 0;
 		const lifecycle = this.lifecycle;
@@ -243,7 +278,13 @@ export class RenderScheduler {
 			if (this.pacing.metrics) {
 				this.stats.maxTimerLagMs = Math.max(this.stats.maxTimerLagMs, performance.now() - dueAt);
 			}
-			if (this.outputIsPressured()) {
+			// Timers count whole milliseconds from the event loop's cached clock and can fire before the period ends:
+			// wait out the rest, so two pointer frames never start closer than the period.
+			if (this.pointerFrame && performance.now() - this.lastFrameStartAt < this.interactivePeriod()) {
+				this.schedule();
+				return;
+			}
+			if (this.frameIsHeld()) {
 				if (this.pacing.metrics) this.stats.deferredFrames++;
 				const retry = setTimeout(() => {
 					if (this.renderTimer !== retry) return;

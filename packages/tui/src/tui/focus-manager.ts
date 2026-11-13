@@ -1,5 +1,6 @@
 import { type Component, isFocusable, type TuiMouseDispatchTarget } from "./component.ts";
 import { Container } from "./container.ts";
+import { containerStructureVersion, readChildren } from "./container-state.ts";
 import { createOverlayHandle } from "./overlay-handle.ts";
 import type {
 	BlockedOverlayFocusRestoreState,
@@ -29,6 +30,11 @@ export class FocusManager {
 	private focused: Component | null = null;
 	/** Tracks focus owners once mounted, so later removals cannot receive keyboard input. */
 	private readonly mountedFocusOwners = new WeakSet<Component>();
+	/**
+	 * The focused component the last tree walk did not find (an overlay, a detached widget), the roots it walked and
+	 * the containers' structure version then: until a children list may have changed, walking again finds nothing.
+	 */
+	private unmountedFocus: { component: Component; roots: readonly Component[]; version: number } | undefined;
 	private focusOrderCounter = 0;
 	/** Overlays for modal components rendered on top of base content. */
 	readonly stack: OverlayStackEntry[] = [];
@@ -175,7 +181,7 @@ export class FocusManager {
 		for (const owner of target.owners ?? []) {
 			// An opaque forwarding wrapper owns the target it returned; Container exposes its
 			// live children, so a child removed after press can be rejected before release.
-			if (owner instanceof Container && !owner.children.includes(component)) return false;
+			if (owner instanceof Container && readChildren(owner)?.includes(component) === false) return false;
 			component = owner;
 		}
 		return (
@@ -187,10 +193,12 @@ export class FocusManager {
 	private containsComponent(root: Component, target: Component): boolean {
 		if (root === target) return true;
 		if (!(root instanceof Container)) return false;
+		// Read without counting as an edit: an edit would make every container on the way walk its children next frame.
+		const children = readChildren(root) ?? root.children;
 		// Last child first: this runs on every key for the focused component, which is the editor below the transcript,
 		// so it is found before the walk enters the transcript's rows.
-		for (let index = root.children.length - 1; index >= 0; index--)
-			if (this.containsComponent(root.children[index], target)) return true;
+		for (let index = children.length - 1; index >= 0; index--)
+			if (this.containsComponent(children[index], target)) return true;
 		return false;
 	}
 
@@ -278,7 +286,18 @@ export class FocusManager {
 	/** Remember a focused component that is mounted, so its later removal is noticed. */
 	rememberMountedFocus(): void {
 		// Called on every render request: once a component is remembered, another tree walk adds nothing.
-		if (this.focused && !this.mountedFocusOwners.has(this.focused)) this.isDetachedFocusOwner(this.focused);
+		const focused = this.focused;
+		if (!focused || this.mountedFocusOwners.has(focused)) return;
+		// An overlay is drawn from the stack, not mounted in the tree (one in both is not supported): nothing to remember.
+		if (this.stack.some((entry) => entry.component === focused)) return;
+		// A focused overlay is never in the tree: walk it again only after a children list may have changed.
+		const roots = this.host.mountedRoots();
+		const version = containerStructureVersion();
+		const missed = this.unmountedFocus;
+		if (missed?.component === focused && missed.version === version && sameRoots(missed.roots, roots)) return;
+		this.unmountedFocus = undefined;
+		if (this.isComponentMounted(focused)) this.mountedFocusOwners.add(focused);
+		else this.unmountedFocus = { component: focused, roots: roots.slice(), version };
 	}
 
 	/**
@@ -326,4 +345,10 @@ export class FocusManager {
 		}
 		if (this.focused && this.isDetachedFocusOwner(this.focused)) this.setFocus(null);
 	}
+}
+
+function sameRoots(a: readonly Component[], b: readonly Component[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let index = 0; index < a.length; index++) if (a[index] !== b[index]) return false;
+	return true;
 }

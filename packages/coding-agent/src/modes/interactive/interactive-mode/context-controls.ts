@@ -1,15 +1,10 @@
 import { getApplicationPort } from "../../../core/application/index.ts";
+import { parseContextSize } from "../../../utils/token-count.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 type Host = Pick<InteractiveModeHost, "session" | "showExtensionSelector" | "showStatus" | "showWarning" | "ui">;
 
-/** Decimal k/m suffixes follow the provider catalog's token units. */
-export function parseContextSize(value: string): number | undefined {
-	const match = /^(\d+(?:\.\d+)?)(k|m)?$/i.exec(value.trim());
-	if (!match) return undefined;
-	const tokens = Number(match[1]) * (match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2] ? 1000 : 1);
-	return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
-}
+export { parseContextSize } from "../../../utils/token-count.ts";
 
 /** Returns false for the read-only report commands. */
 export async function handleContextSize(host: Host, args: string): Promise<boolean> {

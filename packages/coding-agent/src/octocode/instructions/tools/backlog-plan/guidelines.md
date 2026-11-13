@@ -1,1 +1,1 @@
-Give every item its why, paths and evidence (a follow-up: from, trigger, evidence, fix).
+Reuse matching items. Give why, paths and evidence; follow-ups: from, trigger, evidence, fix.

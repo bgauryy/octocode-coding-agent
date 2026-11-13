@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { heartbeatDue, insideDeclaredWork } from "../../src/octocode/subagents/liveness.ts";
 import { STALL_MS } from "../../src/octocode/team/member-list.ts";
 import { ChildWatchdog } from "../../src/octocode/subagents/process/watchdog.ts";
+import { PrefixStagger, type StaggerTurn } from "../../src/octocode/subagents/stagger.ts";
 
 const LIMITS = { idleMs: 10 * 60_000, busyMs: 15 * 60_000 };
 const INTERVAL = 30_000;
@@ -90,5 +91,74 @@ describe("work that may stay quiet without being stalled", () => {
 		expect(heartbeatDue(base, 1_000, false)).toBe(false);
 		expect(heartbeatDue({ ...base, running: false, jobsUntil: 5_000 }, 1_000, true)).toBe(false);
 		expect(STALL_MS).toBe(10 * 60_000);
+	});
+});
+
+describe("the subagent watchdog and a stagger wait", () => {
+	/** A child as `superviseChild` runs it: its watchdog holds while `ready` is pending, the task goes out after. */
+	function staggeredChild(stagger: PrefixStagger, clock: { now: number }) {
+		const onStall = vi.fn();
+		const child = { toolsRunning: 0, settling: false, busyUntil: 0, lastActivity: "starting" };
+		const dog = new ChildWatchdog(child, LIMITS, () => false, onStall);
+		dog.activeAt = clock.now;
+		let turn: StaggerTurn | undefined;
+		let prompted: number | undefined;
+		void stagger.run("p", undefined, (t) => {
+			turn = t;
+			void dog.hold(t.ready(), () => clock.now).then(() => (prompted = clock.now));
+			return new Promise<never>(() => undefined);
+		});
+		return { dog, onStall, turn: () => turn!, prompted: () => prompted };
+	}
+	const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+	it("never stops a sibling waiting for the first child's reply while that child lives", async () => {
+		const clock = { now: Date.now() };
+		const stagger = new PrefixStagger();
+		const leader = staggeredChild(stagger, clock);
+		const sibling = staggeredChild(stagger, clock);
+		await flush();
+		expect(leader.prompted()).toBe(clock.now);
+		// Half an hour without a first reply: the leader keeps writing output (retries), the sibling waits silently.
+		for (let i = 0; i < 60; i++) {
+			clock.now += INTERVAL;
+			leader.dog.activeAt = clock.now;
+			leader.dog.tick(clock.now);
+			sibling.dog.tick(clock.now);
+		}
+		expect(sibling.onStall).not.toHaveBeenCalled();
+		expect(sibling.prompted()).toBeUndefined();
+		// The first reply starts: the sibling sends, and from then on its own idle limit counts.
+		leader.turn().warm();
+		await flush();
+		const released = clock.now;
+		expect(sibling.prompted()).toBe(released);
+		while (clock.now < released + LIMITS.idleMs - INTERVAL) sibling.dog.tick((clock.now += INTERVAL));
+		expect(sibling.onStall).not.toHaveBeenCalled();
+		sibling.dog.tick((clock.now += INTERVAL));
+		expect(sibling.onStall).toHaveBeenCalledOnce();
+		expect(sibling.dog.stalled?.message).toMatch(/no output for 10m/);
+	});
+
+	it("releases the waiting siblings when the first child stalls and exits; the next sends and is watched", async () => {
+		const clock = { now: Date.now() };
+		const stagger = new PrefixStagger();
+		const leader = staggeredChild(stagger, clock);
+		const sibling = staggeredChild(stagger, clock);
+		// The leader's process exits once its watchdog stops it (`exited` → `lost`).
+		leader.onStall.mockImplementation(() => leader.turn().lost());
+		await flush();
+		for (let t = 0; t < LIMITS.idleMs; t += INTERVAL) {
+			clock.now += INTERVAL;
+			leader.dog.tick(clock.now);
+			sibling.dog.tick(clock.now);
+		}
+		expect(leader.onStall).toHaveBeenCalledOnce();
+		expect(sibling.onStall).not.toHaveBeenCalled();
+		await flush();
+		expect(sibling.prompted()).toBe(clock.now);
+		const released = clock.now;
+		while (clock.now < released + LIMITS.idleMs) sibling.dog.tick((clock.now += INTERVAL));
+		expect(sibling.onStall).toHaveBeenCalledOnce();
 	});
 });

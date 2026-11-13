@@ -15,6 +15,7 @@ import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";
 import { HintBar, keyText, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import type { Theme } from "../../theme/theme.ts";
 import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
+import { contextWindowOf } from "./context.ts";
 import type { HuggingFaceModel } from "./huggingface.ts";
 import { HuggingFaceSearch } from "./ui/huggingface-search.ts";
 
@@ -33,14 +34,8 @@ function hints(...keys: RankedHint[]): Component[] {
 }
 
 function contextLabel(model: LlamaModelInfo): string | undefined {
-	const context = model.meta?.n_ctx ?? model.meta?.n_ctx_train;
+	const context = contextWindowOf(model);
 	if (context) return context >= 1000 ? `${Math.round(context / 1000)}k` : String(context);
-	const args = model.status.args ?? [];
-	for (let index = 0; index < args.length - 1; index++) {
-		if (args[index] !== "--ctx-size" && args[index] !== "-c" && args[index] !== "-ctx") continue;
-		const value = Number(args[index + 1]);
-		if (Number.isFinite(value) && value > 0) return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
-	}
 	return undefined;
 }
 

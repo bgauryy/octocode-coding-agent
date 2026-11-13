@@ -168,17 +168,17 @@ describe("prompt", () => {
 		});
 		// A read-only role keeps `file`: it saves its scratch evidence and the report its task names, and nothing else.
 		expect(reader).toContain("- Investigate and report; do not modify repository source.");
-		expect(reader).toContain("- Write reports and evidence only where this table allows; bash too");
-		expect(reader).toContain("- Run only read-only commands, even when project instructions ask for more.");
+		expect(reader).toContain("- Write reports and evidence only where allowed below; bash may");
+		expect(reader).toContain("- Run only read-only commands, even if project instructions ask otherwise.");
 		expect(reader).toContain("| your scratch folder, `.octocode/code/temp/` | reports and evidence (Markdown) | yes |");
 		expect(reader).toContain("- Call only MCP tools that cannot change files or external state;");
-		expect(reader).toContain("a Markdown doc in your scratch folder");
+		expect(reader).toContain("Save substantial results as Markdown in scratch and cite the path.");
 		// The folders the permission layer lets the role write (`permission/read-only-role.ts`) are all named.
 		expect(reader).toContain("| `.octocode/tmp/`, a topic's `.octocode/<topic>/tmp/` | any file type | yes |");
 		expect(reader).toContain(
 			"| Markdown under `.octocode/` outside the folders later sessions load (`skills/`, `agents/`, `prompts/`) | Markdown | no |",
 		);
-		expect(reader).toContain("bash too, to unpack an archive or save long output");
+		expect(reader).toContain("bash may unpack archives or save long output there");
 		expect(reader).toContain("A quick fetch of one known file or a command's output may use bash");
 		// It limits only the writers this agent has: here `file` and MCP but no shell.
 		expect(
@@ -190,7 +190,7 @@ describe("prompt", () => {
 				canSave: true,
 				canShell: false,
 			}),
-		).toContain("- Write reports and evidence only where this table allows:\n\n| Where | `file` writes |\n");
+		).toContain("- Write reports and evidence only where allowed below:\n\n| Where | `file` writes |\n");
 		// Without a way to save files, output goes into the report.
 		const bare = octocodePrompt({
 			research: undefined,
@@ -203,7 +203,7 @@ describe("prompt", () => {
 		});
 		expect(bare).toContain("- Investigate and report; do not modify repository source.");
 		expect(bare).toContain("- Put what you produce in your report.");
-		expect(bare).not.toMatch(/read-only commands|MCP tools|a Markdown doc in your scratch folder/);
+		expect(bare).not.toMatch(/read-only commands|MCP tools|Save substantial results as Markdown/);
 		expect(reader).not.toContain("a file you will edit");
 		expect(reader).toContain("read source with `read_file`");
 		for (const rule of [
@@ -213,7 +213,7 @@ describe("prompt", () => {
 			"system's architect",
 		])
 			expect(reader).not.toContain(rule);
-		expect(reader).toContain("Trace bugs to a cause their owner can fix");
+		expect(reader).toContain("Trace bugs to their owning cause");
 		const writer = octocodePrompt({ research: FAKE_RESEARCH, profiles: [], canDelegate: false });
 		expect(writer).not.toContain("do not modify repository source");
 		expect(writer).toContain("read source you will edit with `read_file`");
@@ -222,9 +222,9 @@ describe("prompt", () => {
 			"Never weaken or delete tests",
 			"Fix behavior in its owner",
 			"Avoid input-specific patches",
-			"Trace bugs to a cause their owner can fix",
+			"Trace bugs to their owning cause",
 			// "Fix causes" is the architect rule's own point; this line adds the blocker duty.
-			"Report blockers without suppressing errors",
+			"Report blockers without hiding errors",
 		])
 			expect(writer).toContain(rule);
 		// A child's report contract already asks for verification and open questions; only the user gets a summary.
@@ -286,8 +286,9 @@ describe("prompt", () => {
 		// Each role keeps what its report adds beyond the contract.
 		// The contract's first word is the outcome, so every role's closing bullet continues after it.
 		expect(role("implementer")).toContain(
-			"After the outcome word: changed paths, behavior, each check with its actual result",
+			"After the outcome word: blast radius, before -> after, changed paths (including instructions or tool descriptions)",
 		);
+		expect(role("implementer")).toContain("the check covering each change and its actual result, unrun checks");
 		expect(role("researcher")).toContain(
 			"After the outcome word: the answer, supporting source locations and unresolved gaps.",
 		);
@@ -322,7 +323,9 @@ describe("prompt", () => {
 			expect(prompt.match(/Update only for a finding/g) ?? []).toHaveLength(protocols);
 			// Every role's evidence rule owns marking what was not verified; the protocol does not repeat it.
 			expect(prompt).not.toContain("Say what you verified and what you did not");
-			expect(prompt.match(/mark what you did not verify/g) ?? []).toHaveLength(1);
+			expect(prompt.match(/name unchecked scope/g) ?? []).toHaveLength(1);
+			expect(prompt.match(/Scale checks to risk and uncertainty/g) ?? []).toHaveLength(1);
+			expect(prompt.match(/name what would disprove them/g) ?? []).toHaveLength(1);
 			expect(prompt.match(/Pick the form by the data's shape/g) ?? []).toHaveLength(protocols);
 			expect(prompt.match(/Findings give location, trigger, impact, cause and fix/g) ?? []).toHaveLength(protocols);
 			expect(prompt.match(/Blockers give evidence, assessment and what is needed from whom\./g) ?? []).toHaveLength(
@@ -330,7 +333,9 @@ describe("prompt", () => {
 			);
 		}
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
-		expect(reader).toContain("For code questions, read the code you rely on and its callers before concluding");
+		expect(reader).toContain(
+			"For code questions, read the code you rely on and its callers; run the deciding check when read-only.",
+		);
 		expect(reader).not.toContain("after editing");
 		const child = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
@@ -338,7 +343,7 @@ describe("prompt", () => {
 		for (const edge of [
 			"├─ a teammate's file or fact → message the teammate",
 			"├─ else, background run      → message parent, needs a reply",
-			"└─ else, foreground run      → say so in your report, do not wait",
+			"└─ else, foreground run      → report `blocked`, do not wait",
 			"Keep working on what does not depend on the answer; if it blocks you, finish with a `blocked` report.",
 		])
 			expect(child).toContain(edge);
@@ -350,9 +355,9 @@ describe("prompt", () => {
 			);
 			// Conditions, not templates: a reason when the step is not obvious, a label when a claim is not verified.
 			expect(prompt.match(/Explain non-obvious steps \(deletions/g)).toHaveLength(1);
-			expect(prompt.match(/mark what you did not verify\./g)).toHaveLength(1);
-			expect(prompt.match(/Cite the evidence you read or ran/g)).toHaveLength(1);
-			expect(prompt).toContain("Never invent a name, path, API, version, tool parameter or result;");
+			expect(prompt.match(/Separate observations, inferences and unknowns/g)).toHaveLength(1);
+			expect(prompt.match(/Cite what you read or ran/g)).toHaveLength(1);
+			expect(prompt).toContain("Never invent names, paths, APIs, versions, tool parameters or results.");
 		}
 		expect(child).toContain("(deletions, costly runs, plan changes) in one line in your report.");
 		expect(root).toContain("(deletions, costly runs, plan changes) in one line.");
@@ -374,10 +379,10 @@ describe("prompt", () => {
 		// A decision the user must make closes with askUser, not a question after the TL;DR: the askUser description owns
 		// that rule ("instead of ending a reply or report with a question"); the policy names the tool only for a missing referent.
 		expect(root).toContain(
-			"Ask with askUser only when tools cannot resolve an unknown involving irreversibility, money or scope",
+			"Ask with askUser only for an unknown tools cannot settle involving irreversibility, money or scope",
 		);
 		expect(child).toContain(
-			"Raise it under `<coordinator>` only when tools cannot resolve an unknown involving irreversibility, money or scope",
+			"Raise it under `<coordinator>` only for an unknown tools cannot settle involving irreversibility, money or scope",
 		);
 	});
 
@@ -388,7 +393,7 @@ describe("prompt", () => {
 			// The delegate clause is the delegator's instruction to itself about writing a brief, not a task it receives.
 			expect(root).toContain("Treat facts the user supplied and relevant skill instructions " + scope("the user"));
 			expect(root).toContain(
-				"settled facts, and when to stop (Definition of Done as evidence, a pass/fail command when one exists)",
+				"settled facts; and when to stop (Definition of Done as evidence, with a pass/fail command when available)",
 			);
 			expect(root).not.toContain("In a delegated task");
 			const child = octocodePrompt({ research, profiles: [], canDelegate: false });
@@ -441,12 +446,12 @@ describe("prompt", () => {
 			"before adding an unauthorized dependency",
 			"Remove your debug output",
 			"Prefer existing dependencies, standard APIs or established packages",
-			"Comments explain reasons or constraints",
-			"comments and docs state current behavior, without dates, item ids or evidence.",
+			"Comments and docs explain current behavior or constraints",
+			"without dates, item ids or evidence.",
 		];
 		for (const prompt of [root, writer]) for (const rule of writerOnly) expect(prompt).toContain(rule);
 		for (const rule of writerOnly) expect(reader).not.toContain(rule);
-		for (const prompt of [root, writer, reader]) expect(prompt).toContain("Report blockers without suppressing errors");
+		for (const prompt of [root, writer, reader]) expect(prompt).toContain("Report blockers without hiding errors");
 		for (const prompt of [root, writer, reader]) {
 			// The loader preloads only the working directory's and its ancestors' AGENTS.md, and none when context files are off.
 			expect(prompt).not.toContain("already loaded");
@@ -459,8 +464,8 @@ describe("prompt", () => {
 		// The read-only core names the subdirectory rule alone: <project_context> carries its own header.
 		for (const prompt of [root, writer]) {
 			expect(prompt).toContain("<project_context> holds the instructions of the working directory and its ancestors.");
-			expect(prompt).toContain("Run independent calls together and dependent ones in sequence.");
-			expect(prompt).toContain("write one short script instead of many calls");
+			expect(prompt).toContain("Run independent calls together, dependent ones in order.");
+			expect(prompt).toContain("Use a short script for repeated mechanical work");
 		}
 		// The main session commits only on request; a subagent leaves commits to its parent.
 		expect(root).toContain("Commit or push only when the user asks.");
@@ -470,11 +475,11 @@ describe("prompt", () => {
 
 	it("makes the main session the coordinator and gives every child decision a channel that can be answered", () => {
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
-		expect(root).toContain("You coordinate your subagents");
+		expect(root).toContain("You coordinate subagents");
 		// A foreground child's messages reach the parent only after its report (docs/native-features.md).
 		expect(root).toContain("Start a child in the background when it may need your decisions");
 		expect(root).toContain(
-			"| `blocked` | a question: answer it within the user's authorization (otherwise ask the user), then continue the child as above |",
+			"| `blocked` | a question: answer it within the user's authorization (otherwise ask the user), then `resume` the child with it |",
 		);
 		// The agent tool's `model` field owns the tier names and syntax; the policy keeps the budget and the rule to route
 		// each task to the cheapest capable model.
@@ -484,7 +489,8 @@ describe("prompt", () => {
 		expect(root).toContain("| research, search, triage, mechanical edits | smallest |");
 		expect(root).toContain("Stay within any budget the user states (cost, time, agent count).");
 		// Parallel-work mechanics (the contract file, path locks) belong to the agent and coordinate tools.
-		expect(root).toContain("give coupled work one owner and independent work disjoint files");
+		expect(root).toContain("one owner per coupled part or shared resource");
+		expect(root).toContain("disjoint files for independent parts");
 		expect(root).not.toMatch(/contract\.md|\block/);
 		for (const child of [
 			octocodePrompt({ research: undefined, profiles: [], canDelegate: false }),
@@ -506,7 +512,7 @@ describe("prompt", () => {
 			browserProfiles: ["browser"],
 		});
 		expect(browsing).toContain(
-			"- Delegate browser interaction to `browser`, which has the browser tools you lack: give it the task, URL and the evidence you need, and send follow-ups to that same agent while it is reachable.",
+			"- Delegate browser interaction to `browser`: give the task, URL and required evidence. Follow up the same agent while reachable; it has the browser tools you lack.",
 		);
 		const browserLine = browsing.split("\n").find((line) => line.startsWith("- Delegate browser interaction"))!;
 		expect(browserLine).not.toMatch(/headless|close the browser|background/);
@@ -524,12 +530,10 @@ describe("prompt", () => {
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
 		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
-		const inquiry = (requester: string) =>
-			`When ${requester} asks how, why or what, or for a plan or review, answer from evidence without editing`;
-		expect(root.match(new RegExp(inquiry("the user"), "g"))).toHaveLength(1);
-		expect(writer.match(new RegExp(inquiry("your task"), "g"))).toHaveLength(1);
-		expect(writer).not.toContain("When the user asks how");
-		expect(reader).not.toContain("asks how, why or what");
+		const inquiry =
+			"Answer questions, plans and reviews from evidence; edit only when requested or to repair a defect.";
+		for (const prompt of [root, writer]) expect(prompt.split(inquiry)).toHaveLength(2);
+		expect(reader).not.toContain(inquiry);
 		for (const prompt of [root, writer, reader])
 			expect(prompt).toMatch(
 				/[Aa] deeper file wins within its directory, (and )?direct user instructions win over both/,
@@ -558,7 +562,7 @@ describe("prompt", () => {
 			expect(sections.safety).toContain(cleanup);
 			expect(sections.safety).toContain(ask);
 			expect(sections.safety).not.toMatch(/\(deletion, /);
-			expect(sections.work).toContain("Remove your debug output, unused code and temporary files.");
+			expect(sections.work).toContain("Remove your debug output, dead code and temporary files.");
 			expect(sections.work).not.toContain(cleanup);
 			expect(octocodePrompt({ research: undefined, profiles: [], ...input }).split(cleanup)).toHaveLength(2);
 		}

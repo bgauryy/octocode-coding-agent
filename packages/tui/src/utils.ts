@@ -39,6 +39,11 @@ export function normalizeTerminalOutput(str: string): string {
 	return result;
 }
 
+/** Shrink horizontal margins when needed to leave at least one column for content. */
+export function fitHorizontalPadding(width: number, padding: number): number {
+	return Math.min(padding, Math.max(0, Math.floor((width - 1) / 2)));
+}
+
 /**
  * Frame wrapped rows for a text component: add `paddingX` spaces on each side and `paddingY` blank rows above and
  * below, pad every row to `width`, and apply `bgFn` across the padded row when given. Rows for which `keepRow`

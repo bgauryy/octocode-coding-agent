@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { stripBom } from "../../../../common/src/text.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
+import { editorFamily } from "./reference-launcher.ts";
 
 interface ExternalEditorOptions {
 	command: string;
@@ -28,6 +29,9 @@ export async function editInExternalEditor(options: ExternalEditorOptions): Prom
 		const filePath = join(directory, "prompt.md");
 		writeFileSync(filePath, options.content, "utf-8");
 		const [editor, ...editorArgs] = options.command.split(" ");
+		// A GUI editor returns at once unless told to wait, and the text would be read back before it was edited.
+		if (editorFamily(editor) !== "terminal" && !editorArgs.some((arg) => arg === "--wait" || arg === "-w"))
+			editorArgs.push("--wait");
 		process.stdout.write(
 			`Launching external editor: ${options.command}\nOctocode will resume when the editor exits.\n`,
 		);

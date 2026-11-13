@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { type ExtensionAPI, type ExtensionContext, readsMessagesOnly } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ChildIdentity, identityBlock } from "../instructions/task.ts";
@@ -98,8 +98,12 @@ export function registerIdentityReminder(api: ExtensionAPI, env: NodeJS.ProcessE
 			if (!isStaleSessionError(error)) throw error;
 		}
 	});
-	api.on("context", async (event) => {
-		const messages = latestReminderOnly(event.messages);
-		return messages === event.messages ? undefined : { messages };
-	});
+	// Returns a shorter list and never edits a message.
+	api.on(
+		"context",
+		readsMessagesOnly(async (event) => {
+			const messages = latestReminderOnly(event.messages);
+			return messages === event.messages ? undefined : { messages };
+		}),
+	);
 }

@@ -6,8 +6,5 @@ model: medium:medium
 mcpDefer: readOnly
 ---
 
-Complete the assigned change.
-
-- Stay within the assigned area; name browser work you need in your report instead of doing it.
-- In your report, give the blast radius and before -> after, including any agent instructions or tool descriptions you changed, and the check that covers each.
-- After the outcome word: changed paths, behavior, each check with its actual result, checks you did not run, and any integration step. In an isolated worktree, identify the work to merge.
+- Stay within the assigned area; report needed browser work instead of doing it.
+- After the outcome word: blast radius, before -> after, changed paths (including instructions or tool descriptions), the check covering each change and its actual result, unrun checks and integration needs. In an isolated worktree, name changes to merge.

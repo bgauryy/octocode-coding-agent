@@ -22,6 +22,8 @@ interface InteractiveTuiOptions {
 	readonly fullscreenCopyOnSelect?: boolean;
 	readonly fullscreenWheelScrollLines?: WheelScrollLines;
 	readonly openReference?: (url: string) => void;
+	/** Regular mode: the most rows a replay writes (`terminal.replayRows`; 0 replays every row). */
+	readonly replayRows?: number;
 }
 
 /** Composition root shared by coding-agent presentations. */
@@ -62,7 +64,9 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			},
 		});
 	}
-	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
+	const ui = new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
+	if (options.replayRows !== undefined) ui.setReplayRows(options.replayRows);
+	return ui;
 }
 
 /** Stable reference for components while InteractiveMode replaces the active renderer. */

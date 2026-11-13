@@ -50,11 +50,16 @@ export function saveTimestamped(data: string | Uint8Array, label: string, extens
 /**
  * Writes `content` to `<session folder>/output/<name>` (owner-only) unless a file of that name already holds exactly these
  * bytes, and returns the absolute path; undefined when it could not be written or the name is taken by other content.
- * The caller names the file by its content's hash, so the same bytes always land in the same file. Never throws.
+ * The caller names the file by its content's hash, so the same bytes always land in the same file. `outputDir` is that
+ * folder when the caller resolved it already (`outputDirOnce`). Never throws.
  */
-export function saveNamedContent(content: string | Uint8Array, name: string): string | undefined {
+export function saveNamedContent(
+	content: string | Uint8Array,
+	name: string,
+	outputDir: () => string = () => sessionOutputDir("output"),
+): string | undefined {
 	try {
-		const file = path.join(sessionOutputDir("output"), name);
+		const file = path.join(outputDir(), name);
 		try {
 			fs.writeFileSync(file, content, { flag: "wx", mode: PRIVATE_FILE_MODE });
 		} catch (error) {
@@ -72,13 +77,28 @@ export function saveNamedContent(content: string | Uint8Array, name: string): st
  * bytes always land in the same file (saving the same content twice points at one copy). Returns where it is
  * and how to check it, as `<path> (sha256 <prefix>, <n> bytes)`, or undefined when it could not be written. Never throws.
  */
-export function saveContentCopy(content: string | Uint8Array, label: string, extension = "txt"): string | undefined {
+export function saveContentCopy(
+	content: string | Uint8Array,
+	label: string,
+	extension = "txt",
+	outputDir?: () => string,
+): string | undefined {
 	const hash = shortHash(content);
-	const file = saveNamedContent(content, `${spillLabel(label)}-${hash}.${extension}`);
+	const file = saveNamedContent(content, `${spillLabel(label)}-${hash}.${extension}`, outputDir);
 	return (
 		file &&
 		`${shortPath(file)} (sha256 ${hash}, ${typeof content === "string" ? Buffer.byteLength(content) : content.byteLength} bytes)`
 	);
+}
+
+/**
+ * The session's output folder resolved at the first call and reused after: for a batch of saves (clearing many results),
+ * where resolving it for each one (the workspace identity, its realpath and folder checks) costs more than the writes.
+ * A failed resolution is tried again by the next call.
+ */
+export function outputDirOnce(): () => string {
+	let dir: string | undefined;
+	return () => (dir ??= sessionOutputDir("output"));
 }
 
 /** What `spillOutput` made of a text. */

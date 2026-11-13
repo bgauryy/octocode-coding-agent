@@ -19,15 +19,23 @@
 
 Then switch freely: `/model` picks this chat's model (`/model openai/` limits it to one provider, `Ctrl+S` saves the default), `Ctrl+P` and `Shift+Ctrl+P` cycle models, `octocode --model <provider>/<id>` starts on one, and `e` on a provider in `/providers` hides or restores it. To check a credential without starting a chat, run `octocode auth check --provider <provider>` or `/modelsettings check`.
 
+`auth check` uses the same Octocode and enabled Pi credential sources as a session. Checks have a 15-second deadline. `--no-refresh` reads credentials, including keychain references, without refreshing OAuth or writing credential files; an expired saved token can still be reported as configured. Add `--credentials` only when you intend to print the resolved secret. The credential-print commands also respect source switches. `auth print-bearer-token --min-expiry 30m` requests at least that much remaining validity; units are `ms`, `s`, `m` and `h`, in either case.
+
+`ready` from `auth check` establishes local credential readiness, not provider reachability, model access, quota or billing. **Test credential** on a provider page sends one small model request and can consume provider usage. Login's free endpoint check is narrower: HTTP 401 refuses the key; HTTP 403 saves it with a permission warning because access to model listings and model requests can differ. Custom gateway definitions do not inherit upstream key checks.
+
+To keep a model for new chats, use `/model` → **Ctrl+S**; Enter changes only the current chat. See [saved defaults and connection limits](models.md#save-a-startup-default).
+
 ## Subscriptions and billing
 
 A subscription pays for requests by plan; everything else is billed per token. `/providers`, the footer (`(sub)`) and the `models` tool show the same answer. A plan's cost is shown as an estimate.
+
+Without a saved or explicit model choice, startup prefers an available subscription model before a metered model, including subscription providers without a catalog default. Restrictions on unattended use still apply.
 
 | Provider                                                                  | Billed by | Used                                                                                                                                                                                                                                                      |
 | ------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ChatGPT sign-in (`openai`), GitHub Copilot, Kimi Code, OpenCode Go        | Plan      | Directly, by the main session and subagents                                                                                                                                                                                                               |
 | Qwen Token Plan, Xiaomi Token Plan, Z.AI and Z.AI Coding CN (all regions) | Plan      | Directly, interactive use only: when no model is named, print mode, ACP server mode and background agents skip them for the next available model; a model you name (`--model`, your saved default, the ACP model list) still runs, with a one-line notice |
-| Claude Pro/Max, and Codex CLI, OpenCode or Gemini CLI on their own logins | Plan      | As external agents: the vendor's own tool does the work (`/providers` → **External agents**); `/session` and the agent's row show its usage as `(sub)`. Claude Code can also be the session's model (`claude-code/*`)                                     |
+| Claude Pro/Max, and Codex CLI, OpenCode or Gemini CLI on their own logins | CLI account | As external agents: the vendor's own tool does the work (`/providers` → **External agents**); its sign-in determines billing. Known plans show `(sub)`; an unclassified sign-in shows **billing unknown**. Claude Code can also be the session's model (`claude-code/*`) |
 | OpenCode Zen, API keys                                                    | Per token | Directly                                                                                                                                                                                                                                                  |
 
 Every view that names a provider also names its kind: the `/model` and model-shortcut rows (`[openai · subscription]`), the footer beside the model, the **Signed in** rows of `/providers` and the `models` tool's provider rows. The first rule that applies decides it.

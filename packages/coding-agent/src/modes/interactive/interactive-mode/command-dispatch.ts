@@ -14,6 +14,8 @@ import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { unknownCommandWarning } from "./command-suggestion.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { showFooterStatusReport } from "./footer-status-report.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 type CommandDispatchHost = ConfigurationHost &
@@ -23,6 +25,7 @@ type CommandDispatchHost = ConfigurationHost &
 		| "defaultEditor"
 		| "editor"
 		| "flushPendingBashComponents"
+		| "footerDataProvider"
 		| "getMarkdownThemeWithSettings"
 		| "getSlashCommands"
 		| "handleBashCommand"
@@ -71,9 +74,54 @@ type CommandDispatchHost = ConfigurationHost &
 		| "uiStore"
 	>;
 
+/** Put back text the app refused to submit: the editor's own draft when it can, with its paste markers and cursor. */
+function restoreRefused(host: Pick<CommandDispatchHost, "editor">, text: string): void {
+	if (host.editor.restoreSubmitted) host.editor.restoreSubmitted(text);
+	else host.editor.setText(text);
+}
+
+/** The prompt submitted while startup runs, per interactive mode: sent once, when startup is ready. */
+const startupSubmits = new WeakMap<object, string>();
+
+/**
+ * Enter before startup finished: the text stays in the editor, queued, and `dispatchStartupSubmit` sends it once ready.
+ * A second Enter replaces the queued text; Esc cancels it; editing or clearing it means the user is still composing.
+ */
 export function handleStartupSubmit(host: CommandDispatchHost, text: string): void {
-	host.editor.setText(text);
-	host.showStatus("Startup is still in progress");
+	restoreRefused(host, text);
+	if (!text.trim()) {
+		host.showStatus("Startup is still in progress");
+		return;
+	}
+	startupSubmits.set(host, text);
+	const cancelKey = keyText("app.interrupt");
+	host.showStatus(`Sends when startup finishes${cancelKey ? ` · ${cancelKey} cancels` : ""}`);
+}
+
+/** Esc during startup: drop the queued submit and keep its text in the editor. */
+export function cancelStartupSubmit(host: Pick<CommandDispatchHost, "showStatus">): void {
+	if (startupSubmits.delete(host)) host.showStatus("Not sent: the prompt stays in the editor");
+}
+
+/**
+ * Startup is ready: send the queued submit once, unless the editor no longer holds the text that was queued (both
+ * trimmed, as a submit trims: an editor may pass its text untrimmed). Changed text stays in the editor, with a status.
+ */
+export function dispatchStartupSubmit(host: Pick<CommandDispatchHost, "editor" | "showStatus">): void {
+	const text = startupSubmits.get(host);
+	startupSubmits.delete(host);
+	if (text === undefined) return;
+	const current = (host.editor.getExpandedText?.() ?? host.editor.getText()).trim();
+	if (current !== text.trim()) {
+		if (current) host.showStatus("Not sent: the prompt changed after Enter and stays in the editor");
+		return;
+	}
+	if (host.editor.submit) {
+		host.editor.submit();
+		return;
+	}
+	host.editor.setText("");
+	host.editor.onSubmit?.(text);
 }
 
 function getNativeCommand(host: CommandDispatchHost, name: string) {
@@ -178,8 +226,9 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			host.handleNameCommand(`/name${args ? ` ${args}` : ""}`);
 			return;
 		case "status":
-			// One output: the native report (version, skills, MCP) when native features are on, else the session statistics.
+			// Native summary when available, session statistics otherwise; full live statuses follow either report.
 			if (!(await runNativeCommand(host, "status"))) host.handleSessionCommand();
+			showFooterStatusReport(host);
 			return;
 		case "changelog":
 			host.handleChangelogCommand();
@@ -269,7 +318,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		}
 		const unknown = parsed && unknownCommandWarning(text, parsed.name, host.getSlashCommands(true));
 		if (unknown) {
-			host.editor.setText(text);
+			restoreRefused(host, text);
 			host.showWarning(unknown);
 			return;
 		}
@@ -281,7 +330,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			if (command) {
 				if (host.session.isBashRunning) {
 					host.showWarning("A bash command is already running. Press Esc to cancel it first.");
-					host.editor.setText(text);
+					restoreRefused(host, text);
 					return;
 				}
 				host.editor.addToHistory?.(text);

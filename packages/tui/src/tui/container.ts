@@ -1,87 +1,141 @@
 import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "./component.ts";
-import { activeLayoutRecorder } from "./layout-recorder.ts";
-import { renderIsolated } from "./render-isolation.ts";
-
-/** One painted frame of a container: its children, the array each returned, and their concatenation. */
-interface ContainerFrame {
-	width: number;
-	components: Component[];
-	arrays: string[][];
-	lines: string[];
-}
-
-/** Rows below which a row-by-row append beats an array copy; above it `concat` copies in bulk. */
-const BULK_ROWS = 1024;
-/** Arrays passed to one `concat` call, far below the engine's argument limit. */
-const CONCAT_BATCH = 4096;
-
-/** Append the rows of `arrays[from..]` (`rows` in total) to `head`, returning the result. */
-function appendRows(head: string[], arrays: string[][], from: number, rows: number): string[] {
-	if (rows < BULK_ROWS) {
-		for (let i = from; i < arrays.length; i++) {
-			const childLines = arrays[i];
-			for (let row = 0; row < childLines.length; row++) head.push(childLines[row]);
-		}
-		return head;
-	}
-	let lines = head;
-	for (let start = from; start < arrays.length; start += CONCAT_BATCH) {
-		lines = lines.concat(...arrays.slice(start, start + CONCAT_BATCH));
-	}
-	return lines;
-}
+import {
+	ContainerRenderState,
+	noteStructureChange,
+	registerContainerPrototype,
+	registerContainerState,
+} from "./container-state.ts";
+import { renderContainer } from "./container-walk.ts";
+import { frameLines } from "./row-source.ts";
+import {
+	CHILD_RENDER_CHANGED,
+	linkRenderChild,
+	markRenderComposite,
+	relinkRenderChildren,
+	renderChanged,
+	trackRenderChanges,
+} from "./render-signal.ts";
 
 /**
  * Container - a component that contains other components
  */
 export class Container implements Component {
-	children: Component[] = [];
-	private renderCache?: ContainerFrame;
-	/** The last painted frame; it outlives `invalidate` so a click lands where the rows were drawn. */
-	private mouseLayout?: ContainerFrame;
+	static {
+		// A child container hands its parent its rows as a row frame; the walk reads the children list from here.
+		registerContainerPrototype(Container.prototype, (container) => (container as Container).#childList);
+	}
+
+	// Engine-private (`#`): subclasses define their own members freely (several have a `signal`).
+	#childList: Component[] = [];
+	readonly #renderState = new ContainerRenderState();
+
+	constructor() {
+		registerContainerState(this, this.#renderState);
+		markRenderComposite(this);
+	}
+
+	/**
+	 * The children, in render order. Reading the array counts as a change to it: code may edit it in place
+	 * (`children.splice(...)`), so the next frame walks every child once. Only until that frame: an array kept and edited
+	 * after a render is not seen (read `children` again for each edit).
+	 */
+	get children(): Component[] {
+		this.#structureChanged();
+		return this.#childList;
+	}
+
+	set children(children: Component[]) {
+		this.#replaceChildren(children);
+	}
 
 	addChild(component: Component): void {
-		this.children.push(component);
+		this.#childList.push(component);
+		linkRenderChild(this, component);
+		this.#structureChanged();
 	}
 
 	removeChild(component: Component): void {
-		const index = this.children.indexOf(component);
+		const index = this.#childList.indexOf(component);
 		if (index !== -1) {
-			this.children.splice(index, 1);
+			this.#childList.splice(index, 1);
+			if (!this.#childList.includes(component)) this.#unlinked(relinkRenderChildren(this, [component], []));
+			this.#structureChanged();
 		}
 	}
 
 	clear(): void {
-		this.children = [];
+		this.#replaceChildren([]);
+	}
+
+	/** Every edit of the list links the children it renders and marks those it unlinked (`relinkRenderChildren`). */
+	#replaceChildren(children: Component[]): void {
+		this.#unlinked(relinkRenderChildren(this, this.#childList, children));
+		this.#childList = children;
+		this.#structureChanged();
+	}
+
+	/**
+	 * Children this container stopped rendering: their signals reach nobody until they are linked again, so one that comes
+	 * back (removed, changed, added again at its old place) renders again instead of keeping its last rows.
+	 */
+	#unlinked(children: readonly Component[]): void {
+		if (children.length === 0) return;
+		this.#renderState.dirty ??= new Set();
+		for (const child of children) this.#renderState.dirty.add(child);
+	}
+
+	/** This container's last frame, when it keeps one (diagnostics and tests read it). */
+	private get renderCache(): { readonly width: number; readonly lines: readonly string[] | undefined } | undefined {
+		const frame = this.#renderState.frame;
+		return frame && { width: frame.width, lines: frame.rows.lines };
 	}
 
 	/**
 	 * Drop this container's own copy of its children's rows, keeping theirs: a frame that draws the children one by one
-	 * (a virtualized scroll view) never reads it, and it would hold a second array of every row in the transcript.
+	 * (a virtualized scroll view) never reads it, and it would hold a second array of every row in the transcript. Where
+	 * the children were painted stays.
 	 */
 	releaseRenderCache(): void {
-		this.renderCache = undefined;
-		this.mouseLayout = undefined;
+		this.#renderState.frame = undefined;
 	}
 
 	invalidate(): void {
-		this.renderCache = undefined;
-		for (const child of this.children) {
+		this.#renderState.frame = undefined;
+		for (const child of this.#childList) {
 			child.invalidate?.();
 		}
+		this.#signal();
+	}
+
+	/** A linked child signalled: render it again next frame, and tell the parents once. */
+	[CHILD_RENDER_CHANGED](child: Component): void {
+		(this.#renderState.dirty ??= new Set()).add(child);
+		this.#signal();
+	}
+
+	#structureChanged(): void {
+		noteStructureChange();
+		this.#renderState.structureChanged = true;
+		this.#signal();
+	}
+
+	#signal(): void {
+		if (this.#renderState.signaled) return;
+		this.#renderState.signaled = true;
+		renderChanged(this);
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
 		if (event.y < 0 || event.y >= event.height) return undefined;
-		const painted = this.mouseLayout?.width === event.width ? this.mouseLayout : undefined;
-		const components = painted?.components ?? this.children;
+		const painted = this.#renderState.painted?.width === event.width ? this.#renderState.painted : undefined;
+		const components = painted?.components ?? this.#childList;
 		let childY = 0;
 		for (let i = 0; i < components.length; i++) {
 			const child = components[i];
-			const childHeight = painted ? painted.arrays[i].length : child.render(event.width).length;
+			const childHeight = painted ? painted.offsets[i + 1] - painted.offsets[i] : child.render(event.width).length;
 			if (event.y >= childY && event.y < childY + childHeight) {
 				// Keep the last painted positions until redraw, but never activate a detached child.
-				if (!this.children.includes(child)) return undefined;
+				if (!this.#childList.includes(child)) return undefined;
 				const result = dispatchMouseEvent(child, {
 					...event,
 					y: event.y - childY,
@@ -96,60 +150,14 @@ export class Container implements Component {
 	}
 
 	/**
-	 * Concatenate the children's rows. When the width and every child's returned array are the same
-	 * references as last frame, the previous result is returned, so parents and the frame diff can
-	 * rely on identity. A child that returns a new array makes a new result: the rows of the children
-	 * before the first changed one are copied from the previous result in one slice and the rest are
-	 * appended in bulk, so a changed tail costs array copies, not a row-by-row walk through every child.
-	 * Results are never mutated after they are returned.
+	 * The children's rows in order. While the width and every child's rows are the same as last frame, the previous
+	 * array is returned, so parents and the frame diff can rely on identity. Children that track their changes
+	 * (`trackRenderChanges`) and did not signal are not rendered at all; a child container hands over its rows without
+	 * joining them, and a changed tail copies the rows before it once. Results are never mutated after they are returned.
 	 */
 	render(width: number): string[] {
-		const previous = this.renderCache?.width === width ? this.renderCache : undefined;
-		const children = this.children;
-		const count = children.length;
-		const layout = activeLayoutRecorder();
-		const base = layout?.base ?? 0;
-		// Allocated at the first child that differs from the previous frame; until then the arrays are the previous ones.
-		let arrays: string[][] | undefined = previous ? undefined : [];
-		let firstChanged = previous ? -1 : 0;
-		let keptRows = 0;
-		let offset = 0;
-		for (let i = 0; i < count; i++) {
-			const child = children[i];
-			const leavesBefore = layout?.leaves.length ?? 0;
-			if (layout) {
-				layout.base = base + offset;
-				layout.starts.set(child, base + offset);
-			}
-			const childLines = renderIsolated(child, width);
-			// A child that reported no leaf of its own is a leaf itself.
-			if (layout) {
-				if (layout.leaves.length === leavesBefore)
-					layout.leaves.push({ component: child, start: base + offset, length: childLines.length });
-				layout.base = base;
-			}
-			if (arrays) arrays.push(childLines);
-			else if (previous && (previous.components[i] !== child || previous.arrays[i] !== childLines)) {
-				firstChanged = i;
-				keptRows = offset;
-				arrays = previous.arrays.slice(0, i);
-				arrays.push(childLines);
-			}
-			offset += childLines.length;
-		}
-		if (!arrays && previous) {
-			// Every child is unchanged; only children removed from the end can differ.
-			if (previous.components.length === count) return previous.lines;
-			firstChanged = count;
-			keptRows = offset;
-			arrays = previous.arrays.slice(0, count);
-		}
-		const kept = arrays ?? [];
-		const head = previous && keptRows > 0 ? previous.lines.slice(0, keptRows) : [];
-		const lines = appendRows(head, kept, Math.max(0, firstChanged), offset - keptRows);
-		const frame: ContainerFrame = { width, components: children.slice(), arrays: kept, lines };
-		this.renderCache = frame;
-		this.mouseLayout = frame;
-		return lines;
+		return frameLines(renderContainer(this, this.#renderState, this.#childList, width).rows);
 	}
 }
+
+trackRenderChanges(Container.prototype);

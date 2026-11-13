@@ -11,7 +11,14 @@ import type { ConditionDeps } from "./conditions/types.ts";
 import { CHECK_CAPS } from "./judge.ts";
 import { describeCondition, parseUntil } from "./conditions/index.ts";
 import { removedUntil } from "./conditions/removed.ts";
-import { MAX_ACTIVE, MIN_EVERY_SECONDS, type TimerSetInput, timerFields, timerLine } from "./model.ts";
+import {
+	MAX_ACTIVE,
+	MIN_CHECK_SECONDS,
+	MIN_EVERY_SECONDS,
+	type TimerSetInput,
+	timerFields,
+	timerLine,
+} from "./model.ts";
 
 const parameters = Type.Object(
 	{
@@ -20,7 +27,7 @@ const parameters = Type.Object(
 		after: Type.Optional(Type.Number({ description: "set: seconds" })),
 		every: Type.Optional(
 			Type.Number({
-				description: `set: seconds, min ${MIN_EVERY_SECONDS}; with until, check interval`,
+				description: `set: seconds; repeat min ${MIN_EVERY_SECONDS}; until min ${MIN_CHECK_SECONDS}`,
 			}),
 		),
 		until: Type.Optional(
@@ -46,7 +53,7 @@ const parameters = Type.Object(
 						}),
 					),
 				},
-				{ additionalProperties: false, description: "one condition" },
+				{ additionalProperties: false, description: "one trigger, optional check" },
 			),
 		),
 		maxRuns: Type.Optional(Type.Integer({ description: "default 20" })),
@@ -84,7 +91,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Timer",
 		promptSnippet: renderInstruction("tools/timer/snippet.md"),
 		description:
-			"Wake this session with a note (a message): once after seconds, every seconds, or once when one until condition holds (unlocked, item, agent, command, check). A file or port is a command: `test -e path`, `nc -z localhost 3000`. Survives resume.",
+			"Wake this session with a note: after seconds, every seconds, or once when an until trigger holds (optionally judged by check). File/port waits use command: `test -e path`, `nc -z localhost 3000`. Survives resume.",
 		parameters,
 		// A removed condition fails the schema with a bare "unexpected property"; this names its command form.
 		prepareArguments(args) {
@@ -125,6 +132,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 				const refusal = await host.checkRefusal(ctx);
 				if (refusal) throw new Error(refusal);
 			}
+			signal?.throwIfAborted();
 			const timer = timers.insert(
 				db,
 				timerFields(params, now, {

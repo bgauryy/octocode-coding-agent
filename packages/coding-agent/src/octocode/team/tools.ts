@@ -221,7 +221,7 @@ function registerCoordinateTool(
 						(canStop ? "join: set your goal; leave: unregister, release reservations; " : "") +
 						"lock: reserve paths, all or none; unlock: release (none given: all); " +
 						(canStop
-							? "stop: kill a background subagent you started; merge: land an isolated subagent's work here, or a linked worktree's branch in the main checkout (asks the user); grant: add model requests to a running subagent you started, this run only; "
+							? "stop: kill your background child; merge: land isolated child's work here or linked worktree branch in main checkout (asks user); grant: add model requests to your running child for this run; "
 							: "") +
 						"changes: recent agent file changes",
 				}),
@@ -232,9 +232,7 @@ function registerCoordinateTool(
 							requests: Type.Optional(Type.Integer({ description: "grant: model requests to add (positive integer)" })),
 						}
 					: {}),
-				...(canStop
-					? { goal: Type.Optional(Type.String({ description: "join: your goal, worded as a task goal" })) }
-					: {}),
+				...(canStop ? { goal: Type.Optional(Type.String({ description: "join: your task goal" })) } : {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
 						description: 'lock/unlock: files or "dir/". changes: only under these paths',
@@ -250,13 +248,18 @@ function registerCoordinateTool(
 				const params = input as CoordinateParams;
 				signal?.throwIfAborted();
 				const now = Date.now();
-				if (params.action === "join") team.join(params.goal ? checkGoal(params.goal) : undefined);
-				else if (params.action === "leave") {
-					team.leave();
+				// Writes go through `patiently`: a database another process holds never stalls the screen while they wait.
+				if (params.action === "join") {
+					const goal = params.goal ? checkGoal(params.goal) : undefined;
+					await team.patiently(() => team.join(goal), signal);
+				} else if (params.action === "leave") {
+					await team.patiently(() => team.leave(), signal);
 					return textResult("Left the team.");
 				} else if (params.action === "lock") {
 					if (!params.paths?.length) throw new Error("lock needs paths.");
-					const result = team.lock(params.paths, storedText(params.reason, 200) || "editing");
+					const paths = params.paths;
+					const reason = storedText(params.reason, 200) || "editing";
+					const result = await team.patiently(() => team.lock(paths, reason), signal);
 					if (!result.ok) throw new Error(describeConflicts(result.conflicts, now, memberGoals(team.members())));
 					const total =
 						result.held > result.leases.length ? ` You now hold ${plural(result.held, "reservation")}.` : "";
@@ -267,7 +270,7 @@ function registerCoordinateTool(
 						{ summary: `Reserved ${plural(result.leases.length, "path")}` },
 					);
 				} else if (params.action === "unlock") {
-					const released = team.unlock(params.paths);
+					const released = await team.patiently(() => team.unlock(params.paths), signal);
 					return textResult(`Released ${released} reservation(s).`, {
 						summary: `Released ${plural(released, "reservation")}`,
 					});

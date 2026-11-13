@@ -14,6 +14,12 @@ export interface EditorSnapshot {
 	pasteCounter: number;
 }
 
+/** A prompt history entry. `pastes` holds the content of the paste markers `text` keeps collapsed. */
+export interface HistoryEntry {
+	text: string;
+	pastes?: ReadonlyMap<number, string>;
+}
+
 /** Last editing action, used for kill accumulation, yank-pop and undo coalescing. */
 export type EditorLastAction = "kill" | "yank" | "type-word" | null;
 

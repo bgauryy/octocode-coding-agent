@@ -173,8 +173,11 @@ describe("render isolation", () => {
 		tui.onRenderError = (error, component) => reports.push({ error, component });
 		const throwing = new Throwing("estimated row broke");
 		const transcript = new Container();
-		transcript.addChild(throwing);
-		for (let row = 1; row <= 30; row++) transcript.addChild(new Healthy(`row ${row}`));
+		// Two rows above the rows in view and the row above them that the frame reads: a Page Up reaches it.
+		for (let row = 1; row <= 30; row++) {
+			if (row === 24) transcript.addChild(throwing);
+			transcript.addChild(new Healthy(`row ${row}`));
+		}
 		const scroll = new ScrollView(transcript, { follow: "end", primary: true, virtualize: true });
 		tui.setLayoutRoot(new VStack([{ component: scroll, basis: 0, grow: 1, shrink: 1, minSize: 1 }]));
 		tui.start();
@@ -184,7 +187,7 @@ describe("render isolation", () => {
 			assert.strictEqual(throwing.renders, 0);
 			const followingTop = tui.viewportTop;
 
-			terminal.sendInput("\x1b[5~"); // Page Up: the scroll measures every row first
+			terminal.sendInput("\x1b[5~"); // Page Up: the scroll measures the rows it reaches first
 			assert.ok(throwing.renders > 0);
 			// Reported once, like a failure inside a frame.
 			assert.strictEqual(reports.length, 1);
@@ -195,7 +198,14 @@ describe("render isolation", () => {
 
 			tui.renderNow();
 			const screen = plain(await terminal.flushAndGetViewport());
-			assert.deepStrictEqual(screen, ["row 23", "row 24", "row 25", "row 26", "row 27", "row 28"]);
+			assert.deepStrictEqual(screen, [
+				"⚠ Throwing failed to render: estimated …",
+				"row 24",
+				"row 25",
+				"row 26",
+				"row 27",
+				"row 28",
+			]);
 		} finally {
 			tui.stop();
 		}

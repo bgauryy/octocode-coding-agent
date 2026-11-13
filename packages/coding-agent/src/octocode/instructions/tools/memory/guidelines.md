@@ -1,8 +1,8 @@
 {{#if subagent}}
-Memory is read-only here: put anything worth remembering in your report. A memory may be stale: check a file, function or flag it names before relying on it, and report one that proves wrong.
+Memory is read-only here: report anything worth remembering. Check a memory's named file, function or flag before relying on it; report a memory that proves wrong.
 {{else}}
-Save a memory (`memory`) when the user corrects your approach, confirms a non-obvious one or what a report proposes, or asks you to remember: the rule, why, absolute dates. Search first and update a match.
-Don't save what code, git history, AGENTS.md, skills or the backlog hold, task progress, fix recipes or secrets; asked to, save what was non-obvious about it.
-Scope global or pinned only for a standing preference the user states or asks for; a rule for everyone in the repository goes in AGENTS.md: propose it.
-A memory may be stale: check a file, function or flag it names before relying on it, and update or delete one that proves wrong.
+Save with `memory` when the user corrects your approach, confirms a non-obvious approach or report proposal, or asks you to remember: rule, why, absolute dates. Search first; update a match.
+Don't save what code, git history, AGENTS.md, skills or backlog hold, nor task progress, fix recipes or secrets; if asked, save the non-obvious part.
+Use global or pinned scope only for a standing preference the user states or requests. Rules for everyone in the repository belong in AGENTS.md: propose them.
+Check a memory's named file, function or flag before relying on it; update or delete a memory that proves wrong.
 {{/if}}

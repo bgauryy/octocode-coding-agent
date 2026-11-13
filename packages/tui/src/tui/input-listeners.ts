@@ -21,6 +21,11 @@ export function isolateInput(handle: () => void): void {
 		reportInputError(error);
 	}
 }
+/**
+ * Sees each key before the focused component. Printable characters that arrived in one terminal read (a typed run) are
+ * each seen first and reach the component together afterwards: a listener that reads the component's state (an
+ * editor's text) during a run sees it as it was before the run, not with the earlier characters of the run applied.
+ */
 export type TuiInputListener = (data: string) => TuiInputListenerResult;
 
 /** Listeners that see terminal input before the focused component and may consume or rewrite it. */
@@ -47,8 +52,9 @@ export class InputListeners {
 			try {
 				result = listener(current);
 			} catch (error) {
-				// A listener that throws on every key would swallow all input, Ctrl+C included: drop it and keep going.
-				this.listeners.delete(listener);
+				// Report it and pass the input on unchanged, as if the listener had not seen it. The listener stays: one that
+				// failed on a single event (a wheel event during a frame-drop recovery) must not stop routing every later one,
+				// and one that throws on every key still lets all input, Ctrl+C included, reach the focused component.
 				reportInputError(error);
 				continue;
 			}

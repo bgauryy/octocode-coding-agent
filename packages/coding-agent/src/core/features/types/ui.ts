@@ -135,7 +135,11 @@ export interface ExtensionUIContext {
 	/** Show a notification to the user. */
 	notify(message: string, type?: "info" | "warning" | "error"): void;
 
-	/** Listen to raw terminal input (interactive mode only). Returns an unsubscribe function. */
+	/**
+	 * Listen to raw terminal input (interactive mode only), before the focused component. Characters typed in one
+	 * terminal read reach the handler one by one before the editor gets any of them, so editor text read in the handler
+	 * is the text from before that read. Returns an unsubscribe function.
+	 */
 	onTerminalInput(handler: TerminalInputHandler): () => void;
 
 	/**

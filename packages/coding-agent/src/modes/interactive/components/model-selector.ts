@@ -311,6 +311,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	handleInput(keyData: string): void {
+		if (this.closed) return;
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.input.tab")) {
 			if (this.scopedModelItems.length > 0) {

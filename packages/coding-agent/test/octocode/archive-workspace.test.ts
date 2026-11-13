@@ -110,12 +110,12 @@ it("retains searchable complete summaries after expiry and does not resurrect de
 	expect(fs.existsSync(detail)).toBe(true);
 	await expireArchiveDetails(db, { ...process.env, OCTOCODE_CLEANUP_DAYS: "30" }, Date.parse("2026-01-01"));
 	expect(fs.existsSync(detail)).toBe(false);
-	expect(compactions.get(db.db, "session-a", entry.id)).toMatchObject({
+	expect(compactions.get(db.mirror.db, "session-a", entry.id)).toMatchObject({
 		summary: entry.summary,
 		detailState: "expired",
 	});
 	saveCompaction(db, root, "session-a", entry, { recovered: true });
-	expect(compactions.get(db.db, "session-a", entry.id)?.detailState).toBe("expired");
+	expect(compactions.get(db.mirror.db, "session-a", entry.id)?.detailState).toBe("expired");
 	expect(
 		agentEvents.list(db.db, registeredWorkspace(root, db).id).filter((row) => row.type === "compaction"),
 	).toHaveLength(1);
@@ -148,8 +148,8 @@ it("indexes inherited compactions at their origin without duplicate fork events"
 	registeredWorkspace(root, db);
 	await new HistoryRepair(db).transcript(fork);
 	await new HistoryRepair(db).transcript(fork);
-	expect(compactions.forSession(db.db, "parent")).toHaveLength(1);
-	expect(compactions.forSession(db.db, "fork")).toHaveLength(0);
+	expect(compactions.forSession(db.mirror.db, "parent")).toHaveLength(1);
+	expect(compactions.forSession(db.mirror.db, "fork")).toHaveLength(0);
 	expect(agentEvents.list(db.db, registeredWorkspace(root, db).id)).toHaveLength(1);
 });
 
@@ -162,7 +162,7 @@ it("does not create a workspace in the directory named by an imported transcript
 	const db = sharedAgentDb();
 	await new HistoryRepair(db).transcript(file);
 	expect(fs.existsSync(path.join(other, ".octocode"))).toBe(false);
-	expect(compactions.forSession(db.db, header.id)).toEqual([]);
+	expect(compactions.forSession(db.mirror.db, header.id)).toEqual([]);
 });
 
 it("refuses foreign transcript pointers in an archive record and fork header", async () => {
@@ -193,8 +193,8 @@ it("refuses foreign transcript pointers in an archive record and fork header", a
 			.join("\n") + "\n",
 	);
 	await repair.transcript(child);
-	expect(compactions.forSession(db.db, "victim")).toEqual([]);
-	expect(compactions.get(db.db, "child", "local")?.originVerified).toBe(false);
+	expect(compactions.forSession(db.mirror.db, "victim")).toEqual([]);
+	expect(compactions.get(db.mirror.db, "child", "local")?.originVerified).toBe(false);
 });
 
 it("finds an old lifecycle event beyond 50 in one search, since a query tests every record", async () => {

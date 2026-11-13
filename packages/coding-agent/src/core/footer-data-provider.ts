@@ -37,10 +37,9 @@ export class FooterDataProvider {
 	private headWatcher: FSWatcher | null = null;
 	private headWatchFilePath: string | null = null;
 	private headWatchFileListener: ((current: Stats, previous: Stats) => void) | null = null;
+	private reftableWatchFilePath: string | null = null;
+	private reftableWatchFileListener: ((current: Stats, previous: Stats) => void) | null = null;
 	private reftableWatcher: FSWatcher | null = null;
-	private reftableTablesListWatcher: FSWatcher | null = null;
-	private reftableTablesListPath: string | null = null;
-	private reftableTablesListListener: ((current: Stats, previous: Stats) => void) | null = null;
 	private gitWatcherGeneration = 0;
 	private branchChangeCallbacks = new Set<() => void>();
 	private availableProviderCount = 0;
@@ -184,8 +183,7 @@ export class FooterDataProvider {
 			return;
 		}
 
-		// One change reaches us through several watchers (HEAD dir, reftable dir, tables.list watch and
-		// poll), and fs.watch can replay events from before the watcher started. Skip the git call when
+		// One change reaches us through several watchers (HEAD dir, reftable dir, the WSL HEAD poll), and fs.watch can replay events from before the watcher started. Skip the git call when
 		// the files that determine the branch are unchanged since the last successful resolution.
 		const gitPaths = this.gitPaths;
 		const signature = readGitStateSignature(gitPaths);
@@ -254,13 +252,11 @@ export class FooterDataProvider {
 		}
 		closeWatcher(this.reftableWatcher);
 		this.reftableWatcher = null;
-		closeWatcher(this.reftableTablesListWatcher);
-		this.reftableTablesListWatcher = null;
-		if (this.reftableTablesListPath && this.reftableTablesListListener) {
-			unwatchFile(this.reftableTablesListPath, this.reftableTablesListListener);
+		if (this.reftableWatchFilePath && this.reftableWatchFileListener) {
+			unwatchFile(this.reftableWatchFilePath, this.reftableWatchFileListener);
+			this.reftableWatchFilePath = null;
+			this.reftableWatchFileListener = null;
 		}
-		this.reftableTablesListPath = null;
-		this.reftableTablesListListener = null;
 		if (this.gitWatcherRetryTimer) {
 			clearTimeout(this.gitWatcherRetryTimer);
 			this.gitWatcherRetryTimer = null;
@@ -275,6 +271,8 @@ export class FooterDataProvider {
 		this.gitWatcherRetryTimer = setTimeout(() => {
 			this.gitWatcherRetryTimer = null;
 			this.setupGitWatcher();
+			// Re-arming does not replay branch changes made while no watcher was attached.
+			this.scheduleRefresh();
 		}, FS_WATCH_RETRY_DELAY_MS);
 	}
 
@@ -293,6 +291,7 @@ export class FooterDataProvider {
 		};
 
 		const pollGitHead = shouldPollGitHead(this.gitPaths.repoDir);
+		const reftableDir = join(this.gitPaths.commonGitDir, "reftable");
 
 		// Watch the directory containing HEAD, not HEAD itself.
 		// Git uses atomic writes (write temp, rename over HEAD), which changes the inode.
@@ -320,6 +319,12 @@ export class FooterDataProvider {
 				}
 			};
 			watchFile(this.headWatchFilePath, { interval: 1000 }, this.headWatchFileListener);
+			// WSL may miss native directory events; reftable branch changes can leave HEAD unchanged.
+			if (existsSync(reftableDir)) {
+				this.reftableWatchFilePath = join(reftableDir, "tables.list");
+				this.reftableWatchFileListener = this.headWatchFileListener;
+				watchFile(this.reftableWatchFilePath, { interval: 1000 }, this.reftableWatchFileListener);
+			}
 		}
 		if (!current()) return;
 		if (!this.headWatcher && !pollGitHead) {
@@ -328,7 +333,6 @@ export class FooterDataProvider {
 
 		// In reftable repos, branch switches update files in the reftable directory
 		// instead of HEAD. Watch it separately so the footer picks up those changes.
-		const reftableDir = join(this.gitPaths.commonGitDir, "reftable");
 		if (existsSync(reftableDir)) {
 			this.reftableWatcher = watchWithErrorHandler(
 				reftableDir,
@@ -337,33 +341,7 @@ export class FooterDataProvider {
 				},
 				onError,
 			);
-			if (!this.reftableWatcher) {
-				return;
-			}
-
-			const tablesListPath = join(reftableDir, "tables.list");
-			if (existsSync(tablesListPath)) {
-				this.reftableTablesListPath = tablesListPath;
-				this.reftableTablesListWatcher = watchWithErrorHandler(
-					tablesListPath,
-					() => {
-						if (current()) this.scheduleRefresh();
-					},
-					onError,
-				);
-				if (!this.reftableTablesListWatcher) {
-					return;
-				}
-				this.reftableTablesListListener = (next, previous) => {
-					if (
-						current() &&
-						(next.mtimeMs !== previous.mtimeMs || next.ctimeMs !== previous.ctimeMs || next.size !== previous.size)
-					) {
-						this.scheduleRefresh();
-					}
-				};
-				watchFile(tablesListPath, { interval: 1000 }, this.reftableTablesListListener);
-			}
+			// Native directory watches follow atomic replacements; WSL alone also polls tables.list.
 		}
 	}
 }

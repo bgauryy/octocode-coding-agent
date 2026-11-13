@@ -9,6 +9,9 @@
  */
 
 import type { Api } from "../types/ids.ts";
+import { type MeasuredLayer, PayloadLayerMemo } from "./payload-layer-memo.ts";
+
+export { PayloadLayerMemo };
 
 export interface RequestLayer {
 	/** `tools`: the whole tool list; `system`: one system or developer block; `message`: one conversation item. */
@@ -76,9 +79,26 @@ function asBlocks(value: unknown): unknown {
 	return { ...value, content: [{ type: "text", text: value.content }] };
 }
 
-function layer(kind: RequestLayer["kind"], value: unknown, extra: Partial<RequestLayer> = {}): RequestLayer {
-	const json = JSON.stringify(kind === "message" ? asBlocks(value) : value, withoutMarkers) ?? "";
-	return { kind, ...extra, chars: json.length, hash: fnvPair(json) };
+function measureWhole(value: unknown): MeasuredLayer {
+	const json = JSON.stringify(value, withoutMarkers) ?? "";
+	return { chars: json.length, hash: fnvPair(json) };
+}
+
+/** Builds one layer `{ kind, ...extra, chars, hash }` from its wire form `value`: in full, or through a memo. */
+type Measure = (kind: RequestLayer["kind"], value: unknown, extra: Partial<RequestLayer>) => RequestLayer;
+
+const measureEach: Measure = (kind, value, extra) => {
+	const { chars, hash } = measureWhole(value);
+	return { kind, ...extra, chars, hash };
+};
+
+function layer(
+	measure: Measure,
+	kind: RequestLayer["kind"],
+	value: unknown,
+	extra: Partial<RequestLayer> = {},
+): RequestLayer {
+	return measure(kind, kind === "message" ? asBlocks(value) : value, extra);
 }
 
 function cacheControlOf(block: unknown): Record_ | undefined {
@@ -103,7 +123,7 @@ function messageControl(message: Record_): Record_ | undefined {
 	return Array.isArray(content) ? cacheControlOf(content[content.length - 1]) : undefined;
 }
 
-function describeAnthropic(payload: Record_): RequestTrace {
+function describeAnthropic(payload: Record_, measure: Measure): RequestTrace {
 	const layers: RequestLayer[] = [];
 	let control: Record_ | undefined;
 	const mark = (found: Record_ | undefined): Partial<RequestLayer> => {
@@ -113,14 +133,14 @@ function describeAnthropic(payload: Record_): RequestTrace {
 	const tools = payload.tools;
 	if (Array.isArray(tools) && tools.length > 0) {
 		const found = tools.map(cacheControlOf).find((candidate) => candidate !== undefined);
-		layers.push(layer("tools", tools, mark(found)));
+		layers.push(layer(measure, "tools", tools, mark(found)));
 	}
 	const system = payload.system;
 	if (typeof system === "string") {
-		layers.push(layer("system", system, { index: 0 }));
+		layers.push(layer(measure, "system", system, { index: 0 }));
 	} else if (Array.isArray(system)) {
 		system.forEach((block, index) => {
-			layers.push(layer("system", block, { index, ...mark(cacheControlOf(block)) }));
+			layers.push(layer(measure, "system", block, { index, ...mark(cacheControlOf(block)) }));
 		});
 	}
 	const messages = payload.messages;
@@ -128,7 +148,7 @@ function describeAnthropic(payload: Record_): RequestTrace {
 		messages.forEach((message, index) => {
 			const role = isRecord(message) && typeof message.role === "string" ? message.role : undefined;
 			const found = isRecord(message) ? messageControl(message) : undefined;
-			layers.push(layer("message", message, { ...(role ? { role } : {}), index, ...mark(found) }));
+			layers.push(layer(measure, "message", message, { ...(role ? { role } : {}), index, ...mark(found) }));
 		});
 	}
 	const cacheMode = markerMode(control);
@@ -172,7 +192,7 @@ function isSystemRole(role: string | undefined): boolean {
 	return role === "system" || role === "developer";
 }
 
-function describeOpenAi(payload: Record_, itemsKey: "input" | "messages"): RequestTrace {
+function describeOpenAi(payload: Record_, itemsKey: "input" | "messages", measure: Measure): RequestTrace {
 	const layers: RequestLayer[] = [];
 	let control: Record_ | undefined;
 	let breakpoint: Record_ | undefined;
@@ -180,17 +200,17 @@ function describeOpenAi(payload: Record_, itemsKey: "input" | "messages"): Reque
 	if (Array.isArray(tools) && tools.length > 0) {
 		const found = tools.map(cacheControlOf).find((candidate) => candidate !== undefined);
 		control ??= found;
-		layers.push(layer("tools", tools, marked(found, MARKER_DEFAULT_TTL)));
+		layers.push(layer(measure, "tools", tools, marked(found, MARKER_DEFAULT_TTL)));
 	}
 	// A breakpoint without its own ttl inherits the request TTL (Azure), whose default is 30m.
 	const options = isRecord(payload.prompt_cache_options) ? payload.prompt_cache_options : {};
 	const requestTtl = typeof options.ttl === "string" && options.ttl ? options.ttl : "30m";
 	if (typeof payload.instructions === "string" && payload.instructions !== "") {
-		layers.push(layer("system", payload.instructions, { index: 0 }));
+		layers.push(layer(measure, "system", payload.instructions, { index: 0 }));
 	}
 	const items = payload[itemsKey];
 	if (typeof items === "string") {
-		layers.push(layer("message", items, { role: "user", index: 0 }));
+		layers.push(layer(measure, "message", items, { role: "user", index: 0 }));
 	} else if (Array.isArray(items)) {
 		items.forEach((item, index) => {
 			const role = isRecord(item) && typeof item.role === "string" ? item.role : undefined;
@@ -202,7 +222,7 @@ function describeOpenAi(payload: Record_, itemsKey: "input" | "messages"): Reque
 			const kind =
 				isRecord(item) && item.type === "additional_tools" ? "tools" : isSystemRole(role) ? "system" : "message";
 			const ttl = explicit ? marked(explicit, requestTtl) : marked(marker, MARKER_DEFAULT_TTL);
-			layers.push(layer(kind, item, { ...(role ? { role } : {}), index, ...ttl }));
+			layers.push(layer(measure, kind, item, { ...(role ? { role } : {}), index, ...ttl }));
 		});
 	}
 	const cacheMode = openAiCacheMode(payload, breakpoint, control);
@@ -216,7 +236,7 @@ const cachePointOf = (blocks: unknown[]): Record_ | undefined => {
 };
 
 /** Bedrock Converse: a `cachePoint` block marks the end of the content before it and is not a layer of its own. */
-function describeBedrock(payload: Record_): RequestTrace {
+function describeBedrock(payload: Record_, measure: Measure): RequestTrace {
 	const layers: RequestLayer[] = [];
 	let control: Record_ | undefined;
 	const tools = isRecord(payload.toolConfig) && Array.isArray(payload.toolConfig.tools) ? payload.toolConfig.tools : [];
@@ -225,6 +245,7 @@ function describeBedrock(payload: Record_): RequestTrace {
 		control ??= found;
 		layers.push(
 			layer(
+				measure,
 				"tools",
 				tools.filter((tool) => !isCachePoint(tool)),
 				marked(found, MARKER_DEFAULT_TTL),
@@ -233,10 +254,14 @@ function describeBedrock(payload: Record_): RequestTrace {
 	}
 	const system = Array.isArray(payload.system) ? payload.system : [];
 	system.forEach((block, index) => {
-		if (!isCachePoint(block)) layers.push(layer("system", block, { index }));
+		if (!isCachePoint(block)) layers.push(layer(measure, "system", block, { index }));
 		else if (layers.at(-1)?.kind === "system") {
 			control ??= block.cachePoint as Record_;
-			Object.assign(layers[layers.length - 1], marked(block.cachePoint as Record_, MARKER_DEFAULT_TTL));
+			// A copy, not an edit: the layer may be the previous request's (`PayloadLayerMemo`).
+			layers[layers.length - 1] = {
+				...layers[layers.length - 1],
+				...marked(block.cachePoint as Record_, MARKER_DEFAULT_TTL),
+			};
 		}
 	});
 	const messages = Array.isArray(payload.messages) ? payload.messages : [];
@@ -246,31 +271,50 @@ function describeBedrock(payload: Record_): RequestTrace {
 		const found = cachePointOf(content);
 		control ??= found;
 		const wire = isRecord(message) ? { ...message, content: content.filter((block) => !isCachePoint(block)) } : message;
-		layers.push(layer("message", wire, { ...(role ? { role } : {}), index, ...marked(found, MARKER_DEFAULT_TTL) }));
+		layers.push(
+			layer(measure, "message", wire, { ...(role ? { role } : {}), index, ...marked(found, MARKER_DEFAULT_TTL) }),
+		);
 	});
 	const cacheMode = markerMode(control);
 	return { layers, ...(cacheMode ? { cacheMode } : {}) };
 }
 
-/**
- * The layers of a provider payload, in wire order, or `undefined` for an API without a describer.
- * `payload` is the object the adapter is about to send (after any `onPayload` rewrite).
- */
-export function describePayloadLayers(api: Api, payload: unknown): RequestTrace | undefined {
-	if (!isRecord(payload)) return undefined;
+function describe(api: Api, payload: Record_, measure: Measure): RequestTrace | undefined {
 	switch (api) {
 		case "anthropic-messages":
-			return describeAnthropic(payload);
+			return describeAnthropic(payload, measure);
 		case "openai-responses":
 		case "azure-openai-responses":
 		case "openai-codex-responses":
-			return describeOpenAi(payload, "input");
+			return describeOpenAi(payload, "input", measure);
 		case "openai-completions":
 		case "mistral-conversations":
-			return describeOpenAi(payload, "messages");
+			return describeOpenAi(payload, "messages", measure);
 		case "bedrock-converse-stream":
-			return describeBedrock(payload);
+			return describeBedrock(payload, measure);
 		default:
 			return undefined;
 	}
+}
+
+/**
+ * The layers of a provider payload, in wire order, or `undefined` for an API without a describer.
+ * `payload` is the object the adapter is about to send (after any `onPayload` rewrite). With `memo` (one per
+ * conversation), a layer whose wire form equals the previous request's layer at its position is not serialized again,
+ * and an equal layer is the previous request's object; the trace is the same as without it.
+ */
+export function describePayloadLayers(api: Api, payload: unknown, memo?: PayloadLayerMemo): RequestTrace | undefined {
+	if (!isRecord(payload)) return undefined;
+	if (!memo) return describe(api, payload, measureEach);
+	memo.begin(api);
+	const trace = describe(api, payload, (kind, value, extra) =>
+		memo.layer(kind, value, extra, MARKER_KEYS, measureWhole, ({ chars, hash }): RequestLayer => ({
+			kind,
+			...extra,
+			chars,
+			hash,
+		})),
+	);
+	if (trace) memo.finish(trace.layers);
+	return trace;
 }

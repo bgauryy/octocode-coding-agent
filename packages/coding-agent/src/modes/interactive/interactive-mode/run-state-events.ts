@@ -19,6 +19,7 @@ import type { InteractiveModeHost } from "./host.ts";
 /** Interactive-mode members used by the run-state event handler. */
 export type RunStateEventsHost = Pick<
 	InteractiveModeHost,
+	| "activeStatusIndicator"
 	| "addCompactionCostNotice"
 	| "addMessageToChat"
 	| "autoCompactionEscapeHandler"
@@ -86,6 +87,15 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 				: undefined;
 			host.showStatusIndicator(new CompactionStatusIndicator(host.ui, event.reason, colorFn));
 			host.ui.requestRender();
+			break;
+		}
+
+		case "compaction_progress": {
+			// A retry's countdown stays until its attempt starts; then the new compaction indicator takes the progress.
+			if (host.activeStatusIndicator instanceof CompactionStatusIndicator) {
+				host.activeStatusIndicator.setProgress(event);
+				host.ui.requestRender();
+			}
 			break;
 		}
 

@@ -7,6 +7,7 @@ import { saveConfig } from "./persistence.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { adoptHanded, bindOwner, type ConnectionOwner, type HandedConnection } from "./handover.ts";
 import { describeState, isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";
@@ -33,7 +34,16 @@ export async function reconnectSignedIn(state: McpExtensionState): Promise<void>
 	await Promise.allSettled(signedIn.map(([connection]) => connection.reconnect()));
 }
 
-/** Create the server's connection, loading the MCP runtime on first use. */
+/** The connected servers re-register with `connection`'s catalog (`McpServerConnection` reports it through `onTools`). */
+function catalogChanged(state: McpExtensionState, connection: McpServerConnection): void {
+	for (const current of state.connections())
+		if (current === connection || current.state === "connected") registerTools(state, current);
+}
+
+/**
+ * Create the server's connection, loading the MCP runtime on first use. Its callbacks reach the session through an
+ * owner, which a later session rebinds when it takes the connection over (`handover.ts`).
+ */
 async function createConnection(
 	state: McpExtensionState,
 	server: McpServer,
@@ -42,26 +52,25 @@ async function createConnection(
 	const { options } = state;
 	const { createServerConnection } = await loadMcpRuntime();
 	if (!isCurrent()) return undefined;
+	const owner: ConnectionOwner = { state, isCurrent };
 	const connection = createServerConnection({
 		entry: server.entry,
 		cwd: state.sessionCwd,
 		createTransport: options.createTransport,
-		prepareLaunch: state.prepareLaunch,
-		onLaunch: (launched, prepared) => state.preparedLaunches.set(launched, prepared),
+		prepareLaunch: (entry, cwd) => owner.state.prepareLaunch(entry, cwd),
+		onLaunch: (launched, prepared) => owner.state.preparedLaunches.set(launched, prepared),
 		credentials: state.getCredentials(),
-		providerToken: async (provider) => state.modelRegistry?.getApiKeyForProvider(provider),
+		providerToken: async (provider) => owner.state.modelRegistry?.getApiKeyForProvider(provider),
 		log: state.getServerLog(),
 		onTools: (connection) => {
-			if (isCurrent()) {
-				for (const current of state.connections())
-					if (current === connection || current.state === "connected") registerTools(state, current);
-			}
+			if (owner.isCurrent()) catalogChanged(owner.state, connection);
 		},
 		onChange: (connection) => {
-			if (isCurrent()) onConnectionChange(state, connection);
-			else state.tokensAtSignIn.delete(connection);
+			if (owner.isCurrent()) onConnectionChange(owner.state, connection);
+			else owner.state.tokensAtSignIn.delete(connection);
 		},
 	});
+	bindOwner(connection, owner);
 	server.connection = connection;
 	state.emitChange();
 	return connection;
@@ -78,6 +87,8 @@ export function startConnection(
 	after?: Promise<unknown>,
 	/** False for a start that does not choose the server for the session (a hook's call): it stays `unselected`. */
 	chosen = true,
+	/** The connection the replaced session handed over for this server: adopted when its launch matches, else closed. */
+	handed?: HandedConnection,
 ): Promise<void> {
 	const { signal } = state.session;
 	const attempt = Symbol();
@@ -86,7 +97,23 @@ export function startConnection(
 	const isCurrent = () =>
 		!signal.aborted && server.attempt === attempt && isEnabled(server) && state.servers.includes(server);
 	const ready = (async () => {
-		await after;
+		try {
+			await after;
+		} catch (error) {
+			if (handed) await handed.connection.close();
+			throw error;
+		}
+		if (handed) {
+			const adopted = isCurrent() ? adoptHanded(state, server, handed, isCurrent) : undefined;
+			// Not reusable: its server stops before a fresh one launches, as at the end of the replaced session.
+			if (!adopted) await handed.connection.close();
+			else {
+				server.connection = adopted;
+				state.emitChange();
+				catalogChanged(state, adopted);
+				return;
+			}
+		}
 		if (!isCurrent()) return;
 		const connection = await createConnection(state, server, isCurrent);
 		if (!connection || !isCurrent()) return;

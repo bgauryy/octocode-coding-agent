@@ -84,7 +84,13 @@ async function verifyLoginKey(
 ): Promise<void> {
 	const verdict = (await method?.verify?.({ key, signal })) ?? "unchecked";
 	if (verdict === "rejected") {
-		throw new ModelsError("auth", `${providerName} rejected this key (HTTP 401 or 403). Nothing was saved.`);
+		throw new ModelsError("auth", `${providerName} rejected this key (HTTP 401). Nothing was saved.`);
+	}
+	if (verdict === "forbidden") {
+		interaction.notify({
+			type: "info",
+			message: `${providerName} denied the credential check (HTTP 403). The key was saved, but model access is unverified. Check its endpoint permissions if requests fail.`,
+		});
 	}
 	if (verdict === "unreachable") {
 		interaction.notify({

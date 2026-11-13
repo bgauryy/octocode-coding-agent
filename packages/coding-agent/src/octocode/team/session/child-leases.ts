@@ -35,8 +35,8 @@ function distinctPaths(workspace: string, cwd: string | undefined, paths: readon
  * then takes the row over (`claimMember`). They end with the run: `release`, or with the holder's process.
  */
 export class ChildLeases {
-	/** Runs holding reservations now, by child id, with the row their parent wrote. */
-	private readonly rows = new Map<string, Member>();
+	/** Runs holding reservations now, with their original store even after the parent session detached from it. */
+	private readonly rows = new Map<string, { row: Member; db: TeamStore }>();
 
 	/** Starts that wait for a child to release (`released`): each is called after any release and checks again. */
 	private readonly releaseWaiters = new Set<() => void>();
@@ -106,7 +106,7 @@ export class ChildLeases {
 		const row = heldChildMember(parent, child, Date.now());
 		const result = db.lock(child.id, requests, row.joinedAt, row);
 		if (!result.ok) return { ok: false, conflicts: result.conflicts.map(asGiven) };
-		this.rows.set(child.id, row);
+		this.rows.set(child.id, { row, db });
 		return { ok: true, paths: kept };
 	}
 
@@ -118,12 +118,12 @@ export class ChildLeases {
 	 * process's own end bounds them: its held rows lapse with it, and the exit hook kills the child's group.
 	 */
 	release(id: string): void {
-		const row = this.rows.get(id);
-		if (!row) return;
+		const held = this.rows.get(id);
+		if (!held) return;
+		const { row, db } = held;
 		this.rows.delete(id);
 		try {
-			const db = this.host().existing();
-			if (db && !db.remove(id, Date.now(), row)) db.unlock(id);
+			if (!db.remove(id, Date.now(), row)) db.unlock(id);
 		} catch {
 			// They lapse.
 		} finally {

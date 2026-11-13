@@ -2,6 +2,7 @@ import type { ScrollView } from "../components/scroll-view.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewsAt } from "../layout.ts";
 import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
+import { animationClock } from "../tokens/clock.ts";
 import type { WheelScrollAccelerator } from "../wheel-scroll.ts";
 import { FOCUS_IN, FOCUS_OUT } from "../terminal/sequences.ts";
 import { ALT_WHEEL_SCROLL_MULTIPLIER } from "./constants.ts";
@@ -23,6 +24,8 @@ export interface AltScreenPointerHost {
 	getCurrentLayout(): LayoutFrame | undefined;
 	getPrimaryScrollView(): ScrollView;
 	getScrollToEndIndicatorRect(): ScrollToEndIndicatorRect | undefined;
+	/** Write the screen's terminal modes again: a terminal reset while it was in the background turned them off. */
+	reassertModes(): void;
 	dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult };
 	requestRender(): void;
 	scrollToBottom(): void;
@@ -52,9 +55,18 @@ function handlePointerFocusOut(host: AltScreenPointerHost): void {
 	selection.lastClick = undefined;
 }
 
+/**
+ * How long decoration (spinners, shimmer) holds still after a wheel event: a scroll's frames then carry only the scroll,
+ * and a pause between notches (slow scrolling sends one event per notch, 250 ms or more apart) keeps the hold.
+ */
+const SCROLL_DECORATION_HOLD_MS = 300;
+
 /** Offer a wheel event to overlays and components, then scroll the scroll views under the pointer. */
 function handleWheelInput(host: AltScreenPointerHost, wheelEvent: WheelEvent): void {
+	animationClock.holdDecoration(SCROLL_DECORATION_HOLD_MS);
 	const lines = host.wheelScroll.next(wheelEvent.direction, performance.now());
+	// The events of this frame already moved as far as one frame may.
+	if (lines === 0) return;
 	// SGR mouse button codes use bit 3 (value 8) for the Alt modifier.
 	const wheelDelta =
 		wheelEvent.direction * ((wheelEvent.button & 8) !== 0 ? lines * ALT_WHEEL_SCROLL_MULTIPLIER : lines);
@@ -159,7 +171,10 @@ export function handlePointerInput(host: AltScreenPointerHost, data: string): bo
 		handlePointerFocusOut(host);
 		return true;
 	}
-	if (data === FOCUS_IN) return true;
+	if (data === FOCUS_IN) {
+		host.reassertModes();
+		return true;
+	}
 
 	const wheelEvent = parseWheelEvent(data);
 	if (wheelEvent) {

@@ -95,7 +95,11 @@ describe("interactive render errors", () => {
 		const listener = screen.renderer.onRenderError;
 		Object.assign(screen.host, {
 			options: { tuiMode: "regular" },
-			settingsManager: { getFullscreenCopyOnSelect: () => false, getFullscreenWheelScrollLines: () => "auto" },
+			settingsManager: {
+				getFullscreenCopyOnSelect: () => false,
+				getFullscreenWheelScrollLines: () => "auto",
+				getReplayRows: () => 5000,
+			},
 			themeController: { rebindTui: () => {} },
 			fullscreenLayoutRoot: screen.chatContainer,
 			extensionTerminalInputSubscriptions: new Set(),

@@ -20,7 +20,7 @@ function harness(options: { fresh: Orphan[]; match?: Record<number, "same" | "ot
 		stopped,
 		deps: {
 			current: async () => options.fresh,
-			match: (pid: number) => options.match?.[pid] ?? "same",
+			match: async (pid: number) => options.match?.[pid] ?? "same",
 			stop: async (pid: number) => void stopped.push(pid),
 		},
 	};
@@ -77,7 +77,7 @@ describe("stopOrphans", () => {
 		const stopped: number[] = [];
 		const result = await stopOrphans([orphan(10, "1"), orphan(11, "2")], {
 			current: async () => [orphan(10, "1"), orphan(11, "2")],
-			match: () => "same",
+			match: async () => "same",
 			stop: async (pid) => {
 				if (pid === 10) throw new Error("denied");
 				stopped.push(pid);

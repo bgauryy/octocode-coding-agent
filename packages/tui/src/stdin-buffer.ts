@@ -26,6 +26,7 @@ import {
 	parseUnmodifiedKittyPrintableCodepoint,
 	TERMINAL_REPLY_HEADER_PATTERN,
 } from "./stdin-buffer/sequences.ts";
+import { isTypedCodePoint } from "./stdin-buffer/typed-run.ts";
 
 const DEFAULT_SEQUENCE_TIMEOUT_MS = 50;
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
@@ -36,6 +37,8 @@ const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
 export const PASTE_IDLE_TIMEOUT_MS = 1000;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+/** The start of a Kitty flags or device attributes reply, as the keyboard protocol parser buffers it. */
+const REPLY_PREFIX = /^\x1b\[(?:\?[\d;]*)?$/;
 
 export type StdinBufferOptions = {
 	/**
@@ -55,6 +58,8 @@ export type StdinBufferOptions = {
 	 * (default: PASTE_IDLE_TIMEOUT_MS). Increase for very slow links.
 	 */
 	pasteTimeout?: number;
+	/** Emit consecutive typed characters as one sequence (default: true); false emits one code point at a time. */
+	typedRuns?: boolean;
 };
 
 export type StdinBufferEventMap = {
@@ -72,10 +77,13 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	private readonly timeoutMs: number;
 	private readonly escapeTimeoutMs: number;
 	private readonly pasteTimeoutMs: number;
+	private readonly typedRuns: boolean;
 	private pasteMode: boolean = false;
 	private pasteChunks: string[] = [];
 	private pasteTail = "";
 	private pendingKittyPrintableCodepoint: number | undefined;
+	/** The start of a keyboard protocol reply emitted so far (`\x1b[?62`), while the next input may continue it. */
+	private replyPrefix: string | undefined;
 
 	/** True between a bracketed paste's start marker and its end marker. */
 	get pasting(): boolean {
@@ -87,6 +95,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.timeoutMs = options.timeout ?? DEFAULT_SEQUENCE_TIMEOUT_MS;
 		this.escapeTimeoutMs = options.escapeTimeout ?? DEFAULT_ESCAPE_TIMEOUT_MS;
 		this.pasteTimeoutMs = options.pasteTimeout ?? PASTE_IDLE_TIMEOUT_MS;
+		this.typedRuns = options.typedRuns ?? true;
 	}
 
 	public process(data: string | Buffer): void {
@@ -128,9 +137,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			if (startIndex > 0) {
 				// The paste marker ends whatever came before it, so an incomplete tail (a lone Escape) is emitted as is.
 				const result = extractCompleteSequences(this.buffer.slice(0, startIndex));
-				for (const sequence of result.sequences) {
-					this.emitDataSequence(sequence);
-				}
+				this.emitSequences(result.sequences);
 				if (result.remainder) this.emitDataSequence(result.remainder);
 			}
 
@@ -144,10 +151,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
 		const result = extractCompleteSequences(this.buffer);
 		this.buffer = result.remainder;
-
-		for (const sequence of result.sequences) {
-			this.emitDataSequence(sequence);
-		}
+		this.emitSequences(result.sequences);
 
 		if (this.buffer.length > 0) {
 			// Only a recognizable reply header establishes a delimited string.
@@ -200,6 +204,35 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		if (remaining.length > 0) this.process(remaining);
 	}
 
+	/**
+	 * Emit `sequences` in order. Consecutive typed characters (`isTypedCodePoint`) go out as one sequence, which the
+	 * TUI routes key by key and hands to a component that takes a typed run at once. After a partial terminal reply
+	 * (`\x1b[?6` cut by the sequence timeout) characters stay single, as the reply parser downstream joins them one at a time.
+	 */
+	private emitSequences(sequences: readonly string[]): void {
+		let run = "";
+		const flush = () => {
+			if (run) this.emit("data", run);
+			run = "";
+		};
+		for (const sequence of sequences) {
+			const code = sequence.codePointAt(0);
+			const typed =
+				code !== undefined && String.fromCodePoint(code).length === sequence.length && isTypedCodePoint(code);
+			if (!typed || !this.typedRuns || this.replyPrefix !== undefined) {
+				flush();
+				this.emitDataSequence(sequence);
+			} else if (code === this.pendingKittyPrintableCodepoint) {
+				// The raw copy of a key the terminal already sent as a Kitty sequence (see emitDataSequence).
+				this.pendingKittyPrintableCodepoint = undefined;
+			} else {
+				this.pendingKittyPrintableCodepoint = undefined;
+				run += sequence;
+			}
+		}
+		flush();
+	}
+
 	private emitDataSequence(sequence: string): void {
 		const firstCodepoint = sequence.codePointAt(0);
 		const rawCodepoint =
@@ -212,6 +245,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 
 		this.pendingKittyPrintableCodepoint = parseUnmodifiedKittyPrintableCodepoint(sequence);
+		// Follows the keyboard protocol parser's buffer: a reply prefix grows while it stays one, else restarts.
+		if (this.replyPrefix !== undefined && REPLY_PREFIX.test(this.replyPrefix + sequence)) this.replyPrefix += sequence;
+		else this.replyPrefix = REPLY_PREFIX.test(sequence) ? sequence : undefined;
 		this.emit("data", sequence);
 	}
 
@@ -241,6 +277,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.pasteChunks = [];
 		this.pasteTail = "";
 		this.pendingKittyPrintableCodepoint = undefined;
+		this.replyPrefix = undefined;
 	}
 
 	getBuffer(): string {

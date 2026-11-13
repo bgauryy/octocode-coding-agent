@@ -22,23 +22,29 @@ import type {
 	UserInputEvent,
 	UserInputEventResult,
 } from "../types.ts";
-import { cloneMessages } from "./clone-messages.ts";
+import { cloneMessages, onlyReadsMessages } from "./clone-messages.ts";
 import { restoreSystemMessages, sameMessages, snapshotEventHandlers } from "./event-handlers.ts";
 import { hasEventHandlers } from "./registrations.ts";
 import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHost } from "./types.ts";
 
 /** Run the `context` handlers: they see the conversation only, and Octocode restores the prompt and tool state after each. */
 export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]): Promise<AgentMessage[]> {
-	// A handler may edit the messages in place, so only a registered one gets an isolated copy;
-	// without one, copying every message (images included) on each request would be wasted work.
+	// A handler may edit the messages in place, so one that may gets an isolated copy, made once per request before the
+	// first such handler runs; every handler after it sees that copy too. A handler declared with `readsMessagesOnly` is
+	// handed the messages themselves, so a request whose handlers only read copies nothing (images included).
 	if (!hasEventHandlers(host.extensions, "context")) {
 		return messages.slice();
 	}
 	const ctx = host.createContext();
-	let currentMessages = cloneMessages(messages);
+	let currentMessages = messages.slice();
+	let isolated = false;
 
 	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "context")) {
 		for (const handler of handlers) {
+			if (!isolated && !onlyReadsMessages(handler)) {
+				currentMessages = cloneMessages(currentMessages);
+				isolated = true;
+			}
 			try {
 				const visibleMessages = currentMessages.filter((message) => message.role !== "system");
 				const visibleSnapshot = visibleMessages.slice();

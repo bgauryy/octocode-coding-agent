@@ -362,14 +362,14 @@ async function prompt(connection, phase, text, expected, surface = "api") {
 }
 async function disconnect(connection) {
 	const members = readJsonl(connection.journal).find((entry) => entry.event === "spawn");
-	const before = members ? descendantPids(members.proxyPid) : [];
+	const before = members ? await descendantPids(members.proxyPid) : [];
 	await api
 		.call("external.call", { action: "disconnect", id: connection.id }, { timeoutMs: 15000 })
 		.catch(() => undefined);
 	connection.cleanup = {
 		root: members?.proxyPid,
 		observedDescendants: before,
-		liveGroup: members ? groupMembers(members.proxyPid) : [],
+		liveGroup: members ? await groupMembers(members.proxyPid) : [],
 	};
 	assert.equal(connection.cleanup.liveGroup.length, 0, "owned adapter group stopped");
 	save();
@@ -523,9 +523,9 @@ try {
 		);
 		assert.equal(crashSettled, false, "adapter prompt pending at crash boundary");
 		const processRecord = readJsonl(main.journal).find((entry) => entry.event === "spawn");
-		crash.killed = { proxyPid: processRecord.proxyPid, descendants: descendantPids(processRecord.proxyPid) };
+		crash.killed = { proxyPid: processRecord.proxyPid, descendants: await descendantPids(processRecord.proxyPid) };
 		assert.equal(
-			processMatch(processRecord.proxyPid, processRecord.proxyStarted),
+			await processMatch(processRecord.proxyPid, processRecord.proxyStarted),
 			"same",
 			"crash targets the owned process identity",
 		);
@@ -588,7 +588,8 @@ try {
 } finally {
 	for (const connection of connections) {
 		const record = readJsonl(connection.journal).find((entry) => entry.event === "spawn");
-		if (record && processMatch(record.proxyPid, record.proxyStarted) === "same") await stopTree(record.proxyPid);
+		if (record && (await processMatch(record.proxyPid, record.proxyStarted)) === "same")
+			await stopTree(record.proxyPid);
 	}
 	for (const child of cliChildren) child.kill("SIGTERM");
 	if (session) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
@@ -603,10 +604,14 @@ try {
 	report.connections = connections;
 	report.checks.homeUnchanged = process.env.HOME === originalHome;
 	report.checks.apiRecordsAfterShutdown = listInstances(apiDir()).length;
-	report.checks.liveGroupsAfterShutdown = connections.flatMap((connection) => {
-		const pid = readJsonl(connection.journal).find((entry) => entry.event === "spawn")?.proxyPid;
-		return pid ? groupMembers(pid) : [];
-	});
+	report.checks.liveGroupsAfterShutdown = (
+		await Promise.all(
+			connections.map((connection) => {
+				const pid = readJsonl(connection.journal).find((entry) => entry.event === "spawn")?.proxyPid;
+				return pid ? groupMembers(pid) : [];
+			}),
+		)
+	).flat();
 	fs.writeFileSync(path.join(run, "tool-events.json"), `${JSON.stringify(redactData(events), null, 2)}\n`);
 	save();
 	console.log(

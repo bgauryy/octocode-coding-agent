@@ -4,9 +4,19 @@ import {
 	type TuiMouseDispatchResult,
 	type TuiMouseEvent,
 } from "../tui/component.ts";
-import { renderIsolated } from "../tui/render-isolation.ts";
+import { renderFailed, renderIsolated } from "../tui/render-isolation.ts";
+import {
+	isRenderStable,
+	linkRenderChild,
+	relinkRenderChildren,
+	renderChanged,
+	renderSerial,
+	settleRender,
+	trackRenderChanges,
+} from "../tui/render-signal.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { flattenLines } from "../utils/wrap.ts";
+import { fitHorizontalPadding } from "../utils.ts";
 
 type RenderCache = {
 	/** Each child's returned array, to recognize an unchanged frame without comparing its lines. */
@@ -21,13 +31,19 @@ type RenderCache = {
  * Box component - a container that applies padding and background to all children
  */
 export class Box implements Component {
-	children: Component[] = [];
+	#childList: Component[] = [];
 	private paddingX: number;
 	private paddingY: number;
 	private bgFn?: (text: string) => string;
 
 	private cache?: RenderCache;
-	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
+	private mouseLayout?: {
+		width: number;
+		contentWidth: number;
+		paddingX: number;
+		paddingY: number;
+		children: Array<{ component: Component; height: number }>;
+	};
 
 	constructor(paddingX = 1, paddingY = 1, bgFn?: (text: string) => string) {
 		this.paddingX = paddingX;
@@ -35,27 +51,44 @@ export class Box implements Component {
 		this.bgFn = bgFn;
 	}
 
+	/** The children, in render order. Reading the array counts as a change to it: code may edit it in place. */
+	get children(): Component[] {
+		renderChanged(this);
+		return this.#childList;
+	}
+
+	set children(children: Component[]) {
+		relinkRenderChildren(this, this.#childList, children);
+		this.#childList = children;
+		this.invalidateCache();
+	}
+
 	addChild(component: Component): void {
-		this.children.push(component);
+		this.#childList.push(component);
+		linkRenderChild(this, component);
 		this.invalidateCache();
 	}
 
 	removeChild(component: Component): void {
-		const index = this.children.indexOf(component);
+		const index = this.#childList.indexOf(component);
 		if (index !== -1) {
-			this.children.splice(index, 1);
+			this.#childList.splice(index, 1);
+			if (!this.#childList.includes(component)) relinkRenderChildren(this, [component], []);
 			this.invalidateCache();
 		}
 	}
 
 	clear(): void {
-		this.children = [];
+		relinkRenderChildren(this, this.#childList, []);
+		this.#childList = [];
 		this.invalidateCache();
 	}
 
 	setBgFn(bgFn?: (text: string) => string): void {
 		this.bgFn = bgFn;
-		// Don't invalidate here - we'll detect bgFn changes by sampling output
+		// The cache stays: a render detects a changed bgFn by sampling its output. A parent that skips quiet
+		// components must still draw this one again to sample it.
+		renderChanged(this);
 	}
 
 	setPaddingX(paddingX: number): void {
@@ -70,6 +103,7 @@ export class Box implements Component {
 
 	private invalidateCache(): void {
 		this.cache = undefined;
+		renderChanged(this);
 	}
 
 	private matchCache(width: number, childLines: string[], bgSample: string | undefined): boolean {
@@ -85,24 +119,27 @@ export class Box implements Component {
 
 	invalidate(): void {
 		this.invalidateCache();
-		for (const child of this.children) {
+		for (const child of this.#childList) {
 			child.invalidate?.();
 		}
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
-		const contentWidth = Math.max(1, event.width - this.paddingX * 2);
-		const contentY = event.y - this.paddingY;
-		const contentX = event.x - this.paddingX;
+		const painted = this.mouseLayout?.width === event.width ? this.mouseLayout : undefined;
+		const paddingX = painted?.paddingX ?? fitHorizontalPadding(event.width, this.paddingX);
+		const contentWidth = painted?.contentWidth ?? Math.max(1, event.width - paddingX * 2);
+		const contentY = event.y - (painted?.paddingY ?? this.paddingY);
+		const contentX = event.x - paddingX;
 		if (contentY < 0 || contentX < 0 || contentX >= contentWidth) return undefined;
 
 		const mouseChildren =
-			this.mouseLayout?.width === contentWidth
-				? this.mouseLayout.children
-				: this.children.map((component) => ({ component, height: component.render(contentWidth).length }));
+			painted?.children ??
+			this.#childList.map((component) => ({ component, height: component.render(contentWidth).length }));
 		let childY = 0;
 		for (const { component: child, height: childHeight } of mouseChildren) {
 			if (contentY >= childY && contentY < childY + childHeight) {
+				// Keep painted positions until redraw, but never activate a detached action.
+				if (!this.#childList.includes(child)) return undefined;
 				return dispatchMouseEvent(child, {
 					...event,
 					x: contentX,
@@ -117,24 +154,35 @@ export class Box implements Component {
 	}
 
 	render(width: number): string[] {
-		if (this.children.length === 0) {
+		for (const child of this.#childList) linkRenderChild(this, child);
+		const before = renderSerial();
+		const lines = this.renderChildren(width);
+		let stable = true;
+		for (const child of this.#childList) stable &&= isRenderStable(child, before) && !renderFailed(child);
+		settleRender(this, stable);
+		return lines;
+	}
+
+	private renderChildren(width: number): string[] {
+		const paddingX = fitHorizontalPadding(width, this.paddingX);
+		const contentWidth = Math.max(1, width - paddingX * 2);
+		const mouseChildren: Array<{ component: Component; height: number }> = [];
+		this.mouseLayout = { width, contentWidth, paddingX, paddingY: this.paddingY, children: mouseChildren };
+		if (this.#childList.length === 0) {
 			return [];
 		}
 
-		const contentWidth = Math.max(1, width - this.paddingX * 2);
-		const leftPad = " ".repeat(this.paddingX);
+		const leftPad = " ".repeat(paddingX);
 
 		// Render all children. Keep the child lines unpadded: children usually return the same string
 		// objects every frame, so the cache check below is a cheap identity comparison per line.
 		// Padding here would create new strings that must be compared character by character.
 		const arrays: string[][] = [];
-		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const child of this.children) {
+		for (const child of this.#childList) {
 			const lines = renderIsolated(child, contentWidth);
 			mouseChildren.push({ component: child, height: lines.length });
 			arrays.push(lines);
 		}
-		this.mouseLayout = { width: contentWidth, children: mouseChildren };
 
 		// Check if bgFn output changed by sampling
 		const bgSample = this.bgFn ? this.bgFn("test") : undefined;
@@ -192,3 +240,5 @@ export class Box implements Component {
 		return this.bgFn ? this.bgFn(padded) : padded;
 	}
 }
+
+trackRenderChanges(Box.prototype);

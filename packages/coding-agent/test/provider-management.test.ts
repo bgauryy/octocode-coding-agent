@@ -468,7 +468,8 @@ describe("provider setup flow", () => {
 			runtime.getProvider = () => local as never;
 			const main = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 			const list = await pageAt(value, 0);
-			expect(textOf(list)).toContain(`${join(dir, "models.json")} · defines local`);
+			// Exact path checks need a wide viewport under long isolated temporary prefixes.
+			expect(textOf(list, 320)).toContain(`${join(dir, "models.json")} · defines local`);
 			choose(list, "Octocode models.json");
 			await pageAt(value, 1).catch(() => undefined);
 			expect(value.showStatus).toHaveBeenLastCalledWith(expect.stringContaining(join(dir, "models.json")));
@@ -477,7 +478,7 @@ describe("provider setup flow", () => {
 
 			const detail = showProviderManager(host, "local", { sourceEnvironment: sourceEnvironment() });
 			const page = await pageAt(value, 2);
-			expect(textOf(page)).toContain(`Edit definition — Octocode models.json: ${join(dir, "models.json")}`);
+			expect(textOf(page, 320)).toContain(`Edit definition — Octocode models.json: ${join(dir, "models.json")}`);
 			page.handleInput(ESC);
 			await detail;
 		} finally {

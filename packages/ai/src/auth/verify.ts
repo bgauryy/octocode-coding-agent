@@ -3,9 +3,9 @@ import type { ApiKeyVerdict } from "./types.ts";
 const VERIFY_TIMEOUT_MS = 8_000;
 
 /**
- * Asks a provider's free endpoint (a model list or token-info call) whether it accepts a credential. 401 and 403 are
- * a refusal; any other answer or a network failure means the key could not be checked, which is not a refusal. The
- * caller's own abort is rethrown.
+ * Asks a provider's free endpoint whether it accepts a credential. A 401 refuses it; a 403 can instead mean a valid
+ * key lacks permission to list models, so it cannot establish whether model requests are allowed. Other failures
+ * leave the key unchecked. The caller's own abort is rethrown.
  */
 export async function verifyByRequest(
 	url: string,
@@ -15,9 +15,13 @@ export async function verifyByRequest(
 	try {
 		const response = await fetch(url, {
 			headers,
+			redirect: "error",
 			signal: AbortSignal.any([signal, AbortSignal.timeout(VERIFY_TIMEOUT_MS)]),
 		});
-		if (response.status === 401 || response.status === 403) return "rejected";
+		// Only status is needed. Release the body without making cleanup failures change the auth verdict.
+		void response.body?.cancel().catch(() => {});
+		if (response.status === 401) return "rejected";
+		if (response.status === 403) return "forbidden";
 		return response.ok ? "valid" : "unreachable";
 	} catch (error) {
 		signal.throwIfAborted();

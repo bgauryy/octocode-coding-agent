@@ -61,7 +61,10 @@ describe("the agent_runs table", () => {
 	it("migrates a version 2 file by adding the table and the place columns, keeping its rows", () => {
 		const file = path.join(root, "v2.db");
 		const open = (plan?: typeof SCHEMA_PLAN) =>
-			openDatabase({ file, archiveDir: path.join(root, "archive"), privateParent: false }, plan);
+			openDatabase(
+				{ file, mirrorFile: `${file}.transcripts`, archiveDir: path.join(root, "archive"), privateParent: false },
+				plan,
+			);
 		const old = open({ version: 2, migrations: SCHEMA_PLAN.migrations.slice(0, 1) });
 		for (const column of ["cwd", "branch", "process_title"]) old.db.exec(`ALTER TABLE agents DROP COLUMN ${column}`);
 		old.db.exec("DROP TABLE agent_runs");
@@ -79,7 +82,8 @@ describe("the agent_runs table", () => {
 		const raw = new DatabaseSync(file, { readOnly: true });
 		expect(raw.prepare("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_PLAN.version });
 		expect(raw.prepare("SELECT value FROM meta WHERE key = 'keep'").get()).toEqual({ value: "me" });
-		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "1" });
+		// Step 10 (the transcript mirror's own file) is not additive: an Octocode before it refuses the file.
+		expect(raw.prepare("SELECT value FROM meta WHERE key = 'schema_readable_from'").get()).toEqual({ value: "10" });
 		expect((raw.prepare("PRAGMA table_info(agent_runs)").all() as { name: string }[]).map((c) => c.name)).toContain(
 			"run_id",
 		);

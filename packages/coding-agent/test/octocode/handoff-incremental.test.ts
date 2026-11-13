@@ -29,7 +29,7 @@ describe("incremental report receipts", () => {
 				return "unrelated";
 			},
 		}));
-		const queue = new ReportQueue(fakeHost().api, 60_000);
+		const queue = new ReportQueue(fakeHost().api);
 		const getEntries = vi.fn(() => entries);
 		queue.start({ getSessionFile: () => undefined, getEntries, getEntryCount: () => entries.length });
 		queue.pendingDir = tmp();
@@ -72,7 +72,7 @@ describe("incremental report receipts", () => {
 		const entries: SessionEntry[] = [];
 		const file = path.join(tmp(), "session.jsonl");
 		fs.writeFileSync(file, "");
-		const queue = new ReportQueue(fake.api, 60_000);
+		const queue = new ReportQueue(fake.api);
 		queue.start({ getSessionFile: () => file, getEntries: () => entries });
 		queue.pendingDir = tmp();
 		try {
@@ -99,7 +99,7 @@ describe("incremental report receipts", () => {
 		fake.api.sendMessage = vi.fn(() => Promise.reject(new Error("response lost")));
 		const file = path.join(tmp(), "session.jsonl");
 		fs.writeFileSync(file, `{"customType":"${AGENT_RESULT_TYPE}",\n`);
-		const queue = new ReportQueue(fake.api, 60_000);
+		const queue = new ReportQueue(fake.api);
 		queue.start({ getSessionFile: () => file, getEntries: () => [] });
 		queue.pendingDir = tmp();
 		try {

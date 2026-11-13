@@ -1,11 +1,19 @@
 import { spawn } from "node:child_process";
-import { basename } from "node:path";
+import { posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openTarget } from "../../../../common/src/open-target.ts";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { splitConfigWords } from "../../configuration/command.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
+import {
+	defaultOpenerHost,
+	editorFamily,
+	editorProgramName,
+	launchDetached,
+	resolveReferenceOpener,
+	type EditorInvocation,
+	type OpenerHost,
+} from "./reference-launcher.ts";
 import type { TUI } from "@octocodeai/octocode-tui";
 
 export interface FileLocation {
@@ -35,40 +43,52 @@ export function referenceLocation(target: string): FileLocation | undefined {
 export const locationText = ({ path, line, column }: FileLocation): string =>
 	`${path}${line ? `:${line}${column ? `:${column}` : ""}` : ""}`;
 
-/** Editor syntax is selected by the configured program, never by the terminal brand. No argument is evaluated by a shell. */
-export function editorLocationCommand(command: string, location: FileLocation): { command: string; args: string[] } {
-	const [program, ...args] = splitConfigWords(command);
-	if (!program) throw new Error("No external editor configured");
-	const name = basename(program.replaceAll("\\", "/"))
-		.replace(/\.(?:exe|cmd|bat)$/i, "")
-		.toLowerCase();
-	if (/^(?:code|code-insiders|codium|cursor)$/.test(name))
-		args.push("--reuse-window", "--goto", locationText(location));
-	else if (/^(?:subl|sublime_text|zed)$/.test(name)) args.push(locationText(location));
+/**
+ * A path an editor cannot read as an option: `referenceLocation` and `/diff --editor` pass absolute paths, so a
+ * path that starts with `-` (a flag to every editor CLI) never reaches here; a relative one is refused.
+ */
+export function assertEditorPath(file: string): string {
+	if (!(posix.isAbsolute(file) || win32.isAbsolute(file)) || file.startsWith("-"))
+		throw new Error("Only absolute file paths open in an editor");
+	return file;
+}
+
+/** Editor syntax is selected by the program's name, never by the terminal brand. No argument is evaluated by a shell. */
+export function locationInvocation(
+	program: string,
+	configured: readonly string[],
+	location: FileLocation,
+): EditorInvocation {
+	const args = [...configured];
+	const path = assertEditorPath(location.path);
+	const family = editorFamily(program);
+	// Code reads a trailing `:n` as a line only after `--goto`, so a name like `a:3` without a position stays a name.
+	if (family === "vscode")
+		args.push("--reuse-window", ...(location.line ? ["--goto", locationText(location)] : [path]));
+	else if (family === "suffix") args.push(locationText(location));
 	else {
+		const name = editorProgramName(program);
 		if (location.line) {
 			if (/^(?:vi|vim|nvim)$/.test(name)) args.push(`+call cursor(${location.line},${location.column ?? 1})`);
 			else if (name === "nano") args.push(`+${location.line},${location.column ?? 1}`);
 			else if (/^emacs(?:client)?$/.test(name)) args.push(`+${location.line}:${location.column ?? 1}`);
 		}
-		args.push(location.path);
+		args.push(path);
 	}
 	return { command: program, args };
 }
 
 export interface ReferenceHost {
 	ui: TUI;
-	settingsManager: { getExternalEditorCommand(): string };
+	/** `getExternalEditorCommand` is the prompt editor; `getReferenceOpener` is the `referenceOpener` setting. */
+	settingsManager: { getExternalEditorCommand(): string; getReferenceOpener(): string };
 	showStatus(message: string): void;
 	showError(message: string): void;
 	showWarning(message: string): void;
 }
 
 /** Run a configured editor with foreground ownership; restore input and rendering on every exit path. */
-export async function runReferenceEditor(
-	host: Pick<ReferenceHost, "ui">,
-	invocation: { command: string; args: string[] },
-): Promise<void> {
+export async function runReferenceEditor(host: Pick<ReferenceHost, "ui">, invocation: EditorInvocation): Promise<void> {
 	host.ui.stop({ preserveScreen: true });
 	const release = holdTerminalForChild();
 	try {
@@ -87,7 +107,12 @@ export async function runReferenceEditor(
 	}
 }
 
-export async function openReference(host: ReferenceHost, target: string): Promise<void> {
+/** Opens a reference from model output: web and mail links with the system handler, file locations with `referenceOpener`. */
+export async function openReference(
+	host: ReferenceHost,
+	target: string,
+	openerHost: OpenerHost = defaultOpenerHost(),
+): Promise<void> {
 	try {
 		if (!URL.canParse(target) || /[\x00-\x1f\x7f-\x9f]/u.test(target)) throw new Error("Invalid reference target");
 		const url = new URL(target);
@@ -100,7 +125,19 @@ export async function openReference(host: ReferenceHost, target: string): Promis
 			host.showWarning(`Copy this target to open it with its application: ${sanitizeTerminalText(target)}`);
 			return;
 		}
-		const invocation = editorLocationCommand(host.settingsManager.getExternalEditorCommand(), location);
+		const opener = resolveReferenceOpener(
+			host.settingsManager.getReferenceOpener(),
+			host.settingsManager.getExternalEditorCommand(),
+			openerHost,
+		);
+		const invocation = locationInvocation(opener.command, opener.args, location);
+		if (opener.detached) {
+			await launchDetached(invocation, { host: openerHost });
+			host.showStatus(
+				`Opened in ${editorProgramName(opener.command)}: ${sanitizeTerminalText(locationText(location))}`,
+			);
+			return;
+		}
 		await runReferenceEditor(host, invocation);
 		host.showStatus(`Editor returned: ${locationText(location)}`);
 	} catch (error) {

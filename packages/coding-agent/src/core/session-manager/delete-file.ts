@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { transcripts, workspaces } from "../../../../db/src/api.ts";
+import { sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
 import { isCurrentWorkspace } from "../../storage/workspace.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -37,13 +37,14 @@ export async function deleteSessionFile(
 		try {
 			if (header && !existsSync(target)) {
 				const agent = sharedAgentDb();
-				const saved = transcripts.stamp(agent.db, header.id);
+				const saved = transcripts.stamp(agent.mirror.db, header.id);
 				if (saved?.file === target) {
-					if (saved.workspace_id) {
-						const owner = workspaces.byId(agent.db, saved.workspace_id);
+					const bound = sessions.byId(agent.db, header.id)?.workspace_id;
+					if (bound) {
+						const owner = workspaces.byId(agent.db, bound);
 						if (!owner || !isCurrentWorkspace(owner)) throw new Error("Workspace identity changed");
 					}
-					transcripts.removeFile(agent.db, saved.file, header.id);
+					agent.mirror.transaction(() => transcripts.removeFile(agent.mirror.db, saved.file, header.id));
 				}
 			}
 			return { ok: true, method };

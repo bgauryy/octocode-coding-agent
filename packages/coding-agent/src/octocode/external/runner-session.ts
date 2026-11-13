@@ -32,7 +32,7 @@ type SessionUpdate = Parameters<AcpTurnUpdate>[0];
 export interface RunnerLaunch {
 	command: string;
 	args: string[];
-	billing: RunnerBilling;
+	billing?: RunnerBilling;
 	/** `headless`: the vendor CLI itself runs the turn (`runner-headless.ts`); absent: its ACP adapter does. */
 	route?: "headless";
 }
@@ -46,7 +46,7 @@ export function launchOf(runner: string, states: readonly RunnerState[] = cached
 	const state = states.find((entry) => entry.id === runner);
 	if (!spec || !state || !isConnected(state))
 		throw new Error(`Runner ${runner} is not connected; connect it in /providers (External agents).`);
-	const billing = state.auth?.billing ?? "plan";
+	const billing = state.auth?.billing;
 	const command = findOnPath(spec.adapter.command);
 	if (command) return { command, args: adapterArgs(spec, billing), billing };
 	const cli = headlessReady({ ...state, adapter: false }) ? findOnPath(spec.cli) : undefined;

@@ -1,7 +1,7 @@
 import { animationClock } from "../../tokens/clock.ts";
 import type { AutocompleteItem } from "../../autocomplete/types.ts";
 import { isWhitespaceChar } from "../../utils/chars.ts";
-import { DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS } from "./autocomplete-patterns.ts";
+import { DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS, type TokenPattern } from "./autocomplete-patterns.ts";
 import type { SelectListOptions } from "../select-list.ts";
 import type { EditorState } from "./types.ts";
 
@@ -28,7 +28,7 @@ const textBeforeCursor = (state: EditorState): string =>
 	(state.lines[state.cursorLine] || "").slice(0, state.cursorCol);
 
 /** The quote-free query when the text before the cursor ends in an `@` token, else null. */
-export function findAtQuery(state: EditorState, triggerPattern: RegExp): string | null {
+export function findAtQuery(state: EditorState, triggerPattern: TokenPattern): string | null {
 	const match = triggerPattern.exec(textBeforeCursor(state));
 	const at = match ? match[0].indexOf("@") : -1;
 	return match && at !== -1 ? match[0].slice(at + 1).replace(/^"/, "") : null;
@@ -39,7 +39,7 @@ export function findTokenStart(
 	state: EditorState,
 	list: {
 		autocompletePrefix: string;
-		autocompleteTriggerPattern: RegExp;
+		autocompleteTriggerPattern: TokenPattern;
 		autocompleteTriggerCharacters: readonly string[];
 	},
 ): DismissedToken | null {

@@ -7,6 +7,7 @@ import {
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
+import { summaryMaxTokens } from "../src/core/compaction/settings.ts";
 import { generateBranchSummary } from "../src/core/compaction/index.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 
@@ -62,6 +63,9 @@ describe("branch summarization", () => {
 		});
 
 		expect(requestOptions?.toolChoice).toBeUndefined();
+		// The same output cap as a compaction summary, and no thinking.
+		expect(requestOptions?.maxTokens).toBe(summaryMaxTokens(model));
+		expect(requestOptions?.reasoning).toBeUndefined();
 	});
 
 	it("rejects tool calls from branch summaries", async () => {

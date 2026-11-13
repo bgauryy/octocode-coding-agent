@@ -84,14 +84,39 @@ export function getChildEntries(state: SessionState, parentId: string): SessionE
 	return children;
 }
 
+/** Where the last name lookup stopped: the entry list it read, its length and last entry, and the latest name entry in it. */
+interface InfoMark {
+	entries: FileEntry[];
+	length: number;
+	tail: FileEntry | undefined;
+	found: SessionInfoEntry | undefined;
+}
+
+const infoMarks = new WeakMap<SessionState, InfoMark>();
+
 function latestSessionInfo(state: SessionState): SessionInfoEntry | undefined {
-	// Walk entries in reverse. Reads fileEntries directly: the footer calls this on every frame, and getEntries()
-	// copies the whole session.
-	for (let i = state.fileEntries.length - 1; i >= 0; i--) {
-		const entry = state.fileEntries[i];
-		if (entry.type === "session_info") return entry;
+	// Walk entries in reverse, down to where the last lookup ended while the list only grew since (the same array, still
+	// holding its last entry at the same place; an insert before it or a rollback moves or removes it). An unnamed
+	// session otherwise walked the whole session on every footer sample. Reads fileEntries directly: getEntries() copies.
+	const entries = state.fileEntries;
+	const mark = infoMarks.get(state);
+	const resumes =
+		mark !== undefined &&
+		mark.entries === entries &&
+		entries.length >= mark.length &&
+		mark.length > 0 &&
+		entries[mark.length - 1] === mark.tail;
+	const from = resumes ? mark.length : 0;
+	let found = resumes ? mark.found : undefined;
+	for (let i = entries.length - 1; i >= from; i--) {
+		const entry = entries[i];
+		if (entry.type === "session_info") {
+			found = entry;
+			break;
+		}
 	}
-	return undefined;
+	infoMarks.set(state, { entries, length: entries.length, tail: entries[entries.length - 1], found });
+	return found;
 }
 
 /** The current session name from the latest session_info entry, if any. Empty names explicitly clear it. */

@@ -16,6 +16,11 @@ export class BracketedPasteBuffer {
 	private pasteBuffer: string = "";
 	private isInPaste: boolean = false;
 
+	/** True between a paste's start marker and its end marker. */
+	get pasting(): boolean {
+		return this.isInPaste;
+	}
+
 	/** Feed one input chunk; returns undefined when the chunk is not part of a paste. */
 	take(chunk: string): BracketedPasteChunk | undefined {
 		let data = chunk;

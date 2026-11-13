@@ -26,6 +26,7 @@ import { estimateTokens } from "./tokens.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeMessages } from "./utils.ts";
 import { inlineSummaryTokens, summaryTargetTokens } from "./checkpoint.ts";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "./summary-format.ts";
+import { summaryMaxTokens, summaryThinkingLevel } from "./settings.ts";
 
 const SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
@@ -64,9 +65,19 @@ function createSummarizationOptions(
 	sessionId: string | undefined,
 	cache: CachePreferences | undefined,
 ): SimpleStreamOptions {
-	const options: SimpleStreamOptions = { signal, apiKey, headers, env, sessionId, ...cache };
-	if (model.reasoning && thinkingLevel && thinkingLevel !== "off") {
-		options.reasoning = thinkingLevel;
+	// Sized for a summary, not for the model's longest reply: without a cap one request ran on for more than ten minutes.
+	const options: SimpleStreamOptions = {
+		signal,
+		apiKey,
+		headers,
+		env,
+		sessionId,
+		...cache,
+		maxTokens: summaryMaxTokens(model),
+	};
+	const level = summaryThinkingLevel(thinkingLevel);
+	if (model.reasoning && level && level !== "off") {
+		options.reasoning = level;
 	}
 	return options;
 }
@@ -214,7 +225,7 @@ function summaryText(response: AssistantMessage): string {
 export async function generateSummaryWithUsage(
 	currentMessages: AgentMessage[],
 	model: Model<any>,
-	// Sets only the size an update is asked to stay under; the output limit stays the model's.
+	// Sets only the size an update is asked to stay under; the output cap is `summaryMaxTokens`.
 	reserveTokens: number | undefined,
 	apiKey: string | undefined,
 	headers?: Record<string, string>,

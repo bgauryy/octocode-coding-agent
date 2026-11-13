@@ -15,12 +15,20 @@ export const DEFAULT_SAMPLE_MINUTES = 5;
 export const SAMPLE_RETENTION_MS = 7 * DAY_MS;
 const PRUNE_EVERY_MS = HOUR_MS;
 const SAMPLE_MINUTES_ENV = "OCTOCODE_PROCESS_SAMPLE_MINUTES";
+const MAX_INTERVAL_MS = 2_147_483_647;
+
+function boundedIntervalMs(interval: number): number {
+	return Math.max(1, Math.min(interval, MAX_INTERVAL_MS));
+}
 
 /** Milliseconds between samples from `OCTOCODE_PROCESS_SAMPLE_MINUTES` (default 5; 0 turns the periodic sample off; a value that is not a non-negative number is ignored). */
 export function sampleIntervalMs(env: NodeJS.ProcessEnv): number {
 	const raw = env[SAMPLE_MINUTES_ENV]?.trim();
 	const minutes = raw ? Number(raw) : DEFAULT_SAMPLE_MINUTES;
-	return Number.isFinite(minutes) && minutes >= 0 ? minutes * MINUTE_MS : DEFAULT_SAMPLE_MINUTES * MINUTE_MS;
+	if (minutes === 0) return 0;
+	return Number.isFinite(minutes) && minutes > 0
+		? boundedIntervalMs(minutes * MINUTE_MS)
+		: DEFAULT_SAMPLE_MINUTES * MINUTE_MS;
 }
 
 export interface SampleIdentity {
@@ -40,24 +48,35 @@ export interface SampleIdentity {
  */
 function ownedChildren(table: readonly ProcessRow[], root: number, kinds: ReadonlyMap<number, string>): OwnedChild[] {
 	const below = new Map<number, ProcessRow[]>();
-	for (const row of table) below.set(row.ppid, [...(below.get(row.ppid) ?? []), row]);
+	for (const row of table) {
+		const siblings = below.get(row.ppid);
+		if (siblings) siblings.push(row);
+		else below.set(row.ppid, [row]);
+	}
 	const found: OwnedChild[] = [];
-	const walk = (parent: number, inherited: string) => {
-		for (const row of below.get(parent) ?? []) {
-			if (isProcessTitle(row.command)) continue;
-			const kind = kinds.get(row.pid) ?? inherited;
-			found.push({
-				pid: row.pid,
-				started: row.started,
-				ppid: row.ppid,
-				kind,
-				label: row.command.length > 100 ? `${row.command.slice(0, 99)}…` : row.command,
-				rss: row.rssKb * 1024,
-			});
-			walk(row.pid, kind);
+	const visited = new Set([root]);
+	const pending = [{ rows: below.get(root) ?? [], index: 0, kind: "child" }];
+	while (pending.length > 0) {
+		const frame = pending[pending.length - 1];
+		const row = frame.rows[frame.index++];
+		if (!row) {
+			pending.pop();
+			continue;
 		}
-	};
-	walk(root, "child");
+		if (visited.has(row.pid) || isProcessTitle(row.command)) continue;
+		visited.add(row.pid);
+		const kind = kinds.get(row.pid) ?? frame.kind;
+		found.push({
+			pid: row.pid,
+			started: row.started,
+			ppid: row.ppid,
+			kind,
+			label: row.command.length > 100 ? `${row.command.slice(0, 99)}…` : row.command,
+			rss: row.rssKb * 1024,
+		});
+		const children = below.get(row.pid);
+		if (children) pending.push({ rows: children, index: 0, kind });
+	}
 	return found;
 }
 
@@ -78,19 +97,30 @@ export interface SamplerOptions {
 }
 
 export interface ProcessSampler {
-	/** Clears the timer and records the final sample (`ended`). */
-	stop(): Promise<void>;
+	/**
+	 * Clears the timer and records the final sample (`ended`) at once, with the children of the last table read: a process
+	 * that shuts down never waits for a `ps`. A table read still running is dropped, so the final sample stays the last.
+	 */
+	stop(): void;
+	/** Settles when no table read is running: what a test awaits before reading the samples. */
+	idle(): Promise<void>;
 }
 
-/** Records a first sample now and one every `intervalMs` (0: only the first and the final one). The timer never keeps the process alive. */
-export async function startProcessSampler(options: SamplerOptions): Promise<ProcessSampler> {
+/**
+ * Records a first sample and one every `intervalMs` (0: only the first and the final one). Nothing here is awaited by the
+ * caller: the first sample's `ps` runs while the session starts. The timer never keeps the process alive.
+ */
+export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 	const now = options.now ?? Date.now;
 	const selfPid = options.selfPid ?? process.pid;
 	let lastPrune = 0;
 	let queue: Promise<void> = Promise.resolve();
-	const sampleOnce = async (ended: boolean): Promise<void> => {
+	let sampling = false;
+	let stopped = false;
+	/** The last process table read; undefined until the first read ends (or where none can be read). */
+	let lastTable: ProcessRow[] | undefined;
+	const record = (ended: boolean): void => {
 		try {
-			const table = await options.table();
 			const memory = options.memory ? options.memory() : process.memoryUsage();
 			const identity = options.identity();
 			const at = now();
@@ -103,7 +133,7 @@ export async function startProcessSampler(options: SamplerOptions): Promise<Proc
 				rss: memory.rss,
 				heapUsed: memory.heapUsed,
 				ended,
-				children: table ? ownedChildren(table, selfPid, options.kinds()) : [],
+				children: lastTable ? ownedChildren(lastTable, selfPid, options.kinds()) : [],
 			});
 			if (at - lastPrune >= PRUNE_EVERY_MS) {
 				lastPrune = at;
@@ -113,17 +143,37 @@ export async function startProcessSampler(options: SamplerOptions): Promise<Proc
 			options.onError(error);
 		}
 	};
-	const sample = (ended: boolean): Promise<void> => {
-		queue = queue.then(() => sampleOnce(ended));
-		return queue;
+	const sampleOnce = async (): Promise<void> => {
+		if (stopped) return;
+		let table: ProcessRow[] | undefined;
+		try {
+			table = await options.table();
+		} catch (error) {
+			if (!stopped) options.onError(error);
+			return;
+		}
+		// Stopped while `ps` ran: the final sample is already written and must stay the newest.
+		if (stopped) return;
+		lastTable = table;
+		record(false);
 	};
-	await sample(false);
-	const timer = options.intervalMs > 0 ? setInterval(() => void sample(false), options.intervalMs) : undefined;
+	const sample = () => {
+		if (stopped || sampling) return;
+		sampling = true;
+		queue = queue.then(sampleOnce).finally(() => {
+			sampling = false;
+		});
+	};
+	sample();
+	const timer = options.intervalMs > 0 ? setInterval(sample, boundedIntervalMs(options.intervalMs)) : undefined;
 	timer?.unref();
 	return {
-		async stop() {
+		stop() {
+			if (stopped) return;
+			stopped = true;
 			if (timer) clearInterval(timer);
-			await sample(true);
+			record(true);
 		},
+		idle: () => queue,
 	};
 }

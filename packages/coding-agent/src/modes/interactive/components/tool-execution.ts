@@ -8,6 +8,8 @@ import {
 	Text,
 	type TUI,
 	type TuiMouseEvent,
+	renderChanged,
+	trackRenderChanges,
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
@@ -50,6 +52,8 @@ export class ToolExecutionComponent extends Container {
 	private args: any;
 	private argsKey: string | undefined;
 	private expanded = false;
+	/** Expanded or collapsed since the display was built: it is built again when the row next renders. */
+	private displayStale = false;
 	private showImages: boolean;
 	private imageWidthCells: number;
 	private outputPad: number;
@@ -204,7 +208,9 @@ export class ToolExecutionComponent extends Container {
 
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
-		this.updateDisplay();
+		// Expand-all reaches every row of a long transcript: only the rows that are drawn rebuild their display now.
+		this.displayStale = true;
+		renderChanged(this);
 	}
 
 	setOutputPad(outputPad: number): void {
@@ -228,6 +234,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override render(width: number): string[] {
+		if (this.displayStale) this.updateDisplay();
 		try {
 			return this.renderContent(width);
 		} catch (error) {
@@ -273,6 +280,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		this.displayStale = false;
 		const bgFn = this.isPartial
 			? (text: string) => theme.bg("toolPendingBg", text)
 			: this.result?.isError
@@ -308,9 +316,12 @@ export class ToolExecutionComponent extends Container {
 					hasContent = true;
 				}
 			}
-			const reason = reasonRow(this.toolName, this.args, resultPurposeData(this.result));
+			const { toolName, args, expanded } = this;
+			const reason = reasonRow(toolName, args, resultPurposeData(this.result), expanded);
 			if (reason) renderContainer.addChild(this.createResultRegion(reason));
 			if (this.result) {
+				const purpose = purposeRows(toolName, args, resultPurposeData(this.result), expanded);
+				if (purpose) renderContainer.addChild(this.createResultRegion(purpose));
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
 					const component = this.createResultFallback();
@@ -340,8 +351,6 @@ export class ToolExecutionComponent extends Container {
 						hasContent = true;
 					}
 				}
-				const purpose = purposeRows(this.toolName, this.args, resultPurposeData(this.result));
-				if (purpose) renderContainer.addChild(this.createResultRegion(purpose));
 			}
 		} else {
 			// A tool without a renderer wears the same mark as every other row.
@@ -381,3 +390,7 @@ export class ToolExecutionComponent extends Container {
 		return getRenderedTextOutput(this.result, this.showImages);
 	}
 }
+
+// Every state its rows read changes in `updateDisplay`, which rebuilds its children. A frame drawn without its children
+// (hidden, or a renderer's own shell) does not settle, so parents draw the row again every frame.
+trackRenderChanges(ToolExecutionComponent.prototype);

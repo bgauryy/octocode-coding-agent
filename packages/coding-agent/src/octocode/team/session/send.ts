@@ -6,6 +6,7 @@ import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
 import { interruptRefusal, isProcessName, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
+import { patiently } from "../store/patient.ts";
 import type { Vouches } from "./vouches.ts";
 import { spilledMessage } from "./spilled-message.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -285,11 +286,17 @@ export async function sendMessage(
 		...reply,
 		...(sign ? { sign } : {}),
 	};
-	const { id, departed, woken } = db.send(
-		from,
-		targets.map((target) => target.id),
-		delivered,
-		flags,
+	// Never waits inside SQLite: while another process holds the database the send is tried again (`patiently`).
+	const { id, departed, woken } = await patiently(
+		db,
+		() =>
+			db.send(
+				from,
+				targets.map((target) => target.id),
+				delivered,
+				flags,
+			),
+		signal,
 	);
 	if (id === undefined) return { error: `${departed.join(", ")} left the team; the message was not sent.` };
 	const sent = targets.map((target) => target.id).filter((target) => !departed.includes(target));

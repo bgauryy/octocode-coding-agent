@@ -32,6 +32,8 @@ await agent.prompt("Hello!");
 
 `AgentMessage` is the agent's own message type: the LLM roles (`user`, `assistant`, `toolResult`) plus app-specific roles added by declaration merging. Before every provider request the loop converts it to what the model understands.
 
+Calls cancelled before preparation skip preflight checks. When an early preflight needs user input, later queued calls wait for normal batch preparation.
+
 ```mermaid
 flowchart LR
   A["AgentMessage[]"] --> B["transformContext (optional): prune, inject"]

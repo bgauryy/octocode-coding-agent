@@ -44,11 +44,12 @@ export async function finishChildNotes(
 	outcome: SubagentOutcome | undefined,
 	agent: string,
 	lingers = false,
+	current: () => boolean = () => true,
 ): Promise<string> {
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
 	const item = linked?.attach(outcome, agent, isolation.ref, isolation.patch, lingers) ?? "";
-	return `${note}${item}${adoptChildTasks(ctx, agent)}${steps}`;
+	return `${note}${item}${current() ? adoptChildTasks(ctx, agent) : ""}${steps}`;
 }
 
 /**

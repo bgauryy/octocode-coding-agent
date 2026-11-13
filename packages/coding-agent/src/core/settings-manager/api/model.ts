@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
+import type { DefaultModelSelectionOptions } from "../model-default.ts";
 
 /** Default model and provider, thinking levels, message delivery modes, transport and the model and tool selections. */
 export interface ModelSettingsApi {
@@ -9,6 +10,8 @@ export interface ModelSettingsApi {
 	setDefaultProvider(provider: string): void;
 	setDefaultModel(modelId: string): void;
 	setDefaultModelAndProvider(provider: string, modelId: string): void;
+	/** Saves provider, model and its options together; rejects on invalid settings or storage failure. */
+	saveDefaultModelSelection(provider: string, modelId: string, options?: DefaultModelSelectionOptions): Promise<void>;
 	/** Sets or (with undefined) removes `defaultProvider` or `defaultModel` in one file; a project write needs a trusted project. */
 	setDefaultSelection(
 		scope: "global" | "project",

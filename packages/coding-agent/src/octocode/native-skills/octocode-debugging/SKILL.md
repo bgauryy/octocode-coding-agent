@@ -1,6 +1,6 @@
 ---
 name: octocode-debugging
-description: "Debug crashes, hangs, deadlocks and wrong values with breakpoints, stacks and locals. Profile CPU functions/callers, memory/allocations, processes, timing, event-loop/GC, I/O and browser/GPU work. Use for profiling requests, bottlenecks, leaks or unexplained slowness."
+description: "Debug crashes, hangs, deadlocks or wrong values with breakpoints, stacks and locals. Use for profiling, bottlenecks, leaks or unexplained slowness: CPU/functions/callers, memory/allocations, processes, timing, event-loop/GC, I/O and browser/GPU."
 ---
 
 # Octocode Debugging
@@ -29,13 +29,13 @@ For stepping and locals, build native code with debug information and without op
 
 ## Pick the tool for the language
 
-| Program              | Stop and inspect                                                         | Read                                 |
+| Program | Stop and inspect | Read |
 | -------------------- | ------------------------------------------------------------------------ | ------------------------------------ |
-| C, C++, Rust, Swift  | `lldb -b -o "b file.c:12" -o run -o "frame variable" -o bt -- ./prog`    | [native](references/native.md)       |
-| Go                   | `dlv` when installed, or stack dumps with `SIGQUIT`                      | [native](references/native.md)       |
-| Python               | `python3 -m pdb -c "b file.py:12" -c c -c "p x" -c q prog.py </dev/null` | [python](references/python.md)       |
-| Node, TypeScript     | `node scripts/node-break.mjs --break file.ts:12 -- file.ts`              | [node](references/node.md)           |
-| Slow or memory-heavy | The language's profiler, then a top-N summary                            | [profiling](references/profiling.md) |
+| C, C++, Rust, Swift | `lldb -b -o "b file.c:12" -o run -o "frame variable" -o bt -- ./prog` | [native](references/native.md) |
+| Go | `dlv` when installed, or stack dumps with `SIGQUIT` | [native](references/native.md) |
+| Python | `python3 -m pdb -c "b file.py:12" -c c -c "p x" -c q prog.py </dev/null` | [python](references/python.md) |
+| Node, TypeScript | `node scripts/node-break.mjs --break file.ts:12 -- file.ts` | [node](references/node.md) |
+| Slow or memory-heavy | The language's profiler, then a top-N summary | [profiling](references/profiling.md) |
 
 The scripts are in this skill's `scripts/` directory; `<skill>` in the references stands for the skill's directory, which loading the skill reports. Linux has `gdb -batch -ex ...` where macOS has `lldb -b -o ...`.
 
@@ -68,15 +68,15 @@ Inspect both self cost and inclusive callers. Sampling does not count exact invo
 
 ## Resources
 
-| When                                      | Read                                       | Why                                                        |
+| When | Read | Why |
 | ----------------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| Debugging C, C++, Rust, Swift or Go       | [native](references/native.md)             | lldb and gdb batch commands, crashes, attach, hangs, cores |
-| Debugging Python                          | [python](references/python.md)             | pdb batch runs, post-mortem, pytest, hangs                 |
-| Debugging Node or TypeScript              | [node](references/node.md)                 | node-break options and output, tests, transformed code     |
+| Debugging C, C++, Rust, Swift or Go | [native](references/native.md) | lldb and gdb batch commands, crashes, attach, hangs, cores |
+| Debugging Python | [python](references/python.md) | pdb batch runs, post-mortem, pytest, hangs |
+| Debugging Node or TypeScript | [node](references/node.md) | node-break options and output, tests, transformed code |
 | Profiling CPU, memory, timing, processes, I/O or GPU | [profiling](references/profiling.md) | Choose captures, interpret evidence and name coverage gaps |
 | Measuring Node CPU, memory, event-loop and GC | [node-metrics.mjs](scripts/node-metrics.mjs) | Preload that writes local JSONL without changing stdout |
-| Breaking inside a Node program            | [node-break.mjs](scripts/node-break.mjs)   | Runs the inspector protocol and prints each pause as JSON  |
-| Reading a `.cpuprofile` or `.heapprofile` | [profile-top.mjs](scripts/profile-top.mjs) | Prints the heaviest functions by self or total cost        |
+| Breaking inside a Node program | [node-break.mjs](scripts/node-break.mjs) | Runs the inspector protocol and prints each pause as JSON |
+| Reading a `.cpuprofile` or `.heapprofile` | [profile-top.mjs](scripts/profile-top.mjs) | Prints the heaviest functions by self or total cost |
 
 ## Related skills
 

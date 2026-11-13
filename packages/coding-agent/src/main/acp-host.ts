@@ -54,8 +54,9 @@ function createWorker(launch: AcpWorkerLaunch): AcpWorkerClient {
 		ownProcessTree: true,
 		invocation: { command: invocation.command, args: invocation.prefix },
 		// `--rpc-ask`: the broker answers typed question batches (`AcpSession.ui`): an approval over `session/request_permission`,
-		// the rest over `elicitation/create` when the client offers it, else `unavailable`.
-		args: ["--rpc-ask", ...launch.args],
+		// the rest over `elicitation/create` when the client offers it, else `unavailable`. `--rpc-lean-events`: the projection
+		// reads each message once (`message_end`) and none of the copies the default events repeat (`AcpWorkerEvent`).
+		args: ["--rpc-ask", "--rpc-lean-events", ...launch.args],
 		env: launch.env,
 	});
 	return {

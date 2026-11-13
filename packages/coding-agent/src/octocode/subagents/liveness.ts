@@ -10,6 +10,7 @@ export const MODEL_EVENTS: ReadonlySet<string> = new Set([
 	"tool_execution_update",
 	"tool_execution_end",
 	"compaction_start",
+	"compaction_progress",
 	"compaction_end",
 ]);
 

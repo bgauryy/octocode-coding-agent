@@ -5,9 +5,10 @@ import type { FailedWrite, SessionState } from "./state.ts";
 /**
  * Getting a session writable again after a failed write, without removing a byte. A full disk or an I/O error is not a
  * verdict on the file: once a later write can reach it, the session goes on. A process that tore the tail itself knows
- * exactly what it was writing, so it can seal that fragment with a newline: the fragment stays on disk as a malformed
- * line the loader skips. A tail this process cannot prove is its own stays refused by the normal write path, and so does
- * a file whose contents were refused (it shrank, or holds a record that cannot be placed).
+ * exactly what it was writing: a record that landed whole (only its newline or flush missing) is kept as written, and a
+ * fragment is left to the next write, which seals and names it as it does part of a record any stopped writer left
+ * (`session-tail.ts`). A file whose contents were refused (it shrank, or holds a record that cannot be placed) stays
+ * refused.
  */
 
 function readRange(file: string, from: number, to: number): Buffer {
@@ -31,16 +32,20 @@ function sealOwnTail(state: SessionState, file: string, failed: FailedWrite): vo
 	const written = readRange(file, failed.from, size);
 	if (written.length === 0 || written.length > line.length) return;
 	if (!written.equals(line.subarray(0, written.length))) return;
-	const sealed = written.at(-1) !== 10;
-	if (sealed) appendFileSync(file, "\n", { flush: true });
-	const end = size + (sealed ? 1 : 0);
 	// Only the newline, or nothing, was missing: the record itself landed, and only its flush failed.
 	const landed = written.length >= line.length - 1;
+	if (!landed) {
+		// A fragment: the next write seals it and names it, as it does any writer's (`session-tail.ts`), and its merge
+		// reads from here, stepping over the sealed line. The entry stays held, or rolled back, as the failure left it.
+		state.fileSize = failed.from;
+		return;
+	}
+	const sealed = written.at(-1) !== 10;
+	if (sealed) appendFileSync(file, "\n", { flush: true });
 	const held = failed.entry ? state.unwritten.indexOf(failed.entry) : -1;
-	if (landed && held >= 0) state.unwritten.splice(held, 1);
-	// A landed record that was rolled back comes back through the next merge, like any record this state has not seen;
-	// a fragment is stepped over, since a merge refuses what it cannot parse.
-	state.fileSize = landed && held < 0 ? failed.from : end;
+	if (held >= 0) state.unwritten.splice(held, 1);
+	// A landed record that was rolled back comes back through the next merge, like any record this state has not seen.
+	state.fileSize = held < 0 ? failed.from : size + (sealed ? 1 : 0);
 }
 
 /**

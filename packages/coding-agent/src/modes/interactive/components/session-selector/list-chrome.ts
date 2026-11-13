@@ -15,11 +15,15 @@ export function renderSearchBox(input: Input, width: number): string[] {
 		border(`╭${"─".repeat(inner + 2)}╮`),
 		`${border("│")} ${field}${pad} ${border("│")}`,
 		border(`╰${"─".repeat(inner + 2)}╯`),
-	];
+	].map((line) => truncateToWidth(line, width, ""));
 }
 
 /** What the list says when nothing is shown. */
-export function emptyMessage(nameFilter: NameFilter, allFolders: boolean): string {
+export function emptyMessage(nameFilter: NameFilter, allFolders: boolean, query = ""): string {
+	if (query.trim()) {
+		const what = nameFilter === "named" ? "named sessions" : "sessions";
+		return `  No ${what} match this search. Edit or clear the search.`;
+	}
 	if (nameFilter === "named") {
 		const toggleKey = keyText("app.session.toggleNamedFilter");
 		return allFolders

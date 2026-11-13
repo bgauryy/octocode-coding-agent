@@ -16,6 +16,7 @@ import { SessionSelectorComponent } from "../components/session-selector.ts";
 import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
+import { prependToEditorDraft } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { formatResumeNotice } from "./resume-notice.ts";
 import { warnRefusedSwitch } from "./trust-switch.ts";
@@ -37,12 +38,6 @@ export function showTreeNavigationResult(
 	}
 	host.showStatus("Navigated to selected point");
 	void host.flushCompactionQueue({ willRetry: false });
-}
-
-/** Puts `text` before the unsent draft (blank-line separated, as queued messages return to the editor); an empty draft leaves just `text`. */
-function prependToEditorDraft(host: Pick<InteractiveModeHost, "editor">, text: string | undefined): void {
-	const draft = host.editor.getText();
-	host.editor.setText([text, draft].filter((part) => part?.trim()).join("\n\n"));
 }
 
 /** Interactive-mode members used by the session navigation selectors. */
@@ -99,7 +94,7 @@ export function showUserMessageSelector(host: SessionNavigationHost): void {
 						return;
 					}
 
-					prependToEditorDraft(host, result.selectedText);
+					prependToEditorDraft(host.editor, result.selectedText ?? "");
 					host.showStatus("Forked to new session");
 				} catch (error: unknown) {
 					host.showError(errorMessage(error));
@@ -320,28 +315,18 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 }
 
 /**
- * A session opened with part of a record at its end can be read but not written, and that tail stays refused because
- * nothing proves who wrote it. The way out is a fork, which copies the complete records and leaves the file as it is.
+ * A session opened with part of a record at its end: the process that wrote it stopped mid-append (a crash, a kill, a
+ * power loss). The session goes on, and the next write seals that part where it is (`session-tail.ts`): the user is told
+ * once, at the open, since nothing else shows it.
  */
 export async function offerForkOfTornSession(
-	host: Pick<
-		InteractiveModeHost,
-		"handleResumeSession" | "sessionManager" | "showError" | "showExtensionConfirm" | "showWarning"
-	>,
+	host: Pick<InteractiveModeHost, "showWarning">,
 	file: string | undefined,
 ): Promise<void> {
 	if (!file || !hasTornTail(file)) return;
-	const fork = await host.showExtensionConfirm(
-		"Incomplete final record",
-		`The last record of this session was cut off, so nothing more can be saved to it: ${file}\nFork it to continue? The fork copies the complete records and this file stays as it is.`,
+	host.showWarning(
+		`The last record of this session was cut off when it was written: ${file}\nThat record is lost; its bytes stay in the file as a line that is skipped, and the session continues after it.`,
 	);
-	if (!fork) return host.showWarning("This session stays read-only: nothing you do in it can be saved.");
-	try {
-		const forked = SessionManager.forkFrom(file, host.sessionManager.getCwd(), host.sessionManager.getSessionDir());
-		await host.handleResumeSession(forked.getSessionFile()!);
-	} catch (error: unknown) {
-		host.showError(`Could not fork the session: ${errorMessage(error)}`);
-	}
 }
 
 export async function handleResumeSession(

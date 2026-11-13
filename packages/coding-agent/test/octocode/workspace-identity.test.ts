@@ -74,7 +74,7 @@ describe("workspace identity", () => {
 		const first = openAgentDb(file);
 		workspaces.register(first.db, { ...workspace, binding: legacy });
 		first.db.prepare("INSERT INTO sessions(id,workspace_id) VALUES ('s1',?)").run(workspace.id);
-		first.db
+		first.mirror.db
 			.prepare(
 				"INSERT INTO session_transcripts(session_id,file,header,byte_size,mtime,file_binding) VALUES ('s1','/t.jsonl','{}',1,'1',?)",
 			)
@@ -82,7 +82,7 @@ describe("workspace identity", () => {
 		first.close();
 		const stored = (db: ReturnType<typeof openAgentDb>) => ({
 			workspace: db.db.prepare("SELECT binding FROM workspaces").all(),
-			transcript: db.db.prepare("SELECT file_binding FROM session_transcripts").all(),
+			transcript: db.mirror.db.prepare("SELECT file_binding FROM session_transcripts").all(),
 		});
 		const db = openAgentDb(file);
 		try {
@@ -90,7 +90,7 @@ describe("workspace identity", () => {
 			expect(stored(db)).toEqual({ workspace: [{ binding: legacy }], transcript: [{ file_binding: legacy }] });
 			// Both formats resolve, and reads report the current format.
 			expect(workspaces.byId(db.db, workspace.id)?.binding).toBe(workspace.binding);
-			expect(transcripts.stamp(db.db, "s1")?.file_binding).toBe(workspace.binding);
+			expect(transcripts.stamp(db.mirror.db, "s1")?.file_binding).toBe(workspace.binding);
 			expect(() => workspaces.register(db.db, workspace)).not.toThrow();
 			expect(() => workspaces.register(db.db, { ...workspace, binding: legacy })).not.toThrow();
 			expect(() => workspaces.register(db.db, { ...workspace, binding: "1:2" })).toThrow(/different directory/);
@@ -268,6 +268,49 @@ describe("repeated workspace lookups", () => {
 		expect(readWorkspaceIdentity(sub)).toEqual(first);
 		fs.rmSync(path.join(root, ".octocode"), { recursive: true });
 		expect(readWorkspaceIdentity(sub)).toBeUndefined();
+	});
+
+	it("answers a repeated workspaceIdentity from the last lookup, and runs the whole lookup when anything changed", () => {
+		const root = fs.realpathSync(tmp());
+		const sub = path.join(root, "one", "two");
+		fs.mkdirSync(sub, { recursive: true });
+		const first = workspaceIdentity(root);
+		expect(workspaceIdentity(sub)).toEqual(first);
+		const spies = [
+			vi.spyOn(fs, "lstatSync"),
+			vi.spyOn(fs, "openSync"),
+			vi.spyOn(fs, "existsSync"),
+			vi.spyOn(fs, "mkdirSync"),
+		] as const;
+		try {
+			expect(workspaceIdentity(sub)).toEqual(first);
+			// One lstat of the ID file; no walk, no folder checks, no read of the ID.
+			expect(spies[0]).toHaveBeenCalledTimes(1);
+			for (const spy of spies.slice(1)) expect(spy).not.toHaveBeenCalled();
+		} finally {
+			for (const spy of spies) spy.mockRestore();
+		}
+		// A declaration made in a folder passed on the way up moves the workspace there.
+		const nested = path.join(root, "one");
+		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
+		const moved = workspaceIdentity(sub);
+		expect(moved.root).toBe(nested);
+		expect(moved.id).not.toBe(first.id);
+		// A replaced ID file is read again.
+		const idFile = path.join(nested, ".octocode", "code", "workspace", "id");
+		const replacement = "6f1c1d3e-8a1b-4c2d-9e3f-0a1b2c3d4e5f";
+		fs.rmSync(idFile);
+		fs.writeFileSync(idFile, `${replacement}\n`, { mode: 0o600 });
+		expect(workspaceIdentity(sub).id).toBe(replacement);
+		// Removed state is declared again, never answered from memory.
+		fs.rmSync(path.join(nested, ".octocode"), { recursive: true });
+		expect(workspaceIdentity(sub)).toEqual(first);
+		fs.rmSync(path.join(root, ".octocode"), { recursive: true });
+		// With no declaration left above, the folder itself is declared.
+		const again = workspaceIdentity(sub);
+		expect(again).toMatchObject({ root: sub });
+		expect(again.id).not.toBe(first.id);
+		expect(fs.existsSync(path.join(sub, ".octocode", "code", "workspace", "id"))).toBe(true);
 	});
 
 	it("does not answer for a root replaced by another folder of the same name", () => {

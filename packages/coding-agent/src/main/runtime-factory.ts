@@ -1,7 +1,16 @@
 import { existsSync } from "node:fs";
 import type { Args } from "../cli/args.ts";
-import type { CreateAgentSessionRuntimeFactory } from "../core/agent-session-runtime.ts";
-import { type AgentSessionRuntimeDiagnostic, createAgentSessionServices } from "../core/agent-session-services.ts";
+import type {
+	CreateAgentSessionRuntimeFactory,
+	CreateAgentSessionRuntimeResult,
+} from "../core/agent-session-runtime.ts";
+import type { SessionStartEvent } from "../core/features/index.ts";
+import type { SessionManager } from "../core/session-manager.ts";
+import {
+	type AgentSessionRuntimeDiagnostic,
+	type AgentSessionServices,
+	createAgentSessionServices,
+} from "../core/agent-session-services.ts";
 import { createSessionFromServices } from "../core/agent-session/create-session.ts";
 import { warningsBesideListing } from "../core/resource-loader/feature-loading.ts";
 import { resolveModelScope, unattendedUseNotice } from "../core/model-resolver.ts";
@@ -45,6 +54,8 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 	recordOperatorLimits(parsed);
 	setPlanStartup(parsed.plan === true);
+	// The runtime that receives these services releases them when it replaces or disposes them; a creation that fails
+	// after building them releases them here.
 	return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
 		// The startup gate decided the first folder before this runs. A session switch into another folder lands here
 		// without a gate: it must already be trusted, and nothing of an untrusted folder is read.
@@ -78,6 +89,18 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 				appendSystemPrompt: parsed.appendSystemPrompt,
 			},
 		});
+		try {
+			return await createCliRuntime(services, sessionManager, sessionStartEvent);
+		} catch (error) {
+			services.dispose?.();
+			throw error;
+		}
+	};
+	async function createCliRuntime(
+		services: AgentSessionServices,
+		sessionManager: SessionManager,
+		sessionStartEvent: SessionStartEvent | undefined,
+	): Promise<CreateAgentSessionRuntimeResult> {
 		const { settingsManager, modelRuntime, resourceLoader } = services;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...services.diagnostics,
@@ -156,5 +179,5 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			services,
 			diagnostics,
 		};
-	};
+	}
 }

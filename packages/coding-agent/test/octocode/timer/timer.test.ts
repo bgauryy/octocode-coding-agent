@@ -32,7 +32,13 @@ let agent: AgentDb;
 let workspaceId: string;
 /** Schedulers a test started: the shared clock's interval must not outlive the fake timers it was made under. */
 const started: TimerScheduler[] = [];
-const open = () => openDatabase({ file, archiveDir: path.join(root, "archive"), privateParent: false });
+const open = () =>
+	openDatabase({
+		file,
+		mirrorFile: `${file}.transcripts`,
+		archiveDir: path.join(root, "archive"),
+		privateParent: false,
+	});
 const owner = (sessionId = "s1") => ({ workspaceId, sessionId, cwd: root });
 const add = (input: Parameters<typeof timerFields>[0], sessionId = "s1", now = Date.now()) =>
 	timers.insert(agent.db, timerFields(input, now, owner(sessionId)));
@@ -85,8 +91,8 @@ describe("timers queries", () => {
 		add({ note: "a", after: 60 }, "gone");
 		add({ note: "b", after: 60 }, "stale");
 		add({ note: "c", after: 60 }, "kept");
-		expect(sessions.erase(agent.db, ["gone"]).timers).toBe(1);
-		expect(expire.orphans(agent.db, ["stale"], T0 + 1).timers).toBe(1);
+		expect(sessions.erase(agent.db, agent.mirror.db, ["gone"]).timers).toBe(1);
+		expect(expire.orphans(agent.db, agent.mirror.db, ["stale"], T0 + 1).timers).toBe(1);
 		expect(timers.forSession(agent.db, "kept")).toHaveLength(1);
 	});
 
@@ -154,6 +160,24 @@ describe("the timer scheduler", () => {
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(checks()).toBe(3);
 		expect(woken).toMatchObject([{ status: "done", stop_reason: "met", last_exit: 0, last_output: "try 3" }]);
+	});
+
+	it.each([0, 100])("keeps an until timer active until its deadline when after is %ss", async (after) => {
+		const row = add({
+			note: "wait for build",
+			until: { command: "test -e build.done" },
+			every: 60,
+			deadline: 30,
+			after,
+		});
+		// A row saved by an earlier version may have its first check after its deadline.
+		if (after > 30) timers.reschedule(agent.db, row.id, T0 + after * 1000);
+		const { woken } = scheduler();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(timers.get(agent.db, row.id)!.status).toBe("active");
+		expect(woken).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(29_000);
+		expect(woken).toMatchObject([{ status: "expired", stop_reason: "deadline" }]);
 	});
 
 	it("fails a timer whose check is refused, waking once", async () => {

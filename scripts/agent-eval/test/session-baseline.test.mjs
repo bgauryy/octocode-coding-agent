@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { openDatabase, transcripts } from "../../../packages/db/src/api.ts";
+import { openDatabase, sessions as sessionRows, transcripts } from "../../../packages/db/src/api.ts";
 import { renderBaseline } from "../lib/session-baseline-report.mjs";
 import {
 	nearScore,
@@ -212,13 +212,14 @@ test("reads a database read-only through the database API and leaves the file un
 	const dir = mkdtempSync(join(tmpdir(), "oc-baseline-"));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const file = join(dir, "workspaces.db");
-	const agentDb = openDatabase({ file, archiveDir: join(dir, "archive"), privateParent: false });
+	const mirrorFile = join(dir, "transcripts.db");
+	const agentDb = openDatabase({ file, mirrorFile, archiveDir: join(dir, "archive"), privateParent: false });
 	const { sessions } = fixture();
 	for (const id of ["main", "reviewer"]) {
-		transcripts.bind(agentDb.db, id, null);
+		sessionRows.bind(agentDb.db, id, null);
 		// `save` stores the header and each record as the line its file holds.
 		transcripts.save(
-			agentDb.db,
+			agentDb.mirror.db,
 			id,
 			join(dir, `${id}.jsonl`),
 			JSON.stringify({ type: "session", id, ...sessions[id].header }),
@@ -231,9 +232,10 @@ test("reads a database read-only through the database API and leaves the file un
 		);
 	}
 	agentDb.close();
-	const before = createHash("sha256").update(readFileSync(file)).digest("hex");
+	const digest = () => [file, mirrorFile].map((each) => createHash("sha256").update(readFileSync(each)).digest("hex"));
+	const before = digest();
 	const baseline = readBaseline(file);
-	assert.equal(createHash("sha256").update(readFileSync(file)).digest("hex"), before);
+	assert.deepEqual(digest(), before);
 	assert.deepEqual(baseline.scope, { sessions: 2, measured: 2, excluded: 0, requests: 4 });
 	// No run rows here: a session with a parent in its header is a child whose role is not stored.
 	assert.deepEqual(

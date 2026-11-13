@@ -1,6 +1,12 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { UsagePersistenceError } from "../../core/usage-totals.ts";
-import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
+import {
+	type Api,
+	type AssistantMessage,
+	type Model,
+	retryAssistantCall,
+	type SimpleStreamOptions,
+} from "@octocodeai/octocode-ai";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { archivedSummary, inlineSummaryTokens, summaryTargetTokens } from "../../core/compaction/checkpoint.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
@@ -134,7 +140,7 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
  */
 export async function sharedSummary(
 	api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings" | "getHiddenDeclarations">,
-	event: Pick<SessionBeforeCompactEvent, "preparation" | "signal">,
+	event: Pick<SessionBeforeCompactEvent, "preparation" | "signal" | "summaryRequest">,
 	ctx: Pick<ExtensionContext, "modelRegistry" | "sessionManager">,
 	model: Model<Api>,
 	instructions: string,
@@ -197,19 +203,22 @@ export async function sharedSummary(
 			signal: event.signal,
 			maxTokens: cap,
 		};
-		const response = await ctx.modelRegistry
-			.streamSimple(
-				model,
-				{
-					messages: [
-						...convertToLlm(messages),
-						{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
-					],
-				},
-				options,
-			)
-			.result();
-		recordUsage?.(response);
+		const request = {
+			messages: [
+				...convertToLlm(messages),
+				{ role: "user" as const, content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() },
+			],
+		};
+		// Watched and retried as the session's summary requests are: a retry reads the same cached prefix.
+		const policy = event.summaryRequest;
+		const send = policy?.watch(ctx.modelRegistry.streamSimple.bind(ctx.modelRegistry));
+		const produce = async () => {
+			const stream = await (send?.(model, request, options) ?? ctx.modelRegistry.streamSimple(model, request, options));
+			const attempt = await stream.result();
+			recordUsage?.(attempt);
+			return attempt;
+		};
+		const response = await retryAssistantCall(produce, policy?.retry, event.signal, policy?.callbacks);
 		if (response.stopReason !== "stop") return fail(`the reply stopped with ${response.stopReason}`);
 		if (response.content.some((block) => block.type === "toolCall")) return fail("the reply called a tool");
 		const text = contentText(response.content).trim();

@@ -70,10 +70,17 @@ describe("after a failed write", () => {
 		const after = readFileSync(file, "utf8");
 		expect(after.startsWith(`${torn}\n`)).toBe(true);
 		expect(hasTornTail(file)).toBe(false);
-		expect(manager.getEntry(next)?.parentId).toBe(root);
+		// The record that names the sealed fragment sits between the last whole record and the next one.
+		const recovery = manager.getEntry(manager.getEntry(next)!.parentId!);
+		expect(recovery).toMatchObject({
+			type: "custom",
+			customType: "octocode-session-recovery",
+			parentId: root,
+			data: { offset: bytes.length, bytes: 40 },
+		});
 		const later = manager.appendMessage(user("and the next"));
 		const reopened = SessionManager.open(file, dir);
-		expect(reopened.getEntries().map((entry) => entry.id)).toEqual([root, next, later]);
+		expect(reopened.getEntries().map((entry) => entry.id)).toEqual([root, recovery!.id, next, later]);
 		expect(readFileSync(file, "utf8").startsWith(after)).toBe(true);
 	});
 
@@ -89,48 +96,52 @@ describe("after a failed write", () => {
 		expect(SessionManager.open(file, dir).getEntries()).toHaveLength(2);
 	});
 
-	it("refuses a torn tail of unknown origin, naming the fork, and the fork leaves the file byte-identical", () => {
-		const { file } = started();
-		appendFileSync(file, '{"type":"message","id":"torn","parentId":null,"timesta');
+	it("seals a torn tail of unknown origin at the next write: every byte stays, and a record names them", () => {
+		const { root, file } = started();
+		const fragment = '{"type":"message","id":"torn","parentId":null,"timesta';
+		appendFileSync(file, fragment);
 		const bytes = readFileSync(file);
 		const reopened = SessionManager.open(file, dir);
 		expect(hasTornTail(file)).toBe(true);
-		for (const attempt of ["one", "two"]) {
-			expect(() => reopened.appendMessage(user(attempt))).toThrow(
-				new RegExp(`incomplete final record.*--fork ${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "s"),
-			);
-			expect(readFileSync(file).equals(bytes)).toBe(true);
-		}
 
-		const fork = SessionManager.forkFrom(file, dir, join(dir, "forks"));
+		const next = reopened.appendMessage(user("after the crash"));
 
-		expect(readFileSync(file).equals(bytes)).toBe(true);
-		fork.appendMessage(user("in the fork"));
-		expect(SessionManager.open(fork.getSessionFile()!, dir).getEntries()).toHaveLength(2);
-		expect(readFileSync(file).equals(bytes)).toBe(true);
+		const after = readFileSync(file);
+		expect(after.subarray(0, bytes.length).equals(bytes)).toBe(true);
+		expect(after.toString("utf8", bytes.length, bytes.length + 1)).toBe("\n");
+		expect(hasTornTail(file)).toBe(false);
+		const recovery = reopened.getEntry(reopened.getEntry(next)!.parentId!);
+		expect(recovery).toMatchObject({
+			customType: "octocode-session-recovery",
+			parentId: root,
+			data: { offset: bytes.length - fragment.length, bytes: fragment.length },
+		});
+		const again = SessionManager.open(file, dir);
+		expect(again.getEntries().map((entry) => entry.id)).toEqual([root, recovery!.id, next]);
+		expect(
+			again.buildSessionContext().messages.map((message) => ("content" in message ? message.content : "")),
+		).toEqual(["first", "after the crash"]);
 	});
 
-	it("does not seal a fragment another writer left after a failure that wrote nothing, even one matching its own start", () => {
-		const { manager, file } = started();
+	it("seals a fragment another writer left after its own failure that wrote nothing, without taking it for its own", () => {
+		const { manager, root, file } = started();
 		const freed = diskFull();
 		expect(() => manager.appendMessage(user("second"))).toThrow(/ENOSPC/);
 		freed();
 		// Every message record starts like this, so the bytes alone would pass for this process's own.
 		appendFileSync(file, '{"type":"message","id":"');
 		const before = readFileSync(file);
-		expect(() => manager.appendMessage(user("third"))).toThrow(/incomplete final record/);
-		expect(readFileSync(file).equals(before)).toBe(true);
-	});
-
-	it("does not take another writer's torn bytes for its own", () => {
-		const { manager, file } = started();
-		const freed = diskFull();
-		expect(() => manager.appendMessage(user("nothing written"))).toThrow(/ENOSPC/);
-		freed();
-		appendFileSync(file, '{"type":"custom","id":"foreign","par');
-		const bytes = readFileSync(file);
-		expect(() => manager.appendMessage(user("refused"))).toThrow(/incomplete final record/);
-		expect(readFileSync(file).equals(bytes)).toBe(true);
+		const third = manager.appendMessage(user("third"));
+		expect(readFileSync(file).subarray(0, before.length).equals(before)).toBe(true);
+		const reopened = SessionManager.open(file, dir);
+		const ids = reopened.getEntries().map((entry) => entry.id);
+		expect(ids).toHaveLength(3);
+		expect(ids[0]).toBe(root);
+		expect(ids[2]).toBe(third);
+		expect(reopened.getEntry(ids[1])).toMatchObject({ customType: "octocode-session-recovery", parentId: root });
+		expect(
+			reopened.buildSessionContext().messages.map((message) => ("content" in message ? message.content : "")),
+		).toEqual(["first", "third"]);
 	});
 
 	it("a sealed fragment does not stop a later reader or a fork", () => {

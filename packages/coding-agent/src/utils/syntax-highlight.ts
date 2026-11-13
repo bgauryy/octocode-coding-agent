@@ -74,16 +74,22 @@ let allLanguagesLoaded = false;
 const unresolvedBeforeLoad = new Set<string>();
 const UNRESOLVED_NAMES_MAX = 64;
 let unresolvedOverflow = false;
+/** Told once the full set loaded and code already shown as plain text can now be highlighted. */
+const loadListeners = new Set<() => void>();
 
 function noteUnresolved(name: string): void {
 	if (allLanguagesLoaded || unresolvedOverflow) return;
 	if (unresolvedBeforeLoad.size >= UNRESOLVED_NAMES_MAX) unresolvedOverflow = true;
 	else unresolvedBeforeLoad.add(name);
+	// The first name the common set does not know loads the rest, on a later turn of the event loop.
+	void loadAllHighlightLanguages();
 }
 
 /**
  * Register every highlight.js language (once, on a later turn of the event loop). Resolves true when a language name
- * that was asked for before, and fell back to plain text, is now registered: only then can rendered code look different.
+ * that was asked for before, and fell back to plain text, is now registered: only then can rendered code look different,
+ * and only then are the `onHighlightLanguagesLoaded` listeners told. A session whose code uses only the common
+ * languages never loads the rest.
  */
 export function loadAllHighlightLanguages(): Promise<boolean> {
 	allLanguagesPromise ??= new Promise((resolve) => {
@@ -95,6 +101,14 @@ export function loadAllHighlightLanguages(): Promise<boolean> {
 					loaded && (unresolvedOverflow || [...unresolvedBeforeLoad].some((name) => hljs.getLanguage(name)));
 				unresolvedBeforeLoad.clear();
 				resolve(changed);
+				if (!changed) return;
+				for (const listener of loadListeners) {
+					try {
+						listener();
+					} catch {
+						// One view failing to redraw does not keep the others plain.
+					}
+				}
 			};
 			void import("highlight.js").then(
 				() => settle(true),
@@ -103,6 +117,12 @@ export function loadAllHighlightLanguages(): Promise<boolean> {
 		});
 	});
 	return allLanguagesPromise;
+}
+
+/** Call `listener` when loading the full language set made code already rendered as plain text highlightable. */
+export function onHighlightLanguagesLoaded(listener: () => void): () => void {
+	loadListeners.add(listener);
+	return () => loadListeners.delete(listener);
 }
 
 type HighlightFormatter = (text: string) => string;

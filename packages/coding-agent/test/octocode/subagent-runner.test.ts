@@ -85,12 +85,43 @@ describe("the runner field of agent tasks", () => {
 		expect(plain.description).not.toContain("runner");
 		expect(plain.parameters.properties).not.toHaveProperty("runner");
 		const withRunner = declared(scriptedRunners().runners);
-		expect(withRunner.description).toContain("With runner, a connected vendor CLI does it on its own plan");
+		expect(withRunner.description).toContain("With runner, a connected vendor CLI uses its own sign-in");
 		expect(withRunner.parameters.properties.runner.enum).toEqual(["claude-code"]);
 	});
 });
 
 describe("a task run by an external runner", () => {
+	it.each([
+		[" opus ", "opus"],
+		["   ", undefined],
+	])("hands off model %j exactly as its displayed route resolves", async (requested, model) => {
+		const f = fakeHost();
+		const team = new Team(f.api);
+		const turn = vi.fn(async () => ({ text: "done: finished\nNoticed: none", billing: "plan" as const }));
+		registerAgentTool(f.api, {
+			profiles: () => new Map(),
+			team,
+			permission: fakePermission(),
+			runners: { ids: ["claude-code"], turn },
+		});
+		const ctx = fakeCtx({ cwd: tmp("octocode-runner-model-"), hasUI: true });
+		team.start(ctx);
+		const result = await f.tools
+			.get("agent")
+			.execute(
+				"model-call",
+				{ task: "Read the app", goal: "read the app", runner: "claude-code", model: requested },
+				undefined,
+				undefined,
+				ctx,
+			);
+		expect(result.details.model).toBe(model ? `claude-code/${model}` : "claude-code");
+		expect(turn).toHaveBeenCalledOnce();
+		const sent = turn.mock.calls[0] as unknown as [Record<string, unknown>];
+		if (model) expect(sent[0].model).toBe(model);
+		else expect(sent[0]).not.toHaveProperty("model");
+	});
+
 	it("is a normal child item: named, given the report contract, and its report returns with plan billing", async () => {
 		const f = fakeHost();
 		const team = new Team(f.api);

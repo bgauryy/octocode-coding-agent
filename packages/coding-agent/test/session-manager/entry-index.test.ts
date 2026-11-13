@@ -68,6 +68,32 @@ describe("branchPath", () => {
 		expect(ids(branchPath(index, a))).toEqual(["a"]);
 	});
 
+	it("extends the kept path over several entries added since, and walks for a leaf among older entries", () => {
+		const index = new EntryIndex();
+		const a = entry("a", null);
+		const b = entry("b", "a");
+		const old = entry("old", "b");
+		index.set("a", a).set("b", b).set("old", old);
+		expect(ids(branchPath(index, b))).toEqual(["a", "b"]);
+		const c = entry("c", "b");
+		const d = entry("d", "c");
+		const e = entry("e", "d");
+		index.set("c", c).set("d", d).set("e", e);
+		const extended = branchPath(index, e);
+		expect(extended).toEqual(walked(index, e));
+		extended.length = 0;
+		expect(ids(branchPath(index, e))).toEqual(["a", "b", "c", "d", "e"]);
+		// Below an entry that was there before the path was kept: walked, with the same result.
+		const f = entry("f", "old");
+		index.set("f", f);
+		expect(branchPath(index, f)).toEqual(walked(index, f));
+		// New entries looping among themselves are walked a bounded number of steps, then the tree is walked.
+		const x = entry("x", "y");
+		const y = entry("y", "x");
+		index.set("x", x).set("y", y);
+		expect(branchPath(index, x)).toEqual(walked(index, x));
+	});
+
 	it("walks a plain map without keeping anything", () => {
 		const plain = new Map<string, SessionEntry>();
 		const a = entry("a", null);
@@ -97,9 +123,11 @@ describe("scheduleSessionSync", () => {
 
 	it("marks a file whose sync failed until a flush recovers it", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "deferred-sync-"));
-		// A directory opens for reading but refuses "r+": the open fails, which is "nothing to sync", not a failed sync.
+		// A failed open cannot prove there was nothing to sync: only a missing path clears the failure automatically.
 		scheduleSessionSync(dir);
 		await new Promise((resolve) => setTimeout(resolve, 320));
+		expect(sessionSyncFailed(dir)).toBe(true);
+		sessionSyncRecovered(dir);
 		expect(sessionSyncFailed(dir)).toBe(false);
 		const file = path.join(dir, "session.jsonl");
 		fs.writeFileSync(file, "{}\n");

@@ -1,5 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { cachedPercent } from "../shared/format.ts";
+import type { EntrySource } from "../shared/entry-cursor.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { addReply, emptyTotals, type ModelLookup, spendOf, unpricedModel, type UsageTotals } from "../shared/util.ts";
 
@@ -26,13 +27,13 @@ export class TurnRun {
 	private readonly scan = new SpendScan();
 
 	/** Starts a run: spend recorded before it is not the run's. */
-	begin(entries: Iterable<unknown>): void {
+	begin(session: EntrySource): void {
 		this.tools = 0;
 		this.all = emptyTotals();
 		this.main = emptyTotals();
 		this.agents.clear();
 		this.anonymousAgents = 0;
-		this.scan.recorded(entries);
+		this.scan.recordedIn(session);
 	}
 
 	tool(): void {
@@ -49,8 +50,8 @@ export class TurnRun {
 	}
 
 	/** Spend recorded outside a reply or event (a compaction summary, a cache refresh) since the last look. */
-	recorded(entries: Iterable<unknown>, find?: ModelLookup): void {
-		for (const spend of this.scan.recorded(entries)) this.add(spend, find);
+	recorded(session: EntrySource, find?: ModelLookup): void {
+		for (const spend of this.scan.recordedIn(session)) this.add(spend, find);
 	}
 
 	/** A compaction or branch-summary entry, announced by an event. */

@@ -45,6 +45,13 @@ export type AgentSessionEvent =
 			followUp: readonly string[];
 	  }
 	| { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
+	/** A compaction's summary is streaming: at most once a second while it runs (`SummaryProgress`). */
+	| {
+			type: "compaction_progress";
+			reason: "manual" | "threshold" | "overflow";
+			elapsedMs: number;
+			receivedChars: number;
+	  }
 	| { type: "entry_appended"; entry: SessionEntry }
 	| { type: "session_info_changed"; name: string | undefined; source?: SessionNameSource }
 	| { type: "session_context_changed" }

@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { MigrationContext } from "./migration-context.ts";
+import { emptyOldMirror, moveMirror } from "./mirror-move.ts";
 import {
 	AGENT_RUNS_SCHEMA_V3,
 	BACKLOG_AUDIT_TRIGGERS,
@@ -23,7 +25,14 @@ export interface Migration {
 	 */
 	additive: boolean;
 	/** Runs inside the step's `BEGIN IMMEDIATE` transaction; a throw rolls the step back. */
-	up(db: DatabaseSync): void;
+	up(db: DatabaseSync, context: MigrationContext): void;
+	/**
+	 * Applied to the backup copy taken before this step runs (on its own connection, outside any transaction): what the
+	 * backup need not keep. Without it the backup is the whole file.
+	 */
+	backup?(copy: DatabaseSync): void;
+	/** Whether the file is compacted (`VACUUM`) after the migration that ran this step: it freed most of the file. */
+	vacuum?: boolean;
 }
 
 export interface SchemaPlan {
@@ -157,8 +166,22 @@ const ADD_SHELL_HISTORY: Migration = {
 	},
 };
 
+/**
+ * 10: the transcript mirror (`session_transcripts`, `session_entries`, `compaction_summaries`) moves to its own file
+ * (`transcripts.db`, `schema-mirror.ts`; `mirror-move.ts` copies, verifies and drops), and the file is compacted. Not
+ * additive: an Octocode that knows only version 9 would find the tables gone, so it refuses the file. The backup taken
+ * before the step keeps the coordination data only (the old tables empty).
+ */
+const MOVE_TRANSCRIPT_MIRROR: Migration = {
+	to: 10,
+	additive: false,
+	up: moveMirror,
+	backup: emptyOldMirror,
+	vacuum: true,
+};
+
 export const SCHEMA_PLAN: SchemaPlan = {
-	version: 9,
+	version: 10,
 	migrations: [
 		ADD_END_HINT,
 		ADD_AGENT_RUNS,
@@ -168,8 +191,12 @@ export const SCHEMA_PLAN: SchemaPlan = {
 		ADD_BACKLOG_RANK,
 		ADD_CACHE_WRITE,
 		ADD_SHELL_HISTORY,
+		MOVE_TRANSCRIPT_MIRROR,
 	],
 };
+
+/** The transcript mirror file's plan (`schema-mirror.ts`): version 1, the first. */
+export const MIRROR_PLAN: SchemaPlan = { version: 1, migrations: [] };
 
 /** The oldest version that can use a file at `version`: the last step up to it that was not additive, else the first version. */
 export function readableFromFor(plan: SchemaPlan, version: number): number {

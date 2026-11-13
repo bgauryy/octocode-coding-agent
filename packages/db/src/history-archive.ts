@@ -95,14 +95,18 @@ function readMonth(file: string): ArchiveRecord[] {
 
 /**
  * Rewrites one month file with `records` merged in, holding its lock (several Octocode processes may archive at once):
- * one record per database and id (a row archived twice, after a crash between the archive write and the delete, is
- * kept once), none older than the keep window. Written atomically and owner-only (the rows are as private as the
- * database); a month left empty is removed.
+ * one record per database and id, or per receipt snapshot for mutable commands (a stale archiver must not replace a
+ * newer receipt). Identical retries are kept once; no record outlives the keep window. Written atomically and owner-only
+ * (the rows are as private as the database); a month left empty is removed.
  */
 function rewriteMonth(file: string, records: readonly ArchiveRecord[], now: number, keepMs: number): void {
 	withFileLockSync(file, (assertHeld) => {
 		const merged = new Map<string, ArchiveRecord>();
-		for (const record of [...readMonth(file), ...records]) merged.set(`${record.db}\0${record.id}`, record);
+		const receipts = path.basename(file).startsWith("workspace-commands-");
+		for (const record of [...readMonth(file), ...records]) {
+			const key = receipts ? [record.db, record.id, sha256(JSON.stringify(record.row))] : [record.db, record.id];
+			merged.set(JSON.stringify(key), record);
+		}
 		const kept = [...merged.values()].filter((record) => record.at >= now - keepMs);
 		kept.sort((a, b) => a.at - b.at);
 		assertHeld();

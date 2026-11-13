@@ -3,10 +3,25 @@ import type { TUI } from "../../tui.ts";
 import { UndoStack } from "../../undo-stack.ts";
 import { BracketedPasteBuffer } from "../input/paste.ts";
 import { EditorAutocomplete, type EditorAutocompleteHost } from "./autocomplete.ts";
+import { endsInSlash, endsInSlashToken } from "./autocomplete-patterns.ts";
 import { buildVisualLineMap, findVisualLineAt, layoutText } from "./layout.ts";
 import { expandPasteMarkers, graphemeSegmenter, segmentWithMarkers, wordSegmenter } from "./segmentation.ts";
-import type { EditorLastAction, EditorSnapshot, EditorState, EditorTheme, LayoutLine } from "./types.ts";
+import type { EditorLastAction, EditorSnapshot, EditorState, EditorTheme, HistoryEntry, LayoutLine } from "./types.ts";
 import { EditorWrapCache } from "./wrap-cache.ts";
+
+/** Undo snapshots share the text and paste strings: only their containers are copied. */
+export const createUndoStack = (): UndoStack<EditorSnapshot> =>
+	new UndoStack<EditorSnapshot>((snapshot) => ({
+		state: { ...snapshot.state, lines: [...snapshot.state.lines] },
+		pastes: new Map(snapshot.pastes),
+		pasteCounter: snapshot.pasteCounter,
+	}));
+
+/** A submitted draft: the editor state, paste registry and undo history the submit cleared, and the text it sent. */
+export interface SubmittedDraft extends EditorSnapshot {
+	text: string;
+	undo: UndoStack<EditorSnapshot>;
+}
 
 /** Public `Editor` members the internal editor model reads live, including members subclasses override. */
 interface EditorHost {
@@ -45,9 +60,15 @@ export class EditorModel implements EditorAutocompleteHost {
 	/** Collects a bracketed paste across input chunks. */
 	readonly bracketedPaste = new BracketedPasteBuffer();
 
-	history: string[] = [];
+	history: HistoryEntry[] = [];
 	historyIndex: number = -1; // -1 = not browsing, 0 = most recent, 1 = older, etc.
-	historyDraft: EditorState | null = null;
+	historyDraft: EditorSnapshot | null = null;
+
+	/**
+	 * The draft the last submit cleared (markers, cursor, undo) with the text it sent, kept until the editor is edited
+	 * again: a submit the app refuses puts it back whole, and the prompt history keeps its markers collapsed.
+	 */
+	submitted: SubmittedDraft | undefined;
 
 	killRing = new KillRing();
 	lastAction: EditorLastAction = null;
@@ -67,11 +88,7 @@ export class EditorModel implements EditorAutocompleteHost {
 	// to.
 	snappedFromCursorCol: number | null = null;
 
-	undoStack = new UndoStack<EditorSnapshot>((snapshot) => ({
-		state: { ...snapshot.state, lines: [...snapshot.state.lines] },
-		pastes: new Map(snapshot.pastes),
-		pasteCounter: snapshot.pasteCounter,
-	}));
+	undoStack = createUndoStack();
 
 	readonly autocomplete: EditorAutocomplete;
 
@@ -192,17 +209,19 @@ export class EditorModel implements EditorAutocompleteHost {
 	}
 
 	/** True right after a `/` typed at the start of the input (the command menu). */
-	isAtStartOfMessage(): boolean {
+	isAtStartOfMessage(beforeCursor = this.textBeforeCursor()): boolean {
 		if (!this.isSlashMenuAllowed()) return false;
-		const currentLine = this.state.lines[this.state.cursorLine] || "";
-		const beforeCursor = currentLine.slice(0, this.state.cursorCol);
-		return beforeCursor.trim() === "" || beforeCursor.trim() === "/";
+		const trimmed = beforeCursor.trim();
+		return trimmed === "" || trimmed === "/";
 	}
 
 	/** True right after a `/` typed at a token start anywhere else (a line start or after whitespace): the skill menu. */
-	isAtSkillMentionStart(): boolean {
-		const currentLine = this.state.lines[this.state.cursorLine] || "";
-		return /(?:^|\s)\/$/.test(currentLine.slice(0, this.state.cursorCol));
+	isAtSkillMentionStart(beforeCursor = this.textBeforeCursor()): boolean {
+		return endsInSlash(beforeCursor);
+	}
+
+	textBeforeCursor(): string {
+		return (this.state.lines[this.state.cursorLine] || "").slice(0, this.state.cursorCol);
 	}
 
 	isInSlashCommandContext(textBeforeCursor: string): boolean {
@@ -211,6 +230,6 @@ export class EditorModel implements EditorAutocompleteHost {
 
 	/** True while the text before the cursor ends in a `/name` token that follows whitespace or a line start. */
 	isInSkillMentionContext(textBeforeCursor: string): boolean {
-		return /(?:^|\s)\/[^\s/]*$/.test(textBeforeCursor);
+		return endsInSlashToken(textBeforeCursor);
 	}
 }

@@ -88,18 +88,18 @@ describe("communication prompt contracts", () => {
 		expect(coordinate.promptGuidelines.join(" ")).not.toContain("input.");
 		// A read-only role is not told to lock paths: the condition is that it edits. This registration has no `stop`,
 		// so it is a subagent's: its task's `paths` are reserved already, and it locks only what lies outside them.
-		expect(coordinate.promptGuidelines.join(" ")).toContain("Your task's `paths` are already reserved for you");
-		expect(coordinate.promptGuidelines.join(" ")).toContain("before editing a file outside them, lock it");
+		expect(coordinate.promptGuidelines.join(" ")).toContain("Your task's `paths` are reserved for you");
+		expect(coordinate.promptGuidelines.join(" ")).toContain("before editing outside them, lock those files");
 		expect(identityBlock({ id: "a-1", parentId: "parent-1" })).toContain(
 			"coordinate with teammates through reservations",
 		);
-		expect(message.parameters.properties.to.description).toContain("exact id across trees");
-		expect(message.parameters.properties.to.description).toContain('"all": your tree only');
+		expect(message.parameters.properties.to.description).toContain("exact ids cross trees");
+		expect(message.parameters.properties.to.description).toContain('"all": your tree.');
 		// A subagent (no peers) reaches only its own session tree; its parent relays beyond it.
 		const child = fakeHost();
 		registerCollab(child.api, {} as Team);
 		const childTo = child.tools.get("sendMessage").parameters.properties.to.description;
 		expect(childTo).not.toContain("across coordinator trees");
-		expect(childTo).toContain("in your tree; it relays beyond it");
+		expect(childTo).toContain("in your tree; parent relays beyond it");
 	});
 });

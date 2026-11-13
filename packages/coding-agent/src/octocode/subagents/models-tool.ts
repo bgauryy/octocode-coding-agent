@@ -44,14 +44,14 @@ export function registerModelsTool(
 		label: "Models",
 		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:
-			"This session's model and thinking level; providers and credential status; models with price, context and abilities; small/medium and profile routes. No filter: one row per provider; `provider` lists its models. Filters combine.",
+			"Session model/thinking, providers/credential status, model price/context/abilities and small/medium/profile routes. No filter: one row per provider; provider lists its models. Filters combine.",
 		parameters: Type.Object({
 			provider: Type.Optional(Type.String({ description: "List this provider's models" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
 			query: Type.Optional(Type.String({ description: "Keep models whose provider/id contains this text" })),
 			check: Type.Optional(
 				Type.Boolean({
-					description: "true: first test credentials with one small request per provider",
+					description: "true: check credentials by listing or small requests (may cost)",
 				}),
 			),
 			scope: Type.Optional(

@@ -7,7 +7,8 @@ import chalk from "chalk";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
-import { assertValidSessionId, SessionManager, type SessionInfo } from "../core/session-manager.ts";
+import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
+import { listSessionHeaders, type SessionHeaderInfo } from "../core/session-manager/header-listing.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
@@ -21,7 +22,7 @@ type ResolvedSession =
 	| { type: "local"; path: string } // Found in current project
 	| { type: "global"; path: string; cwd: string } // Found in different project
 	| { type: "stored"; id: string; path: string } // An indexed transcript in another or unavailable checkout
-	| { type: "ambiguous"; arg: string; candidates: SessionInfo[] } // A prefix of several session ids
+	| { type: "ambiguous"; arg: string; candidates: SessionHeaderInfo[] } // A prefix of several session ids
 	| { type: "not_found"; arg: string }; // Not found anywhere
 
 /**
@@ -44,13 +45,13 @@ function findLocalSessionByExactId(
 async function findSessionFileAnywhere(sessionId: string, sessionDir?: string): Promise<string | undefined> {
 	const indexed = storedTranscriptPath(sessionId);
 	if (indexed) return indexed;
-	return (await SessionManager.listAll(sessionDir)).find((session) => session.id === sessionId)?.path;
+	return (await listSessionHeaders(undefined, sessionDir)).find((session) => session.id === sessionId)?.path;
 }
 
 /** JSONL discovery still works while the database is unavailable. */
 function storedTranscriptPath(id: string, sessionDir?: string): string | undefined {
 	try {
-		const row = transcripts.stamp(sharedAgentDb().db, id);
+		const row = transcripts.stamp(sharedAgentDb().mirror.db, id);
 		return row && (!sessionDir || dirname(row.file) === canonicalPath(sessionDir)) ? row.file : undefined;
 	} catch {
 		return undefined;
@@ -70,14 +71,17 @@ async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: 
 		return exactLocalMatch;
 	}
 
+	// Ids and folders come from each file's header: no transcript body is read to match an id or a prefix.
 	const stored = storedTranscriptPath(sessionArg, sessionDir);
-	const localMatches = (await SessionManager.list(cwd, sessionDir)).filter((session) =>
-		session.id.startsWith(sessionArg),
-	);
-	if (!stored && localMatches.length > 1) return { type: "ambiguous", arg: sessionArg, candidates: localMatches };
-	if (!stored && localMatches[0]) return { type: "local", path: localMatches[0].path };
+	if (!stored) {
+		const localMatches = (await listSessionHeaders(cwd, sessionDir)).filter((session) =>
+			session.id.startsWith(sessionArg),
+		);
+		if (localMatches.length > 1) return { type: "ambiguous", arg: sessionArg, candidates: localMatches };
+		if (localMatches[0]) return { type: "local", path: localMatches[0].path };
+	}
 
-	const all = await SessionManager.listAll(sessionDir);
+	const all = await listSessionHeaders(undefined, sessionDir);
 	const exact = all.find((session) => session.id === sessionArg);
 	if (exact) return { type: "global", path: exact.path, cwd: exact.cwd };
 	// An exact historical ID wins over any similarly named live session.
@@ -89,7 +93,7 @@ async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: 
 }
 
 /** Session ids start with a timestamp, so short prefixes collide; picking one would append to the wrong conversation. */
-function refuseAmbiguousPrefix(arg: string, candidates: readonly SessionInfo[]): never {
+function refuseAmbiguousPrefix(arg: string, candidates: readonly SessionHeaderInfo[]): never {
 	console.error(chalk.red(`Error: '${arg}' matches ${candidates.length} sessions. Use more of the id:`));
 	for (const candidate of candidates) console.error(`  ${candidate.id}  ${candidate.cwd}`);
 	process.exit(1);

@@ -130,7 +130,7 @@ function createShellToolDefinition(
 	return {
 		name: config.name,
 		label: config.label,
-		description: `Execute a ${config.shellName} command in the current working directory. Returns stdout and stderr. Every result starts with a line giving the exit code, time and output size. Output over the budget (${BASH_MAX_BYTES / 1000}KB or ${BASH_MAX_LINES} lines by default; maxOutputTokens lowers it) keeps the first 20% and last 80%, plus up to 20 error lines from the middle with their line numbers, and is saved in full to a file named in that line. A line redrawn with carriage returns (a progress bar) shows only its final state, and a run of identical lines shows once with a count. Optionally provide a timeout in seconds.`,
+		description: `Run a ${config.shellName} command in the working directory; return stdout and stderr. Each result starts with exit code, duration and output size. Over-budget output (default ${BASH_MAX_BYTES / 1000}KB or ${BASH_MAX_LINES} lines; maxOutputTokens lowers it) keeps the first 20%, last 80% and up to 20 middle error lines with line numbers; the result header names the full output file. Carriage-return redraws show only their final state; consecutive identical lines show once with a count. timeout is in seconds.`,
 		promptSnippet: config.promptSnippet,
 		promptGuidelines: exposeSessionEnvironment && config.promptGuidelines ? [...config.promptGuidelines] : undefined,
 		parameters: bashSchema,

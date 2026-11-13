@@ -1,8 +1,9 @@
 import type { Token } from "marked";
 import { isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
-import { frameContentLines } from "../utils.ts";
+import { fitHorizontalPadding, frameContentLines } from "../utils.ts";
 import { renderToken } from "./markdown/blocks.ts";
 import { type LexedMarkdown, lexMarkdown } from "./markdown/incremental.ts";
 import type {
@@ -56,11 +57,13 @@ export class Markdown implements Component {
 	setText(text: string): void {
 		this.text = text;
 		this.clearOutput();
+		renderChanged(this);
 	}
 
 	invalidate(): void {
 		this.clearOutput();
 		this.blockRows = new WeakMap();
+		renderChanged(this);
 	}
 
 	private clearOutput(): void {
@@ -74,8 +77,8 @@ export class Markdown implements Component {
 			return this.cachedLines;
 		}
 
-		// Calculate available width for content (subtract horizontal padding)
-		const contentWidth = Math.max(1, width - this.paddingX * 2);
+		const paddingX = fitHorizontalPadding(width, this.paddingX);
+		const contentWidth = Math.max(1, width - paddingX * 2);
 		const text = this.options.transform?.(this.text, contentWidth) ?? this.text;
 
 		// Don't render anything if there's no actual text
@@ -122,7 +125,7 @@ export class Markdown implements Component {
 		const result = frameContentLines(
 			wrappedLines,
 			width,
-			this.paddingX,
+			paddingX,
 			this.paddingY,
 			this.defaultTextStyle?.bgColor,
 			isImageLine,
@@ -214,3 +217,5 @@ export class Markdown implements Component {
 		};
 	}
 }
+
+trackRenderChanges(Markdown.prototype);

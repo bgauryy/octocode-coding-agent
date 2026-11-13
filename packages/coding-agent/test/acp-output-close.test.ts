@@ -105,6 +105,7 @@ it("stops every owned ACP worker before exiting when the client closes only its 
 		child.stdin.destroy();
 		if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 		await exited;
-		for (const worker of workers) if (processMatch(worker.pid, worker.started) === "same") await stopTree(worker.pid);
+		for (const worker of workers)
+			if ((await processMatch(worker.pid, worker.started)) === "same") await stopTree(worker.pid);
 	}
 }, 60_000);

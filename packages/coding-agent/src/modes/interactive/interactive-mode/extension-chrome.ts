@@ -85,6 +85,12 @@ export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEdito
 		}
 		if (!customEditor.onExtensionShortcut) {
 			customEditor.onExtensionShortcut = (data: string) => host.defaultEditor.onExtensionShortcut?.(data);
+			// Without the default editor's check a key may be a shortcut: typed runs then go key by key.
+			customEditor.isExtensionShortcut = (data: string) => {
+				const editor = host.defaultEditor;
+				if (!editor.onExtensionShortcut) return false;
+				return editor.isExtensionShortcut ? editor.isExtensionShortcut(data) : true;
+			};
 		}
 		if (!customEditor.onEmptyUp) {
 			customEditor.onEmptyUp = () => host.defaultEditor.onEmptyUp?.() ?? false;
@@ -178,6 +184,7 @@ export function resetExtensionUI(host: ExtensionChromeHost): void {
 	host.setCustomEditorComponent(undefined);
 	host.setupAutocompleteProvider();
 	host.defaultEditor.onExtensionShortcut = undefined;
+	host.defaultEditor.isExtensionShortcut = undefined;
 	host.updateTerminalTitle();
 	host.workingMessage = undefined;
 	host.workingVisible = true;
@@ -323,7 +330,8 @@ export function clearExtensionTerminalInputListeners(host: ExtensionChromeHost):
 export function setCustomEditorComponent(host: ExtensionChromeHost, factory: EditorFactory | undefined): void {
 	host.editorComponentFactory = factory;
 
-	const currentText = host.editor.getText();
+	// The full text: a paste marker's content lives in the old editor only and would be lost with it.
+	const currentText = host.editor.getExpandedText?.() ?? host.editor.getText();
 
 	host.disposeActiveSelector();
 	host.editorContainer.clear();

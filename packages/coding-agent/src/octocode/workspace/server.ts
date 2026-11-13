@@ -17,7 +17,7 @@ import {
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
 } from "@octocodeai/octocode-contracts/protocol";
-import { STATES } from "@octocodeai/octocode-contracts/snapshot";
+import { STATES, type Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 import { randomBytes } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -37,6 +37,7 @@ import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
+import { BacklogProjection } from "./backlog-projection.ts";
 
 /** Settings routes injected by the root composer: the workspace domain cannot import `web-daemon`, which owns them. */
 export interface SessionConfig {
@@ -91,21 +92,30 @@ export async function startWorkspaceWeb(
 		}
 	};
 	const authorized = (value: string) => sameSecret(token, value);
-	const snapshot = () => backlogSnapshot(backlog.store, backlog.repoName, Date.now(), backlog.session);
-	const sendSnapshot = (socket: WebSocket) => {
+	let revision = backlog.store.revision;
+	const projection = new BacklogProjection(
+		(now) => backlogSnapshot(backlog.store, backlog.repoName, now, backlog.session),
+		(id) => backlog.store.liveHolder(id, true) !== undefined,
+		backlog.session,
+	);
+	const snapshot = () => projection.read();
+	const sendSnapshot = (socket: WebSocket, data: Snapshot) => {
 		if (readerStalled(socket)) return socket.terminate();
 		if (socket.readyState === WebSocket.OPEN)
-			socket.send(JSON.stringify({ type: "snapshot", data: snapshot() } satisfies WorkspaceServerEvent));
+			socket.send(JSON.stringify({ type: "snapshot", data } satisfies WorkspaceServerEvent));
 	};
 	const sendWorkspace = (socket: WebSocket) => {
 		if (!workspace || socket.readyState !== WebSocket.OPEN) return;
 		if (readerStalled(socket)) return socket.terminate();
 		socket.send(JSON.stringify({ type: "workspace", data: workspace.snapshot() } satisfies WorkspaceServerEvent));
 	};
-	const broadcast = () => {
+	const broadcast = (data?: Snapshot) => {
+		if (!authenticated.size) return;
+		if (!data) revision = backlog.store.revision;
+		const value = data ?? snapshot();
 		for (const socket of authenticated) {
 			try {
-				sendSnapshot(socket);
+				sendSnapshot(socket, value);
 			} catch {
 				socket.terminate();
 			}
@@ -268,6 +278,7 @@ export async function startWorkspaceWeb(
 			client.on("close", () => {
 				clearTimeout(timeout);
 				authenticated.delete(client);
+				if (!authenticated.size) projection.clear();
 				profilerIdle();
 				applicationStreams.get(client)?.close();
 				applicationStreams.delete(client);
@@ -282,7 +293,7 @@ export async function startWorkspaceWeb(
 				authenticated.add(client);
 				profilerLive();
 				try {
-					sendSnapshot(client);
+					broadcast();
 					sendWorkspace(client);
 					void streamApplication(client, cursor).catch(() => client.terminate());
 				} catch {
@@ -292,7 +303,6 @@ export async function startWorkspaceWeb(
 		});
 	});
 	// Other agent processes share SQLite; watch its revision without polling from each browser.
-	let revision = backlog.store.revision;
 	const updates = setInterval(() => {
 		if (!authenticated.size) return;
 		try {
@@ -301,6 +311,9 @@ export async function startWorkspaceWeb(
 			if (next !== revision) {
 				revision = next;
 				broadcast();
+			} else {
+				const volatile = projection.refresh();
+				if (volatile) broadcast(volatile);
 			}
 		} catch {
 			for (const socket of authenticated) socket.terminate();

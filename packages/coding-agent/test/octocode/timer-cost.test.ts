@@ -24,6 +24,7 @@ beforeEach(() => {
 	root = tmp();
 	agent = openDatabase({
 		file: path.join(root, "workspaces.db"),
+		mirrorFile: path.join(root, "transcripts.db"),
 		archiveDir: path.join(root, "archive"),
 		privateParent: false,
 	});

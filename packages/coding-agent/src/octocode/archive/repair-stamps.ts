@@ -32,7 +32,7 @@ async function fileStamp(file: string): Promise<string | undefined> {
 
 /** The session's compaction rows as repair leaves them, or undefined when one still needs a repair to finish it. */
 function rowsDigest(agent: AgentDb, sessionId: string): string | undefined {
-	const rows = compactions.forSession(agent.db, sessionId);
+	const rows = compactions.forSession(agent.mirror.db, sessionId);
 	if (rows.some((row) => !row.originVerified || row.detailState === "missing")) return undefined;
 	return shortHash(
 		JSON.stringify(rows.map((row) => [row.entryId, row.detailState, row.detailFile, row.committedAt, row.summary])),
@@ -96,6 +96,135 @@ async function repairCurrent(repair: HistoryRepair, file: string): Promise<void>
 	const result = await repair.transcript(file, from);
 	// An incomplete repair (an origin not yet proven) reads the whole file again next time.
 	if (result && completed(result)) readTo.set(file, { identity, end: result.end });
+}
+
+/**
+ * Where the last complete repair of each recently started transcript ended, kept across processes in meta
+ * `archive_repair_offsets` (file → offset), so a session start (a resume, /new, fork or reload) reads only the lines
+ * appended since. An offset is used only while the file is the same (device and inode), still reaches it, ends there with
+ * the same bytes (a hash of up to `TAIL_BYTES` before it) and the session's compaction rows hash as they did after that
+ * repair. Anything else, or an offset that cannot be read or saved, reads the whole file as before.
+ */
+const OFFSETS_KEY = "archive_repair_offsets";
+/** The most transcripts whose offsets are kept: the least recently started ones are dropped first. */
+const OFFSETS_KEPT = 256;
+const TAIL_BYTES = 4096;
+
+interface SavedOffset {
+	identity: string;
+	end: number;
+	tail: string;
+	session: string;
+	rows: string;
+}
+
+function savedOffsets(agent: AgentDb): Map<string, SavedOffset> {
+	try {
+		const value: unknown = JSON.parse(meta.read(agent.db, OFFSETS_KEY) ?? "{}");
+		if (typeof value !== "object" || value === null || Array.isArray(value)) return new Map();
+		return new Map(
+			Object.entries(value).filter(
+				(entry): entry is [string, SavedOffset] =>
+					typeof entry[1] === "object" &&
+					entry[1] !== null &&
+					typeof entry[1].identity === "string" &&
+					Number.isSafeInteger(entry[1].end) &&
+					entry[1].end > 0 &&
+					typeof entry[1].tail === "string" &&
+					typeof entry[1].session === "string" &&
+					typeof entry[1].rows === "string",
+			),
+		);
+	} catch {
+		return new Map();
+	}
+}
+
+/** A hash of the bytes just before `end`: an in-place rewrite of the file changes it. */
+async function tailHash(file: string, end: number): Promise<string | undefined> {
+	const length = Math.min(end, TAIL_BYTES);
+	const handle = await fs.promises
+		.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0))
+		.catch(() => undefined);
+	if (!handle) return undefined;
+	try {
+		const bytes = Buffer.alloc(length);
+		const { bytesRead } = await handle.read(bytes, 0, length, end - length);
+		return bytesRead === length ? shortHash(bytes) : undefined;
+	} catch {
+		return undefined;
+	} finally {
+		await handle.close().catch(() => {});
+	}
+}
+
+function saveOffset(agent: AgentDb, file: string, offset: SavedOffset | undefined): void {
+	try {
+		const offsets = savedOffsets(agent);
+		if (!offset && !offsets.has(file)) return;
+		offsets.delete(file);
+		if (offset) offsets.set(file, offset);
+		const kept = [...offsets].slice(-OFFSETS_KEPT);
+		meta.write(agent.db, OFFSETS_KEY, JSON.stringify(Object.fromEntries(kept)));
+	} catch {
+		/* An unsaved offset only means the next start reads the whole transcript. */
+	}
+}
+
+/**
+ * The repair a session start runs on its own transcript: from the offset the last complete repair of this file saved
+ * (see `OFFSETS_KEY`), else the whole file. Equivalent to a whole-file repair: the lines before the offset are the ones
+ * that repair indexed, and their rows are unchanged.
+ */
+export async function repairOnStart(agent: AgentDb, repair: HistoryRepair, file: string): Promise<void> {
+	const stat = await fs.promises.stat(file, { bigint: true }).catch(() => undefined);
+	if (!stat?.isFile()) {
+		await repair.transcript(file);
+		return;
+	}
+	const identity = `${stat.dev}:${stat.ino}`;
+	const known = savedOffsets(agent).get(file);
+	let from = 0;
+	if (known?.identity === identity && BigInt(known.end) <= stat.size) {
+		if (rowsDigest(agent, known.session) === known.rows && (await tailHash(file, known.end)) === known.tail)
+			from = known.end;
+	}
+	if (from > 0 && BigInt(from) === stat.size) {
+		// Nothing appended since a complete repair: this process's first `archive` read starts here too.
+		readTo.set(file, { identity, end: from });
+		return;
+	}
+	const result = await repair.transcript(file, from);
+	const rows = result && completed(result) ? rowsDigest(agent, result.session) : undefined;
+	const tail = rows && result && result.end > 0 ? await tailHash(file, result.end) : undefined;
+	saveOffset(
+		agent,
+		file,
+		rows && tail && result ? { identity, end: result.end, tail, session: result.session, rows } : undefined,
+	);
+	if (rows && result) readTo.set(file, { identity, end: result.end });
+}
+
+/**
+ * Writes compaction rows of this process's own session (`write`: a live compaction) and keeps its transcript's saved
+ * start offset usable. The rows hash is part of that offset: without this, every compaction would make the next start
+ * read the whole file, in exactly the long sessions the offset is for. The offset takes the new hash only when the rows
+ * hashed as saved right before the write, in the same mirror transaction, and the write leaves them complete: a change
+ * made elsewhere before it, or after it commits, still makes the next start read the whole file. The lines the write
+ * describes lie past the saved offset, so the next start reads and verifies them.
+ */
+export function writeOwnRows(agent: AgentDb, file: string, sessionId: string, write: () => void): void {
+	let before: string | undefined;
+	let after: string | undefined;
+	agent.mirror.transaction(() => {
+		before = rowsDigest(agent, sessionId);
+		write();
+		after = rowsDigest(agent, sessionId);
+	});
+	if (!before || !after || before === after) return;
+	const known = savedOffsets(agent).get(file);
+	if (known?.session !== sessionId || known.rows !== before) return;
+	saveOffset(agent, file, { ...known, rows: after });
 }
 
 /**

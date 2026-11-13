@@ -201,10 +201,10 @@ export function liftRootComposition<T>(schema: T): T {
 
 /**
  * Every top-level property a tool's arguments may carry, as {@link liftRootComposition} lists them, also for a root
- * that is only a `$ref` (with or without keywords beside it). For a declaration only: it approximates the shape and is
- * not a validator.
+ * that is only a `$ref` (with or without keywords beside it). A nested object schema passes the tool's schema as
+ * `root`, where its local references resolve. For a declaration only: it approximates the shape and is not a validator.
  */
-export function liftedProperties(schema: unknown): Schema {
+export function liftedProperties(schema: unknown, root: unknown = schema): Schema {
 	// Object.fromEntries defines own properties, so a field named `__proto__` stays a field.
-	return Object.fromEntries(liftObject(schema, schema)?.properties ?? []);
+	return Object.fromEntries(liftObject(schema, root)?.properties ?? []);
 }

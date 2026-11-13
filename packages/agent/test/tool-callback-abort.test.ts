@@ -1,6 +1,12 @@
 import { Type } from "typebox";
+import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import { executePreparedToolCall, type PreparedToolCall, ABANDONED_MESSAGE } from "../src/agent-loop/tool-call.ts";
+import {
+	executePreparedToolCall,
+	type PreparedToolCall,
+	ABANDONED_MESSAGE,
+	runToolCall,
+} from "../src/agent-loop/tool-call.ts";
 
 const partial = { content: [], details: undefined };
 const prepared = (execute: PreparedToolCall["tool"]["execute"]): PreparedToolCall => ({
@@ -11,6 +17,24 @@ const prepared = (execute: PreparedToolCall["tool"]["execute"]): PreparedToolCal
 });
 
 describe("aborting tool callback waits", () => {
+	it("does not begin a permission check when its signal is already aborted", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		const execute = vi.fn(async () => partial);
+		const beforeToolCall = vi.fn(async () => undefined);
+		const call = prepared(execute);
+		const outcome = await runToolCall(call.toolCall, {
+			tools: [call.tool],
+			assistantMessage: { role: "assistant", content: [] } as unknown as AssistantMessage,
+			context: { messages: [] },
+			signal: controller.signal,
+			beforeToolCall,
+		});
+		expect(outcome.isError).toBe(true);
+		expect(beforeToolCall).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+	});
+
 	it("releases a hanging revalidation and never executes after its late approval", async () => {
 		const controller = new AbortController();
 		let approve!: () => void;

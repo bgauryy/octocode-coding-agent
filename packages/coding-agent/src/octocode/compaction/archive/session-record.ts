@@ -1,5 +1,5 @@
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
-import { transcripts } from "../../../../../db/src/api.ts";
+import { forks } from "../../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../../storage/database.ts";
 import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
 import type { ExtensionContext } from "../../../core/features/index.ts";
@@ -19,7 +19,7 @@ export function forkLineage(
 		if (!workspace) return [];
 		const agent = sharedAgentDb();
 		registeredWorkspace(workspace.root, agent);
-		return transcripts.lineage(agent.db, sessions.getSessionId(), canonicalPath(file), workspace.id);
+		return forks.lineage(agent.db, agent.mirror.db, sessions.getSessionId(), canonicalPath(file), workspace.id);
 	} catch {
 		return [];
 	}

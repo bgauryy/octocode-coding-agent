@@ -77,6 +77,7 @@ export function HarnessPanel({ api, repoId, reloadKey }: { api?: HarnessApi; rep
 	const [error, setError] = useState<string | undefined>();
 	const [scope, setScope] = useState<Scope>("global");
 	const [filter, setFilter] = useState("");
+	const hasApi = api !== undefined;
 	const loader = useRef(api);
 	useEffect(() => {
 		loader.current = api;
@@ -97,7 +98,7 @@ export function HarnessPanel({ api, repoId, reloadKey }: { api?: HarnessApi; rep
 		return () => {
 			current = false;
 		};
-	}, [repoId, reloadKey]);
+	}, [hasApi, repoId, reloadKey]);
 
 	const canWorkspace = repoId !== undefined && list?.workspace?.trusted === true;
 	// A workspace choice holds only while a trusted workspace is chosen; otherwise switches go to the global file.

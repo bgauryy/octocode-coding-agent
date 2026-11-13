@@ -7,7 +7,12 @@
  */
 
 import type { Credential, OAuthCredential } from "@octocodeai/octocode-ai";
-import { clearConfigValueCache, resolveConfigValue, resolveConfigValueUncached } from "../config-value.ts";
+import {
+	clearConfigValueCache,
+	resolveConfigValue,
+	resolveConfigValueAsync,
+	resolveConfigValueUncached,
+} from "../config-value.ts";
 import { registerResolvedSecret } from "../secret-redaction.ts";
 import type { KeychainBackend } from "./keychain.ts";
 
@@ -70,6 +75,13 @@ export function resolveKeychainOAuth(credential: Credential | undefined, fresh =
 	const blob = fresh ? resolveConfigValueUncached(reference) : resolveConfigValue(reference);
 	if (fresh) registerResolvedSecret(blob);
 	return parseBlob(blob) ?? credential;
+}
+
+/** `resolveKeychainOAuth` (cached read) that does not block the thread while the keychain command runs. */
+export async function resolveKeychainOAuthAsync(credential: Credential | undefined): Promise<Credential | undefined> {
+	const reference = oauthReference(credential);
+	if (!reference) return credential;
+	return parseBlob(await resolveConfigValueAsync(reference)) ?? credential;
 }
 
 /**

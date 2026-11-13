@@ -153,7 +153,7 @@ describe("Windows trees", () => {
 		const { groupAlive, groupMembers, descendantPids } = await Promise.resolve(importedModule1);
 		expect(groupAlive(process.pid)).toBe(true);
 		expect(groupAlive(GONE)).toBe(false);
-		expect(groupMembers(process.pid)).toEqual([]);
-		expect(descendantPids(process.pid)).toEqual([]);
+		expect(await groupMembers(process.pid)).toEqual([]);
+		expect(await descendantPids(process.pid)).toEqual([]);
 	});
 });

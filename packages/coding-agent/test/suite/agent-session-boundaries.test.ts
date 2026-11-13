@@ -633,6 +633,82 @@ describe("AgentSession actionable boundaries", () => {
 		);
 	});
 
+	it("continues once with a batch of reports sent while agent_before_settle handlers still run", async () => {
+		// A headless parent holds its run here until its background children end; their reports arrive as one batch, each
+		// asking for a turn and drained together (`ReportQueue` with a busy parent). The run continues once, with all of them.
+		let handled = false;
+		const requests: string[] = [];
+		const errors: unknown[] = [];
+		const harness = await createHarness({
+			extensionFactories: [
+				(api) => {
+					api.on("agent_before_settle", async () => {
+						if (handled) return;
+						handled = true;
+						await new Promise((resolve) => setTimeout(resolve, 5));
+						const sends = ["report one", "report two", "report three"].map((content) =>
+							api.sendMessage(
+								{ customType: "agent-report", content, display: true },
+								{ triggerTurn: true, deliverAs: "followUp", together: true },
+							),
+						);
+						for (const sending of sends) void Promise.resolve(sending).catch((error) => errors.push(error));
+						return undefined;
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage("first"),
+			(context) => {
+				requests.push(JSON.stringify(context.messages));
+				return fauxAssistantMessage("second");
+			},
+			fauxAssistantMessage("a third turn that must not happen"),
+		]);
+
+		await harness.session.prompt("start");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(errors).toEqual([]);
+		expect(harness.faux.state.callCount).toBe(2);
+		const text = requests[0] ?? "";
+		expect(text.indexOf("report one")).toBeGreaterThan(-1);
+		expect(text.indexOf("report one")).toBeLessThan(text.indexOf("report two"));
+		expect(text.indexOf("report two")).toBeLessThan(text.indexOf("report three"));
+	});
+
+	it("writes a message that asks for no turn during agent_before_settle without continuing the run", async () => {
+		let handled = false;
+		const harness = await createHarness({
+			extensionFactories: [
+				(api) => {
+					api.on("agent_before_settle", async () => {
+						if (handled) return;
+						handled = true;
+						await new Promise((resolve) => setTimeout(resolve, 5));
+						void api.sendMessage(
+							{ customType: "quiet-report", content: "nobody waits for this", display: true },
+							{ triggerTurn: false, deliverAs: "followUp", together: true },
+						);
+						return undefined;
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("a turn nobody asked for")]);
+
+		await harness.session.prompt("start");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(harness.faux.state.callCount).toBe(1);
+		expect(harness.sessionManager.getEntries()).toContainEqual(
+			expect.objectContaining({ type: "custom_message", customType: "quiet-report" }),
+		);
+	});
+
 	it("does not consume queued input when pre-settlement drafts leave system-only context", async () => {
 		let handled = false;
 		const harness = await createHarness({

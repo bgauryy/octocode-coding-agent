@@ -93,6 +93,10 @@ What a drop does: **In progress** checks the goal and reason and claims the item
 
 Tree view: an epic has **Add item**; an item has an **Epic** select and **Add task**; each task has a state select, **Edit** and move up/down (`Alt+ArrowUp` / `Alt+ArrowDown`). **Session tasks** groups tasks with no item, with **Promote to item** and **Move under item**.
 
+An agent can finish an existing checklist step with `backlog step`, giving its task reference and a result note. The board updates the task tally and shows the saved result beneath the step. Finishing a step leaves its item open; the item still needs its own completion and verification. Agents can update only steps their session or assigned item permits.
+
+The terminal footer and the connected session's web header show completed steps out of the total for that session and its ongoing items. Dropped steps are included in the total and labelled separately. The web header links to the task tree; after disconnection it marks the progress as cached. Changes from a child agent or another board refresh the terminal counts while work continues.
+
 The board updates live over an authenticated local WebSocket and reconnects on its own; it never overwrites an open edit form. Changes from other agent processes show within about half a second, and stale saves are refused so another session's changes survive. A read-only page (a view link, or a daemon page without a write token) offers no drag, **+ Add a card** or write actions.
 
 ### Hand work to an agent

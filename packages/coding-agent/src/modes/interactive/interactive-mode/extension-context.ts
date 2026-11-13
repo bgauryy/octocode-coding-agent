@@ -115,6 +115,9 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 		}
 		return false;
 	};
+	// The same check without running a handler: a typed run is inserted at once only around keys no shortcut takes.
+	host.defaultEditor.isExtensionShortcut = (data: string) =>
+		[...shortcuts.keys()].some((shortcutStr) => matchesKey(data, shortcutStr));
 }
 
 export function createExtensionUIContext(host: ExtensionContextHost): ExtensionUIContext {

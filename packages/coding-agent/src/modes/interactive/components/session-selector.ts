@@ -3,6 +3,7 @@ import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import { SessionSelectorHeader } from "./session-selector/header.ts";
 import { SessionLoads, type SessionsLoader } from "./session-selector/loads.ts";
 import { type ActionsMenu, actionsMenuFor, renamePanel } from "./session-selector/panels.ts";
@@ -27,6 +28,11 @@ interface SessionSelectorOptions extends SessionPickerPorts {
  */
 export class SessionSelectorComponent extends Container implements Focusable {
 	handleInput(data: string): void {
+		if (this.disposed) return;
+		if (this.mutating) {
+			if (getKeybindings().matches(data, "tui.select.cancel")) this.sessionList.onCancel?.();
+			return;
+		}
 		if (this.mode === "rename") {
 			const kb = getKeybindings();
 			if (kb.matches(data, "tui.select.cancel")) {
@@ -59,6 +65,8 @@ export class SessionSelectorComponent extends Container implements Focusable {
 	private renameTargetPath: string | null = null;
 	private actionsMenu: ActionsMenu | null = null;
 	private readonly ports: SessionPickerPorts;
+	private disposed = false;
+	private mutating = false;
 
 	// Focusable implementation - propagate to sessionList for IME cursor positioning
 	private _focused = false;
@@ -190,24 +198,39 @@ export class SessionSelectorComponent extends Container implements Focusable {
 
 	/** Stops session listing and the header's status timer; the host calls it when another view replaces the picker. */
 	dispose(): void {
+		this.disposed = true;
 		this.header.setStatusMessage(null);
 		this.loads.cancel();
 	}
 
 	/** Deletes the confirmed sessions through the host's removal when it has one, else file by file, and reports the outcome. */
 	private async deleteSessions(paths: string[]): Promise<void> {
+		if (this.disposed || this.mutating) return;
 		const known = new Map(
 			(this.loads.sessionsFor(this.scope) ?? []).map((session) => [session.path, session] as const),
 		);
 		const sessions = paths.flatMap((file) => known.get(file) ?? []);
+		if (sessions.length !== paths.length) {
+			this.header.setStatusMessage(
+				{ type: "error", message: "Session list changed; review the selection and try again" },
+				5000,
+			);
+			this.requestRender();
+			return;
+		}
+		this.startMutation(sessions.length === 1 ? "Deleting session" : `Deleting ${sessions.length} sessions`);
 		let outcome: SessionRemoval;
 		try {
 			outcome = await (this.ports.removeSessions ? this.ports.removeSessions(sessions) : this.removeFiles(sessions));
 		} catch (err) {
+			if (this.disposed) return;
+			this.mutating = false;
 			this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${errorMessage(err)}` }, 5000);
 			this.requestRender();
 			return;
 		}
+		if (this.disposed) return;
+		this.mutating = false;
 		for (const file of outcome.removed) this.loads.remove(file);
 		this.sessionList.setSessions(this.loads.sessionsFor(this.scope) ?? [], this.scope === "all");
 		const { removed, problems } = outcome;
@@ -226,6 +249,16 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		);
 		this.requestRender();
 		await this.loads.refresh();
+		if (!this.disposed) this.requestRender();
+	}
+
+	private startMutation(message: string): void {
+		this.mutating = true;
+		this.header.setStatusMessage({
+			type: "info",
+			message: `${message}… · ${keyHint("tui.select.cancel", "close (continues)")}`,
+		});
+		this.buildBaseLayout(this.sessionList);
 		this.requestRender();
 	}
 
@@ -270,6 +303,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			actions,
 			() => this.exitActionsMode(),
 			(label, err) => {
+				if (this.disposed) return;
 				this.header.setStatusMessage({ type: "error", message: `${label}: ${errorMessage(err)}` }, 3000);
 				this.requestRender();
 			},
@@ -286,19 +320,26 @@ export class SessionSelectorComponent extends Container implements Focusable {
 	}
 
 	private async confirmRename(value: string): Promise<void> {
+		if (this.disposed || this.mutating) return;
 		const next = value.trim();
 		if (!next) return;
 		const target = this.renameTargetPath;
 		const renameSession = this.renameSession;
 		if (!target || !renameSession) return this.exitRenameMode();
+		this.startMutation("Renaming session");
 
 		try {
 			await renameSession(target, next);
 		} catch (err) {
+			if (this.disposed) return;
+			this.mutating = false;
 			// The submit handler does not await this; a rejection would end the process as an uncaught crash.
 			this.header.setStatusMessage({ type: "error", message: `Failed to rename: ${errorMessage(err)}` }, 4000);
 			return this.exitRenameMode();
 		}
+		if (this.disposed) return;
+		this.mutating = false;
+		this.header.setStatusMessage(null);
 		this.exitRenameMode();
 		await this.loads.refresh();
 	}

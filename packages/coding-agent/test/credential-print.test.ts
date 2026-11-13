@@ -17,6 +17,27 @@ async function createRuntime(credentials: AuthStorage): Promise<ModelRuntime> {
 }
 
 describe("credential print commands", () => {
+	test.each([
+		["1MS", 1],
+		["1S", 1_000],
+		["30M", 30 * 60_000],
+		["1H", 3_600_000],
+		["0m", 0],
+	])("parses token validity duration %s in milliseconds", (duration, milliseconds) => {
+		expect(parseAuthCommand(["auth", "print-bearer-token", "--min-expiry", duration])).toMatchObject({
+			minExpiryMs: milliseconds,
+		});
+	});
+
+	test.each(["9007199254740992ms", "2501999792984h", `${"9".repeat(400)}s`])(
+		"rejects an unsafe token validity duration %s",
+		(duration) => {
+			expect(() => parseAuthCommand(["auth", "print-bearer-token", "--min-expiry", duration])).toThrow(
+				"safe integer number of milliseconds",
+			);
+		},
+	);
+
 	test("prints a resolved API key", async () => {
 		const runtime = await createRuntime(AuthStorage.inMemory({ openai: { type: "api_key", key: "test-api-key" } }));
 		const args = parseArgs(["--provider", "openai"]);

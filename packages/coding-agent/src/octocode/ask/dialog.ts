@@ -197,7 +197,8 @@ class AskDialog {
 		if (this.finished) return;
 		if (this.typing) {
 			if (this.keybindings.matches(data, "tui.select.cancel")) {
-				this.drafts.set(this.tab, this.editor.getText());
+				// Expanded: the editor's paste markers do not survive the `setText` that reopens this draft.
+				this.drafts.set(this.tab, this.editor.getExpandedText());
 				this.typing = false;
 				this.editor.setText("");
 			} else this.editor.handleInput(data);

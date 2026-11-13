@@ -1,5 +1,5 @@
 import { setImmediate } from "node:timers/promises";
-import { transcripts } from "../../../../db/src/api.ts";
+import { sessions as sessionRows, transcripts } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import type { HistorySession } from "./transcripts.ts";
 import { paginate } from "./transcripts.ts";
@@ -155,7 +155,8 @@ export async function findErrors(
 		groups: [],
 	};
 	const groups = new Map<string, ErrorGroup>();
-	const db = sharedAgentDb(env).db;
+	const agent = sharedAgentDb(env);
+	const db = agent.mirror.db;
 	// Transcripts read but not yet grouped: a query filter is a model-supplied regex, so it runs over their error texts
 	// in the bounded search worker, never on this thread.
 	const batch: Array<{ session: string; results: ToolResult[] }> = [];
@@ -187,7 +188,7 @@ export async function findErrors(
 	for (const session of sessions) {
 		signal?.throwIfAborted();
 		const mirror = transcripts.stamp(db, session.id);
-		if (!mirror || mirror.workspace_id !== session.workspaceId) {
+		if (!mirror || sessionRows.byId(agent.db, session.id)?.workspace_id !== session.workspaceId) {
 			found.unread++;
 			continue;
 		}

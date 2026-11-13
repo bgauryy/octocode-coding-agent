@@ -4,7 +4,9 @@ import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type AuthStorageBackend, FileAuthStorageBackend } from "./auth-storage.ts";
+import { isStoredModel } from "./models-store-validation.ts";
 
 type StoredModels = Record<string, ModelsStoreEntry>;
 
@@ -38,7 +40,28 @@ export class FileModelsStore implements ModelsStore {
 	}
 
 	private parse(content: string | undefined): StoredModels {
-		return content ? (JSON.parse(stripBom(content)) as StoredModels) : {};
+		const data: StoredModels = Object.create(null);
+		let parsed: unknown;
+		try {
+			parsed = content ? JSON.parse(stripBom(content)) : {};
+		} catch {
+			// This file is a derived catalog cache; a partial write must not prevent the next refresh from replacing it.
+			return data;
+		}
+		if (!isRecord(parsed)) return data;
+		for (const [providerId, entry] of Object.entries(parsed)) {
+			if (!isRecord(entry) || !Array.isArray(entry.models) || !entry.models.every(isStoredModel)) {
+				continue;
+			}
+			if (
+				[entry.lastModified, entry.checkedAt].some((value) => value !== undefined && !Number.isFinite(value)) ||
+				(entry.etag !== undefined && typeof entry.etag !== "string")
+			) {
+				continue;
+			}
+			data[providerId] = entry as unknown as ModelsStoreEntry;
+		}
+		return data;
 	}
 
 	private updateReadState(readState: ModelsFileReadState, data: StoredModels, revision?: string): void {

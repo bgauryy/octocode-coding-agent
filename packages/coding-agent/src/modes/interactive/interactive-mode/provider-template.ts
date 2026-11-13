@@ -18,6 +18,8 @@ import {
 } from "../../../core/provider-templates/models.ts";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../../../core/provider-templates/templates.ts";
 import { type Catalog, loadCatalog, modelsDevEnabled } from "../../../octocode/subagents/catalog.ts";
+import type { ModelsJsonModel } from "../../../core/model-config.ts";
+import { parseContextSize } from "../../../utils/token-count.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { successNotice } from "./provider-ui.ts";
 
@@ -105,6 +107,32 @@ async function chooseKey(ui: TemplateHost, template: ProviderTemplate): Promise<
 	return name ? { kind: "env", name: name.replace(/^\$/, "") } : undefined;
 }
 
+async function chooseTokenLimit(ui: TemplateHost, title: string, maximum?: number): Promise<number | undefined> {
+	for (;;) {
+		const answer = await ui.showExtensionInput(title, "Tokens, for example 8192 or 8k");
+		if (answer === undefined) return undefined;
+		const tokens = parseContextSize(answer);
+		if (tokens !== undefined && (maximum === undefined || tokens <= maximum)) return tokens;
+		ui.showError(
+			maximum === undefined
+				? "Enter a positive whole number of tokens matching your server's configuration."
+				: `Maximum output must be a positive whole number no greater than the ${maximum} token context window.`,
+		);
+	}
+}
+
+async function chooseLocalLimits(ui: TemplateHost, models: ModelsJsonModel[]): Promise<ModelsJsonModel[] | undefined> {
+	const configured: ModelsJsonModel[] = [];
+	for (const model of models) {
+		const contextWindow = await chooseTokenLimit(ui, `${model.id}: context window (match the loaded server setting)`);
+		if (contextWindow === undefined) return undefined;
+		const maxTokens = await chooseTokenLimit(ui, `${model.id}: maximum output tokens`, contextWindow);
+		if (maxTokens === undefined) return undefined;
+		configured.push({ ...model, contextWindow, maxTokens });
+	}
+	return configured;
+}
+
 /**
  * `/providers` → `Add from a template`: pick a template, give the host when it has none, pick model ids and where the
  * key comes from. The entry is added to the global models.json (never with a key in it); a saved key goes to auth.json
@@ -140,6 +168,12 @@ export async function showProviderTemplates(
 	};
 	const ids = await chooseModels(ui, template, templateModels(template, sources));
 	if (!ids) return false;
+	let models = templateModelEntries(template, ids, sources);
+	if (template.kind === "local") {
+		const configured = await chooseLocalLimits(ui, models);
+		if (!configured) return false;
+		models = configured;
+	}
 	const key = await chooseKey(ui, template);
 	if (!key) return false;
 	const directory = runtime.getConfigurationDirectory();
@@ -150,7 +184,6 @@ export async function showProviderTemplates(
 	const taken = new Set([...runtime.getProviders().map((provider) => provider.id), ...saved.map((s) => s.providerId)]);
 	const id = freeProviderId(template.id, taken);
 	try {
-		const models = templateModelEntries(template, ids, sources);
 		await addTemplateProvider(
 			join(directory, "models.json"),
 			id,

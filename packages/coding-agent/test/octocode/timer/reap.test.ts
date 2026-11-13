@@ -21,7 +21,12 @@ beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: T0 });
 	root = tmp();
 	file = path.join(root, "workspaces.db");
-	agent = openDatabase({ file, archiveDir: path.join(root, "archive"), privateParent: false });
+	agent = openDatabase({
+		file,
+		mirrorFile: `${file}.transcripts`,
+		archiveDir: path.join(root, "archive"),
+		privateParent: false,
+	});
 	workspaceId = registeredWorkspace(root, agent).id;
 });
 afterEach(() => {

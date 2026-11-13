@@ -10,12 +10,13 @@ import {
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import {
 	estimateContextTokens,
-	estimateProjectedContextTokens,
+	estimateLeafContextTokens,
 	estimateTokens,
 	shouldCompact,
 } from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../features/index.ts";
-import { type ContextEditEntry, getLatestCompactionEntry } from "../session-manager.ts";
+import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+import { ancestors } from "../session-manager/ancestors.ts";
 import type { SessionInternals } from "./host.ts";
 
 export interface CompactionCheckHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
@@ -77,7 +78,13 @@ export async function checkCompaction(
 	// Skip compaction checks if this assistant message is older than the latest
 	// compaction boundary. This prevents a stale pre-compaction usage/error
 	// from retriggering compaction on the first prompt after compaction.
-	const compactionEntry = getLatestCompactionEntry(session.sessionManager.getBranch());
+	// The branch is read from the leaf back, only as far as needed: its latest compaction leads the projection, which
+	// otherwise holds none; without a leaf entry the branch is empty.
+	const sessionManager = session.sessionManager;
+	const currentProjection = sessionManager.buildSessionProjection();
+	const leaf = sessionManager.getLeafEntry();
+	const head = currentProjection.entries[0]?.sourceEntry;
+	const compactionEntry = leaf && head?.type === "compaction" ? head : null;
 	const assistantIsFromBeforeCompaction =
 		compactionEntry !== null && assistantMessage.timestamp <= new Date(compactionEntry.timestamp).getTime();
 	if (assistantIsFromBeforeCompaction) {
@@ -87,7 +94,6 @@ export async function checkCompaction(
 	// Automatic cases 1 and 2: context overflow.
 	// A length stop is recoverable when output ended below the model's original desired limit,
 	// independent of the configured context size or any context-clamped provider request limit.
-	const currentProjection = session.sessionManager.buildSessionProjection();
 	const assistantEntryId = host.findPersistedMessageEntryId(assistantMessage);
 	const assistantIsProjected =
 		assistantEntryId === undefined ||
@@ -95,9 +101,7 @@ export async function checkCompaction(
 			(entry) =>
 				entry.sourceEntry.id === assistantEntryId && entry.messages.some((message) => message.role === "assistant"),
 		);
-	const branch = session.sessionManager.getBranch();
-	const assistantIndex = assistantEntryId ? branch.findIndex((entry) => entry.id === assistantEntryId) : -1;
-	const entriesAfterAssistant = assistantIndex >= 0 ? branch.slice(assistantIndex + 1) : [];
+	const entriesAfterAssistant = assistantEntryId ? branchAfter(sessionManager, leaf, assistantEntryId) : [];
 	const hasPostAssistantContextEdit = entriesAfterAssistant.some((entry) => entry.type === "context_edit");
 	const latestAssistantEdit = entriesAfterAssistant
 		.filter((entry): entry is ContextEditEntry => entry.type === "context_edit" && entry.targetId === assistantEntryId)
@@ -117,7 +121,14 @@ export async function checkCompaction(
 		sameModel &&
 		assistantIsProjected &&
 		isRecoverableLength(assistantMessage, messageModel.maxTokens) &&
-		lengthStopNearWindow(assistantMessage, currentProjection, branch, contextWindow, messageModel.maxTokens, settings);
+		lengthStopNearWindow(
+			assistantMessage,
+			currentProjection,
+			sessionManager,
+			contextWindow,
+			messageModel.maxTokens,
+			settings,
+		);
 	if (contextOverflow || recoverableLength) {
 		const willRetry = assistantMessage.stopReason !== "stop";
 
@@ -167,7 +178,7 @@ export async function checkCompaction(
 	const hasContextEdits = projection.entries.some((entry) => entry.sourceEntry.type === "context_edit");
 	const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
 	if (hasContextEdits) {
-		contextTokens = estimateProjectedContextTokens(projection, branch).tokens;
+		contextTokens = estimateLeafContextTokens(projection, sessionManager).tokens;
 	} else if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
 		const messages = session.agent.state.messages;
 		const estimate = estimateContextTokens(messages);
@@ -181,7 +192,7 @@ export async function checkCompaction(
 				compactionEntry &&
 				usageMsg.role === "assistant" &&
 				usageMsg.timestamp <= new Date(compactionEntry.timestamp).getTime();
-			contextTokens = usageIsStale ? estimateProjectedContextTokens(projection, branch).tokens : estimate.tokens;
+			contextTokens = usageIsStale ? estimateLeafContextTokens(projection, sessionManager).tokens : estimate.tokens;
 		} else {
 			contextTokens = estimate.tokens;
 		}
@@ -213,12 +224,26 @@ function estimateTrailingTokens(messages: readonly AgentMessage[], assistantMess
 function lengthStopNearWindow(
 	message: AssistantMessage,
 	projection: ReturnType<SessionInternals["session"]["sessionManager"]["buildSessionProjection"]>,
-	branch: Parameters<typeof estimateProjectedContextTokens>[1],
+	sessionManager: Parameters<typeof estimateLeafContextTokens>[1],
 	contextWindow: number,
 	desiredMaxOutput: number,
 	settings: Parameters<typeof shouldCompact>[2],
 ): boolean {
 	const direct = calculateContextTokens(message.usage);
-	const tokens = direct > 0 ? direct : estimateProjectedContextTokens(projection, branch).tokens;
+	const tokens = direct > 0 ? direct : estimateLeafContextTokens(projection, sessionManager).tokens;
 	return shouldCompact(tokens, contextWindow, settings) || tokens + desiredMaxOutput > contextWindow;
+}
+
+/** The entries after `entryId` on the branch that ends at `leaf`, root first; empty when it is not on that branch. */
+function branchAfter(
+	sessionManager: Pick<ReadonlySessionManager, "getEntry">,
+	leaf: SessionEntry | undefined,
+	entryId: string,
+): SessionEntry[] {
+	const after: SessionEntry[] = [];
+	for (const entry of ancestors(leaf, (id) => sessionManager.getEntry(id))) {
+		if (entry.id === entryId) return after.reverse();
+		after.push(entry);
+	}
+	return [];
 }

@@ -1,6 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
-import { erase } from "./sessions.ts";
+import * as compactions from "./compactions.ts";
+import * as processSamples from "./process-samples.ts";
+import { eraseMirror, eraseRows } from "./sessions.ts";
 import { inTransaction } from "./transaction.ts";
+import * as transcripts from "./transcripts.ts";
 
 /**
  * Rows removed per table by `workspace` and `all`. Keys are table names (`sessions` counts the extras and catalog rows;
@@ -68,10 +71,10 @@ const WORKSPACE: readonly Statement[] = [
 	["timers", `DELETE FROM timers WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["memories", "DELETE FROM memories WHERE workspace_id = ?1"],
 	["agent_events", `DELETE FROM agent_events WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
-	["compaction_summaries", `DELETE FROM compaction_summaries WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["messages", "DELETE FROM messages WHERE workspace_id = ?1"],
 	["leases", "DELETE FROM leases WHERE workspace_id = ?1"],
 	["edits", "DELETE FROM edits WHERE workspace_id = ?1"],
+	["agent_runs", `DELETE FROM agent_runs WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["agents", "UPDATE agents SET lease_workspace_id = NULL WHERE lease_workspace_id = ?1 AND workspace_id <> ?1"],
 	[
 		"agents",
@@ -86,10 +89,11 @@ const WORKSPACE: readonly Statement[] = [
 ];
 
 /**
- * Removes everything the workspace owns, in one transaction: its sessions with their transcripts, entries, forks,
+ * Removes everything the workspace owns, in one transaction of the transcript mirror (`mirror`: its sessions'
+ * transcripts, entries and compaction summaries) and then one of the coordination file: its sessions with their forks,
  * compaction summaries, events and tasks (`erase`), backlog items with links, notes, comments, completions, tasks
  * and audits, command receipts, workspace-scoped memories, agent events, compaction summaries, team messages (with their
- * deliveries), leases, edits, its team members and its backlog counters, then the `workspaces` row. A member of another
+ * deliveries), leases, edits, its team members with their runs and its backlog counters, then the `workspaces` row. A member of another
  * workspace that leased files here only loses the lease link (`agents.lease_workspace_id`).
  *
  * Kept: `config_audits` (not workspace-scoped), project- and global-scope memories, `trusted_folders` (a trust decision
@@ -97,20 +101,33 @@ const WORKSPACE: readonly Statement[] = [
  * the `workspaces` row of a kept session of this workspace). Sessions without a workspace are not this workspace's.
  * Returns the rows removed per table (counts with zero rows are included).
  */
-export function workspace(db: DatabaseSync, workspaceId: string, options: PurgeOptions = {}): PurgeCounts {
-	const counts: PurgeCounts = {};
-	const kept = JSON.stringify([...(options.keepSessions ?? [])]);
+export function workspace(
+	db: DatabaseSync,
+	mirror: DatabaseSync,
+	workspaceId: string,
+	options: PurgeOptions = {},
+): PurgeCounts {
+	const keep = [...(options.keepSessions ?? [])];
+	const kept = JSON.stringify(keep);
+	const ids = () => sessionsOf(db, workspaceId).filter((id) => !keep.includes(id));
+	// The mirror first (its lock is always taken before the coordination file's), then the coordination rows.
+	const counts: PurgeCounts = inTransaction(mirror, () => ({
+		...eraseMirror(mirror, ids()),
+		compaction_summaries: compactions.purgeWorkspace(mirror, workspaceId, keep),
+	}));
 	inTransaction(db, () => {
-		const keep = new Set(options.keepSessions);
-		const ids = db
-			.prepare("SELECT id FROM sessions WHERE workspace_id = ?")
-			.all(workspaceId)
-			.map((row) => String(row.id))
-			.filter((id) => !keep.has(id));
-		for (const [table, n] of Object.entries(erase(db, ids))) counts[table] = n;
+		for (const [table, n] of Object.entries(eraseRows(db, ids()))) counts[table] = n;
 		withoutAuditGuards(db, () => run(db, WORKSPACE, counts, workspaceId, kept));
 	});
 	return counts;
+}
+
+/** The ids of the sessions bound to `workspaceId`. */
+function sessionsOf(db: DatabaseSync, workspaceId: string): string[] {
+	return db
+		.prepare("SELECT id FROM sessions WHERE workspace_id = ?")
+		.all(workspaceId)
+		.map((row) => String(row.id));
 }
 
 /** `?1` is the JSON list of kept session ids. */
@@ -130,12 +147,11 @@ const ALL: readonly Statement[] = [
 	["edits", "DELETE FROM edits"],
 	["agent_events", `DELETE FROM agent_events WHERE ${outside("session_id")}`],
 	["agents", `DELETE FROM agents WHERE ${outside("session_id")} AND ${outside("lifecycle_session_id")}`],
-	["compaction_summaries", `DELETE FROM compaction_summaries WHERE ${outside("session_id")}`],
-	["session_entries", `DELETE FROM session_entries WHERE ${outside("session_id")}`],
-	["session_transcripts", `DELETE FROM session_transcripts WHERE ${outside("session_id")}`],
+	["agent_runs", `DELETE FROM agent_runs WHERE ${outside("session_id")}`],
 	["session_forks", `DELETE FROM session_forks WHERE NOT (child_id IN ${K} AND parent_id IN ${K})`],
 	["sessions", `DELETE FROM sessions WHERE ${outside("id")}`],
 	["memories", "DELETE FROM memories"],
+	["shell_history", "DELETE FROM shell_history"],
 	["meta", `DELETE FROM meta WHERE ${marks("key")}`],
 	// A kept agent may lease a workspace that goes next: drop that link first, or the workspace delete fails its FK.
 	[
@@ -149,15 +165,27 @@ const ALL: readonly Statement[] = [
 ];
 
 /**
- * Empties every data table in one transaction and keeps the schema (tables, indexes, triggers, FTS index, application
- * id and `user_version`), so the file opens as before. Kept: `trusted_folders` (security decisions, like settings and
+ * Empties every data table, in one transaction of the transcript mirror (`mirror`) and then one of the coordination
+ * file, and keeps the schema (tables, indexes, triggers, FTS index, application id and `user_version`), so both files
+ * open as before. Kept: `trusted_folders` (security decisions, like settings and
  * authentication outside the database), `meta` rows other than the workspace backlog counters (memory auto-save
  * setting, registered session folders, sweep claims), and what `options.keepSessions` names with the `workspaces` rows
- * they reference. Run `maintenance.vacuum` after it to give the space back.
+ * they reference. Run `maintenance.vacuum` on each file after it to give the space back.
  */
-export function all(db: DatabaseSync, options: PurgeOptions = {}): PurgeCounts {
-	const counts: PurgeCounts = {};
-	const kept = JSON.stringify([...(options.keepSessions ?? [])]);
-	inTransaction(db, () => withoutAuditGuards(db, () => run(db, ALL, counts, kept)));
+export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOptions = {}): PurgeCounts {
+	const keep = [...(options.keepSessions ?? [])];
+	const counts: PurgeCounts = inTransaction(mirror, () => {
+		const removed = transcripts.keepOnly(mirror, keep);
+		return {
+			compaction_summaries: compactions.keepOnly(mirror, keep),
+			session_entries: removed.entries,
+			session_transcripts: removed.transcripts,
+		};
+	});
+	const kept = JSON.stringify(keep);
+	inTransaction(db, () => {
+		withoutAuditGuards(db, () => run(db, ALL, counts, kept));
+		counts.process_samples = processSamples.keepOnly(db, keep);
+	});
 	return counts;
 }

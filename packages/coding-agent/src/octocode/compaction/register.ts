@@ -1,10 +1,11 @@
 import path from "node:path";
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	SessionBeforeCompactEvent,
-	SessionCompactEvent,
+import {
+	type ExtensionAPI,
+	type ExtensionContext,
+	readsMessagesOnly,
+	type SessionBeforeCompactEvent,
+	type SessionCompactEvent,
 } from "../../core/features/index.ts";
 import { appliedFileOutcomes, contextReads, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
@@ -269,24 +270,28 @@ export function registerCompaction(
 	});
 	// The restored files count as read from the first model call that carries them (Octocode may hold the message until the
 	// running turn ends).
-	api.on("context", async (event, ctx) => {
-		// Before every request, in a run or at its start: old results are cleared when this request rewrites the cache anyway
-		// (an idle gap or a long tool past its lifetime, a model switch, a folded system update) or when clearing them costs
-		// less than re-sending them (`clearing-cost.ts`). A bash result is cleared only when its command is read-only, which
-		// the bash parse must confirm: load it first.
-		await shellParserReady();
-		const usage = ctx.getContextUsage();
-		clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
-			rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
-			// A usage without a known window reports 0.
-			contextWindow: usage !== undefined && usage.contextWindow > 0 ? usage.contextWindow : ctx.model?.contextWindow,
-			...(typeof usage?.tokens === "number" ? { contextTokens: usage.tokens } : {}),
-		});
-		if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
-		// Every request shows the messages as `requestView` describes; the cache-sharing summary request uses it too.
-		const messages = requestView(event.messages, ctx.sessionManager, ctx.model);
-		return messages === event.messages ? undefined : { messages };
-	});
+	// Never edits a message: `requestView` returns copies of the ones it changes (`thinking.ts`, `clearing.ts`).
+	api.on(
+		"context",
+		readsMessagesOnly(async (event, ctx) => {
+			// Before every request, in a run or at its start: old results are cleared when this request rewrites the cache anyway
+			// (an idle gap or a long tool past its lifetime, a model switch, a folded system update) or when clearing them costs
+			// less than re-sending them (`clearing-cost.ts`). A bash result is cleared only when its command is read-only, which
+			// the bash parse must confirm: load it first.
+			await shellParserReady();
+			const usage = ctx.getContextUsage();
+			clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
+				rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
+				// A usage without a known window reports 0.
+				contextWindow: usage !== undefined && usage.contextWindow > 0 ? usage.contextWindow : ctx.model?.contextWindow,
+				...(typeof usage?.tokens === "number" ? { contextTokens: usage.tokens } : {}),
+			});
+			if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
+			// Every request shows the messages as `requestView` describes; the cache-sharing summary request uses it too.
+			const messages = requestView(event.messages, ctx.sessionManager, ctx.model);
+			return messages === event.messages ? undefined : { messages };
+		}),
+	);
 	api.on("session_tree", async (_event, ctx) => {
 		tooLarge.reset();
 		restoreCandidates = [];

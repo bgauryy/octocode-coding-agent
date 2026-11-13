@@ -119,7 +119,8 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 	}
 
 	private async handleOpenExternalEditor(): Promise<void> {
-		const content = this.editor.getText();
+		// The external editor gets pasted text in full, as the main editor sends it.
+		const content = this.editor.getExpandedText();
 		this.notice.setText("");
 		this.tui.stop();
 		try {

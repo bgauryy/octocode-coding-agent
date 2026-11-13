@@ -59,7 +59,9 @@ describe("buildSystemPrompt", () => {
 				skills: [testSkill],
 			});
 			// The reader is a declared tool with its own description: the skill hint names none.
-			expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
+			expect(prompt).toContain(
+				"Load the file of every skill whose description matches the task before other work; several can apply.",
+			);
 			expect(prompt).not.toContain("read_file");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
 			expect(prompt).not.toContain("Use the read tool");
@@ -83,7 +85,7 @@ describe("buildSystemPrompt", () => {
 				skills: [testSkill],
 			});
 			expect(prompt).toContain(
-				"Use the skill tool, one call per name, to load every skill whose description matches the task; several can apply.",
+				"Use the skill tool (one call per name) to load every skill whose description matches the task before other work; several can apply.",
 			);
 			// The skill tool's description owns how a loaded skill's relative paths resolve.
 			expect(prompt).not.toContain("resolve it against the skill directory");
@@ -102,7 +104,9 @@ describe("buildSystemPrompt", () => {
 				contextFiles: [],
 				skills: [testSkill],
 			});
-			expect(prompt).toContain("Load the file of every skill whose description matches the task; several can apply.");
+			expect(prompt).toContain(
+				"Load the file of every skill whose description matches the task before other work; several can apply.",
+			);
 			expect(prompt).not.toContain("skill tool");
 		});
 
@@ -123,7 +127,7 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).not.toContain("other custom tools");
 		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
 		// The docs section points at the documentation once and restates no reading rule.
-		expect(prompt.match(/Octocode's own documentation is under/g)).toHaveLength(1);
+		expect(prompt.match(/Octocode documentation:/g)).toHaveLength(1);
 		// SDK sessions without an `octocode` section keep the core communication floor.
 		expect(prompt).toContain("- Be concise in your responses");
 	});
@@ -220,8 +224,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toMatch(/Octocode's own documentation is under \S+ \(not the working directory\)/);
-			expect(prompt).toContain("README.md and docs/ (docs/index.md maps topics to pages)");
+			expect(prompt).toMatch(/Octocode documentation: \S+ \(not the working directory\)/);
+			expect(prompt).toContain("README.md and docs/; docs/index.md maps topics to pages.");
 			expect(prompt).not.toContain("examples/");
 		});
 	});
@@ -334,7 +338,7 @@ describe("buildSystemPrompt", () => {
 
 		test("keeps skills without naming a hidden reader", () => {
 			expect(build(["read", "bash"])).toContain(
-				"\nLoad the file of every skill whose description matches the task; several can apply.",
+				"\nLoad the file of every skill whose description matches the task before other work; several can apply.",
 			);
 			expect(build(["read"])).toContain("Use bash to load the file of every skill");
 			// Octocode ships no `read` tool: a tool registered under that name is not a skill loader.

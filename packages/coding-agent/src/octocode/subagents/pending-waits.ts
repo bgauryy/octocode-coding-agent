@@ -43,10 +43,24 @@ export interface ReplyWait {
 	to: readonly string[];
 }
 
-/** What `noteWaits` keeps: the count, and the replies among it that only their own answer settles. */
+/** A background job or timer started by this run; notices from earlier runs must not settle it. */
+export interface WorkWait {
+	kind: "job" | "timer";
+	call: unknown;
+	id?: string | number;
+	log?: string;
+	/** This job's declared deadline and settling allowance; removed with the matching wait. */
+	until?: number;
+	timeoutMs?: number;
+}
+
+/** What `noteWaits` keeps: identified work and replies, and their combined count. */
 export interface WaitState {
 	waits: number;
 	replies: ReplyWait[];
+	workWaits: WorkWait[];
+	/** RPC tool-end events omit args; retain each wait operation's input until its result. */
+	waitInputs: Map<unknown, unknown>;
 }
 
 const isReplyRequest = (event: Record<string, unknown>): boolean =>
@@ -75,26 +89,81 @@ function answers(wait: ReplyWait, incoming: Record<string, unknown>): boolean {
 
 /**
  * Counts what the child waits on, from its own events: a background job, a timer or a reply it asked for is pending until
- * its completion, wake or answer arrives (a failed call started nothing). A requested reply is settled only by its own
- * answer (a reply to that message, or a message from the one asked), so an unrelated team message does not end it. An
- * `every` timer stays counted until the run ends.
+ * its matching completion or answer arrives (a failed call started nothing). A repeating timer stays pending through
+ * active wakes, until it ends or is cancelled. Unrelated or repeated notices cannot consume another wait.
  */
-export function noteWaits(state: WaitState, event: Record<string, unknown>): void {
+export function noteWaits(state: WaitState, inputEvent: Record<string, unknown>): void {
+	let event = inputEvent;
+	if (event.type === "tool_execution_start" && (event.toolName === "timer" || isReplyRequest(event)))
+		state.waitInputs.set(event.toolCallId, event.args);
+	else if (event.type === "tool_execution_end" && state.waitInputs.has(event.toolCallId)) {
+		const args = state.waitInputs.get(event.toolCallId);
+		state.waitInputs.delete(event.toolCallId);
+		event = { ...event, args };
+	}
 	if (event.type === "tool_execution_start" && startsWait(event)) {
-		state.waits++;
 		if (isReplyRequest(event)) state.replies.push(replyOf(event));
-	} else if (event.type === "tool_execution_end" && startsWait(event)) {
-		const index = state.replies.findIndex((wait) => wait.call === event.toolCallId);
-		if (event.isError === true) {
-			state.waits = Math.max(0, state.waits - 1);
-			if (index >= 0) state.replies.splice(index, 1);
-		} else if (index >= 0) state.replies[index] = replyOf(event);
+		else state.workWaits.push({ kind: event.toolName === "bash" ? "job" : "timer", call: event.toolCallId });
+	} else if (event.type === "tool_execution_end" && (startsWait(event) || event.toolName === "bash")) {
+		if (isReplyRequest(event)) {
+			const index = state.replies.findIndex((wait) => wait.call === event.toolCallId);
+			if (index >= 0) {
+				if (event.isError === true) state.replies.splice(index, 1);
+				else state.replies[index] = replyOf(event);
+			}
+		} else finishStart(state, event);
+	} else if (event.type === "tool_execution_end" && event.toolName === "timer" && event.isError !== true) {
+		const args = isRecord(event.args) ? event.args : {};
+		if (args.op === "cancel")
+			state.workWaits = state.workWaits.filter(
+				(wait) => wait.kind !== "timer" || (args.all !== true && wait.id !== args.id),
+			);
 	} else if (event.type === "message_end" && isRecord(event.message)) {
 		const { customType, details } = event.message;
-		if (customType === JOB_TYPE || customType === TIMER_TYPE) state.waits = Math.max(0, state.waits - 1);
-		else if (customType === INTERNAL_MESSAGE_TYPE)
+		if ((customType === JOB_TYPE || customType === TIMER_TYPE) && isRecord(details)) {
+			const kind = customType === JOB_TYPE ? "job" : "timer";
+			const terminal = ["done", "cancelled", "expired", "failed"].some((status) => status === details.status);
+			if (kind === "job" || terminal) {
+				const index = state.workWaits.findIndex(
+					(wait) =>
+						wait.kind === kind &&
+						wait.id !== undefined &&
+						wait.id === details.id &&
+						(wait.log === undefined || details.log === undefined || wait.log === details.log),
+				);
+				if (index >= 0) state.workWaits.splice(index, 1);
+			}
+		} else if (customType === INTERNAL_MESSAGE_TYPE)
 			settleReplies(state, isRecord(details) ? details.messages : undefined);
 	}
+	state.waits = state.workWaits.length + state.replies.length;
+}
+
+/** The start result identifies exactly the work its call created; an unmatched failure removes nothing. */
+function finishStart(state: WaitState, event: Record<string, unknown>): void {
+	const kind = event.toolName === "bash" ? "job" : "timer";
+	const details = isRecord(event.result) && isRecord(event.result.details) ? event.result.details : {};
+	const timer = isRecord(details.timer) ? details.timer : {};
+	const id = kind === "job" ? details.job : timer.id;
+	const index = state.workWaits.findIndex((wait) => wait.kind === kind && wait.call === event.toolCallId);
+	if (index < 0) {
+		// A foreground bash command can move to the background after its call starts.
+		if (kind === "job" && event.isError !== true && typeof id === "string")
+			state.workWaits.push({
+				kind,
+				call: event.toolCallId,
+				id,
+				...(typeof details.log === "string" ? { log: details.log } : {}),
+			});
+		return;
+	}
+	if (event.isError === true) {
+		state.workWaits.splice(index, 1);
+		return;
+	}
+	const wait = state.workWaits[index];
+	if (typeof id === "number" || typeof id === "string") wait.id = id;
+	if (kind === "job" && typeof details.log === "string") wait.log = details.log;
 }
 
 /** Drops each requested reply that one of the delivered messages answers. */
@@ -104,6 +173,5 @@ function settleReplies(state: WaitState, messages: unknown): void {
 		const index = state.replies.findIndex((wait) => answers(wait, message));
 		if (index < 0) continue;
 		state.replies.splice(index, 1);
-		state.waits = Math.max(0, state.waits - 1);
 	}
 }

@@ -48,8 +48,13 @@ const octocodeCommand = createOctocodeCommand();
 type Factory = (tui: unknown, theme: unknown, keys: unknown, done: (value: unknown) => void) => unknown;
 
 /** A terminal UI whose `custom` builds the component, as interactive mode does; `slotTaken` resolves it at once, as when another dialog replaces it. */
-function terminal(options: { slotTaken?: boolean } = {}) {
-	const tui = { stop: vi.fn(), start: vi.fn(), requestRender: vi.fn() };
+function terminal(options: { slotTaken?: boolean; drainOutput?: () => Promise<boolean> } = {}) {
+	const tui = {
+		stop: vi.fn(),
+		start: vi.fn(),
+		requestRender: vi.fn(),
+		...(options.drainOutput ? { terminal: { drainOutput: options.drainOutput } } : {}),
+	};
 	const notify = vi.fn();
 	const inputs: Array<(data: string) => { consume?: boolean } | undefined> = [];
 	const custom = vi.fn(
@@ -161,6 +166,41 @@ describe("/octocode on the terminal", () => {
 		await running;
 
 		expect(children[0].kill).toHaveBeenCalledOnce();
+		expect(tui.start).toHaveBeenCalledOnce();
+		expect(foregroundChildActive()).toBe(false);
+	});
+
+	it("starts the CLI only after the TUI's restore output reached the terminal", async () => {
+		let drained!: (value: boolean) => void;
+		const drainOutput = vi.fn(() => new Promise<boolean>((resolve) => (drained = resolve)));
+		const { ctx } = terminal({ drainOutput });
+
+		const running = octocodeCommand.handler("config", ctx);
+		await vi.waitFor(() => expect(drainOutput).toHaveBeenCalledOnce());
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(children).toHaveLength(0);
+		expect(process.stdout.write).not.toHaveBeenCalledWith(expect.stringContaining("Running octocode config"));
+		drained(true);
+		await started();
+		children[0].end(0);
+		await tty.press();
+		await running;
+	});
+
+	it("starts nothing when the command is aborted while the restore output drains", async () => {
+		let drained!: (value: boolean) => void;
+		const drainOutput = vi.fn(() => new Promise<boolean>((resolve) => (drained = resolve)));
+		const abort = new AbortController();
+		const { ctx, tui } = terminal({ drainOutput });
+		Object.assign(ctx, { signal: abort.signal });
+
+		const running = octocodeCommand.handler("auth login", ctx);
+		await vi.waitFor(() => expect(drainOutput).toHaveBeenCalledOnce());
+		abort.abort();
+		drained(true);
+		await running;
+
+		expect(children).toHaveLength(0);
 		expect(tui.start).toHaveBeenCalledOnce();
 		expect(foregroundChildActive()).toBe(false);
 	});

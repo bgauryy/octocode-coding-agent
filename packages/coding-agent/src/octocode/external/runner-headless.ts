@@ -61,7 +61,7 @@ interface HeadlessTurnInput {
 	runner: string;
 	command: string;
 	args: readonly string[];
-	billing: RunnerBilling;
+	billing?: RunnerBilling;
 	model?: string;
 	cwd: string;
 	/** The session's own folder: a task elsewhere runs in its worktree. */
@@ -78,7 +78,7 @@ export interface HeadlessReply {
 	stopReason?: string;
 	usage?: ExternalUsage;
 	cost?: number;
-	billing: RunnerBilling;
+	billing?: RunnerBilling;
 }
 
 /** A failure Claude Code reports as its sign-in: the caller drops the cached check, as for ACP `auth_required`. */

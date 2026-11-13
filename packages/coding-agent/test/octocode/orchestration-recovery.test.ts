@@ -68,7 +68,7 @@ describe("report sends after the timed retries gave up", () => {
 			f.api.sendMessage = (message, options) =>
 				down ? Promise.reject(new Error("prepareRun failed")) : send(message, options);
 			const warned: string[] = [];
-			const queue = new ReportQueue(f.api, 60_000);
+			const queue = new ReportQueue(f.api);
 			queue.start(
 				{
 					getSessionFile: () => undefined,
@@ -112,7 +112,7 @@ describe("report sends after the timed retries gave up", () => {
 				calls++;
 				return calls === 1 ? Promise.reject(new Error("once")) : send(message, options);
 			};
-			const queue = new ReportQueue(f.api, 60_000);
+			const queue = new ReportQueue(f.api);
 			queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 			queue.add(report("soon"));
 			queue.flush();

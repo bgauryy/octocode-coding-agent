@@ -1,6 +1,7 @@
 import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
 import { keyHint, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
+import { plainText } from "../styled-line.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
 import type { SessionScope } from "./types.ts";
 
@@ -96,7 +97,7 @@ export class SessionSelectorHeader implements Component {
 
 	setStatusMessage(msg: { type: "info" | "error"; message: string } | null, autoHideMs?: number): void {
 		this.clearStatusTimeout();
-		this.statusMessage = msg;
+		this.statusMessage = msg ? { ...msg, message: plainText(msg.message) } : null;
 		if (!msg || !autoHideMs) return;
 
 		this.statusTimeout = setTimeout(() => {

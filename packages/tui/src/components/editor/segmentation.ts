@@ -74,7 +74,7 @@ export function segmentWithMarkers(
 }
 
 /** Replace paste markers with the pasted content they stand for. */
-export function expandPasteMarkers(text: string, pastes: Map<number, string>): string {
+export function expandPasteMarkers(text: string, pastes: ReadonlyMap<number, string>): string {
 	let result = text;
 	for (const [pasteId, pasteContent] of pastes) {
 		const markerRegex = new RegExp(`\\[paste #${pasteId}( (\\+\\d+ lines|\\d+ chars))?\\]`, "g");

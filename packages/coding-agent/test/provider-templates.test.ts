@@ -7,7 +7,12 @@ import { getModelsPath } from "../src/config.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { vendorChatModels } from "../src/core/provider-composer/known-models.ts";
 import { NO_KEY } from "../src/core/models-json-keys.ts";
-import { addTemplateProvider, freeProviderId, templateProviderEntry } from "../src/core/provider-templates/apply.ts";
+import {
+	addTemplateProvider,
+	freeProviderId,
+	templateBaseUrl,
+	templateProviderEntry,
+} from "../src/core/provider-templates/apply.ts";
 import {
 	type ListedModel,
 	type TemplateModelSources,
@@ -18,7 +23,7 @@ import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../src/core/provider-
 import { showProviderTemplates } from "../src/modes/interactive/interactive-mode/provider-template.ts";
 import { createSandbox, type Sandbox, write } from "./discovery/fixtures.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
-import { createModelRegistry } from "./model-runtime-test-utils.ts";
+import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
 
 const template = (id: string): ProviderTemplate => {
 	const found = PROVIDER_TEMPLATES.find((entry) => entry.id === id);
@@ -87,6 +92,22 @@ describe("provider template catalog", () => {
 			"openai/gpt-oss-120b",
 		]);
 		expect(templateModels(template("hyperbolic"), sources)).toEqual([]);
+	});
+
+	test("local servers and hosted services do not offer another provider's model ids", () => {
+		const completionsModel = {
+			...getBuiltinModels("openai")[0],
+			id: "hosted-only-model",
+			name: "Hosted only",
+			api: "openai-completions" as const,
+			contextWindow: 128000,
+		};
+		const ownSources: TemplateModelSources = { ...sources, vendorModels: () => [completionsModel] };
+		for (const id of ["ollama", "lmstudio", "vllm", "hyperbolic"]) {
+			expect(templateModels(template(id), ownSources), id).toEqual([]);
+		}
+		expect(templateModels(template("nebius"), ownSources).map((model) => model.id)).not.toContain("hosted-only-model");
+		expect(templateModels(template("litellm"), ownSources).map((model) => model.id)).toContain("hosted-only-model");
 	});
 });
 
@@ -170,6 +191,39 @@ describe("applying a template", () => {
 		expect(() =>
 			templateProviderEntry(template("openai-gateway"), { key: { kind: "saved" }, models: [{ id: "x" }] }),
 		).toThrow(/needs the host/);
+	});
+
+	test("invalid host errors do not echo input that may carry credentials", () => {
+		expect(() => templateBaseUrl(template("ollama"), "http://pasted-sensitive-token@[invalid")).toThrow(
+			/^Not a valid URL\. Give the full address, for example http:\/\/localhost:11434\/v1\.$/,
+		);
+		expect(() => templateBaseUrl(template("ollama"), "file:///local/path")).toThrow(
+			"The host must start with http:// or https://.",
+		);
+	});
+
+	test("a local no-key template produces an available model with the configured endpoint and protocol", async () => {
+		await addTemplateProvider(
+			file,
+			"ollama",
+			templateProviderEntry(template("ollama"), { key: { kind: "none" }, models: [{ id: "qwen3:8b" }] }),
+		);
+		const registry = await createModelRegistry(AuthStorage.inMemory(), file);
+		const runtime = getModelRuntime(registry);
+		try {
+			expect(registry.getError()).toBeUndefined();
+			const model = registry.find("ollama", "qwen3:8b")!;
+			expect(model).toMatchObject({
+				baseUrl: "http://localhost:11434/v1",
+				api: "openai-completions",
+				compat: { maxTokensField: "max_tokens", supportsStore: false, supportsDeveloperRole: false },
+			});
+			expect(await runtime.getAvailable()).toContainEqual(model);
+			expect(await runtime.getAuth(model)).toMatchObject({ auth: { apiKey: NO_KEY } });
+			expect(await runtime.listCredentials()).toEqual([]);
+		} finally {
+			runtime.dispose();
+		}
 	});
 
 	test("a gateway template's vendor ids load with the vendor's metadata; catalog ids with the listing's", async () => {

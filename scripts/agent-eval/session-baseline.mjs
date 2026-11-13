@@ -2,8 +2,9 @@
 /**
  * The baseline over stored sessions: cache read share per day and role, tool calls per tool per role, sessions that
  * start two or more children, output tokens spent on `reason`, reports whose first word is not an outcome word, and
- * first prompts replayed against stored memories. Offline and read-only: it opens the agent database read-only (no
- * migration, no write), calls no model, and writes only when `--out` names a file under `.octocode/tmp/`.
+ * first prompts replayed against stored memories. Offline and read-only: it opens the agent database and its transcript
+ * mirror beside it (`transcripts.db`) read-only (no migration, no write), calls no model, and writes only when `--out`
+ * names a file under `.octocode/tmp/`.
  *
  *   node scripts/agent-eval/session-baseline.mjs [--db <workspaces.db>] [--out .octocode/tmp/<file>.md] [--json]
  */
@@ -12,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentRuns, memories, openReadOnlyDb, transcripts } from "../../packages/db/src/api.ts";
+import { transcriptDbPath } from "../../packages/coding-agent/src/storage/state-paths.ts";
 import { renderBaseline } from "./lib/session-baseline-report.mjs";
 import { sessionBaseline } from "./lib/session-baseline.mjs";
 
@@ -43,17 +45,22 @@ export function outputPath(file, tmp = TMP) {
 	return resolved;
 }
 
-/** Reads the rows through the database API on a read-only connection and folds them into the baseline. */
+/**
+ * Reads the rows through the database API on read-only connections (the coordination file and its transcript mirror)
+ * and folds them into the baseline.
+ */
 export function readBaseline(file) {
 	const db = openReadOnlyDb(file);
+	const mirror = openReadOnlyDb(transcriptDbPath(file));
 	try {
 		return sessionBaseline({
-			headers: transcripts.headers(db),
-			entries: transcripts.scan(db, ENTRY_TYPES),
+			headers: transcripts.headers(mirror),
+			entries: transcripts.scan(mirror, ENTRY_TYPES),
 			runs: agentRuns.recent(db, { limit: ALL_RUNS }),
 			memories: memories.texts(db),
 		});
 	} finally {
+		mirror.close();
 		db.close();
 	}
 }

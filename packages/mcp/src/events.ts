@@ -12,9 +12,12 @@ import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.
 import { reportProblems } from "./report.ts";
 import { say, sayUntrustedProject } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
+import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { isSelected } from "./exposure.ts";
 import { deferralOf } from "./deferral.ts";
+import { restoreRecentTools, saveRecentTools } from "./recent-session.ts";
+import { handOver, takeHanded } from "./handover.ts";
 import {
 	MCP_STATUS_SECTION,
 	MCPS_SECTION,
@@ -129,9 +132,13 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		sayUntrustedProject(ctx);
 		state.waitedForStartup = false;
 		state.startupGate.close();
+		// A subagent that runs on its coordinator's skill snapshot has its skill folders already: discovery cannot change
+		// its servers' launches, so they start now instead of after every other start handler.
+		if (envFlag(process.env, SUBAGENT_ENV) && process.env[SKILL_SNAPSHOT_FILE_ENV]) state.startupGate.open();
 		state.sessionCwd = ctx.cwd;
-		// The recent-tool set is read per folder, so it is dropped once the new folder is set.
-		state.forgetRecentTools();
+		// The recent-tool set is read per folder, so it is dropped once the new folder is set; a session that saved the
+		// set it declared declares it again (`recent-session.ts`), so a resume keeps the provider's cached prompt.
+		restoreRecentTools(state, ctx);
 		state.modelRegistry = ctx.modelRegistry;
 		state.session = new AbortController();
 		const { signal } = state.session;
@@ -191,6 +198,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			server.unselected = isEnabled(server) && !isSelected(state.api, server.entry, state.taskNamed);
 		state.emitChange();
 		const enabled = state.servers.filter((server) => isEnabled(server) && !server.unselected);
+		// What the replaced session handed over (`handover.ts`): the servers started here may keep their process.
+		const { taken, closing } = takeHanded(enabled);
+		for (const close of closing) void state.track(close);
 		if (enabled.length === 0) {
 			reportProblems(state, ctx);
 			return;
@@ -198,7 +208,14 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		// The MCP client loads only now, so sessions without servers never pay for it. Waiting for the session's
 		// resources (`startup-gate.ts`) also lets the first render happen before loading and connecting.
 		const runtime = state.startupGate.ready.then(() => loadMcpRuntime());
-		state.pending = Promise.all(enabled.map((server) => startConnection(state, server, runtime)))
+		state.pending = Promise.all(
+			enabled.map((server) => {
+				const handed = taken.get(server.entry.name);
+				const start = startConnection(state, server, runtime, true, handed);
+				// The session's end waits for a handed connection to be adopted or closed.
+				return handed ? state.track(start) : start;
+			}),
+		)
 			.then(() => {
 				if (!signal.aborted) reportProblems(state, ctx);
 			})
@@ -323,7 +340,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		await applyServerChanges(state, ctx, removed, added);
 	});
 
-	api.on("session_shutdown", async () => {
+	api.on("agent_start", () => saveRecentTools(state));
+
+	api.on("session_shutdown", async (event: { reason?: unknown }) => {
 		// Nothing launches after the abort below; what waited for the gate settles.
 		state.startupGate.open();
 		state.unregisterHookCaller?.();
@@ -333,12 +352,13 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.unregisterReload?.();
 		state.unregisterReload = undefined;
 		state.session.abort();
-		const closing = state.connections();
+		// A session replaced by another in this process hands its idle connections over; the rest close.
+		const { closing } = handOver(state, event?.reason);
 		state.servers = [];
 		state.emitChange();
 		await Promise.all([
 			...state.backgroundActions,
-			...closing.map((connection) => connection.close()),
+			...closing,
 			...(state.options.presets ?? []).map((preset) => preset.dispose?.(state.sessionCwd)),
 		]);
 	});

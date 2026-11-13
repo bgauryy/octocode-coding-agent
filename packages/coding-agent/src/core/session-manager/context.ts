@@ -11,15 +11,6 @@ import type {
 } from "./types.ts";
 import { getCompactionSystemFields, getSystemBaseDelta } from "./system-base.ts";
 
-export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
-	for (let i = entries.length - 1; i >= 0; i--) {
-		if (entries[i].type === "compaction") {
-			return entries[i] as CompactionEntry;
-		}
-	}
-	return null;
-}
-
 function buildEntryIndex(entries: SessionEntry[], byId?: Map<string, SessionEntry>): Map<string, SessionEntry> {
 	if (byId) return byId;
 	const index = new Map<string, SessionEntry>();
@@ -46,21 +37,31 @@ function buildSessionPath(
 	return branchPath(index, leaf);
 }
 
-function getSessionContextSettings(path: SessionEntry[]): Pick<SessionContext, "thinkingLevel" | "model"> {
-	let thinkingLevel = "off";
-	let model: { provider: string; modelId: string } | null = null;
-
-	for (const entry of path) {
-		if (entry.type === "thinking_level_change") {
-			thinkingLevel = entry.thinkingLevel;
-		} else if (entry.type === "model_change") {
-			model = { provider: entry.provider, modelId: entry.modelId };
-		} else if (entry.type === "message" && entry.message.role === "assistant") {
-			model = { provider: entry.message.provider, modelId: entry.message.model };
-		}
+/** Whether `entries` is already the root-first path that ends at its last entry: unique ids, each the parent of the next. */
+function isLinearPath(entries: readonly SessionEntry[]): boolean {
+	const ids = new Set<string>();
+	for (let i = 0; i < entries.length; i++) {
+		const entry = entries[i];
+		if (ids.has(entry.id) || (i > 0 && entry.parentId !== entries[i - 1].id)) return false;
+		ids.add(entry.id);
 	}
+	return true;
+}
 
-	return { thinkingLevel, model };
+/** The thinking level and model a path's entries set, the later entry winning. */
+interface ContextSettings {
+	thinkingLevel: string;
+	model: { provider: string; modelId: string } | null;
+}
+
+function applyContextSettings(settings: ContextSettings, entry: SessionEntry): void {
+	if (entry.type === "thinking_level_change") {
+		settings.thinkingLevel = entry.thinkingLevel;
+	} else if (entry.type === "model_change") {
+		settings.model = { provider: entry.provider, modelId: entry.modelId };
+	} else if (entry.type === "message" && entry.message.role === "assistant") {
+		settings.model = { provider: entry.message.provider, modelId: entry.message.model };
+	}
 }
 
 /**
@@ -97,36 +98,17 @@ export function sessionEntryToContextMessages(entry: SessionEntry): AgentMessage
 	return [];
 }
 
-/**
- * Build the active, compaction-aware session entry list.
- *
- * This follows the current leaf path. If the path contains compaction entries,
- * the latest compaction is represented by the compaction entry itself, followed
- * by the kept entries starting at firstKeptEntryId and all entries after the
- * compaction entry. Older summarized entries are omitted.
- */
-export function buildContextEntries(
-	entries: SessionEntry[],
-	leafId?: string | null,
-	byId?: Map<string, SessionEntry>,
-): SessionEntry[] {
-	const path = buildSessionPath(entries, leafId, byId);
-	let compaction: CompactionEntry | null = null;
-
-	for (const entry of path) {
-		if (entry.type === "compaction") {
-			compaction = entry;
+/** The context entries of a root-first path: everything, or from the latest compaction (see `buildContextEntries`). */
+function contextEntriesOfPath(path: SessionEntry[]): SessionEntry[] {
+	let compactionIdx = -1;
+	for (let i = path.length - 1; i >= 0; i--) {
+		if (path[i].type === "compaction") {
+			compactionIdx = i;
+			break;
 		}
 	}
-
-	if (!compaction) {
-		return path;
-	}
-
-	const compactionIdx = path.findIndex((entry) => entry.id === compaction.id);
-	if (compactionIdx < 0) {
-		return path;
-	}
+	if (compactionIdx < 0) return path;
+	const compaction = path[compactionIdx] as CompactionEntry;
 
 	const contextEntries: SessionEntry[] = [compaction];
 	// Kept system messages replay in place when the compaction's state stops at the boundary; an older entry's state
@@ -142,8 +124,24 @@ export function buildContextEntries(
 			contextEntries.push(entry);
 		}
 	}
-	contextEntries.push(...path.slice(compactionIdx + 1));
+	for (let i = compactionIdx + 1; i < path.length; i++) contextEntries.push(path[i]);
 	return contextEntries;
+}
+
+/**
+ * Build the active, compaction-aware session entry list.
+ *
+ * This follows the current leaf path. If the path contains compaction entries,
+ * the latest compaction is represented by the compaction entry itself, followed
+ * by the kept entries starting at firstKeptEntryId and all entries after the
+ * compaction entry. Older summarized entries are omitted.
+ */
+export function buildContextEntries(
+	entries: SessionEntry[],
+	leafId?: string | null,
+	byId?: Map<string, SessionEntry>,
+): SessionEntry[] {
+	return contextEntriesOfPath(buildSessionPath(entries, leafId, byId));
 }
 
 /**
@@ -174,33 +172,128 @@ export function projectContextEntry(entry: SessionEntry, edit: ContextEditEntry 
 	});
 }
 
+/**
+ * A branch's projection kept as the parts later appends extend (`extendProjection`), so a session can keep the projection
+ * of its leaf instead of rebuilding it from the whole branch for every read (`projection-memo.ts`).
+ */
+export interface ProjectionParts extends ContextSettings {
+	/** What `buildContextEntries` returns for the branch. */
+	contextEntries: SessionEntry[];
+	/** One per context entry, in order. */
+	projected: ProjectedSessionEntry[];
+	/** Index in `contextEntries` by entry id. */
+	positions: Map<string, number>;
+	/** The latest context edit in the context by target id. */
+	edits: Map<string, ContextEditEntry>;
+	/** The projected messages in order; undefined after an edit changed an earlier entry, until `projectionOf` rebuilds them. */
+	messages: AgentMessage[] | undefined;
+}
+
+// buildContextEntries() may retain an older compaction entry because its raw ID lies inside the newest retained range.
+// Only the newest compaction at index zero contributes a checkpoint and summary.
+const projectAt = (
+	sourceEntry: SessionEntry,
+	index: number,
+	edit: ContextEditEntry | undefined,
+): ProjectedSessionEntry => ({
+	sourceEntry,
+	messages: sourceEntry.type === "compaction" && index > 0 ? [] : projectContextEntry(sourceEntry, edit),
+});
+
+/** The projection parts of a root-first path. The parts own their arrays: `path` is copied when it is the context. */
+export function projectionParts(path: SessionEntry[]): ProjectionParts {
+	const settings: ContextSettings = { thinkingLevel: "off", model: null };
+	for (const entry of path) applyContextSettings(settings, entry);
+	const found = contextEntriesOfPath(path);
+	const contextEntries = found === path ? path.slice() : found;
+	const edits = new Map<string, ContextEditEntry>();
+	const positions = new Map<string, number>();
+	for (let i = 0; i < contextEntries.length; i++) {
+		const entry = contextEntries[i];
+		positions.set(entry.id, i);
+		if (entry.type === "context_edit") edits.set(entry.targetId, entry);
+	}
+	const projected = contextEntries.map((entry, index) => projectAt(entry, index, edits.get(entry.id)));
+	return {
+		...settings,
+		contextEntries,
+		projected,
+		positions,
+		edits,
+		messages: projected.flatMap((entry) => entry.messages),
+	};
+}
+
+/**
+ * Add entries appended after the branch's leaf, in order, each the child of the one before: the parts become those of the
+ * longer branch. A compaction changes which entries the context holds: false, and nothing changes, for any compaction.
+ */
+export function extendProjection(parts: ProjectionParts, appended: readonly SessionEntry[]): boolean {
+	if (appended.some((entry) => entry.type === "compaction")) return false;
+	for (const entry of appended) {
+		applyContextSettings(parts, entry);
+		const index = parts.contextEntries.push(entry) - 1;
+		parts.positions.set(entry.id, index);
+		if (entry.type === "context_edit") {
+			parts.edits.set(entry.targetId, entry);
+			const target = parts.positions.get(entry.targetId);
+			if (target !== undefined && target !== index) {
+				parts.projected[target] = projectAt(parts.contextEntries[target], target, entry);
+				parts.messages = undefined;
+			}
+		}
+		const projected = projectAt(entry, index, parts.edits.get(entry.id));
+		parts.projected.push(projected);
+		parts.messages?.push(...projected.messages);
+	}
+	return true;
+}
+
+/** A copy of `parts` that `extendProjection` can change without changing `parts`. */
+export function copyProjectionParts(parts: ProjectionParts): ProjectionParts {
+	return {
+		thinkingLevel: parts.thinkingLevel,
+		model: parts.model,
+		contextEntries: parts.contextEntries.slice(),
+		projected: parts.projected.slice(),
+		positions: new Map(parts.positions),
+		edits: new Map(parts.edits),
+		messages: parts.messages?.slice(),
+	};
+}
+
+/**
+ * The projection the parts describe, in arrays and entry records of its own (`shared` parts stay unchanged whatever the
+ * caller does with them). The messages themselves are the parts' own.
+ */
+export function projectionOf(parts: ProjectionParts, shared: boolean): SessionProjection {
+	parts.messages ??= parts.projected.flatMap((entry) => entry.messages);
+	const messages = parts.messages;
+	return {
+		entries: shared
+			? parts.projected.map((entry) => ({ sourceEntry: entry.sourceEntry, messages: entry.messages.slice() }))
+			: parts.projected,
+		messages: shared ? messages.slice() : messages,
+		thinkingLevel: parts.thinkingLevel,
+		model: shared && parts.model ? { ...parts.model } : parts.model,
+	};
+}
+
 /** Build provenance-preserving, compaction-aware model context. */
 export function buildSessionProjection(
 	entries: SessionEntry[],
 	leafId?: string | null,
 	byId?: Map<string, SessionEntry>,
 ): SessionProjection {
-	const path = buildSessionPath(entries, leafId, byId);
-	const { thinkingLevel, model } = getSessionContextSettings(path);
-	const contextEntries = buildContextEntries(entries, leafId, byId);
-	const edits = new Map<string, ContextEditEntry>();
-	for (const entry of contextEntries) {
-		if (entry.type === "context_edit") edits.set(entry.targetId, entry);
-	}
-	const projectedEntries = contextEntries.map((sourceEntry, index): ProjectedSessionEntry => ({
-		sourceEntry,
-		// buildContextEntries() may retain an older compaction entry because its
-		// raw ID lies inside the newest retained range. Only the newest compaction
-		// at index zero contributes a checkpoint and summary.
-		messages:
-			sourceEntry.type === "compaction" && index > 0 ? [] : projectContextEntry(sourceEntry, edits.get(sourceEntry.id)),
-	}));
-	return {
-		entries: projectedEntries,
-		messages: projectedEntries.flatMap((entry) => entry.messages),
-		thinkingLevel,
-		model,
-	};
+	return projectionOf(projectionParts(buildSessionPath(entries, leafId, byId)), false);
+}
+
+/**
+ * `buildSessionProjection` of a branch as `getBranch` returns it (root first, ending at the leaf), without indexing it:
+ * compaction asks for several. Anything else is indexed and walked as `buildSessionProjection` does.
+ */
+export function buildPathProjection(path: SessionEntry[]): SessionProjection {
+	return isLinearPath(path) ? projectionOf(projectionParts(path), false) : buildSessionProjection(path);
 }
 
 const isSystemEntry = (entry: SessionEntry) => entry.type === "message" && entry.message.role === "system";
@@ -219,11 +312,14 @@ export function getCompactionBoundarySystem(
 	firstKeptEntryId: string,
 	timestamp: number,
 ): Pick<CompactionEntry, "systemMessage" | "systemBase" | "systemFold"> {
-	const projection = buildSessionProjection(entries, leafId, byId);
+	const path =
+		leafId === undefined && byId === undefined && isLinearPath(entries)
+			? entries
+			: buildSessionPath(entries, leafId, byId);
+	const projection = projectionOf(projectionParts(path), false);
 	const whole = () => getCompactionSystemFields(projection.messages, timestamp);
 	const kept = projection.entries.findIndex((entry) => entry.sourceEntry.id === firstKeptEntryId);
 	if (kept < 0) return whole();
-	const path = buildSessionPath(entries, leafId, byId);
 	const projected = new Set(projection.entries.slice(kept).map((entry) => entry.sourceEntry.id));
 	const replayed = path.slice(path.findIndex((entry) => entry.id === firstKeptEntryId)).filter(isSystemEntry);
 	if (replayed.some((entry) => !projected.has(entry.id))) return whole();

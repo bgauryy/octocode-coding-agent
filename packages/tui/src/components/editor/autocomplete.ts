@@ -54,6 +54,8 @@ export class EditorAutocomplete {
 	private dismissed?: DismissedToken;
 	/** True while the list is a placeholder for a file index that is still building. */
 	autocompleteIndexing = false;
+	/** The width the editor last drew the list at; undefined before it drew one. */
+	listWidth: number | undefined;
 
 	private readonly host: EditorAutocompleteHost;
 	private readonly theme: EditorTheme;
@@ -268,8 +270,12 @@ export class EditorAutocomplete {
 			return;
 		}
 
+		const shown = this.autocompleteState ? this.autocompleteList : undefined;
 		this.applyAutocompleteSuggestions(suggestions, options.force ? "force" : "regular");
-		this.host.requestRender();
+		// A key already painted its own frame: these suggestions need another only when the list looks different.
+		if (!shown || !this.autocompleteList || !sameRows(shown, this.autocompleteList, this.listWidth)) {
+			this.host.requestRender();
+		}
 	}
 
 	private isAutocompleteRequestCurrent(
@@ -376,4 +382,12 @@ export class EditorAutocomplete {
 		if (!this.autocompleteState || !this.autocompleteProvider) return;
 		this.requestAutocomplete({ force: this.autocompleteState === "force", explicitTab: false });
 	}
+}
+
+/** Whether two lists draw the same rows at `width` (unknown width: assume they differ). */
+function sameRows(a: SelectList, b: SelectList, width: number | undefined): boolean {
+	if (width === undefined) return false;
+	const rowsA = a.render(width);
+	const rowsB = b.render(width);
+	return rowsA.length === rowsB.length && rowsA.every((row, index) => row === rowsB[index]);
 }

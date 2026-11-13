@@ -135,6 +135,7 @@ describe("createInteractiveTui", () => {
 			settingsManager: {
 				getFullscreenCopyOnSelect: () => boolean;
 				getFullscreenWheelScrollLines: () => WheelScrollLines;
+				getReplayRows: () => number;
 			};
 			renderer: ReturnType<typeof createInteractiveTui>;
 			ui: TUI;
@@ -152,7 +153,11 @@ describe("createInteractiveTui", () => {
 		const chatContainer = new Container();
 		chatContainer.addChild(group);
 		const context: SwitchContext = {
-			settingsManager: { getFullscreenCopyOnSelect: () => true, getFullscreenWheelScrollLines: () => "auto" },
+			settingsManager: {
+				getFullscreenCopyOnSelect: () => true,
+				getFullscreenWheelScrollLines: () => "auto",
+				getReplayRows: () => 5000,
+			},
 			renderer,
 			ui: undefined as unknown as TUI,
 			fullscreenLayoutRoot: component,

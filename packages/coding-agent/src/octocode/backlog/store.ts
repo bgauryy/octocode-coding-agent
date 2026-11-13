@@ -77,6 +77,11 @@ export class BacklogStore {
 		return dbStamp(this.agentDb().file);
 	}
 
+	/** Item titles for transcript reference rendering, without bodies, links, comments or completion history. */
+	titles(): ReadonlyMap<string, string> {
+		return new Map(backlog.itemTitles(this.db, this.repo).map(({ seq, title }) => [`B${seq}`, title]));
+	}
+
 	private get db() {
 		return this.agentDb().db;
 	}
@@ -182,7 +187,7 @@ export class BacklogStore {
 	}
 
 	/** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */
-	liveHolder(assignee: string): string | undefined {
-		return holderOf(this.db, assignee);
+	liveHolder(assignee: string, timer = false): string | undefined {
+		return holderOf(this.db, assignee, timer);
 	}
 }

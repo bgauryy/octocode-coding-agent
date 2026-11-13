@@ -6,7 +6,8 @@
  *
  * The `mcpExposure` setting decides tools the configuration leaves open (no `exposure`, no matching `toolExposure`):
  * `recent` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where a tool the workspace called in the last 24 hours is
- * direct and any other is deferred (the set is fixed when the session starts, `McpExtensionState.recentTools`),
+ * direct and any other is deferred (the set is fixed when the session starts, `McpExtensionState.recentTools`, and a
+ * resumed session declares the set it saved, `recent-session.ts`),
  * `direct`, `deferred`, or `auto:<bytes>`, where servers stay direct, in name order, while the text of the
  * direct blocks fits within that many bytes and are deferred past it (`McpPresentation.describe`). The budget is in
  * bytes, not a share of the context window, so switching models never re-decides it and rewrites the prefix.

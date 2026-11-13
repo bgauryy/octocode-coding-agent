@@ -12,6 +12,7 @@ import {
 	estimateTokens,
 	finalizeCompactionResult,
 	fitCompactionToWindow,
+	type SummaryRequestPolicy,
 } from "./compaction/index.ts";
 import type { ExtensionRunner } from "./features/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
@@ -30,7 +31,10 @@ export interface CompactionHost {
 		signal: AbortSignal,
 		reason: CompactionReason,
 		customInstructions?: string,
+		request?: SummaryRequestPolicy,
 	): Promise<CompactionResult>;
+	/** How this compaction's summary requests are watched and retried; made once per run. */
+	summaryRequest?(reason: CompactionReason): SummaryRequestPolicy;
 	/** Rebuild the agent's context from the session after the compaction is saved. */
 	refreshContext(): void;
 }
@@ -71,6 +75,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow);
 	const startedAt = new Date().toISOString();
 	let extensionCompaction: CompactionResult | undefined;
+	const summaryRequest = host.summaryRequest?.(reason);
 
 	if (host.extensionRunner.hasHandlers("session_before_compact")) {
 		const result = await host.extensionRunner.emit({
@@ -81,6 +86,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 			reason,
 			willRetry,
 			signal,
+			...(summaryRequest ? { summaryRequest } : {}),
 		});
 
 		if (result?.cancel) {
@@ -99,7 +105,8 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 
 	// Extension-provided content, or the shared default summary generator.
 	const produced =
-		extensionCompaction ?? (await host.summarize(preparation, run.model, signal, reason, run.customInstructions));
+		extensionCompaction ??
+		(await host.summarize(preparation, run.model, signal, reason, run.customInstructions, summaryRequest));
 	const { firstKeptEntryId, tokensBefore } = produced;
 	const usage: Usage | undefined = produced.usage;
 	run.checkAbort("summary");

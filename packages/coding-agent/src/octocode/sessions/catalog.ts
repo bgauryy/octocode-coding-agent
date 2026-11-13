@@ -6,7 +6,8 @@ import {
 	legacySessionDirectoryPath,
 } from "../../core/session-manager/directories.ts";
 import type { CatalogEntry, CatalogRow } from "../../../../db/src/api.ts";
-import { buildSessionInfo, sessionInfoFolder } from "../../core/session-manager/listing.ts";
+import { buildSessionInfo, type SessionInfoFolder, sessionInfoFolder } from "../../core/session-manager/listing.ts";
+import { EntryCursor } from "../shared/entry-cursor.ts";
 import { getDefaultSessionDirPath } from "../../core/session-manager/storage.ts";
 import { cleanTitle } from "../../core/session-manager/title.ts";
 import type { SessionEntry, SessionHeader, SessionInfo, SessionNameSource } from "../../core/session-manager/types.ts";
@@ -84,18 +85,43 @@ function mtimeOf(file: string): number | null {
 	}
 }
 
+/** Each live session's catalog fold and how far it has read, so a turn's row folds only the entries added since. */
+const liveFolds = new WeakMap<object, { cursor: EntryCursor; folder: SessionInfoFolder }>();
+
+/**
+ * The live session's entries folded by the transcript listing's own fold, without message text (the row keeps none):
+ * after the first, a read folds only the entries appended since (`EntryCursor`); a session it cannot prove only grew is
+ * folded again from its start.
+ */
+function liveFolder(session: ReadonlySessionManager): SessionInfoFolder {
+	let fold = liveFolds.get(session);
+	if (!fold) {
+		fold = { cursor: new EntryCursor(), folder: sessionInfoFolder({ text: false }) };
+		liveFolds.set(session, fold);
+	}
+	const { restart, entries } = fold.cursor.next(session);
+	if (restart) fold.folder = sessionInfoFolder({ text: false });
+	try {
+		for (const entry of entries) fold.folder.add(entry as SessionEntry);
+	} catch (error) {
+		// A half-folded entry list is not a position to resume from.
+		liveFolds.delete(session);
+		throw error;
+	}
+	return fold.folder;
+}
+
 /** The live session as a catalog entry, derived from its entries by the transcript listing's own fold. */
 function liveEntry(session: {
 	file: string;
 	header: SessionHeader | null | undefined;
-	entries: readonly SessionEntry[];
+	folder: () => SessionInfoFolder;
 	name: string | undefined;
 	nameSource: SessionNameSource | undefined;
 }): CatalogEntry | undefined {
 	const { header } = session;
 	if (!header) return undefined;
-	const folder = sessionInfoFolder();
-	for (const entry of session.entries) folder.add(entry);
+	const folder = session.folder();
 	const mtime = mtimeOf(session.file);
 	const {
 		name: _fileName,
@@ -108,29 +134,40 @@ function liveEntry(session: {
 	return infoEntry({ ...info, ...(name ? { name, ...(source ? { nameSource: source } : {}) } : {}) }, mtime);
 }
 
-/** Records the live session's catalog row; nothing for a session with no file. */
-export function recordSession(index: SessionIndex, session: ReadonlySessionManager): void {
+/** The live session's catalog row; undefined for a session with no file. */
+function sessionEntry(session: ReadonlySessionManager): CatalogEntry | undefined {
 	const file = session.getSessionFile();
-	if (!file) return;
-	const entry = liveEntry({
+	if (!file) return undefined;
+	return liveEntry({
 		file,
 		header: session.getHeader?.(),
-		entries: session.getEntries?.() ?? [],
+		folder: () => liveFolder(session),
 		name: session.getSessionName?.(),
 		nameSource: session.getSessionNameSource?.(),
 	});
+}
+
+/** Records the live session's catalog row; nothing for a session with no file. */
+export function recordSession(index: SessionIndex, session: ReadonlySessionManager): void {
+	const entry = sessionEntry(session);
 	if (entry) index.saveCatalog(session.getSessionId(), entry);
 }
 
+/** `recordSession` through the database writer (`SessionIndex.catalogLater`), for the end of a turn. */
+export async function recordSessionLater(index: SessionIndex, session: ReadonlySessionManager): Promise<void> {
+	const entry = sessionEntry(session);
+	if (entry) await index.catalogLater(session.getSessionId(), entry);
+}
+
 /** Records the live session's new name (undefined clears it) and the file's modification time after the name was written. */
-export function recordTitle(
+export async function recordTitle(
 	index: SessionIndex,
 	session: ReadonlySessionManager,
 	name: string | undefined,
 	source: string | undefined,
-): void {
+): Promise<void> {
 	const file = session.getSessionFile();
-	if (file) index.saveTitle(session.getSessionId(), name, source, mtimeOf(file));
+	if (file) await index.titleLater(session.getSessionId(), name, source, mtimeOf(file));
 }
 
 /** The `.jsonl` files a scope lists, with their modification times; unreadable folders list nothing. */

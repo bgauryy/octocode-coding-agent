@@ -1,6 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { validPid } from "../../utils/process-id.ts";
 import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-tree.ts";
+import {
+	memoTable,
+	type ProcessTable,
+	PS_UTC_ENV,
+	psAsync,
+	readProcessTable,
+	refreshProcessTable,
+	startSeconds,
+	TABLE_TTL_MS,
+	utcSeconds,
+} from "./process-table.ts";
 
 // The tree primitives live in utils/ so core's shell can use them too; the hosted ACP workspace reaches them through
 // this file, the one process module its host import baseline lists.
@@ -34,24 +45,9 @@ export function parentGone(parentPid: number): boolean {
 
 const startTimes = new Map<number, string | undefined>();
 
-/**
- * `ps` in UTC and the C locale: `lstart` is printed in the reader's time zone, so two Octocode processes in different
- * zones would disagree.
- */
-export const PS_UTC_ENV = (): NodeJS.ProcessEnv => ({ ...process.env, LC_ALL: "C", TZ: "UTC0" });
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export { PS_UTC_ENV, utcSeconds } from "./process-table.ts";
 
-/** Seconds since the epoch of an `lstart` printed in UTC (`Mon Jan  2 15:04:05 2006`), as a decimal string; undefined when unparsable. */
-export function utcSeconds(lstart: string): string | undefined {
-	const match = /^\w{3} (\w{3}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(lstart.trim().replace(/\s+/g, " "));
-	const month = MONTHS.indexOf(match?.[1] ?? "");
-	if (!match || month < 0) return undefined;
-	return String(
-		Date.UTC(Number(match[6]), month, Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5])) / 1000,
-	);
-}
-
-/** `ps -o lstart=` of one process (undefined: no `ps`, a timeout, or no such process). */
+/** `ps -o lstart=` of one process on the calling thread (undefined: no `ps`, a timeout, or no such process). */
 function psStart(pid: number, env: NodeJS.ProcessEnv): string | undefined {
 	try {
 		return (
@@ -69,14 +65,17 @@ function psStart(pid: number, env: NodeJS.ProcessEnv): string | undefined {
 	}
 }
 
+/** A pid `ps` can be asked about: POSIX, a positive integer. */
+const askable = (pid: number): boolean => process.platform !== "win32" && Number.isInteger(pid) && pid > 0;
+
 /**
  * When the process with this pid started, as whole seconds since the epoch in a decimal string (time-zone free, so
  * two Octocode processes in different zones agree), or undefined when unknown (Windows, no `ps`, no such process). A
- * pid alone proves nothing once the system reuses it; the pid plus this value names one process. This process's own
- * value is read once.
+ * pid alone proves nothing once the system reuses it; the pid plus this value names one process. One `ps` on the
+ * calling thread: for this process (read once and kept) or a one-off; timers and exit paths use `processStartTimeAsync`.
  */
 export function processStartTime(pid: number): string | undefined {
-	if (process.platform === "win32" || !Number.isInteger(pid) || pid <= 0) return undefined;
+	if (!askable(pid)) return undefined;
 	if (pid === process.pid && startTimes.has(pid)) return startTimes.get(pid);
 	const lstart = psStart(pid, PS_UTC_ENV());
 	const started = lstart === undefined ? undefined : utcSeconds(lstart);
@@ -84,72 +83,125 @@ export function processStartTime(pid: number): string | undefined {
 	return started;
 }
 
+/** `processStartTime` without blocking: one asynchronous `ps` (this process's own value is read once and kept). */
+export async function processStartTimeAsync(pid: number): Promise<string | undefined> {
+	if (!askable(pid)) return undefined;
+	if (startTimes.has(pid)) return startTimes.get(pid);
+	const lstart = await psAsync(["-o", "lstart=", "-p", String(pid)], PS_UTC_ENV());
+	const started = lstart?.trim() ? utcSeconds(lstart) : undefined;
+	if (pid === process.pid) startTimes.set(pid, started);
+	return started;
+}
+
+/** How a table read after `started` judges `pid`: `same`, `other` (gone or reused), `unknown` (the table cannot tell). */
+function judge(table: ProcessTable | undefined, pid: number, started: string): "same" | "other" | "unknown" {
+	const seconds = startSeconds(started);
+	if (!table || seconds === undefined) return "unknown";
+	const row = table.rows.get(pid);
+	if (row?.started !== undefined && Number(row.started) === seconds) return "same";
+	// A table read before the recorded process started (`ps` prints whole seconds) says nothing else about it.
+	if (table.at < (seconds + 1) * 1000) return "unknown";
+	if (!row) return "other";
+	return row.started === undefined ? "unknown" : "other";
+}
+
 /**
  * How `pid` compares with the process that recorded `started`: `same` (alive, same start time), `other` (gone, or a
  * later process that got the pid) or `unknown` (alive, but no start time was recorded or `ps` could not read one).
- * Values recorded before start times were time-zone free (`Mon Jan  2 15:04:05 2006`) are compared in this zone.
+ * Compares afresh (one asynchronous `ps -A`): for a decision to signal, where unknown is not a match. Values recorded
+ * before start times were time-zone free (`Mon Jan  2 15:04:05 2006`) are compared in this zone.
  */
-export function processMatch(pid: unknown, started: string | null | undefined): "same" | "other" | "unknown" {
+export async function processMatch(
+	pid: unknown,
+	started: string | null | undefined,
+): Promise<"same" | "other" | "unknown"> {
 	if (!processAlive(pid)) return "other";
 	if (!started) return "unknown";
-	return compareStart(pid as number, started);
+	const table = await readProcessTable();
+	if (!table) return "unknown";
+	// Still alive after the read: the table's row is this process's, not one that died meanwhile.
+	return processAlive(pid) ? judge(table, pid as number, started) : "other";
 }
 
-/** The start-time comparison of a live `pid` against a recorded `started` (one `ps` call). */
+/**
+ * How long a start-time verdict is reused, and how old the shared process table (`process-table.ts`) may be before a
+ * liveness question asks for a new one: sweeps, `list`, `send` and lease checks ask about the same few processes
+ * often, and a pid reused inside this window is retired by the next sweep after it.
+ */
+export const VERDICT_TTL_MS = TABLE_TTL_MS;
+const VERDICT_LIMIT = 256;
+const verdicts = new Map<string, { at: number; match: "same" | "other" | "unknown" }>();
+
+/** A verdict the shared table or an earlier comparison gives without running `ps`; undefined when neither can tell. */
+function knownVerdict(pid: number, started: string, now: number): "same" | "other" | "unknown" | undefined {
+	const table = memoTable();
+	const fromTable = judge(table, pid, started);
+	// A table cannot be wrong about `other`: a pid names one process at a time, so a later read cannot undo it.
+	if (fromTable === "other" || (fromTable === "same" && table && now - table.at < VERDICT_TTL_MS)) return fromTable;
+	const remembered = verdicts.get(`${pid} ${started}`);
+	if (remembered && now - remembered.at < VERDICT_TTL_MS) return remembered.match;
+	return undefined;
+}
+
+/** The start-time comparison of a live `pid` against a recorded `started`: one `ps` on the calling thread. */
 function compareStart(pid: number, started: string): "same" | "other" | "unknown" {
 	const now = /^\d+$/.test(started) ? processStartTime(pid) : psStart(pid, { ...process.env, LC_ALL: "C" });
 	return now === undefined ? "unknown" : now === started ? "same" : "other";
 }
 
 /**
- * How long `sameProcess` reuses a start-time comparison (a `ps` call): sweeps, `list`, `send` and lease checks ask about
- * the same few processes often, and a pid reused inside this window is retired by the next sweep after it.
- */
-export const VERDICT_TTL_MS = 30_000;
-const VERDICT_LIMIT = 256;
-const verdicts = new Map<string, { at: number; match: "same" | "other" | "unknown" }>();
-
-/**
  * Whether `pid` may still be the process that recorded `started` (its `processStartTime`): alive, and not a later
  * process that got the pid. Lenient, for liveness: without a recorded or readable start time it is just `processAlive`
- * (an owner that cannot be judged keeps what it owns). Every caller shares one memo: a live pid's start-time comparison
- * is reused for `VERDICT_TTL_MS` after `now` (ms), while a dead pid is seen at once (`kill -0` needs no `ps`). Before
- * signalling a process use `processMatch`, which compares afresh and where unknown is not a match.
+ * (an owner that cannot be judged keeps what it owns). Every caller shares one memo: the shared process table and the
+ * comparisons made here answer for `VERDICT_TTL_MS` after `now` (ms), while a dead pid is seen at once (`kill -0`
+ * needs no `ps`). When neither can tell, one `ps` runs on the calling thread: for a one-off question (a start, a
+ * command). Timers use `liveProcess`, which never does. Before signalling a process use `processMatch`.
  */
 export function sameProcess(pid: unknown, started: string | null | undefined, now = Date.now()): boolean {
 	if (!processAlive(pid)) return false;
 	if (!started) return true;
+	const known = knownVerdict(pid as number, started, now);
+	if (known) return known !== "other";
 	const key = `${pid as number} ${started}`;
-	let verdict = verdicts.get(key);
-	if (!verdict || now - verdict.at >= VERDICT_TTL_MS) {
-		verdict = { at: now, match: compareStart(pid as number, started) };
-		verdicts.delete(key);
-		verdicts.set(key, verdict);
-		if (verdicts.size > VERDICT_LIMIT) verdicts.delete(verdicts.keys().next().value!);
-	}
+	const verdict = { at: now, match: compareStart(pid as number, started) };
+	verdicts.delete(key);
+	verdicts.set(key, verdict);
+	if (verdicts.size > VERDICT_LIMIT) verdicts.delete(verdicts.keys().next().value!);
 	return verdict.match !== "other";
 }
 
 /**
- * The live members of process group `pgid` (POSIX, one `ps` call) with `column` (`lstart` or `command`) as trimmed text;
- * a zombie has exited already and is left out. Undefined on Windows (no groups), for an unsignalable pid or when `ps` fails.
+ * `sameProcess` for a timer (the team's ticker and sweep): never runs `ps` on the calling thread. It answers from the
+ * shared table (one asynchronous `ps -A` for every caller, `refreshProcessTable`) and asks for a new table when that
+ * one is older than `VERDICT_TTL_MS` at `now` or cannot tell (a process that started after it). Until the new table
+ * arrives such a process counts as alive, as one whose start cannot be read does. With `refresh` false it only reads
+ * what is known: for a row whose fresh heartbeat already vouches for its process.
  */
-function groupRows(
+export function liveProcess(
+	pid: unknown,
+	started: string | null | undefined,
+	now = Date.now(),
+	refresh = true,
+): boolean {
+	if (!processAlive(pid)) return false;
+	if (!started || process.platform === "win32") return true;
+	const known = knownVerdict(pid as number, started, now);
+	if ((!known || known === "unknown") && refresh) void refreshProcessTable();
+	return known !== "other";
+}
+
+/**
+ * The live members of process group `pgid` (POSIX, one asynchronous `ps`) with `column` (`lstart` or `command`) as
+ * trimmed text; a zombie has exited already and is left out. Undefined on Windows (no groups), for an unsignalable pid
+ * or when `ps` fails.
+ */
+async function groupRows(
 	pgid: number | undefined,
 	column: "lstart" | "command",
-): Array<{ pid: number; rest: string }> | undefined {
+): Promise<Array<{ pid: number; rest: string }> | undefined> {
 	if (!validPid(pgid) || process.platform === "win32") return undefined;
-	let table: string;
-	try {
-		table = execFileSync("ps", ["-A", "-o", `pid=,pgid=,stat=,${column}=`], {
-			encoding: "utf8",
-			timeout: 2000,
-			stdio: ["ignore", "pipe", "ignore"],
-			env: PS_UTC_ENV(),
-		});
-	} catch {
-		return undefined;
-	}
+	const table = await psAsync(["-A", "-o", `pid=,pgid=,stat=,${column}=`], PS_UTC_ENV());
+	if (table === undefined) return undefined;
 	const rows: Array<{ pid: number; rest: string }> = [];
 	for (const line of table.split("\n")) {
 		const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
@@ -160,11 +212,11 @@ function groupRows(
 }
 
 /**
- * Start times (`processStartTime` values) of the live members of the process group `pgid` (POSIX, one `ps` call), or
- * undefined when `ps` fails or a member's start cannot be read: unknown is not the same as no member.
+ * Start times (`processStartTime` values) of the live members of the process group `pgid` (POSIX, one asynchronous
+ * `ps`), or undefined when `ps` fails or a member's start cannot be read: unknown is not the same as no member.
  */
-export function groupStartTimes(pgid: number): Array<{ pid: number; started: string }> | undefined {
-	const rows = groupRows(pgid, "lstart");
+export async function groupStartTimes(pgid: number): Promise<Array<{ pid: number; started: string }> | undefined> {
+	const rows = await groupRows(pgid, "lstart");
 	if (rows === undefined) return undefined;
 	const members: Array<{ pid: number; started: string }> = [];
 	for (const row of rows) {
@@ -191,38 +243,29 @@ export function groupAlive(pid: number | undefined): boolean {
 }
 
 /**
- * The live members of the process group `pgid` (POSIX, one `ps` call), each with its command line. Empty on Windows
- * (no groups) or when `ps` fails.
+ * The live members of the process group `pgid` (POSIX, one asynchronous `ps`), each with its command line. Empty on
+ * Windows (no groups) or when `ps` fails.
  */
-export function groupMembers(pgid: number | undefined): Array<{ pid: number; command: string }> {
-	return (groupRows(pgid, "command") ?? []).map((row) => ({ pid: row.pid, command: row.rest }));
+export async function groupMembers(pgid: number | undefined): Promise<Array<{ pid: number; command: string }>> {
+	return ((await groupRows(pgid, "command")) ?? []).map((row) => ({ pid: row.pid, command: row.rest }));
 }
 
 /** How often `stopTree` checks whether the tree is gone. */
 const STOP_POLL_MS = 25;
 
 /**
- * Pids of every descendant of `pid` (POSIX, one `ps` call), including ones that left its process group: a detached
- * Chrome or a background bash job leads a group of its own, so a group signal misses it. Empty on Windows (a job or taskkill /T
- * ends the whole tree) or when `ps` fails.
+ * Pids of every descendant of `pid` (POSIX, one asynchronous `ps -A`), including ones that left its process group: a
+ * detached Chrome or a background bash job leads a group of its own, so a group signal misses it. Empty on Windows (a
+ * job or taskkill /T ends the whole tree) or when `ps` fails.
  */
-export function descendantPids(pid: number | undefined): number[] {
+export async function descendantPids(pid: number | undefined): Promise<number[]> {
 	if (!validPid(pid) || process.platform === "win32") return [];
-	let table: string;
-	try {
-		table = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
-			encoding: "utf8",
-			timeout: 2000,
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-	} catch {
-		return [];
-	}
+	const table = await readProcessTable();
+	if (!table) return [];
 	const children = new Map<number, number[]>();
-	for (const line of table.split("\n")) {
-		const [child, parent] = line.trim().split(/\s+/).map(Number);
-		if (!child || !parent) continue;
-		children.set(parent, [...(children.get(parent) ?? []), child]);
+	for (const row of table.rows.values()) {
+		if (!row.pid || !row.ppid) continue;
+		children.set(row.ppid, [...(children.get(row.ppid) ?? []), row.pid]);
 	}
 	const found: number[] = [];
 	for (let queue = [pid]; queue.length > 0;) {
@@ -254,7 +297,7 @@ function killRest(pid: number, descendants: readonly number[]): void {
 export async function stopTree(pid: number | undefined, graceMs = KILL_GRACE_MS): Promise<void> {
 	if (!validPid(pid)) return;
 	// Taken before the signal: once the root exits, its detached descendants belong to init and no longer show as its.
-	const descendants = descendantPids(pid);
+	const descendants = await descendantPids(pid);
 	const settle = async (ms: number): Promise<void> => {
 		const deadline = Date.now() + ms;
 		while (treeAlive(pid, descendants) && Date.now() < deadline)
@@ -286,19 +329,24 @@ export function terminateSelf(): void {
 const stopping = new Set<number>();
 
 /**
- * SIGTERM to the tree now and SIGKILL after `graceMs` (an unref'd timer, so it never holds the process open). The
- * SIGKILL goes only to what still exists then: a tree that closed in time is left alone, and a group id is never
- * reused while any member is alive, so the late signal cannot reach an unrelated process. Descendants that left the
- * group (a detached Chrome, a background bash job) are listed before the SIGTERM, so the root gets the grace to close
- * them itself and they are killed with the rest when it does not.
+ * SIGTERM to the tree as soon as its descendants are listed, and SIGKILL `graceMs` after (an unref'd timer, so it never
+ * holds the process open). The SIGKILL goes only to what still exists then: a tree that closed in time is left alone,
+ * and a group id is never reused while any member is alive, so the late signal cannot reach an unrelated process.
+ * Descendants that left the group (a detached Chrome, a background bash job) are listed (one asynchronous `ps`) before
+ * the SIGTERM, so the root gets the grace to close them itself and they are killed with the rest when it does not.
+ * Returns at once: the caller never waits for `ps`.
  */
 export function killTree(pid: number | undefined, graceMs = KILL_GRACE_MS): void {
 	if (!validPid(pid) || stopping.has(pid)) return;
 	stopping.add(pid);
-	const descendants = descendantPids(pid);
-	signalTree(pid, "SIGTERM");
-	setTimeout(() => {
-		stopping.delete(pid);
-		killRest(pid, descendants);
-	}, graceMs).unref();
+	const stop = (descendants: readonly number[]) => {
+		signalTree(pid, "SIGTERM");
+		setTimeout(() => {
+			stopping.delete(pid);
+			killRest(pid, descendants);
+		}, graceMs).unref();
+	};
+	// Windows lists nothing: its job ends the whole tree, now.
+	if (process.platform === "win32") stop([]);
+	else void descendantPids(pid).then(stop);
 }

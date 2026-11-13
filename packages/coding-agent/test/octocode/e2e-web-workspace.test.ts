@@ -31,7 +31,7 @@ beforeAll(async () => {
 	endpoint = await startEndpoint();
 });
 afterAll(async () => {
-	await endpoint.close();
+	await endpoint?.close();
 });
 
 const daemons: LaunchedDaemon[] = [];

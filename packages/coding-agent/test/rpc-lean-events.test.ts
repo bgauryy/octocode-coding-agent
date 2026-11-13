@@ -3,6 +3,7 @@ import type { AgentSessionEvent } from "../src/core/agent-session.ts";
 import { toJsonEvent } from "../src/modes/json-event.ts";
 import { toLeanJsonEvent } from "../src/modes/json-event-lean.ts";
 import { type ChildEffect, newChildState, parseEvent, reduceEvent } from "../src/octocode/subagents/events.ts";
+import { AcpEventProjector } from "../../acp/src/server/events.ts";
 
 const usage = {
 	input: 10,
@@ -109,5 +110,53 @@ describe("lean RPC events", () => {
 			{ role: "toolResult", timestamp: 2, toolCallId: "c1", toolName: "bash", isError: false },
 			{ role: "assistant", timestamp: 3, stopReason: "stop" },
 		]);
+	});
+
+	it("drop the finished block from the update that ends it, leaving the parent and the ACP projection as they were", () => {
+		const reply = "word ".repeat(20_000);
+		const thought = "think ".repeat(1000);
+		const call = { type: "toolCall", id: "c2", name: "read", arguments: { path: "a".repeat(5000) } };
+		const final = {
+			role: "assistant",
+			content: [{ type: "thinking", thinking: thought }, { type: "text", text: reply }, call],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "m",
+			usage,
+			stopReason: "toolUse",
+			timestamp: 4,
+		};
+		const update = (assistantMessageEvent: object) => ({
+			type: "message_update",
+			message: final,
+			assistantMessageEvent,
+		});
+		const events = [
+			{ type: "agent_start" },
+			{ type: "message_start", message: { ...final, content: [] } },
+			update({ type: "thinking_start", contentIndex: 0, partial: final }),
+			update({ type: "thinking_delta", contentIndex: 0, delta: thought, partial: final }),
+			update({ type: "thinking_end", contentIndex: 0, content: thought, partial: final }),
+			update({ type: "text_start", contentIndex: 1, partial: final }),
+			update({ type: "text_delta", contentIndex: 1, delta: reply, partial: final }),
+			update({ type: "text_end", contentIndex: 1, content: reply, partial: final }),
+			update({ type: "toolcall_start", contentIndex: 2, partial: final }),
+			update({ type: "toolcall_end", contentIndex: 2, toolCall: call, partial: final }),
+			{ type: "message_end", message: final },
+			{ type: "agent_end", messages: [final], willRetry: false },
+		] as unknown as AgentSessionEvent[];
+		const full = events.map((event) => JSON.stringify(toJsonEvent(event)));
+		const lean = events.map((event) => JSON.stringify(toLeanJsonEvent(event)));
+		// The reply travels once as deltas and once in message_end; the update that ends its block no longer repeats it.
+		expect(lean.join("\n").split(reply).length - 1).toBe(2);
+		expect(full.join("\n").split(reply).length - 1).toBe(4);
+		expect(JSON.parse(lean[7]).assistantMessageEvent).toEqual({ type: "text_end", contentIndex: 1 });
+		expect(JSON.parse(lean[9]).assistantMessageEvent).toEqual({ type: "toolcall_end", contentIndex: 2 });
+		expect(parentEffects(lean)).toEqual(parentEffects(full));
+		const project = (lines: string[]) => {
+			const projector = new AcpEventProjector((summary) => summary);
+			return lines.flatMap((line) => projector.update(JSON.parse(line)));
+		};
+		expect(project(lean)).toEqual(project(full));
 	});
 });

@@ -5,12 +5,14 @@ import { renderAltScreenOutput } from "../src/tui-alt-screen/frame.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
-/** Records each write; `synchronizedOutput` stands for the DECRQM answer. */
+/** Records each write and when it happened; `synchronizedOutput` stands for the DECRQM answer. */
 class WriteLog extends VirtualTerminal {
 	readonly writes: string[] = [];
+	readonly writtenAt: number[] = [];
 	synchronizedOutput = false;
 	override write(data: string): void {
 		this.writes.push(data);
+		this.writtenAt.push(performance.now());
 		super.write(data);
 	}
 }
@@ -92,26 +94,37 @@ describe("alternate-screen frames on a terminal without synchronized output", ()
 		assert.deepStrictEqual(await incremental.flushAndGetViewport(), await reference.flushAndGetViewport());
 	});
 
-	it("keeps a wheel spin to one frame per 60 Hz refresh", async () => {
+	it("keeps a wheel spin to one frame per 60 Hz refresh, counted from frame starts", async () => {
 		const terminal = new WriteLog(40, 10);
 		const tui = transcript(terminal);
+		tui.setRenderPacing({ metrics: true });
 		await terminal.waitForRender();
-		const frameTimes: number[] = [];
-		const write = terminal.write.bind(terminal);
-		terminal.write = (data) => {
-			frameTimes.push(performance.now());
-			write(data);
-		};
+		terminal.writes.length = 0;
+		terminal.writtenAt.length = 0;
+		const started = performance.now();
 		// 24 events about 4 ms apart: at 8 ms frames this painted every other event.
 		for (let event = 0; event < 24; event++) {
 			terminal.sendInput("\x1b[<64;1;1M");
 			await wait(4);
 		}
 		await wait(40);
-		assert.ok(frameTimes.length > 1 && frameTimes.length < 24, `${frameTimes.length} frames for 24 events`);
-		const gaps = frameTimes.slice(1).map((time, index) => time - frameTimes[index]);
-		// Timers fire a little early or late; no two frames come closer than most of a 60 Hz refresh.
-		assert.ok(Math.min(...gaps) >= 14, `frames ${gaps.map((gap) => gap.toFixed(1)).join(", ")} ms apart`);
+		const elapsed = performance.now() - started;
+		const stats = tui.getRenderPacingStats();
+		// The scheduler's own clock: no two pointer frames start closer than one refresh. A loaded machine only spreads
+		// them further, so the bounds below hold however slowly the events arrive.
+		assert.ok(stats.pointerFrames > 1, `${stats.pointerFrames} pointer frames`);
+		const gap = stats.minPointerFrameGapMs ?? 0;
+		assert.ok(gap >= 1000 / 60, `pointer frames started ${gap.toFixed(2)} ms apart`);
+		assert.ok(stats.pointerFrames <= Math.ceil(elapsed / (1000 / 60)) + 1, `${stats.pointerFrames} in ${elapsed} ms`);
+		assert.ok(stats.pointerFrames < 24 || elapsed > 24 * (1000 / 60), "events inside one refresh share a frame");
+		// The same pacing seen where frames leave: each pointer frame is one write, and a frame is written before the next
+		// one starts, so any two writes with one between them are at least a refresh apart. That holds however long a
+		// frame takes or a timer runs late.
+		assert.strictEqual(terminal.writes.length, stats.pointerFrames, "one write per pointer frame");
+		for (let i = 2; i < terminal.writtenAt.length; i++) {
+			const apart = terminal.writtenAt[i] - terminal.writtenAt[i - 2];
+			assert.ok(apart >= 1000 / 60, `writes ${i - 2} and ${i} ${apart.toFixed(2)} ms apart`);
+		}
 		tui.stop();
 	});
 });

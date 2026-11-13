@@ -11,8 +11,9 @@ import { JOB_TYPE, TIMER_TYPE } from "../shared/messages.ts";
 import { imagesOf } from "./screenshots.ts";
 import { jobNotice } from "./report.ts";
 import { type Compactions, endCompaction } from "./event-compactions.ts";
+import { noteDeadlines } from "./event-deadlines.ts";
 import { declaredTimeout, describeToolCall, replySteps, assistantText } from "./event-text.ts";
-import { noteWaits, type ReplyWait } from "./pending-waits.ts";
+import { noteWaits, type ReplyWait, type WorkWait } from "./pending-waits.ts";
 import { MODEL_EVENTS } from "./liveness.ts";
 import { type ChildNotices, NoticeLog, NOTICES_INLINE, NOTICES_INLINE_CHARS } from "./notices.ts";
 
@@ -84,17 +85,21 @@ export interface ChildState {
 	settling: boolean;
 	/** While busy (tools running, or settling after the answer), the child is hung only past this moment. */
 	busyUntil: number;
-	/** The longest deadline of a background job it started: settling waits for timed jobs. */
+	/** The longest timeout of its pending background jobs: settling waits for timed jobs. */
 	jobsMs: number;
 	waits: number;
 	/** The replies it asked for among `waits`, settled only by their own answer (`pending-waits.ts`). */
 	replies: ReplyWait[];
+	workWaits: WorkWait[];
+	waitInputs: Map<unknown, unknown>;
 	/** Its own timer woke the current turn, and no tool has run since: a text answer is only the reminder's echo. */
 	timerWake: boolean;
 	/** The last model request, reply, tool or compaction event (not any stdout byte); 0 before the first. */
 	progressAt: number;
 	/** A foreground call that declared its own `timeout` may run silent until this moment (0: none). */
 	declaredUntil: number;
+	/** Original deadlines by tool call, retained if a foreground command moves to the background. */
+	toolDeadlines: Map<unknown, number>;
 	/** A background job that declared its own `timeout` may run silent until this moment (0: none pending). */
 	jobsUntil: number;
 	lastActivity: string;
@@ -123,9 +128,12 @@ export function newChildState(): ChildState {
 		jobsMs: 0,
 		waits: 0,
 		replies: [],
+		workWaits: [],
+		waitInputs: new Map(),
 		timerWake: false,
 		progressAt: 0,
 		declaredUntil: 0,
+		toolDeadlines: new Map(),
 		jobsUntil: 0,
 		lastActivity: "started",
 		usage: emptyUsage(),
@@ -265,7 +273,7 @@ export function reduceEvent(
 	// Calls a tool makes itself (another tool) are part of that call, not activity of their own.
 	if (event.parentToolCallId) return [];
 	noteWaits(state, event);
-	if (state.waits === 0) state.jobsUntil = 0;
+	noteDeadlines(state, event, now);
 	if (typeof type === "string" && MODEL_EVENTS.has(type)) state.progressAt = now;
 	const effects: ChildEffect[] = [];
 	const progress = (update: Omit<ChildProgress, "usage">) =>
@@ -303,7 +311,9 @@ export function reduceEvent(
 		return [{ kind: "settled", aborted: event.aborted === true }];
 	}
 	// A new turn or a streaming reply means the previous turn's tools are over, even one that never reported its end.
-	if (type === "turn_start" || type === "message_update") state.toolsRunning = 0;
+	if (type === "turn_start" || type === "message_update") {
+		state.toolsRunning = 0;
+	}
 	// A turn after the answer (a message from the parent woke it) is a model turn again, not settling.
 	if (type === "turn_start") state.settling = false;
 	if (type === "message_update" && isRecord(event.assistantMessageEvent)) {
@@ -318,18 +328,12 @@ export function reduceEvent(
 		state.toolsRunning++;
 		state.settling = false;
 		const own = declaredTimeout(event.args);
-		const background = isRecord(event.args) && event.args.background === true;
-		if (own !== undefined && background) {
-			state.jobsMs = Math.max(state.jobsMs, own);
-			state.jobsUntil = Math.max(state.jobsUntil, now + own);
-		} else if (own !== undefined) state.declaredUntil = Math.max(state.declaredUntil, now + own);
 		state.busyUntil = Math.max(state.busyUntil, now + (own ?? limits.busyMs) + limits.idleMs);
 		state.lastActivity = describeToolCall(event.toolName, event.args);
 		progress({ activity: state.lastActivity });
 	}
 	if (type === "tool_execution_end") {
 		state.toolsRunning = Math.max(0, state.toolsRunning - 1);
-		if (state.toolsRunning === 0) state.declaredUntil = 0;
 		const image = imagesOf(event.result).at(-1);
 		if (image) progress({ image });
 		const result = event.result;

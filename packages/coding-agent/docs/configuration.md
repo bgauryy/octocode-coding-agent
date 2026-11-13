@@ -13,7 +13,20 @@ flowchart LR
 
 Left beats right: a run flag beats the project, the project beats global, global beats Pi.
 
-`externalEditor` is shared by Ctrl+G prompt editing, file-reference activation and optional editor diffs. When unset, `VISUAL` wins over `EDITOR`, followed by Notepad on Windows or Nano elsewhere. Configure the editor in the environment running Octocode, including SSH or WSL; no terminal brand is required. See [editor workflows](tui.md#editor-and-vs-code-workflows).
+Two settings choose editors. Both are global or trusted-project settings, like any other.
+
+| Setting           | Used by                                                                                                                                   | Default                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `externalEditor`  | Ctrl+G prompt editing and editor dialogs: Octocode waits for the editor to exit (a Code-family editor, Zed or Sublime Text gets `--wait`) | `VISUAL`, then `EDITOR`, then Notepad on Windows or Nano elsewhere |
+| `referenceOpener` | Opening a file reference (`/links`, a clicked reference) and `/diff --editor`                                                             | `auto`                                                             |
+
+| `referenceOpener` value | Opens with                                                                                                                                                                                                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`                  | The IDE whose integrated terminal runs Octocode (VS Code, Insiders, VSCodium, Cursor), in the current window; else the first of `code`, `cursor`, `code-insiders`, `codium`, `zed`, `subl` on PATH (skipped over SSH and on Linux without a display); else the prompt editor |
+| `editor`                | The prompt editor (`externalEditor`, `VISUAL`, `EDITOR`)                                                                                                                                                                                                                     |
+| any other text          | That command, for example `cursor` or `"/opt/My Editor/bin/edit" --flag`                                                                                                                                                                                                     |
+
+Code-family editors, Zed and Sublime Text open beside the session: Octocode keeps the terminal and does not wait. Any other editor, such as Vim or Nano, takes the terminal until it exits. Configure editors in the environment running Octocode, including SSH or WSL. See [editor workflows](tui.md#editor-and-vs-code-workflows).
 
 ## Headless and external-agent runs
 
@@ -35,11 +48,11 @@ Do not change global defaults for every delegated task. Prefer run flags, and ke
 
 Global configuration and runtime state live in `~/.octocode/octocodecode/` ("global" below). Project configuration lives in `.octocode/` of the workspace. MCP definitions are the exception: `~/.octocode/mcp.json` and `.octocode/mcp.json`.
 
-| Override                    | Moves                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `OCTOCODE_HOME`             | The shared configuration and runtime home                                       |
-| `OCTOCODE_CODING_AGENT_DIR` | Only the core configuration directory; native runtime files keep their own home |
-| `OCTOCODE_AGENT_DB`         | The agent database file (default `<octocode home>/agent/workspaces.db`)         |
+| Override                    | Moves                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `OCTOCODE_HOME`             | The shared configuration and runtime home                                                                                                |
+| `OCTOCODE_CODING_AGENT_DIR` | Only the core configuration directory; native runtime files keep their own home                                                          |
+| `OCTOCODE_AGENT_DB`         | The agent database file (default `<octocode home>/agent/workspaces.db`); its transcript mirror sits beside it as `<name>.transcripts.db` |
 
 An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` also turns off the [Pi fallback](#pi-configuration-fallback). `/mcp config` prints the exact MCP paths, their read order and trust state without connecting servers.
 
@@ -83,6 +96,10 @@ Workspace files are relative to the session's working directory; agent profiles 
 - Settings, MCP and trust files are saved by atomic replacement, and settings saves lock the read-merge-write step, so concurrent writers keep each other's changes. An empty settings file, or one whose root is not a JSON object, is reported as invalid and never overwritten, also if it turns invalid after startup: repair it, then `/reload`.
 
 ## Changing configuration
+
+Provider visibility switches are global. An invalid `disabledProviders` value is reported as a settings-load error; an edit does not replace the currently loaded switches until the file is valid.
+
+`defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action selects the current model and saves the paired global default together, after the write is acknowledged. Trusted workspace defaults take precedence over global ones.
 
 `/configuration` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key.
 
@@ -140,11 +157,11 @@ The startup screen and read-only `/harness config` show each kind with its count
 
 A session declares each tool to the model in one of three states. The state is fixed when the session starts, so the cached prompt does not change while it runs.
 
-| State      | The model gets                                                                                             |
-| ---------- | ---------------------------------------------------------------------------------------------------------- |
-| `direct`   | The tool's full description and parameter schema                                                           |
-| `deferred` | The description and top-level field names; the tool stays callable, and a rejected call returns the schema |
-| `hidden`   | Nothing: the tool cannot be called (MCP tools only)                                                        |
+| State      | The model gets                                                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `direct`   | The tool's full description and parameter schema                                                                                                                                   |
+| `deferred` | The description and the field names with their types (an MCP tool also names the fields of its objects and lists); the tool stays callable, and a rejected call returns the schema |
+| `hidden`   | Nothing: the tool cannot be called (MCP tools only)                                                                                                                                |
 
 What decides the state, first match wins:
 
@@ -154,7 +171,7 @@ What decides the state, first match wins:
 | `web`, `archive`, `models`, `backlogPlan` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
 | Every other native tool                   | Always `direct`                                                                                              |
 
-`mcpExposure` is `"recent"` by default: a tool without a pin is `direct` while this working directory called it in the last 24 hours and `deferred` otherwise, so a tool unused for a day is deferred again. A pin beats that rule. `"direct"` declares every tool without a pin in full, as earlier versions did.
+`mcpExposure` is `"recent"` by default: a tool without a pin is `direct` while this working directory called it in the last 24 hours and `deferred` otherwise, so a tool unused for a day is deferred again. A resumed session in the same folder keeps the MCP and native tool states it started with ([MCP reference](mcp-reference.md#exposure-and-results)). A pin beats that rule. `"direct"` declares every tool without a pin in full, as earlier versions did.
 
 | `mcpExposure`    | A tool without a pin is                                                              |
 | ---------------- | ------------------------------------------------------------------------------------ |
@@ -247,12 +264,20 @@ Detection recognizes Kitty (`TERM=xterm-kitty`) and queries interactive terminal
 
 ## Terminal output and pacing
 
-Octocode asks the terminal at startup whether it supports synchronized output (mode 2026). When it confirms, each fullscreen frame is shown whole and pointer scrolling paints up to 120 frames a second; when it does not answer (Terminal.app), frames are written without the markers and paced to one per 60 Hz refresh, the rate such a terminal paints.
+Octocode asks the terminal at startup whether it supports synchronized output (mode 2026). When it confirms, each fullscreen frame is shown whole and pointer scrolling paints up to 120 frames a second; when it does not answer (Terminal.app), frames are written without the markers and paced to one per 60 Hz refresh, the rate such a terminal paints. The period runs from the start of one frame to the start of the next. While a large output streams, pointer frames keep this pace until the queue reaches the limit below; other frames wait once 256 KiB are queued.
 
 A terminal that stops reading (a paused tmux pane, a stalled SSH link) would otherwise collect every frame painted meanwhile. Once more than `fullscreenFrameQueueLimitKiB` (default 512) is queued, new fullscreen frames are dropped and the screen is repainted whole when the terminal reads again; mode, restore and status bytes are always written, and regular mode never drops output because its rows become scrollback. `0` keeps every frame.
 
 ```json
 { "fullscreenFrameQueueLimitKiB": 512 }
+```
+
+### Redraws in regular mode
+
+In regular mode the transcript lives in the terminal's scrollback, which the terminal cannot edit. When the width changes, when Octocode returns from the background (`fg` after Ctrl+Z), or when a row above the screen changes size, Octocode clears the screen and scrollback and writes the transcript again. `terminal.replayRows` (default 5000) bounds that redraw: only the last rows are written, after one marker row that says how many earlier rows were left out. The screen shows the same rows either way. Set it to `0` to write every row.
+
+```json
+{ "terminal": { "replayRows": 5000 } }
 ```
 
 ## No color
@@ -303,13 +328,14 @@ flowchart LR
 
 ## Runtime storage
 
-Session writers keep JSONL transcripts and mirror the header and ordered entries to the agent database, which also holds workspace identities, session metadata, backlogs, history, memories, team coordination and command receipts. Settings and credentials stay in files. One connection is shared per database path; the session mirror is written by one background database thread per path, after the transcript, so a busy database never pauses input. The separate agents-communication database (`~/.octocode/agents-communication/`) is read-only to Octocode.
+Session writers keep JSONL transcripts, the record of every session, and mirror the header and ordered entries, with the compaction summaries, to the transcript mirror (`transcripts.db`): a derived index of the session files, rebuilt from them when it is missing or behind. The agent database (`workspaces.db`) holds what every Octocode process coordinates through: workspace identities, session metadata, backlogs, history, memories, team coordination and command receipts. Settings and credentials stay in files. One connection is shared per database file; each file has one background database thread per process, which writes after the transcript (so a busy database never pauses input) and checkpoints the file's write-ahead log, shrinking it once its writes stop. The separate agents-communication database (`~/.octocode/agents-communication/`) is read-only to Octocode.
 
 Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a subdirectory uses the nearest declaration, a new Git worktree gets its own, names are display labels that may repeat, a same-filesystem rename keeps the id, and copying a marker cannot claim another database's records.
 
 | Location                                                  | Contents                                                                                                                    |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `<octocode home>/agent/workspaces.db`                     | All registered workspaces                                                                                                   |
+| `<octocode home>/agent/workspaces.db`                     | All registered workspaces and their coordination                                                                            |
+| `<octocode home>/agent/transcripts.db`                    | The transcript mirror: session entries and compaction summaries, rebuildable from the JSONL transcripts                     |
 | `.octocode/code/sessions/`                                | Default JSONL transcripts (explicit session directories win)                                                                |
 | `.octocode/code/session-data/<session>/`                  | Per-session artifacts: compaction archives, checkpoints                                                                     |
 | `.octocode/code/temp/`                                    | Scratch, tool output, child handoffs                                                                                        |
@@ -320,7 +346,7 @@ Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a
 
 Sessions written before the move live in `<octocode home>/sessions/--<working directory>--/`; `/resume`, `--continue` and `--session <id>` still list those whose header names the current directory (`/resume all` lists every such folder), and opening one keeps writing beside it. `octocode --fork <full-session-id>` recreates a session in the current workspace from stored entries when its file is gone. Team coordination and project-scoped memories span linked worktrees; backlogs and workspace memories belong to one workspace. The catalog keeps entries after a checkout is removed.
 
-**Database versions.** An older database is migrated in place on open, after a `VACUUM INTO` copy `<file>.v<version>.bak` (delete it after the upgrade); each step commits alone. A newer database opens when its newer versions were additive; otherwise it is refused untouched, the error names the schema version needed, and Octocode does not start (trust lives there): update, or select another file with `OCTOCODE_AGENT_DB`. A pre-versioning file and the former `agent/octocode.db` are never migrated.
+**Database versions.** An older database is migrated in place on open, after a `VACUUM INTO` copy `<file>.v<version>.bak` (delete it after the upgrade); each step commits alone. Version 10 moves the transcript mirror out of `workspaces.db` into `transcripts.db`: every session's rows are copied, compared (row counts and a checksum) and only then dropped, and the file is compacted; an interrupted move continues where it stopped the next time the file opens, and its backup keeps the coordination data only. A second process that opens the file while another migrates it copies nothing and reports the database busy until the migration commits. Close every running Octocode before the first start of a version that migrates: an older process fails on the moved tables, and an Octocode older than version 10 refuses the migrated file. A newer database opens when its newer versions were additive; otherwise it is refused untouched, the error names the schema version needed, and Octocode does not start (trust lives there): update, or select another file with `OCTOCODE_AGENT_DB`. A pre-versioning file and the former `agent/octocode.db` are never migrated.
 
 **Retention.** `0` keeps a class forever. A project file cannot set either value; the environment wins; a non-whole-number or negative value is ignored (a bad setting is a warning).
 
@@ -332,6 +358,8 @@ Sessions written before the move live in `<octocode home>/sessions/--<working di
 One sweep runs at session start, off the start path, at most every 6 hours, over every registered workspace whose root exists (`.octocode/code` and `.octocode/tmp` only), the global session folder and the legacy folders. An expired transcript goes with its session folders and rows, as with the delete commands. The current session, a running session, an unreadable directory and a live bash job are never removed; symlinks are not followed; a listing failure removes nothing. One summary line is shown as a warning when something was removed or failed.
 
 **History archive.** Rows of the backlog audit, configuration audit and workspace command histories older than 14 days move to owner-only gzip JSONL files per table family and UTC month in `<octocode home>/archive/`; archived rows older than `retention.days` are dropped. Backlog items, notes and comments are never deleted by age. A main session runs this at most once a day per process, after the first backlog access, in short write transactions; each batch is archived before it is deleted. Every process also stores a memory sample every 5 minutes (deleted after 7 days; `OCTOCODE_PROCESS_SAMPLE_MINUTES`, `0` stops it) for `/processes`.
+
+Positive process sample intervals are bounded to 1–2,147,483,647 milliseconds; invalid or negative values use the default. A slow process listing skips elapsed intervals rather than queuing further work.
 
 ## Retries
 
@@ -382,6 +410,10 @@ Automatic compaction is always on; `/compact` runs the same flow by hand. No set
 | Standalone summary | After a downshift, overflow or failed cache-sharing: no cache markers or routing id (OpenCode keeps its required `x-opencode-session` header)                                                                                                             |
 | Old tool results   | Cleared when the cache is rewritten anyway or when re-sending them costs more than one cache rewrite, only when enough space is recovered, and only after saving a readable copy ([rule](native-features.md#clearing-old-tool-results))                   |
 | Transcript         | Every original entry stays on disk; compaction also saves searchable Markdown archives for the `archive` tool                                                                                                                                             |
+| Summary output     | A standalone summary (compaction, split-turn prefix, branch summary) may write up to 32,768 tokens, or the model's own limit when lower; one that reaches it fails and saves nothing. The cache-shared summary keeps its cap of 80% of the reserve        |
+| Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                        |
+| Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                      |
+| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off                                                                 |
 
 ## Prompt cache warming
 

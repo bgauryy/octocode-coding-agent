@@ -226,7 +226,12 @@
     },
     "externalEditor": {
       "type": "string",
-      "description": "Editor for prompts, references and diffs; overrides VISUAL and EDITOR."
+      "description": "Editor for prompt text (Ctrl+G and edit dialogs); overrides VISUAL and EDITOR. referenceOpener decides how file references and editor diffs open."
+    },
+    "referenceOpener": {
+      "type": "string",
+      "description": "How file references and /diff --editor open: \"auto\" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the prompt editor; \"editor\" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.",
+      "default": "auto"
     },
     "shellPath": {
       "type": "string",
@@ -317,7 +322,7 @@
           "const": "json"
         }
       ],
-      "description": "How MCP tools reach the model. \"declared\": each tool's provider declaration carries the server's own description and full input JSON Schema, and the system prompt holds only each server's instructions. \"compact\": thin declarations (a one-line trigger and the top-level field types), with every enabled server's instructions and each tool's description and schema in one block of the system prompt, written as a generated TypeScript file (a tool it cannot express faithfully is described in plain form). \"json\": thin declarations, with that block in plain form, as the server sent it. Calls are validated against the server's own JSON Schema in every mode.",
+      "description": "How MCP tools reach the model. \"declared\": each tool's provider declaration carries the server's own description and full input JSON Schema, and the system prompt holds only each server's instructions. \"compact\": thin declarations (a one-line trigger and the field names and types, without descriptions), with every enabled server's instructions and each tool's description and schema in one block of the system prompt, written as a generated TypeScript file (a tool it cannot express faithfully is described in plain form). \"json\": thin declarations, with that block in plain form, as the server sent it. Calls are validated against the server's own JSON Schema in every mode.",
       "default": "declared"
     },
     "mcpExposure": {
@@ -673,6 +678,12 @@
           "description": "Clear empty rows when content shrinks.",
           "default": false
         },
+        "replayRows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row.",
+          "default": 5000
+        },
         "showTerminalProgress": {
           "type": "boolean",
           "description": "Show OSC 9;4 terminal progress indicators.",
@@ -993,7 +1004,7 @@
           "const": "disabled"
         }
       ],
-      "description": "HTTP header or body idle timeout in milliseconds; 0 or \"disabled\" disables it."
+      "description": "HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or \"disabled\" disables both."
     },
     "remote": {
       "type": "object",

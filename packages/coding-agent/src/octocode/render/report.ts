@@ -1,4 +1,4 @@
-import { type Component, Markdown, visibleWidth } from "@octocodeai/octocode-tui";
+import { type Component, Markdown, renderChanged, trackRenderChanges, visibleWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { getMarkdownTheme, type Theme } from "../../theme/theme.ts";
 import { expandKey, INDENT, plural } from "../shared/text.ts";
@@ -53,5 +53,8 @@ export class ReportView implements Component {
 	invalidate(): void {
 		this.cache = undefined;
 		this.markdown.invalidate();
+		renderChanged(this);
 	}
 }
+// Built once from its report; a look change reaches it through `invalidate`.
+trackRenderChanges(ReportView.prototype);

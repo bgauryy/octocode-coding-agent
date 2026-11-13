@@ -266,8 +266,8 @@ describe("team tools on a fake Octocode", () => {
 		const properties = send.parameters.properties;
 		expect(send.parameters.required ?? []).toEqual([]);
 		expect(properties.forward.type).toBe("integer");
-		expect(properties.replyRequired.description).toContain("Default: an FYI");
-		expect(properties.replyRequired.description).toContain("a request you need answered");
+		expect(properties.replyRequired.description).toContain("Default: FYI");
+		expect(properties.replyRequired.description).toContain("request an answer");
 		expect(send.description).toContain("Messages resume only reachable non-isolated background children");
 		expect(send.description).toContain("(yours, or siblings via your coordinator)");
 		expect(properties.forward.description).toContain("message becomes an optional note");
@@ -320,9 +320,9 @@ describe("team tools on a fake Octocode", () => {
 		expect(subagent.properties).not.toHaveProperty("requests");
 		expect(parameters.properties.requests.description).toMatch(/^grant: /);
 		expect(parameters.properties.action.description).toContain(
-			"grant: add model requests to a running subagent you started, this run only",
+			"grant: add model requests to your running child for this run",
 		);
-		expect(parameters.properties.goal.description).toMatch(/^join: your goal, worded as a task goal/);
+		expect(parameters.properties.goal.description).toMatch(/^join: your task goal/);
 		expect(parameters.properties).not.toHaveProperty("note");
 	});
 

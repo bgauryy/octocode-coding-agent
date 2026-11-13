@@ -11,7 +11,10 @@ describe("turn_end boundary projection", () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	async function branchCopiesDuringTurn(handlerCount: number, seen: unknown[] = []): Promise<number> {
+	async function branchCopiesDuringTurn(
+		handlerCount: number,
+		seen: unknown[] = [],
+	): Promise<{ copies: number; previews: number }> {
 		const harness = await createHarness({
 			extensionFactories: [
 				(api) => {
@@ -26,17 +29,20 @@ describe("turn_end boundary projection", () => {
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("answer")]);
-		// The boundary preview is the only in-memory manager a plain turn creates.
+		// The boundary preview extends the kept projection; a copy of the branch into an in-memory manager is only its
+		// fallback.
 		const inMemory = vi.spyOn(SessionManager, "inMemory");
+		const preview = vi.spyOn(SessionManager.prototype, "previewProjection");
 		await harness.session.prompt("question");
-		const copies = inMemory.mock.calls.length;
+		const result = { copies: inMemory.mock.calls.length, previews: preview.mock.calls.length };
 		inMemory.mockRestore();
-		return copies;
+		preview.mockRestore();
+		return result;
 	}
 
-	it("copies the branch once per turn, however many handlers observe it", async () => {
-		expect(await branchCopiesDuringTurn(1)).toBe(1);
-		expect(await branchCopiesDuringTurn(3)).toBe(1);
+	it("previews once per turn without copying the branch, however many handlers observe it", async () => {
+		expect(await branchCopiesDuringTurn(1)).toEqual({ copies: 0, previews: 1 });
+		expect(await branchCopiesDuringTurn(3)).toEqual({ copies: 0, previews: 1 });
 	});
 
 	it("shows every handler the same context", async () => {

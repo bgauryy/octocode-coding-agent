@@ -65,11 +65,18 @@ describe("truncateToVisualLines", () => {
 		const big = Array.from({ length: 40_000 }, (_, index) => `\x1b[32mline ${index} ${"y".repeat(45)}\x1b[39m`).join(
 			"\n",
 		);
-		const start = performance.now();
-		const preview = truncateToVisualLines(big, 5, 80, 0, "end");
-		const elapsed = performance.now() - start;
+		// This process's CPU time, not wall time, and the best of three runs: other processes' load stretches the clock and,
+		// through cache and frequency contention, a single run's CPU time too, not the work done here.
+		let preview: ReturnType<typeof truncateToVisualLines> | undefined;
+		let elapsed = Number.POSITIVE_INFINITY;
+		for (let run = 0; run < 3; run++) {
+			const start = process.cpuUsage();
+			preview = truncateToVisualLines(big, 5, 80, 0, "end");
+			const used = process.cpuUsage(start);
+			elapsed = Math.min(elapsed, (used.user + used.system) / 1000);
+		}
 		assert.deepStrictEqual(preview, wrapAllThenSlice(big, 5, 80, 0, "end"));
-		assert.strictEqual(preview.skippedCount, 40_000 - 5);
-		assert.ok(elapsed < 60, `${elapsed.toFixed(1)} ms for a 2 MB result`);
+		assert.strictEqual(preview?.skippedCount, 40_000 - 5);
+		assert.ok(elapsed < 60, `${elapsed.toFixed(1)} ms of CPU for a 2 MB result`);
 	});
 });

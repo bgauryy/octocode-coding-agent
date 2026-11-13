@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamStore } from "../../src/octocode/team/store.ts";
+import { patiently } from "../../src/octocode/team/store/patient.ts";
 import { tmp } from "./helpers.ts";
 
 const member = (id: string): Member => ({
@@ -52,6 +53,96 @@ describe("team store on a busy database", () => {
 			expect(store.save(member("inky"))).toBe(true);
 			expect(other.prepare("SELECT COUNT(*) AS n FROM leases WHERE owner = 'gone'").get()).toEqual({ n: 0 });
 		} finally {
+			store.close();
+			other.close();
+		}
+	});
+
+	it("never waits inside SQLite for a background write: the ticker's heartbeat fails at once and is retried later", () => {
+		const cwd = tmp();
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const file = path.join(tmp(), "team.sqlite");
+		const store = TeamStore.open(cwd, file);
+		const other = new DatabaseSync(file);
+		try {
+			store.save(member("inky"));
+			other.exec("BEGIN IMMEDIATE");
+			const started = performance.now();
+			expect(() => store.quick(() => store.save(member("inky")))).toThrow(/locked|busy/i);
+			expect(performance.now() - started).toBeLessThan(50);
+			other.exec("COMMIT");
+			expect(store.quick(() => store.save(member("inky")))).toBe(true);
+		} finally {
+			store.close();
+			other.close();
+		}
+	});
+
+	it("retries a write the agent asked for off this thread's clock, as one transaction, until the database frees", async () => {
+		const cwd = tmp();
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const file = path.join(tmp(), "team.sqlite");
+		const store = TeamStore.open(cwd, file);
+		const other = new DatabaseSync(file);
+		try {
+			store.save(member("inky"));
+			other.exec("BEGIN IMMEDIATE");
+			setTimeout(() => other.exec("COMMIT"), 300);
+			let ticks = 0;
+			const ticker = setInterval(() => ticks++, 10);
+			const started = performance.now();
+			const target = path.join(store.workspace, "a.ts");
+			const result = await patiently(store, () => store.lock("inky", [{ path: target, kind: "file", reason: "edit" }]));
+			clearInterval(ticker);
+			expect(result.ok).toBe(true);
+			expect(performance.now() - started).toBeGreaterThan(250);
+			// The screen's timers kept running while the lock was held: no wait happened on this thread.
+			expect(ticks).toBeGreaterThan(10);
+			expect(store.leases().map((lease) => lease.owner)).toEqual(["inky"]);
+		} finally {
+			store.close();
+			other.close();
+		}
+	});
+
+	it("leaves no abort listener behind on the caller's signal, however many pauses a busy write took", async () => {
+		let attempts = 0;
+		const busyStore = {
+			quick<T>(work: () => T): T {
+				if (++attempts <= 6) throw Object.assign(new Error("database is locked"), { errcode: 5 });
+				return work();
+			},
+		};
+		const abort = new AbortController();
+		let listening = 0;
+		const add = abort.signal.addEventListener.bind(abort.signal);
+		const remove = abort.signal.removeEventListener.bind(abort.signal);
+		abort.signal.addEventListener = ((...args: Parameters<typeof add>) => {
+			listening++;
+			add(...args);
+		}) as typeof add;
+		abort.signal.removeEventListener = ((...args: Parameters<typeof remove>) => {
+			listening--;
+			remove(...args);
+		}) as typeof remove;
+		await expect(patiently(busyStore, () => "saved", abort.signal)).resolves.toBe("saved");
+		expect(attempts).toBe(7);
+		expect(listening).toBe(0);
+	});
+
+	it("gives up a write the agent asked for when the run is aborted while the database is held", async () => {
+		const cwd = tmp();
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const file = path.join(tmp(), "team.sqlite");
+		const store = TeamStore.open(cwd, file);
+		const other = new DatabaseSync(file);
+		try {
+			other.exec("BEGIN IMMEDIATE");
+			const abort = new AbortController();
+			setTimeout(() => abort.abort(new Error("stopped")), 50);
+			await expect(patiently(store, () => store.save(member("inky")), abort.signal)).rejects.toThrow("stopped");
+		} finally {
+			other.exec("COMMIT");
 			store.close();
 			other.close();
 		}

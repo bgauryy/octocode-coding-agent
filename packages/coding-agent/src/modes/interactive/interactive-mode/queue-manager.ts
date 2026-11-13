@@ -10,6 +10,7 @@ import type { InputSource } from "../../../core/features/index.ts";
 import { plural } from "../../../octocode/shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { QueuedInput } from "../../../core/agent-session.ts";
+import { prependToEditorDraft } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { CompactionQueuedMessage } from "./types.ts";
 
@@ -187,7 +188,7 @@ function sendReleased(
 		})
 		.catch((error: unknown) => {
 			if (!accepted) {
-				host.editor.setText([message.text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
+				prependToEditorDraft(host.editor, message.text);
 			}
 			const dropped =
 				!accepted && message.images.length > 0 ? `; ${plural(message.images.length, "attachment")} dropped` : "";
@@ -219,8 +220,7 @@ export function recallLastQueuedMessage(host: QueueManagerHost): boolean {
 		host.showStatus("The last queued message is already being delivered");
 		return false;
 	}
-	const draft = host.editor.getText();
-	host.editor.setText([last.text, draft].filter((part) => part.trim()).join("\n\n"));
+	prependToEditorDraft(host.editor, last.text);
 	const remaining = items.length - 1;
 	host.showStatus(
 		remaining > 0

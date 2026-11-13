@@ -30,6 +30,8 @@ import {
 } from "./model.ts";
 import { providerHealth } from "./provider-health.ts";
 import { getPromptCacheTtlMs } from "../../core/cache-warmer/economics.ts";
+import { staggerPays } from "./stagger.ts";
+import type { ReportGroups } from "./report-groups.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
 import type { RunDetails } from "./run-types.ts";
 import type { GraphWake } from "./graph-wake.ts";
@@ -151,6 +153,8 @@ export interface AgentRuns {
 	/** What each task running now has spent so far (`spawn-limits.ts`). */
 	live: Map<string, Pick<RunDetails, "cost">>;
 	reports: ReportQueue;
+	/** The children each parent step started, whose reports wait for each other (`report-groups.ts`). */
+	groups: ReportGroups;
 	read: ReadReports;
 	/** Subagents running now (foreground and background), by name. */
 	running: Map<string, undefined>; // The ids of the running subagents (a map because the team session reads it as one).
@@ -354,6 +358,8 @@ export function claimRun(
 		identity.cachePreferences = childCachePreferences(policy, choice);
 		// How long the entry the child writes lives: the stagger keeps its prefix warm for that long.
 		identity.cacheTtlMs = getPromptCacheTtlMs(childModel, identity.cachePreferences);
+		// Whether its siblings save by waiting for its cache entry (`stagger.ts`).
+		identity.staggers = staggerPays(childModel, identity.cachePreferences);
 	}
 	const scratch = agentScratch(cwd, identity.id);
 	if (scratch) identity.scratch = scratch;

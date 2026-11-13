@@ -78,12 +78,12 @@ describe("memory tool guidance", () => {
 		expect(host.tools.get("archive").promptSnippet).not.toMatch(/preferences/);
 		const guidance = main.promptGuidelines.join("\n");
 		expect(guidance).toMatch(
-			/corrects your approach, confirms a non-obvious one or what a report proposes, or asks you to remember/,
+			/corrects your approach, confirms a non-obvious approach or report proposal, or asks you to remember/,
 		);
-		expect(guidance).toMatch(/Don't save what code, git history, AGENTS\.md, skills or the backlog/);
-		expect(guidance).toMatch(/update or delete one that proves wrong/);
+		expect(guidance).toMatch(/Don't save what code, git history, AGENTS\.md, skills or backlog hold/);
+		expect(guidance).toMatch(/update or delete a memory that proves wrong/);
 		expect(child.promptGuidelines).toEqual([
-			expect.stringMatching(/^Memory is read-only here.*report one that proves wrong\.$/),
+			expect.stringMatching(/^Memory is read-only here.*report a memory that proves wrong\.$/),
 		]);
 	});
 });

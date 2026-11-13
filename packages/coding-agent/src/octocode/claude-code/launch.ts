@@ -23,7 +23,7 @@ export function claudeCodeLaunch(states: readonly RunnerState[], env = process.e
 	const spec = runnerSpec(CLAUDE_CODE_RUNNER);
 	const state = states.find((entry) => entry.id === CLAUDE_CODE_RUNNER);
 	// The adapter carries the turns: a CLI connected only for headless runner tasks does not offer the models.
-	if (!spec || !state || !isConnected(state) || !state.adapter || state.auth?.billing === "metered") return undefined;
+	if (!spec || !state || !isConnected(state) || !state.adapter || state.auth?.billing !== "plan") return undefined;
 	const command = findOnPath(spec.adapter.command, env);
 	const cli = findOnPath(spec.cli, env);
 	return command && cli ? { command, args: adapterArgs(spec, "plan"), cli } : undefined;

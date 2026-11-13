@@ -60,8 +60,7 @@ export function createMemoryTool(
 		promptSnippet: renderInstruction("tools/memory/snippet.md"),
 		// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
 		description:
-			"Workspace memories: short notes later sessions receive. list shows pinned first. " +
-			"A near-duplicate in the scope is refused: update it. Global or pinned changes ask for approval.",
+			"Short workspace notes for later sessions; list shows pinned first. Near-duplicates in the scope are refused: update them. Global or pinned changes need approval.",
 		promptGuidelines: renderInstruction("tools/memory/guidelines.md", { subagent }).split("\n"),
 		parameters: Type.Object({
 			op: StringEnum(ops, {
@@ -78,9 +77,7 @@ export function createMemoryTool(
 			),
 			scope: Type.Optional(
 				StringEnum(SCOPES, {
-					description: subagent
-						? "search/list: default all"
-						: "set: workspace (default), project or global; search/list: default all",
+					description: subagent ? "search/list: default all" : "set: default workspace; search/list: default all",
 				}),
 			),
 			// A subagent only reads: the set-only fields would only cost context.
@@ -89,17 +86,17 @@ export function createMemoryTool(
 				: {
 						title: Type.Optional(
 							Type.String({
-								description: "set: the rule itself in one line, not a pointer (recall can cut the body)",
+								description: "set: one-line rule, not a pointer; recall may cut the body",
 							}),
 						),
 						body: Type.Optional(
 							Type.String({
-								description: "set: the note; keep it short, it may be injected into every session",
+								description: "set: keep short; may be injected into every session",
 							}),
 						),
 						kind: Type.Optional(
 							StringEnum(MEMORY_KINDS, {
-								description: "set: sort of note (default fact; reference: a URL, dashboard or ticket)",
+								description: "set: default fact; reference: URL, dashboard or ticket",
 							}),
 						),
 						pinned: Type.Optional(

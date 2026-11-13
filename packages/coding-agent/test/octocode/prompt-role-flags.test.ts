@@ -17,7 +17,7 @@ vi.mock("../../src/octocode/cli/shim.ts", async (original) => ({
 }));
 
 const BROWSER_RULE =
-	"Use the browser tools to interact with your own isolated browser as far as the task requires, within the task and the user's authorization; call other MCP tools only when they cannot change files or external state.";
+	"Use browser tools in your isolated browser within the task and user authorization; other MCP tools must not change files or external state.";
 const MCP_RULE =
 	"Call only MCP tools that cannot change files or external state; the permission layer does not check other servers' tools for you.";
 const BACKGROUND = "You run in the background: your coordinator can answer a message while you work.";
@@ -117,7 +117,7 @@ describe("child task text", () => {
 		const role = readFileSync(new URL("../../src/octocode/instructions/roles/implementer.md", import.meta.url), "utf8");
 		expect(role).not.toContain("architecture.test.ts");
 		expect(role).not.toContain("instructions/");
-		expect(role).toContain("including any agent instructions or tool descriptions you changed");
+		expect(role).toContain("changed paths (including instructions or tool descriptions)");
 	});
 
 	it("names the run mode only when the caller passes it, and renders both modes (T17)", () => {

@@ -1,6 +1,5 @@
 import { getFileStamp } from "../../../../common/src/paths.ts";
 import { readFileSync, statSync } from "node:fs";
-import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
 import {
 	type FileStamp,
 	type MirrorRecord,
@@ -11,12 +10,13 @@ import {
 	writerErrorKind,
 } from "../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
+import { sharedAgentDb, sharedTranscriptWriter } from "../../storage/database.ts";
 import { readWorkspaceIdentity, workspaceIdentity } from "../../storage/workspace.ts";
 import { workspaceGit } from "../../utils/git-repository.ts";
 import { encodeSessionLines, SessionCodec } from "./codec.ts";
+import { recordLines } from "./mirror-lines.ts";
 import type { SessionState } from "./state.ts";
-import { withSessionFileLock } from "./shared-file.ts";
+import { READER_LOCK_WAIT_MS, withSessionFileLock } from "./shared-file.ts";
 
 /**
  * How the session mirror reaches the database writer (`mirror.ts` is its API). The session file is the record and is
@@ -169,13 +169,17 @@ export function rebuild(t: Transcript, origin: Origin): void {
 			if (continueMirror(t, stamp, state.fileEntries)) return;
 			snapshot = { stamp, records: state.fileEntries };
 		} else {
-			const read = withSessionFileLock(t.file, () => {
-				const taken = getFileStamp(t.file);
-				const bytes = readFileSync(t.file);
-				// The stamp describes exactly these bytes, or the rebuild waits for the next try.
-				if (bytes.length !== taken.size) throw new Error("Session file changed while it was read");
-				return { stamp: taken, bytes };
-			});
+			const read = withSessionFileLock(
+				t.file,
+				() => {
+					const taken = getFileStamp(t.file);
+					const bytes = readFileSync(t.file);
+					// The stamp describes exactly these bytes, or the rebuild waits for the next try.
+					if (bytes.length !== taken.size) throw new Error("Session file changed while it was read");
+					return { stamp: taken, bytes };
+				},
+				READER_LOCK_WAIT_MS,
+			);
 			snapshot = { stamp: read.stamp, ...fileRecords(read.bytes) };
 		}
 	} catch (error) {
@@ -200,7 +204,7 @@ function continueMirror(t: Transcript, stamp: FileStamp, records: readonly unkno
 	if (batches.has(t)) return false;
 	let tail: ReturnType<typeof storedTranscripts.storedTail>;
 	try {
-		tail = storedTranscripts.storedTail(sharedAgentDb().db, t.sessionId);
+		tail = storedTranscripts.storedTail(sharedAgentDb().mirror.db, t.sessionId);
 	} catch {
 		return false;
 	}
@@ -219,23 +223,30 @@ function continueMirror(t: Transcript, stamp: FileStamp, records: readonly unkno
 		entries.push({ position: i - 1, record: row(record, JSON.stringify(codec.encode(record))) });
 		codec.observe(record);
 	}
-	send(
-		t,
-		"append",
-		{
-			kind: "sync",
-			sessionId: t.sessionId,
-			file: t.file,
-			stamp,
-			previous: { size: saved.byte_size, mtime: saved.mtime },
-			header,
-			entries,
-			workspace: mirrorWorkspace(t.cwd, true),
-		},
-		true,
-	);
-	t.continued = sequence;
+	sendContinuation(t, "append", {
+		kind: "sync",
+		sessionId: t.sessionId,
+		file: t.file,
+		stamp,
+		previous: { size: saved.byte_size, mtime: saved.mtime },
+		header,
+		entries,
+		workspace: mirrorWorkspace(t.cwd, true),
+	});
 	return true;
+}
+
+/**
+ * Send rows that continue the stored mirror from its saved stamp: a repair as a save is, and when the writer finds the
+ * mirror moved meanwhile (`stale`), the rebuild that follows saves everything.
+ */
+export function sendContinuation(
+	t: Transcript,
+	origin: Origin,
+	command: Extract<TranscriptCommand, { kind: "sync" }>,
+): void {
+	send(t, origin, command, true);
+	t.continued = sequence;
 }
 
 /**
@@ -243,20 +254,7 @@ function continueMirror(t: Transcript, stamp: FileStamp, records: readonly unkno
  * malformed and `null` lines are skipped, and a file whose first record is not a session header has none.
  */
 function fileRecords(bytes: Buffer): { records: unknown[]; lines: string[] } {
-	const records: unknown[] = [];
-	const lines: string[] = [];
-	// Each line decoded on its own (a newline byte is never inside a UTF-8 character): a slice of one decoded text would
-	// be two-byte throughout once the file holds any non-ASCII text, which costs the database writer.
-	for (let start = 0; start < bytes.length;) {
-		const newline = bytes.indexOf(10, start);
-		const end = newline < 0 ? bytes.length : newline;
-		const line = bytes.toString("utf8", start, end);
-		start = end + 1;
-		const parsed = parseJsonlLine(line);
-		if (!parsed?.ok || !parsed.value) continue;
-		records.push(parsed.value);
-		lines.push(line);
-	}
+	const { records, lines } = recordLines(bytes);
 	const header = records[0] as { type?: unknown; id?: unknown } | undefined;
 	return header?.type === "session" && typeof header.id === "string" ? { records, lines } : { records: [], lines: [] };
 }
@@ -278,7 +276,7 @@ export function save(
 		const header = records[0] as { type?: unknown; id?: unknown } | undefined;
 		if (header?.type !== "session" || header.id !== t.sessionId) throw new Error("Session file identity changed");
 		// A full queue would refuse the command: do not serialize the transcript for nothing, rebuild once it drains.
-		if (!sharedAgentDbWriter().canAccept()) {
+		if (!sharedTranscriptWriter().canAccept()) {
 			problem(t, new Error("Database writer queue is full"), false);
 			retryWhenFree(t);
 			return;
@@ -312,7 +310,7 @@ export function send(
 	if (full) t.saved = seq;
 	t.pending += 1;
 	track(
-		sharedAgentDbWriter()
+		sharedTranscriptWriter()
 			.submit(command)
 			.then(
 				(result) => replied(t, origin, seq, result),
@@ -356,7 +354,7 @@ function retryWhenFree(t: Transcript): void {
 	if (t.waitingForRoom) return;
 	t.waitingForRoom = true;
 	track(
-		sharedAgentDbWriter()
+		sharedTranscriptWriter()
 			.drain(QUEUE_RETRY_WAIT_MS)
 			.then(() => {
 				t.waitingForRoom = false;

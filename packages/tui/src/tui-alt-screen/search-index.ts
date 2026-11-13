@@ -2,192 +2,101 @@ import { Input } from "../components/input.ts";
 import { getKeybindings } from "../keybindings.ts";
 import type { Component, Focusable } from "../tui.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
-import { getGraphemeSegmenter, visibleWidth } from "../utils/width.ts";
-import { stripTerminalSequences } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { SearchCorpus } from "./search-corpus.ts";
+import { type AltScreenSearchMatch, SearchMatcher } from "./search-matches.ts";
 
-const segmenter = getGraphemeSegmenter();
-
-interface SearchSourceSpan {
-	textStart: number;
-	textEnd: number;
-	row: number;
-	startCol: number;
-	endCol: number;
-	linearColumns: boolean;
-}
-
-interface SearchCorpus {
-	text: string;
-	spans: SearchSourceSpan[];
-}
-
-interface AltScreenSearchSegment {
-	row: number;
-	startCol: number;
-	endCol: number;
-}
-
-export interface AltScreenSearchMatch {
-	segments: AltScreenSearchSegment[];
-}
-
-const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
-
-function buildSearchCorpus(lines: readonly string[]): SearchCorpus {
-	const chunks: string[] = [];
-	const spans: SearchSourceSpan[] = [];
-	let textLength = 0;
-	let pendingSeparator = false;
-
-	const appendSeparator = (): void => {
-		if (!pendingSeparator) return;
-		chunks.push(" ");
-		textLength += 1;
-		pendingSeparator = false;
-	};
-
-	for (let row = 0; row < lines.length; row++) {
-		const line = stripTerminalSequences(lines[row] ?? "");
-		let column = 0;
-
-		// Rendered transcripts are overwhelmingly ASCII. Index complete non-space
-		// runs at once instead of segmenting and allocating one mapping per cell.
-		if (PRINTABLE_ASCII.test(line)) {
-			let index = 0;
-			while (index < line.length) {
-				if (line.charCodeAt(index) === 0x20) {
-					if (textLength > 0) pendingSeparator = true;
-					column += 1;
-					index += 1;
-					continue;
-				}
-				let end = index + 1;
-				while (end < line.length && line.charCodeAt(end) !== 0x20) end += 1;
-				appendSeparator();
-				const text = line.slice(index, end);
-				chunks.push(text);
-				spans.push({
-					textStart: textLength,
-					textEnd: textLength + text.length,
-					row,
-					startCol: column,
-					endCol: column + text.length,
-					linearColumns: true,
-				});
-				textLength += text.length;
-				column += text.length;
-				index = end;
-			}
-		} else {
-			for (const grapheme of segmenter.segment(line)) {
-				const text = grapheme.segment;
-				const width = visibleWidth(text);
-				if (/^\s+$/u.test(text)) {
-					if (textLength > 0) pendingSeparator = true;
-					column += width;
-					continue;
-				}
-				appendSeparator();
-				chunks.push(text);
-				spans.push({
-					textStart: textLength,
-					textEnd: textLength + text.length,
-					row,
-					startCol: column,
-					endCol: column + width,
-					linearColumns: false,
-				});
-				textLength += text.length;
-				column += width;
-			}
-		}
-		if (textLength > 0) pendingSeparator = true;
-	}
-
-	return { text: chunks.join(""), spans };
-}
+export type { AltScreenSearchMatch } from "./search-matches.ts";
 
 function normalizeQuery(query: string): string {
 	return query.replace(/\s+/gu, " ").trim();
 }
 
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function findSearchCorpusMatches(corpus: SearchCorpus, normalizedQuery: string): AltScreenSearchMatch[] {
-	if (!normalizedQuery) return [];
-	const expression = new RegExp(escapeRegExp(normalizedQuery), "giu");
-	const matches: AltScreenSearchMatch[] = [];
-	let spanIndex = 0;
-
-	for (const match of corpus.text.matchAll(expression)) {
-		const start = match.index;
-		const end = start + match[0].length;
-		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex].textEnd <= start) spanIndex += 1;
-
-		const segments: AltScreenSearchSegment[] = [];
-		for (let index = spanIndex; index < corpus.spans.length; index++) {
-			const span = corpus.spans[index];
-			if (span.textStart >= end) break;
-			if (span.textEnd <= start) continue;
-			const startCol = span.linearColumns
-				? span.startCol + Math.max(start, span.textStart) - span.textStart
-				: span.startCol;
-			const endCol = span.linearColumns ? span.startCol + Math.min(end, span.textEnd) - span.textStart : span.endCol;
-			const previous = segments[segments.length - 1];
-			if (previous && previous.row === span.row && startCol <= previous.endCol) {
-				previous.endCol = Math.max(previous.endCol, endCol);
-			} else {
-				segments.push({ row: span.row, startCol, endCol });
-			}
-		}
-		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex].textEnd <= end) spanIndex += 1;
-		if (segments.length > 0) matches.push({ segments });
-	}
-
-	return matches;
-}
-
 interface AltScreenSearchResult {
 	matches: AltScreenSearchMatch[];
+	/** The matches differ from the last complete result: new rows or a new query. */
 	changed: boolean;
+	/** Every row is indexed and every match found; until then `matches` is empty. */
+	complete: boolean;
+	/** How much of the work is done, from 0 to 1. */
+	progress: number;
 }
 
-/** Cache the searchable corpus and matches while rendered transcript lines remain unchanged. */
+/** Rows indexed between two clock reads. */
+const ROWS_PER_CLOCK_READ = 64;
+
+/**
+ * The search over the rendered transcript. The rows are indexed once and kept: when rows change, the index is rebuilt
+ * from the first changed row and the matches before it are kept. Work stops at a deadline and resumes on the next
+ * call, so a long transcript never blocks a key; the result is then incomplete and holds no matches.
+ */
 export class AltScreenSearchIndex {
-	private sourceLines: string[] | undefined;
-	private corpus: SearchCorpus | undefined;
+	/** The rows the index is for: a copy, so a caller's array changing in place cannot go unnoticed. */
+	private readonly source: (string | undefined)[] = [];
+	private readonly corpus = new SearchCorpus();
 	private normalizedQuery: string | undefined;
+	private matcher: SearchMatcher | undefined;
 	private matches: AltScreenSearchMatch[] = [];
+	/** Rows or the query changed since the last complete result. */
+	private stale = true;
 
-	search(lines: readonly string[], query: string): AltScreenSearchResult {
-		let sourceChanged = this.sourceLines?.length !== lines.length;
-		if (!sourceChanged && this.sourceLines) {
-			for (let index = 0; index < lines.length; index++) {
-				if (this.sourceLines[index] === lines[index]) continue;
-				sourceChanged = true;
-				break;
-			}
-		}
-		if (sourceChanged || !this.corpus) {
-			this.sourceLines = Array.from(lines);
-			this.corpus = buildSearchCorpus(lines);
-		}
-
+	search(lines: readonly string[], query: string, budgetMs = Number.POSITIVE_INFINITY): AltScreenSearchResult {
+		this.sync(lines);
 		const normalizedQuery = normalizeQuery(query);
-		const changed = sourceChanged || normalizedQuery !== this.normalizedQuery;
-		if (changed) {
+		if (normalizedQuery !== this.normalizedQuery) {
 			this.normalizedQuery = normalizedQuery;
-			this.matches = findSearchCorpusMatches(this.corpus, normalizedQuery);
+			this.matcher = normalizedQuery ? new SearchMatcher(normalizedQuery) : undefined;
+			this.stale = true;
 		}
-		return { matches: this.matches, changed };
+		return this.result(this.work(performance.now() + budgetMs));
+	}
+
+	/** Continue indexing and matching for up to `budgetMs`; returns whether the result is complete. */
+	continue(budgetMs: number): boolean {
+		return this.work(performance.now() + budgetMs);
+	}
+
+	private result(complete: boolean): AltScreenSearchResult {
+		if (!complete) return { matches: [], changed: false, complete, progress: this.progress() };
+		const changed = this.stale;
+		if (changed) this.matches = this.matcher?.matches ?? [];
+		this.stale = false;
+		return { matches: this.matches, changed, complete, progress: 1 };
+	}
+
+	private progress(): number {
+		const rows = this.source.length === 0 ? 1 : this.corpus.rows / this.source.length;
+		if (rows < 1) return 0.9 * rows;
+		return 0.9 + 0.1 * (this.matcher?.progress(this.corpus) ?? 1);
+	}
+
+	/** Take the rows from the first one that changed. */
+	private sync(lines: readonly string[]): void {
+		const source = this.source;
+		const limit = Math.min(source.length, lines.length);
+		let first = 0;
+		while (first < limit && source[first] === lines[first]) first++;
+		if (first === lines.length && first === source.length) return;
+		source.length = first;
+		for (let row = first; row < lines.length; row++) source.push(lines[row]);
+		const from = Math.min(first, this.corpus.rows);
+		this.corpus.truncate(from);
+		this.matcher?.invalidateFrom(this.corpus.textStartOfRow(from));
+		this.stale = true;
+	}
+
+	private work(deadline: number): boolean {
+		const { corpus, source } = this;
+		while (corpus.rows < source.length) {
+			corpus.appendRow(source[corpus.rows]);
+			if (corpus.rows % ROWS_PER_CLOCK_READ === 0 && performance.now() >= deadline) return false;
+		}
+		return this.matcher?.step(corpus, deadline) ?? true;
 	}
 }
 
 export function findAltScreenSearchMatches(lines: readonly string[], query: string): AltScreenSearchMatch[] {
-	const normalizedQuery = normalizeQuery(query);
-	return normalizedQuery ? findSearchCorpusMatches(buildSearchCorpus(lines), normalizedQuery) : [];
+	return new AltScreenSearchIndex().search(lines, query).matches;
 }
 
 export function getAltScreenSearchMatchKey(match: AltScreenSearchMatch): string {
@@ -206,6 +115,8 @@ export class AltScreenSearchComponent implements Component, Focusable {
 	private readonly navigationButtonStyle: (text: string, hovered: boolean) => string;
 	private resultCount = 0;
 	private resultIndex = -1;
+	/** Indexing a long transcript: how far it got, from 0 to 1. */
+	private searching: number | undefined;
 	private previousButtonStart = -1;
 	private previousButtonEnd = -1;
 	private nextButtonStart = -1;
@@ -233,6 +144,12 @@ export class AltScreenSearchComponent implements Component, Focusable {
 	setResult(index: number, count: number): void {
 		this.resultIndex = index;
 		this.resultCount = count;
+		this.searching = undefined;
+	}
+
+	/** Show that the search is still running, `progress` from 0 to 1, instead of a result. */
+	setSearching(progress: number): void {
+		this.searching = progress;
 	}
 
 	getNavigationDirectionAt(row: number, column: number): -1 | 1 | undefined {
@@ -276,7 +193,13 @@ export class AltScreenSearchComponent implements Component, Focusable {
 		const previousKey = formatKey(keybindings.getKeys("tui.altScreen.searchPrevious")[0]);
 		const nextKey = formatKey(keybindings.getKeys("tui.altScreen.searchNext")[0]);
 		const query = this.input.getValue();
-		const result = !query ? "" : this.resultCount === 0 ? "No matches" : `${this.resultIndex + 1}/${this.resultCount}`;
+		const result = !query
+			? ""
+			: this.searching !== undefined
+				? `Searching ${Math.floor(this.searching * 100)}%`
+				: this.resultCount === 0
+					? "No matches"
+					: `${this.resultIndex + 1}/${this.resultCount}`;
 		const resultSpace = Math.max(0, innerWidth - 3);
 		const visibleResult = truncateToWidth(result, resultSpace, "");
 		const resultText = visibleResult ? `\x1b[2m ${visibleResult} \x1b[22m` : "";

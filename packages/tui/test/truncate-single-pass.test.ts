@@ -93,9 +93,11 @@ describe("truncateToWidth single pass", () => {
 
 	it("stops at the width instead of reading a long styled row to its end", () => {
 		const row = `\x1b[38;5;66m  ⎿  \x1b[39m\x1b[38;5;145m${"const value = compute(input); ".repeat(4000)}\x1b[39m`;
-		const start = performance.now();
+		// This process's CPU time, not wall time: other processes' load stretches the clock, not the work done here.
+		const start = process.cpuUsage();
 		for (let index = 0; index < 200; index++) truncateToWidth(row, 196);
-		const perRow = (performance.now() - start) / 200;
+		const used = process.cpuUsage(start);
+		const perRow = (used.user + used.system) / 1000 / 200;
 		assert.strictEqual(truncateToWidth(row, 196), reference(row, 196));
 		assert.ok(perRow < 0.1, `${(perRow * 1000).toFixed(1)} µs per 120 KB row`);
 	});

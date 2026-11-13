@@ -6,8 +6,9 @@ import { createFakeHost } from "../interactive-mode-host.ts";
 describe("suspending with Ctrl+Z", () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it("stops the running children's process groups first and continues them on resume", () => {
+	it("stops only its own foreground group: detached children (subagents, bash) keep running", () => {
 		trackDetachedChildPid(424242);
+		trackDetachedChildPid(424243, { graceful: true });
 		const kills: Array<[number, unknown]> = [];
 		vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: string) => {
 			kills.push([pid, signal]);
@@ -25,16 +26,14 @@ describe("suspending with Ctrl+Z", () => {
 		const ui = { start: vi.fn(), stop: vi.fn(), requestRender: vi.fn() };
 		try {
 			handleCtrlZ(createFakeHost({ ui }));
-			expect(kills).toEqual([
-				[-424242, "SIGSTOP"],
-				[0, "SIGTSTP"],
-			]);
+			expect(kills).toEqual([[0, "SIGTSTP"]]);
 			kills.length = 0;
 			resume?.();
-			expect(kills).toEqual([[-424242, "SIGCONT"]]);
+			expect(kills).toEqual([]);
 			expect(ui.start).toHaveBeenCalledTimes(1);
 		} finally {
 			untrackDetachedChildPid(424242);
+			untrackDetachedChildPid(424243);
 		}
 	});
 });

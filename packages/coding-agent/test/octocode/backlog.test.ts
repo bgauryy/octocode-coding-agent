@@ -418,7 +418,7 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Updated B1 [done p2] task");
 		expect(t.tool.executionMode).toBeUndefined();
-		expect(t.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close"]);
+		expect(t.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close", "step"]);
 		expect(t.plan.parameters.properties.op.enum).toEqual(["add", "edit", "list"]);
 	});
 
@@ -508,7 +508,7 @@ describe("backlog tool", () => {
 		workspaceStore(parent.cwd).update("B1", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		// A child gets the work operations only: it never declares `backlogPlan` (its coordinator files follow-ups).
-		expect(sub.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close"]);
+		expect(sub.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close", "step"]);
 		expect(sub.tool.parameters).toEqual(parent.tool.parameters);
 		expect(sub.tool.parameters.properties).not.toHaveProperty("state");
 		expect(sub.plan.defaultActive).toBe(false);
@@ -516,7 +516,7 @@ describe("backlog tool", () => {
 		// The description is the same for every role (it leads the cached prefix); the limits are in the refusals below.
 		expect(sub.tool.description).toBe(parent.tool.description);
 		expect(sub.tool.description).not.toMatch(/subagent|parent/i);
-		expect(sub.tool.parameters.properties.op.description).toContain("claim: start work");
+		expect(sub.tool.parameters.properties.op.description).toContain("claim: start");
 		expect(sub.tool.parameters.properties.op.description).not.toContain("remove");
 		expect(sub.tool.promptGuidelines.join(" ")).not.toContain("set it ongoing");
 		expect(await sub.text({ op: "list" })).toBe("B1 [ongoing p2] delegated (coordinator)\nB2 [todo p2] unrelated");

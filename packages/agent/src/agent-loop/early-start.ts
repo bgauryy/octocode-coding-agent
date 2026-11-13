@@ -36,7 +36,7 @@ export class EarlyToolCalls {
 	private readonly runs: EarlyRun[] = [];
 	private ended: Array<{ index: number; toolCall: AgentToolCall }> = [];
 	private closed = false;
-	private preparing: Promise<unknown> = Promise.resolve();
+	private preparing: Promise<Awaited<EarlyRun["preparation"]> | undefined> = Promise.resolve(undefined);
 	private readonly unlink: () => void;
 	private readonly context: AgentContext;
 	private readonly config: AgentLoopConfig;
@@ -78,14 +78,14 @@ export class EarlyToolCalls {
 		}
 		const signal = this.controller.signal;
 		const message = { ...partial, content: [...partial.content] };
-		const preparation = this.preparing.then(() =>
-			prepareEarlyToolCall(this.context, message, toolCall, this.config, signal),
-		);
-		this.preparing = preparation;
-		// A call that needs the user ends early starts: the calls after it would otherwise overtake it.
-		void preparation.then((prepared) => {
+		const preparation = this.preparing.then(async (previous) => {
+			// A deferred check also withdraws calls already queued behind it before the check settled.
+			if (previous?.kind === "deferred") return previous;
+			const prepared = await prepareEarlyToolCall(this.context, message, toolCall, this.config, signal);
 			if (prepared.kind === "deferred") this.closed = true;
+			return prepared;
 		});
+		this.preparing = preparation;
 		const buffered: AgentToolResult<any>[] = [];
 		let forward: ((update: AgentToolResult<any>) => Promise<void>) | undefined;
 		const executed = preparation.then((prepared) =>

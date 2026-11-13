@@ -31,12 +31,9 @@ describe("session repair after a torn final record", () => {
 		return { file, intact, torn: readFileSync(file, "utf8") };
 	}
 
-	it("leaves a reopened session read-only until it is recovered, then writes work", () => {
+	it("repairs a reopened session's torn tail into a backup, then writes work", () => {
 		const { file, intact, torn } = tornSession();
 		const reopened = SessionManager.open(file, dir);
-		expect(() => reopened.appendMessage({ role: "user", content: "blocked", timestamp: 3 })).toThrow(
-			/incomplete final record/,
-		);
 
 		const repair = reopened.recover();
 
@@ -49,10 +46,12 @@ describe("session repair after a torn final record", () => {
 	});
 
 	it("clears the write block a failed append left", () => {
-		const { file } = tornSession();
+		const { file, intact } = tornSession();
 		const manager = SessionManager.open(file, dir);
-		expect(() => manager.appendMessage({ role: "user", content: "x", timestamp: 3 })).toThrow();
-		expect(() => manager.appendMessage({ role: "user", content: "y", timestamp: 4 })).toThrow(/blocked|incomplete/);
+		// Another process replaced the file with a shorter one: refused, and the refusal sticks.
+		writeFileSync(file, intact.slice(0, intact.lastIndexOf("\n", intact.length - 2) + 1));
+		expect(() => manager.appendMessage({ role: "user", content: "x", timestamp: 3 })).toThrow(/shrank/);
+		expect(() => manager.appendMessage({ role: "user", content: "y", timestamp: 4 })).toThrow(/blocked|shrank/);
 
 		manager.recover();
 

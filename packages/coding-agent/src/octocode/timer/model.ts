@@ -19,7 +19,7 @@ export const MIN_EVERY_SECONDS = 30;
 /** Wakes of an `every` timer without its own maxRuns. */
 const DEFAULT_MAX_RUNS = 20;
 /** At least how often an `until` condition is checked; the default is its kind's (`conditionTiming`). Checks wake nobody until one is met. */
-const MIN_CHECK_SECONDS = 5;
+export const MIN_CHECK_SECONDS = 5;
 /** How long an `until` timer waits without a deadline of its own. */
 const DEFAULT_UNTIL_DEADLINE_SECONDS = 3600;
 
@@ -75,13 +75,14 @@ export function timerFields(
 		const timing = conditionTiming(condition);
 		const interval = every ?? (timing.watched ? timing.safetyMs : timing.pollMs) / 1000;
 		if (interval < MIN_CHECK_SECONDS) throw new Error(`every with until is at least ${MIN_CHECK_SECONDS} seconds.`);
+		const deadlineAt = now + (deadline ?? DEFAULT_UNTIL_DEADLINE_SECONDS) * 1000;
 		return {
 			...base,
 			kind: "until",
-			dueAt: now + (after ?? 0) * 1000,
+			dueAt: Math.min(now + (after ?? 0) * 1000, deadlineAt),
 			intervalMs: interval * 1000,
 			condition: { kind: condition.kind, value: encodeCondition(condition), cwd: owner.cwd },
-			deadlineAt: now + (deadline ?? DEFAULT_UNTIL_DEADLINE_SECONDS) * 1000,
+			deadlineAt,
 		};
 	}
 	if (every !== undefined) {
@@ -121,7 +122,9 @@ export type FireDecision =
 
 /** Decides a claimed fire of `row` (already counted and moved to its next due time), with its check outcome if any. */
 export function decideFire(row: TimerRow, check?: CheckOutcome): FireDecision {
-	const pastDeadline = row.deadline_at !== null && row.due_at > row.deadline_at;
+	const pastDeadline =
+		row.deadline_at !== null &&
+		(row.kind === "until" ? (row.last_fired_at ?? row.created_at) >= row.deadline_at : row.due_at > row.deadline_at);
 	if (row.kind === "once") return { wake: true };
 	if (row.kind === "every") {
 		if (row.max_runs !== null && row.runs >= row.max_runs)

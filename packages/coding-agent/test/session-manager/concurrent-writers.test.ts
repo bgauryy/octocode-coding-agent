@@ -122,11 +122,47 @@ describe("locked session appends", () => {
 		expect(readFileSync(file).equals(before)).toBe(true);
 	});
 
-	it("refuses to write after another process left a partial record, leaving it unchanged", () => {
+	it("seals a partial record a stopped process left, and another live writer's merge steps over it", () => {
 		const a = open();
+		const b = open();
+		const foreign = b.appendCustomEntry("b", 1);
 		appendFileSync(file, '{"type":"custom","id":"zz');
 		const before = readFileSync(file);
+		const own = a.appendCustomEntry("a", 1);
+		expect(readFileSync(file).subarray(0, before.length).equals(before)).toBe(true);
+		// `b` knows nothing past its own record: its merge reads the sealed line and the record that names it.
+		const later = b.appendCustomEntry("b", 2);
+		const ids = open()
+			.getEntries()
+			.map((e) => e.id);
+		expect(ids.slice(-4)).toEqual([foreign, ids.at(-3), own, later]);
+		expect(b.getEntry(ids.at(-3)!)).toMatchObject({ customType: "octocode-session-recovery" });
+		expect(a.getEntry(foreign)).toBeDefined();
+		expect(b.getEntry(own)).toBeDefined();
+		expect(b.getEntries().map((e) => e.id)).toEqual(ids);
+	});
+
+	it("refuses a malformed line no record accounts for, even one that was ended with a newline, leaving the file unchanged", () => {
+		const a = open();
+		appendFileSync(file, '{"type":"custom","id":"zz\n');
+		const before = readFileSync(file);
+		expect(() => a.appendCustomEntry("a", 1)).toThrow(/Session persistence failed.*malformed/s);
+		expect(readFileSync(file).equals(before)).toBe(true);
+	});
+
+	it("refuses a final line that is JSON but not a record, leaving the file unchanged", () => {
+		const a = open();
+		appendFileSync(file, "123");
+		const before = readFileSync(file);
 		expect(() => a.appendCustomEntry("a", 1)).toThrow(/Session persistence failed.*incomplete/s);
+		expect(readFileSync(file).equals(before)).toBe(true);
+	});
+
+	it("refuses to seal after a malformed foreign record, writing nothing", () => {
+		const a = open();
+		appendFileSync(file, '{"type":"custom","id":"zz\n{"type":"custom","id":"yy');
+		const before = readFileSync(file);
+		expect(() => a.appendCustomEntry("a", 1)).toThrow(/Session persistence failed.*malformed/s);
 		expect(readFileSync(file).equals(before)).toBe(true);
 	});
 

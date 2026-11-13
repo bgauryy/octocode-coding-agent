@@ -7,6 +7,7 @@ import { opencodeGoProvider } from "../src/providers/opencode-go.ts";
 import { opencodeProvider } from "../src/providers/opencode.ts";
 import { openaiProvider } from "../src/providers/openai.ts";
 import type { AuthEvent } from "../src/auth/types.ts";
+import { verifyByRequest } from "../src/auth/verify.ts";
 
 async function signIn(id: string, key: string, status: number | Error) {
 	const fetchMock = vi.fn(async () => {
@@ -41,9 +42,30 @@ describe("API key verification at sign-in", () => {
 		expect(saved).toBeUndefined();
 	});
 
-	it("refuses on 403 too", async () => {
-		expect((await signIn("anthropic", "sk-ant-api03-bad", 403)).outcome).toContain("rejected this key");
+	it.each(["openai", "anthropic"])("saves a restricted %s key when its model list denies permission", async (id) => {
+		const { outcome, saved, events } = await signIn(id, "restricted-fixture-key", 403);
+		expect(outcome).toBe("saved");
+		expect(saved).toMatchObject({ type: "api_key", key: "restricted-fixture-key" });
+		expect(events).toContainEqual(
+			expect.objectContaining({ type: "info", message: expect.stringContaining("HTTP 403") }),
+		);
 	});
+
+	it.each([200, 401, 403, 503])(
+		"releases the HTTP %s verification body without following redirects",
+		async (status) => {
+			const cancel = vi.fn();
+			const body = new ReadableStream<Uint8Array>({ cancel });
+			const fetchMock = vi.fn(async () => new Response(body, { status }));
+			vi.stubGlobal("fetch", fetchMock);
+			await verifyByRequest("https://example.test/models", { "x-api-key": "fixture" }, new AbortController().signal);
+			expect(cancel).toHaveBeenCalledOnce();
+			expect(fetchMock).toHaveBeenCalledWith(
+				"https://example.test/models",
+				expect.objectContaining({ redirect: "error" }),
+			);
+		},
+	);
 
 	it("saves a key the model list accepts, asking the free endpoint with the key", async () => {
 		const { outcome, saved, fetchMock } = await signIn("openai", "sk-good", 200);

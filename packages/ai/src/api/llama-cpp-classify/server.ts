@@ -107,6 +107,7 @@ async function tokenize(request: RequestContext, content: string): Promise<numbe
  * cached: in-flight requests belong to their caller's cancellation signal.
  */
 const labelTokenCache = new Map<string, number | undefined>();
+const MAX_LABEL_TOKEN_CACHE_SIZE = 1024;
 
 /**
  * The token the model emits for `label` at the start of its reply. The reply
@@ -130,6 +131,9 @@ export async function labelTokens(request: RequestContext, labels: readonly stri
 			if (labelTokenCache.has(key)) return labelTokenCache.get(key);
 			const token = await resolveLabelToken(request, label);
 			labelTokenCache.set(key, token);
+			if (labelTokenCache.size > MAX_LABEL_TOKEN_CACHE_SIZE) {
+				labelTokenCache.delete(labelTokenCache.keys().next().value!);
+			}
 			return token;
 		}),
 	);

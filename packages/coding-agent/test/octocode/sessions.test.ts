@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type SessionInfo, SessionManager } from "../../src/core/session-manager.ts";
 import type { SessionPickerOptions } from "../../src/core/session-picker.ts";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { sharedAgentDb, sharedAgentDbWriter } from "../../src/storage/database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { resumeBrief, shortDuration } from "../../src/octocode/sessions/brief.ts";
 import { RESUME_MESSAGE_TYPE, RUNNING_WORK_TYPE, registerSessions } from "../../src/octocode/sessions/register.ts";
@@ -115,6 +115,11 @@ function setup(options: { id?: string; entries?: Entry[]; hasUI?: boolean; name?
 }
 
 const row = (id: string) => new SessionIndex(sharedAgentDb()).get(id);
+/** Lets a git result reach the database writer (the per-turn writes go through it), then waits for its commit. */
+const written = async () => {
+	await new Promise((resolve) => setImmediate(resolve));
+	await sharedAgentDbWriter().drain(5_000);
+};
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 describe("session extras", () => {
@@ -236,20 +241,20 @@ describe("session extras", () => {
 		await host.start();
 		await host.fire("agent_end", { type: "agent_end" }, host.ctx);
 		requests[1]({ branch: "new" });
-		await Promise.resolve();
+		await written();
 		requests[0]({ branch: "old" });
-		await Promise.resolve();
+		await written();
 		expect(row(host.id)?.branch).toBe("new");
 		await host.fire("agent_end", { type: "agent_end" }, host.ctx);
 		await host.fire("session_shutdown", { type: "session_shutdown" }, host.ctx);
-		const write = vi.spyOn(SessionIndex.prototype, "git");
+		const write = vi.spyOn(SessionIndex.prototype, "gitLater");
 		Object.defineProperty(host.ctx, "hasUI", {
 			get: () => {
 				throw new Error("stale Octocode context");
 			},
 		});
 		requests[2]({ branch: "closed" });
-		await Promise.resolve();
+		await written();
 		expect(write).not.toHaveBeenCalled();
 		expect(row(host.id)?.branch).toBe("new");
 	});
@@ -264,7 +269,7 @@ describe("session extras", () => {
 		);
 		const host = setup();
 		await host.start();
-		const write = vi.spyOn(SessionIndex.prototype, "git").mockImplementation(() => {
+		const write = vi.spyOn(SessionIndex.prototype, "gitLater").mockImplementation(() => {
 			throw new Error("index unavailable");
 		});
 		Object.defineProperty(host.ctx, "hasUI", {
@@ -395,7 +400,7 @@ describe("running work after compaction", () => {
 		expect(host.sent).toHaveLength(1);
 		const { content } = host.sent[0].message;
 		expect(content).toMatch(
-			/^\[After compaction\] Open steps of this session: 1 of the session \([^\n]*`backlog get`[^\n]*\n- [^\n]*check the footer counts/,
+			/^\[After compaction\] Open session steps: 1 of the session \([^\n]*`backlog get`[^\n]*`backlog step`[^\n]*\n- [^\n]*check the footer counts/,
 		);
 		expect(content).not.toContain("already finished");
 	});

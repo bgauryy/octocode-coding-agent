@@ -1,1 +1,1 @@
-The item you work on: read, claim, note, done, close
+Read or update an item and its steps

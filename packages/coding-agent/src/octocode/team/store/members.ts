@@ -1,11 +1,19 @@
 import { type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
-import { sameProcess } from "../../shared/process.ts";
+import { liveProcess, sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export type ProcessIdentity = agents.ProcessIdentity;
+
+/**
+ * Whether a member row's process still runs, never running `ps` on this thread (`liveProcess`): the team's ticker and
+ * sweep ask it every second. A heartbeat within `STALE_MS` vouches for the process it names, so such a row costs no new
+ * process table either: only what the shared table already shows can retire it.
+ */
+export const rowLive = (row: ProcessIdentity & { seenAt: number }, now: number): boolean =>
+	liveProcess(row.pid, row.started, now, stale(row.seenAt, now));
 
 const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
 	a.pid === b.pid && (a.started ?? null) === (b.started ?? null);
@@ -98,7 +106,9 @@ export function listMembers(db: Db, team: string, now: number, readLeases: () =>
 	const live = agents
 		.inTeam(db, team)
 		.map(toMember)
-		.filter((member) => stale(member.updatedAt, now) === stalled && sameProcess(member.pid, member.started, now));
+		.filter(
+			(member) => stale(member.updatedAt, now) === stalled && rowLive({ ...member, seenAt: member.updatedAt }, now),
+		);
 	if (stalled) return live;
 	const held = readLeases();
 	return live.map((member) => {
@@ -115,7 +125,7 @@ export function reachableMembers(db: Db, team: string): Set<string> {
 	return new Set(
 		agents
 			.processes(db, team)
-			.filter((each) => sameProcess(each.pid, each.started, now))
+			.filter((each) => rowLive(each, now))
 			.map((each) => each.id),
 	);
 }

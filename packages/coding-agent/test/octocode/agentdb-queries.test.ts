@@ -120,7 +120,7 @@ describe("sessions", () => {
 		expect(sessions.pidOf(agent.db, "s")).toEqual({ pid: 10, pid_started: "t" });
 		sessions.clearPid(agent.db, "s", 10);
 		expect(sessions.pidOf(agent.db, "s")).toEqual({ pid: null, pid_started: null });
-		sessions.forget(agent.db, "s");
+		sessions.forget(agent.db, agent.mirror.db, "s");
 		expect(sessions.byId(agent.db, "s")).toBeUndefined();
 	});
 

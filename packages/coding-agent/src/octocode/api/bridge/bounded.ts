@@ -1,3 +1,4 @@
+import { sha256 } from "../../../../../common/src/atomic-file.ts";
 import { redactData, redactSecrets } from "../../../../../common/src/sanitize.ts";
 import { saveContentCopy, saveFullOutput } from "../../shared/spill.ts";
 import { capChars } from "../../shared/util.ts";
@@ -11,12 +12,29 @@ const RESULT_MAX_CHARS = 64_000;
  * the note names (or the note says it could not be saved).
  */
 export function boundedText(text: string): string {
+	if (text.length <= RESULT_MAX_CHARS) return redactSecrets(text);
+	// The same answer reaches `message.delta`, `message` and `agent.end` in a row: a long one is redacted and saved once,
+	// not once per channel (a 50 MB reply held the main thread for seconds each time). Remembered by a hash of its text,
+	// so the text itself is not kept.
+	const key = sha256(text);
+	if (last?.key === key) return last.bounded;
 	const safe = redactSecrets(text);
 	if (safe.length <= RESULT_MAX_CHARS) return safe;
-	// The same answer reaches `message`, `agent.end` and the history: the file is named by its content, so that is one file, not one per channel.
+	// The file is named by its content, so the channels and the history share one file.
 	const copy = saveContentCopy(safe, "api message");
-	return capChars(safe, RESULT_MAX_CHARS, copy ? `the whole text is in ${copy}` : "the whole text could not be saved");
+	const bounded = capChars(
+		safe,
+		RESULT_MAX_CHARS,
+		copy ? `the whole text is in ${copy}` : "the whole text could not be saved",
+	);
+	// Only a saved copy is reused: a failed save is tried again next time.
+	last = copy ? { key, bounded } : undefined;
+	return bounded;
 }
+
+/** The last long text `boundedText` bounded, by its hash, and what it returned. */
+let last: { key: string; bounded: string } | undefined;
+
 export function boundedExternal(value: unknown): unknown {
 	const safe = redactData(value);
 	const text = JSON.stringify(safe);

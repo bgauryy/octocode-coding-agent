@@ -491,15 +491,39 @@ describe("reduceEvent: model progress", () => {
 
 		reduce(
 			state,
-			{ type: "tool_execution_start", toolName: "bash", args: { background: true, timeout: 3_600 } },
+			{
+				type: "tool_execution_start",
+				toolName: "bash",
+				toolCallId: "background-1",
+				args: { background: true, timeout: 3_600 },
+			},
 			40_000,
 		);
 		expect(state.jobsUntil).toBe(40_000 + 3_600_000);
-		reduce(state, { type: "tool_execution_end", toolName: "bash", isError: false, result: { content: [] } }, 41_000);
+		reduce(
+			state,
+			{
+				type: "tool_execution_end",
+				toolName: "bash",
+				toolCallId: "background-1",
+				args: { background: true, timeout: 3_600 },
+				isError: false,
+				result: { content: [], details: { job: "job-1", log: "/tmp/job-1.log" } },
+			},
+			41_000,
+		);
 		expect(state.jobsUntil).toBe(40_000 + 3_600_000);
 		reduce(
 			state,
-			{ type: "message_end", message: { role: "custom", customType: JOB_TYPE, content: "Background bash job ended" } },
+			{
+				type: "message_end",
+				message: {
+					role: "custom",
+					customType: JOB_TYPE,
+					content: "Background bash job ended",
+					details: { id: "job-1", log: "/tmp/job-1.log" },
+				},
+			},
 			50_000,
 		);
 		expect(state.jobsUntil).toBe(0);

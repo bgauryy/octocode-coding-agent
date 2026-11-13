@@ -1,4 +1,15 @@
-import { type Component, MouseRegion, Text, type TuiMouseEvent } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	isRenderStable,
+	linkRenderChild,
+	MouseRegion,
+	renderChanged,
+	renderSerial,
+	settleRender,
+	Text,
+	trackRenderChanges,
+	type TuiMouseEvent,
+} from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
@@ -35,21 +46,27 @@ export class LongResponse implements Component {
 			this.changed(this.expanded);
 			return { handled: true };
 		});
+		linkRenderChild(this, content);
 	}
 
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
+		renderChanged(this);
 	}
 	invalidate(): void {
 		this.folded = undefined;
 		this.content.invalidate();
+		renderChanged(this);
 	}
 	handleMouse(event: TuiMouseEvent) {
 		return this.region.handleMouse(event);
 	}
 
 	render(width: number): string[] {
+		linkRenderChild(this, this.content);
+		const before = renderSerial();
 		const rows = this.content.render(width);
+		settleRender(this, isRenderStable(this.content, before));
 		this.foldable = !this.streaming && rows.length > RESPONSE_FOLD_THRESHOLD;
 		if (!this.foldable || this.expanded) return rows;
 		const key = keyText("app.tools.expand");
@@ -66,3 +83,5 @@ export class LongResponse implements Component {
 		return lines;
 	}
 }
+
+trackRenderChanges(LongResponse.prototype);

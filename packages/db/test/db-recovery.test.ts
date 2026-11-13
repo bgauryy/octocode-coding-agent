@@ -9,7 +9,12 @@ const opened: AgentDb[] = [];
 const locations = () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-db-recovery-"));
 	roots.push(root);
-	return { file: path.join(root, "agent.db"), archiveDir: path.join(root, "archive"), privateParent: true };
+	return {
+		file: path.join(root, "agent.db"),
+		mirrorFile: path.join(root, "agent.transcripts.db"),
+		archiveDir: path.join(root, "archive"),
+		privateParent: true,
+	};
 };
 afterEach(() => {
 	for (const db of opened.splice(0)) db.close();
@@ -42,7 +47,25 @@ describe("database recovery", () => {
 		first.close();
 		const next = sharedDatabase(target);
 		expect(next.db.isOpen).toBe(true);
-		expect(next).not.toBe(first);
+		expect(next === first).toBe(false);
 		expect(next.transaction(() => 42)).toBe(42);
+	});
+
+	it("does not create a lazy mirror after its owning database closes", () => {
+		const target = locations();
+		const agent = openDatabase(target);
+		opened.push(agent);
+		agent.close();
+		expect(() => agent.mirror).toThrow(/closed/i);
+		expect(fs.existsSync(target.mirrorFile)).toBe(false);
+	});
+
+	it("does not reopen a previously used mirror after its owning database closes", () => {
+		const agent = openDatabase(locations());
+		opened.push(agent);
+		const mirror = agent.mirror.db;
+		agent.close();
+		expect(mirror.isOpen).toBe(false);
+		expect(() => agent.mirror).toThrow(/closed/i);
 	});
 });

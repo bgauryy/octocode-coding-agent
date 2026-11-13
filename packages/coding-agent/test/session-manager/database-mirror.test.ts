@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, DbWriterCommandError, sessions, transcripts } from "../../../db/src/api.ts";
-import { sharedAgentDb, sharedAgentDbWriter } from "../../src/storage/database.ts";
+import { sharedAgentDb, sharedTranscriptWriter } from "../../src/storage/database.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 
@@ -34,7 +34,8 @@ afterEach(() => {
 	rmSync(scratch, { recursive: true, force: true });
 });
 
-const records = (id: string) => transcripts.records(sharedAgentDb().db, id).map((line) => JSON.parse(line) as unknown);
+const records = (id: string) =>
+	transcripts.records(sharedAgentDb().mirror.db, id).map((line) => JSON.parse(line) as unknown);
 const jsonl = (file: string) =>
 	readFileSync(file, "utf8")
 		.trim()
@@ -56,7 +57,7 @@ describe("durable workspace transcripts", () => {
 		const id = manager.getSessionId();
 		await settle();
 		expect(records(id)).toEqual(jsonl(file));
-		expect(transcripts.stamp(sharedAgentDb().db, id)?.workspace_id).toBe(
+		expect(sessions.byId(sharedAgentDb().db, id)?.workspace_id).toBe(
 			readFileSync(join(cwd, ".octocode/code/workspace/id"), "utf8").trim(),
 		);
 		expect((await SessionManager.listAll()).some((s) => s.id === id)).toBe(true);
@@ -65,7 +66,7 @@ describe("durable workspace transcripts", () => {
 		await settle();
 		expect(records(fork.getSessionId())).toEqual(jsonl(fork.getSessionFile()!));
 		rmSync(file);
-		sessions.forget(sharedAgentDb().db, id);
+		sessions.forget(sharedAgentDb().db, sharedAgentDb().mirror.db, id);
 		expect(records(id)).toHaveLength(4);
 		// The historical pathname can now contain an unrelated file. An ID-based fork reads the saved rows.
 		writeFileSync(file, JSON.stringify({ ...manager.getHeader(), id: "replacement" }) + "\n");
@@ -84,7 +85,7 @@ describe("durable workspace transcripts", () => {
 		renameSync(session.getSessionFile()!, renamed);
 		SessionManager.open(renamed);
 		await settle();
-		expect(transcripts.stamp(sharedAgentDb().db, id)?.file).toBe(realpathSync(renamed));
+		expect(transcripts.stamp(sharedAgentDb().mirror.db, id)?.file).toBe(realpathSync(renamed));
 		const forged = join(scratch, "forged.jsonl");
 		writeFileSync(forged, JSON.stringify(session.getHeader()) + "\n");
 		rmSync(renamed);
@@ -163,7 +164,7 @@ describe("durable workspace transcripts", () => {
 		session.appendMessage(message("mirrored"));
 		const file = session.getSessionFile()!;
 		await settle();
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		const submit = writer.submit.bind(writer);
 		// A record the mirror never saw breaks the stamp, so while the database refuses commits each append needs a whole-file rebuild.
 		appendFileSync(
@@ -211,7 +212,7 @@ describe("durable workspace transcripts", () => {
 		const session = SessionManager.create(cwd);
 		session.appendMessage(message("first"));
 		await settle();
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		const submit = vi.spyOn(writer, "submit");
 		try {
 			for (let n = 0; n < 400; n++) session.appendMessage(message(`burst ${n}`));

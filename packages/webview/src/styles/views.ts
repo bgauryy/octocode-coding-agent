@@ -127,6 +127,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--tex
 .tree-alone { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
 .task-list { list-style: none; margin: 4px 0 4px 18px; padding: 0; display: grid; gap: 4px; }
 .task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.task-result { flex-basis: 100%; overflow-wrap: anywhere; white-space: pre-wrap; }
 .task-mark { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid currentColor; vertical-align: middle; }
 .task-ongoing .task-mark { background: linear-gradient(90deg, transparent 50%, currentColor 50%); }
 .task-done .task-mark { background: currentColor; }

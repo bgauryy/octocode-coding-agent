@@ -2,7 +2,7 @@ import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { ReactNode } from "react";
 import type { HierarchyControls } from "../extension.ts";
 import type { BacklogIndex } from "../model/backlog.ts";
-import { rollup, rollupText, TASK_STATE_TITLES, sessionGroups } from "../model/hierarchy.ts";
+import { rollup, rollupText, TASK_STATE_TITLES, sessionGroups, taskTallyText } from "../model/hierarchy.ts";
 import { cx, Section } from "../ui/primitives.tsx";
 
 /** One task: its state mark, reference, goal and reason; `children` holds the edit controls on a live page. */
@@ -16,6 +16,7 @@ function TaskRow({ task, children }: { task: BacklogTask; children?: ReactNode }
 			<span className="ref">{task.ref}</span>
 			<span className="task-goal">{task.goal}</span>
 			{task.reason && <span className="muted task-reason"> — {task.reason}</span>}
+			{task.result && <span className="muted task-result">Result: {task.result}</span>}
 			{task.assignee && task.state === "ongoing" && <span className="muted"> · {task.assignee}</span>}
 			{children}
 		</span>
@@ -64,12 +65,11 @@ export function SessionTasks({
 	return (
 		<div className="session-tasks">
 			<Section title="Session tasks" count={index.sessionTasks.length}>
-				<p className="muted">
-					Steps an agent kept for its own session. They stay with it until you promote one to an item.
-				</p>
+				<p className="muted">Steps belonging to a session. They stay with it until you promote one to an item.</p>
 				{groups.map((group) => (
 					<div key={group.session} className="session-group">
 						<h4>Session {sessionLabel?.(group.session) ?? group.session}</h4>
+						<p className="muted">{taskTallyText(group.tasks)}</p>
 						<ul className="task-list" aria-label={`Tasks of session ${group.session}`}>
 							{group.tasks.map((task) => (
 								<li key={task.ref}>

@@ -125,4 +125,14 @@ describe("ConfigView Harness panel", () => {
 		expect(await screen.findByText(/Open this page from the Octocode terminal/)).toBeInTheDocument();
 		expect(api.list).not.toHaveBeenCalled();
 	});
+
+	it("loads switches when the host API becomes available without a workspace or reload change", async () => {
+		const api = harnessApi(async () => list);
+		const { rerender } = render(<HarnessPanel reloadKey="1" />);
+		expect(api.list).not.toHaveBeenCalled();
+		rerender(<HarnessPanel api={api} reloadKey="1" />);
+		const harnesses = await screen.findByRole("list", { name: "Harnesses" });
+		expect(within(harnesses).getByText("Claude Code")).toBeInTheDocument();
+		expect(api.list).toHaveBeenCalledExactlyOnceWith(undefined);
+	});
 });

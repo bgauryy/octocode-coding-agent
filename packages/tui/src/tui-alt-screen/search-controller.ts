@@ -1,10 +1,21 @@
-import { AltScreenSearchComponent, AltScreenSearchIndex, getAltScreenSearchMatchKey } from "./search-index.ts";
+import {
+	type AltScreenSearchMatch,
+	AltScreenSearchComponent,
+	AltScreenSearchIndex,
+	getAltScreenSearchMatchKey,
+} from "./search-index.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
 import type { Component, OverlayHandle, OverlayOptions } from "../tui.ts";
 import { pickSearchSelection } from "./search.ts";
 import type { ActiveSearch, SgrMouseEvent } from "./types.ts";
+
+/** Time a frame spends indexing and matching; the rest runs between frames, in slices that yield to input. */
+const FRAME_SEARCH_BUDGET_MS = 10;
+const SLICE_MS = 8;
+/** While a long search runs between frames, its progress is repainted at most this often. */
+const PROGRESS_REPAINT_MS = 100;
 
 /** Alternate-screen state and operations the transcript search reads live. */
 export interface AltScreenSearchHost {
@@ -18,6 +29,8 @@ export interface AltScreenSearchHost {
 export class AltScreenSearchController {
 	activeSearch?: ActiveSearch;
 	private readonly host: AltScreenSearchHost;
+	/** The search whose index is being built between frames. */
+	private indexing: ActiveSearch | undefined;
 	private readonly searchNavigationButtonStyle: (text: string, hovered: boolean) => string;
 
 	constructor(host: AltScreenSearchHost, searchNavigationButtonStyle: (text: string, hovered: boolean) => string) {
@@ -103,6 +116,27 @@ export class AltScreenSearchController {
 		return true;
 	}
 
+	/** Build the index between frames in short slices; repaint with progress, and when done. */
+	private indexBetweenFrames(search: ActiveSearch): void {
+		if (this.indexing === search) return;
+		this.indexing = search;
+		let lastRepaint = performance.now();
+		const slice = (): void => {
+			if (this.activeSearch !== search || this.indexing !== search) {
+				if (this.indexing === search) this.indexing = undefined;
+				return;
+			}
+			const done = search.index.continue(SLICE_MS);
+			if (done || performance.now() - lastRepaint >= PROGRESS_REPAINT_MS) {
+				lastRepaint = performance.now();
+				this.host.requestRender();
+			}
+			if (done) this.indexing = undefined;
+			else setImmediate(slice);
+		};
+		setImmediate(slice);
+	}
+
 	refreshSearch(layout: LayoutFrame): boolean {
 		const search = this.activeSearch;
 		if (!search) return false;
@@ -119,14 +153,22 @@ export class AltScreenSearchController {
 		}
 
 		const shouldRevealSelection = search.selectionMode !== "retain";
-		const result = search.index.search(lines, search.query);
+		const result = search.index.search(lines, search.query, FRAME_SEARCH_BUDGET_MS);
+		if (!result.complete) {
+			// No highlights until every match is known: matches of the rows indexed so far would sit at rows that a later
+			// change may move. The selection and its mode stay, so the finished search selects and reveals as asked.
+			search.matches = [];
+			search.component.setSearching(result.progress);
+			this.indexBetweenFrames(search);
+			return false;
+		}
 		const matches = result.matches;
 		search.matches = matches;
 		if (!result.changed && search.selectionMode === "retain") return false;
 
 		const exactIndex = result.changed
 			? search.selectedKey
-				? matches.findIndex((match) => getAltScreenSearchMatchKey(match) === search.selectedKey)
+				? findMatchByKey(matches, search.selectedKey)
 				: -1
 			: search.selectedIndex;
 		const selectedIndex = pickSearchSelection(search, matches, exactIndex);
@@ -150,4 +192,22 @@ export class AltScreenSearchController {
 		scrollView.scrollTo(target, { disableFollow: true });
 		return scrollView.scrollTop !== before;
 	}
+}
+
+/**
+ * The index of the match with `key` (`getAltScreenSearchMatchKey`), or -1. Matches are in text order, so their first
+ * rows ascend: only the matches starting on the key's row are compared.
+ */
+function findMatchByKey(matches: readonly AltScreenSearchMatch[], key: string): number {
+	const row = Number.parseInt(key, 10);
+	let low = 0;
+	let high = matches.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if ((matches[middle].segments[0]?.row ?? -1) < row) low = middle + 1;
+		else high = middle;
+	}
+	for (let index = low; index < matches.length && (matches[index].segments[0]?.row ?? -1) <= row; index++)
+		if (getAltScreenSearchMatchKey(matches[index]) === key) return index;
+	return -1;
 }

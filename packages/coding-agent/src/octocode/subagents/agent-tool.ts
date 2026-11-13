@@ -22,13 +22,13 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"Skills the child needs (a skill named only in the task text is rarely loaded). Omit: the profile's or the loaded catalog; []: none.",
+						"Skills the child needs; task text alone rarely loads them. Omit: profile's or loaded catalog; []: none.",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"MCP servers the child gets, plus its profile's. Omit: the profile's and the session's; []: the profile's only. An unknown or disabled name refuses the task.",
+						"MCP servers added to the profile's. Omit: profile's plus session's; []: profile's only. Unknown or disabled names refuse the task.",
 				}),
 			),
 			goal: Type.Optional(
@@ -38,18 +38,18 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			task: Type.String({
 				description:
-					"The brief `<delegation>` describes. Cited msg#<N> messages and report:<agent-id> excerpts are appended, fenced; invalid or oversized references refuse the call.",
+					"Brief as in <delegation>. Cited msg#<N> messages and report:<agent-id> excerpts append fenced; invalid or oversized references refuse the call.",
 			}),
 			item: Type.Optional(
 				Type.String({
 					description:
-						"Backlog item you hold (ongoing), or an unheld todo/backlog one with goal and why, which the call claims: the child may update only it; its report is noted there.",
+						"Your ongoing backlog item, or unheld todo/backlog with goal and why (claimed here). Child may update only it; its report is noted there.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Id of a finished or stopped child of this session: continues its conversation (with model, on that route). An isolated child cannot resume.",
+						"This session's finished/stopped child id; continues its conversation, on model if given. Isolated children cannot resume.",
 				}),
 			),
 			profile: Type.Optional(
@@ -98,7 +98,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						'Files or "dir/" the child will edit, reserved until it reports (no lock needed). A sibling child\'s path queues the start; any other holder refuses it. No effect with isolate or a read-only profile.',
+						'Files or "dir/" reserved until child reports; no lock needed. Sibling-held paths queue the start; other holders refuse it. No effect with isolate or a read-only profile.',
 				}),
 			),
 			runner: runnerField(runners),

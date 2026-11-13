@@ -92,6 +92,14 @@ export const TerminalSettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.terminal.clearOnShrink,
 		}),
 	),
+	replayRows: Type.Optional(
+		Type.Integer({
+			minimum: 0,
+			description:
+				"Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row.",
+			default: SETTINGS_DEFAULTS.terminal.replayRows,
+		}),
+	),
 	showTerminalProgress: Type.Optional(
 		Type.Boolean({
 			description: "Show OSC 9;4 terminal progress indicators.",

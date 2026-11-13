@@ -4,14 +4,30 @@ import path from "node:path";
 import type * as NodeFs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const calls = vi.hoisted(() => ({ fsync: 0, fsyncSync: 0 }));
+const calls = vi.hoisted(() => ({
+	fsync: 0,
+	fsyncSync: 0,
+	openError: undefined as string | undefined,
+	syncError: undefined as string | undefined,
+	closeError: undefined as string | undefined,
+}));
 vi.mock("node:fs", async (load) => {
 	const actual = await load<typeof NodeFs>();
 	return {
 		...actual,
+		open: (file: NodeFs.PathLike, flags: string, done: (error: NodeJS.ErrnoException | null, fd: number) => void) => {
+			if (calls.openError) return done(Object.assign(new Error("open failed"), { code: calls.openError }), -1);
+			actual.open(file, flags, done);
+		},
 		fsync: (fd: number, done: (error: NodeJS.ErrnoException | null) => void) => {
 			calls.fsync += 1;
+			if (calls.syncError) return done(Object.assign(new Error("sync failed"), { code: calls.syncError }));
 			actual.fsync(fd, done);
+		},
+		close: (fd: number, done: (error: NodeJS.ErrnoException | null) => void) => {
+			actual.close(fd, (error) => {
+				done(calls.closeError ? Object.assign(new Error("close failed"), { code: calls.closeError }) : error);
+			});
 		},
 		fsyncSync: (fd: number) => {
 			calls.fsyncSync += 1;
@@ -20,7 +36,8 @@ vi.mock("node:fs", async (load) => {
 	};
 });
 
-const { scheduleSessionSync, syncPendingSessions } = await import("../../src/core/session-manager/deferred-sync.ts");
+const { scheduleSessionSync, sessionSyncFailed, syncPendingSessions } =
+	await import("../../src/core/session-manager/deferred-sync.ts");
 
 let dir: string;
 let file: string;
@@ -30,6 +47,9 @@ beforeEach(() => {
 	fs.writeFileSync(file, "{}\n");
 	calls.fsync = 0;
 	calls.fsyncSync = 0;
+	calls.openError = undefined;
+	calls.syncError = undefined;
+	calls.closeError = undefined;
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -72,5 +92,47 @@ describe("deferred session sync", () => {
 		syncPendingSessions();
 		expect(calls.fsyncSync).toBe(1);
 		expect(process.listeners("exit")).toContain(syncPendingSessions);
+	});
+
+	it.each(["EACCES", "EMFILE", "EIO"])("remembers an open failure (%s) and retries it on exit", async (code) => {
+		vi.useFakeTimers();
+		calls.openError = code;
+		scheduleSessionSync(file);
+		vi.advanceTimersByTime(250);
+		expect(sessionSyncFailed(file)).toBe(true);
+		expect(calls.fsync).toBe(0);
+		await settle();
+		calls.openError = undefined;
+		syncPendingSessions();
+		expect(calls.fsyncSync).toBe(1);
+		expect(sessionSyncFailed(file)).toBe(false);
+	});
+
+	it.each(["syncError", "closeError"] as const)(
+		"retries a failed %s even after the async operation ends",
+		async (failure) => {
+			vi.useFakeTimers();
+			calls[failure] = "EIO";
+			scheduleSessionSync(file);
+			vi.advanceTimersByTime(250);
+			await settle();
+			expect(sessionSyncFailed(file)).toBe(true);
+			calls[failure] = undefined;
+			syncPendingSessions();
+			expect(calls.fsyncSync).toBe(1);
+			expect(sessionSyncFailed(file)).toBe(false);
+		},
+	);
+
+	it("forgets a failed sync once its file is removed", async () => {
+		vi.useFakeTimers();
+		calls.openError = "EIO";
+		scheduleSessionSync(file);
+		vi.advanceTimersByTime(250);
+		expect(sessionSyncFailed(file)).toBe(true);
+		await settle();
+		fs.unlinkSync(file);
+		syncPendingSessions();
+		expect(sessionSyncFailed(file)).toBe(false);
 	});
 });

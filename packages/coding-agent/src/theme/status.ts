@@ -72,7 +72,7 @@ export const WAIT_PULSE_MS = 4_000;
  */
 export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions = {}): string {
 	const reduced = animationClock.isReducedMotion();
-	const now = options.now ?? Date.now();
+	const now = options.now ?? animationClock.decorationTime();
 	const color = STATE_COLOR[state];
 	if (reduced) return theme.fg(color, GLYPH[state]);
 	switch (state) {

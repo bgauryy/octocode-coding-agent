@@ -1,7 +1,7 @@
 import { type Db, sessions } from "../../../../db/src/api.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { sameProcess } from "./process.ts";
+import { liveProcess, sameProcess } from "./process.ts";
 
 /**
  * The one liveness test for an Octocode session (backlog claims, `/resume`, the sweep): the pid recorded in its
@@ -14,9 +14,10 @@ export function runningPid(pid: number | null | undefined, started?: string | nu
 	return pid != null && sameProcess(pid, started) ? pid : undefined;
 }
 
-/** `runningPid` of the session `id`; undefined when it has no row, has ended, or its process is gone. */
-export function sessionRunningPid(db: Db, id: string): number | undefined {
+/** `runningPid` of session `id`; `timer` uses the shared process cache without synchronous `ps`. */
+export function sessionRunningPid(db: Db, id: string, timer = false): number | undefined {
 	const row = sessions.pidOf(db, id);
+	if (timer) return row?.pid != null && liveProcess(row.pid, row.pid_started) ? row.pid : undefined;
 	return runningPid(row?.pid, row?.pid_started);
 }
 

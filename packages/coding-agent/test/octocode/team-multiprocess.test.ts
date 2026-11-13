@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
+import { refreshProcessTable } from "../../src/octocode/shared/process-table.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -245,12 +246,14 @@ describe("who counts as gone", () => {
 		}
 	});
 
-	it("treats a row whose pid now names a later process as gone", () => {
+	it("treats a row whose pid now names a later process as gone", async () => {
 		const store = TeamStore.open(repo(), path.join(tmp(), "team.sqlite"));
 		try {
 			// The parent process runs, but it did not start when this row says: the recorded process is gone.
 			store.save(member("reused", { pid: process.ppid, started: "1" }));
 			store.save(member("real", { ...other() }));
+			// The sweep runs on a timer and never waits for `ps`: it judges from the shared process table, read off-thread.
+			await refreshProcessTable();
 			store.sweep();
 			expect(store.names().sort()).toEqual(["real"]);
 			expect(store.list().map((each) => each.id)).toEqual(["real"]);

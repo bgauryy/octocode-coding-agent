@@ -6,7 +6,8 @@ import type { LayoutBox, LayoutRect } from "./types.ts";
 /** One layout frame's state: the viewport, each component's rows by width, and the primary scroll view found so far. */
 export interface LayoutContext {
 	viewport: { width: number; height: number };
-	renderCache: Map<Component, Map<number, string[]>>;
+	/** Rows by component: most render at one width a frame, so the first width needs no map of its own. */
+	renderCache: Map<Component, { width: number; lines: string[]; others?: Map<number, string[]> }>;
 	requestRender: () => void;
 	primaryScrollView: ScrollView | undefined;
 }
@@ -22,16 +23,13 @@ export function intersect(a: LayoutRect, b: LayoutRect): LayoutRect {
 /** A component's rows at `width`, rendered once per frame. */
 export function renderCached(context: LayoutContext, component: Component, width: number): string[] {
 	const safeWidth = Math.max(1, Math.floor(width));
-	let widths = context.renderCache.get(component);
-	if (!widths) {
-		widths = new Map<number, string[]>();
-		context.renderCache.set(component, widths);
-	}
-	let lines = widths.get(safeWidth);
-	if (!lines) {
-		lines = renderIsolated(component, safeWidth);
-		widths.set(safeWidth, lines);
-	}
+	const cached = context.renderCache.get(component);
+	if (cached?.width === safeWidth) return cached.lines;
+	let lines = cached?.others?.get(safeWidth);
+	if (lines) return lines;
+	lines = renderIsolated(component, safeWidth);
+	if (!cached) context.renderCache.set(component, { width: safeWidth, lines });
+	else (cached.others ??= new Map()).set(safeWidth, lines);
 	return lines;
 }
 

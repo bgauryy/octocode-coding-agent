@@ -34,7 +34,7 @@ flowchart TD
   D --> E
 ```
 
-`--fork <file>` also continues a session whose last record was cut off: complete records are copied and the file stays. `--no-session` keeps a conversation in memory only.
+A session whose last record was cut off (a crash or a power loss mid-write) resumes in place: that part stays in the file as a skipped line. `--fork <file>` copies a session's complete records into a new one and leaves the file as it is. `--no-session` keeps a conversation in memory only.
 
 ## Rename a session, and turn off automatic titles
 

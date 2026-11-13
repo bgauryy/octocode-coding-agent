@@ -120,6 +120,15 @@ export interface Component {
 	/** Optional handler for keyboard input when component has focus. */
 	handleInput?(data: string): void;
 
+	/**
+	 * Optional: printable characters typed together (one terminal read, such as a paste without bracketed paste mode),
+	 * delivered in one call instead of one `handleInput` per character. It must leave the same result as those calls.
+	 * Returns how much of `text` it handled (UTF-16 length, at a character boundary): it stops after any key that does
+	 * more than insert text, since that key may move focus (open a selector or overlay); the TUI hands the rest to the
+	 * component focused then. Input listeners have already seen every character of `text`.
+	 */
+	handleTextRun?(text: string): number;
+
 	/** Optional normalized mouse handler. */
 	handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
 

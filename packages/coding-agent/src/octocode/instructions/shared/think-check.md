@@ -1,1 +1,2 @@
-- Before acting, know what done means and which check proves it; after each call, compare the result with what you expected and keep, adjust or revert.
+- Define done by checked outcomes, not activity or proxies. Compare results to expectations; keep, adjust or revert.
+- Scale checks to risk and uncertainty: missing constraints, downstream effects and severe failures; prefer simple, reversible probes.

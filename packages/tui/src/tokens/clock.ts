@@ -2,6 +2,7 @@
  * One clock for every animation and live counter. Owners subscribe instead of running their own timers; the clock runs
  * a single unref'd interval at the fastest cadence any subscriber needs, stops when the last one leaves, and in reduced
  * motion stops ticking decoration (spinners, shimmer, glow) while counters (elapsed seconds) keep their 1 s tick.
+ * While the user scrolls, decoration holds still too, so its repaints do not compete with the scroll's frames.
  */
 
 /** `decor` moves for looks and freezes in reduced motion; `info` shows changing information and always ticks. */
@@ -27,6 +28,10 @@ class AnimationClock {
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private cadence = 0;
 	private reduced = false;
+	/** Decoration holds still until this time (`Date.now()`), e.g. while the user scrolls. */
+	private heldUntil = 0;
+	/** When the hold in progress began: decoration drawn from the clock shows this moment until the hold ends. */
+	private heldSince = 0;
 
 	/** Call `listener` about every `everyMs` while subscribed; returns the unsubscribe. */
 	subscribe(listener: (now: number) => void, options: AnimationSubscription): () => void {
@@ -57,6 +62,25 @@ class AnimationClock {
 		return this.reduced;
 	}
 
+	/**
+	 * Hold decoration still for `ms` from now (extending a hold in progress): its calls wait and resume on the first
+	 * tick after the hold. Counters keep ticking, and owners still repaint for changes of their own.
+	 */
+	holdDecoration(ms: number): void {
+		const now = Date.now();
+		if (now >= this.heldUntil) this.heldSince = now;
+		this.heldUntil = Math.max(this.heldUntil, now + Math.max(0, ms));
+	}
+
+	/**
+	 * The time decoration drawn from the clock (a shimmer band, a spinner glyph picked by time) shows: now, or the start
+	 * of a hold in progress, so a frame painted during the hold draws it where it stopped.
+	 */
+	decorationTime(): number {
+		const now = Date.now();
+		return now < this.heldUntil ? this.heldSince : now;
+	}
+
 	/** Whether a timer is running: false whenever nothing animates (an idle screen writes nothing). */
 	isRunning(): boolean {
 		return this.timer !== undefined;
@@ -83,8 +107,10 @@ class AnimationClock {
 		// The clock ticks at the fastest cadence: a call runs on the first tick at or after its due time (never early, so
 		// a counter never shows a second that has not passed), and the next is due `everyMs` after the last due time, not
 		// after the late tick, so a 1 s counter on an 80 ms spinner clock keeps a 1 s average without drifting.
+		const held = now < this.heldUntil;
 		for (const subscriber of this.ticking()) {
 			if (!this.subscribers.has(subscriber) || now < subscriber.due - SLACK_MS) continue;
+			if (held && subscriber.kind === "decor") continue;
 			subscriber.due += subscriber.everyMs;
 			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
 			if (subscriber.due <= now) subscriber.due = now + subscriber.everyMs;

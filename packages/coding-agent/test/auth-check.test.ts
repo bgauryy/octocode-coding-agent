@@ -110,6 +110,31 @@ describe("auth check command", () => {
 		});
 	});
 
+	test("cancels an auth check even when the provider check never settles", async () => {
+		const runtime = await createRuntime(AuthStorage.inMemory());
+		const apiKey = runtime.getProvider("openai")?.auth.apiKey;
+		if (!apiKey) throw new Error("OpenAI API-key provider is not registered");
+		const originalCheck = apiKey.check;
+		const started = Promise.withResolvers<void>();
+		apiKey.check = () => {
+			started.resolve();
+			return new Promise(() => {});
+		};
+		try {
+			const controller = new AbortController();
+			const checking = checkProviderAuth(parseArgs(["--provider", "openai"]), runtime, {
+				refresh: true,
+				signal: controller.signal,
+			});
+			await started.promise;
+			controller.abort();
+			await expect(checking).resolves.toEqual({ status: "invalid", provider: "openai", reason: "invalid_state" });
+		} finally {
+			apiKey.check = originalCheck;
+			runtime.dispose();
+		}
+	});
+
 	test("does not treat an unresolved stored environment reference as configured", async () => {
 		const authPath = join(tempDir, "auth.json");
 		writeFileSync(authPath, JSON.stringify({ openai: { type: "api_key", key: "$MISSING_AUTH_CHECK_KEY" } }), "utf-8");

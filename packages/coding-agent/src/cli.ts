@@ -11,7 +11,14 @@ try {
 }
 
 const args = process.argv.slice(2);
-if (args[0] === "completion") {
+const only = args.length === 1 ? args[0] : undefined;
+if (only === "--version" || only === "-v") {
+	const { printVersionOnly } = await import("./cli/version-only.ts");
+	printVersionOnly();
+} else if (only === "--help" || only === "-h") {
+	const { printHelpOnly } = await import("./cli/args/help-only.ts");
+	printHelpOnly();
+} else if (args[0] === "completion") {
 	const { runCompletionCommand } = await import("./cli/completion.ts");
 	runCompletionCommand(args);
 } else if (args[0] === "remote") {
@@ -24,6 +31,8 @@ if (args[0] === "completion") {
 } else {
 	const { setupCli } = await import("./cli/setup.ts");
 	setupCli();
+	const { flushCompileCacheOnNextRequest } = await import("./cli/compile-cache.ts");
+	flushCompileCacheOnNextRequest();
 	const { main } = await import("./main.ts");
 	await main(args);
 }

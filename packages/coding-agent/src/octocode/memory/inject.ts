@@ -11,6 +11,7 @@ import {
 	type ScopeFilter,
 } from "./store.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
 export const MEMORY_HEADER = renderInstruction("notices/memory-header.md", { again: false });
@@ -30,6 +31,8 @@ const RELATIVE_THRESHOLD = 0.3;
 const MIN_TERM_LENGTH = 3;
 /** Longest line one memory takes in an injection; a longer one ends with where to read it whole. */
 const LINE_MAX = 600;
+/** Characters reserved for a body when the title needs clipping too. */
+const BODY_RESERVE = 80;
 
 interface Injection {
 	content: string;
@@ -57,34 +60,63 @@ export function headerInContext(entries: readonly unknown[]): boolean {
 	return keptInjections(entries).some((injection) => injection.whole);
 }
 
-/** The injections a compaction has not summarized away, oldest first. */
-function keptInjections(
-	entries: readonly unknown[],
-): Array<{ at: number; ids: Array<[number, number | undefined]>; whole: boolean }> {
-	// Each injection with its position among the entries, so a compaction can drop those before its first kept entry.
-	let injections: Array<{ at: number; ids: Array<[number, number | undefined]>; whole: boolean }> = [];
-	const position = new Map<string, number>();
-	entries.forEach((entry, at) => {
-		if (!isRecord(entry)) return;
-		if (typeof entry.id === "string") position.set(entry.id, at);
-		if (entry.type === "compaction") {
-			const kept = typeof entry.firstKeptEntryId === "string" ? position.get(entry.firstKeptEntryId) : undefined;
-			injections = kept === undefined ? [] : injections.filter((injection) => injection.at >= kept);
-			return;
-		}
-		if (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE) return;
-		const details = asRecord(entry.details);
-		const list = Array.isArray(details.ids) ? details.ids : [];
-		const updated = Array.isArray(details.updated) ? details.updated : [];
-		injections.push({
-			at,
-			whole: typeof entry.content === "string" && entry.content.startsWith(MEMORY_HEADER),
-			ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
-				typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
-			),
-		});
+type KeptInjection = { at: number; ids: Array<[number, number | undefined]>; whole: boolean };
+
+/** A fold of a branch into the injections a compaction has not summarized away (`keptInjections`). */
+interface InjectionFold {
+	/** How many entries the fold has read: the next entry's position. */
+	read: number;
+	/** Each entry's position by id, so a compaction can find its first kept entry. */
+	readonly position: Map<string, number>;
+	injections: KeptInjection[];
+}
+
+const startFold = (): InjectionFold => ({ read: 0, position: new Map(), injections: [] });
+
+function foldInjection(fold: InjectionFold, entry: unknown): void {
+	const at = fold.read++;
+	if (!isRecord(entry)) return;
+	if (typeof entry.id === "string") fold.position.set(entry.id, at);
+	if (entry.type === "compaction") {
+		const kept = typeof entry.firstKeptEntryId === "string" ? fold.position.get(entry.firstKeptEntryId) : undefined;
+		fold.injections = kept === undefined ? [] : fold.injections.filter((injection) => injection.at >= kept);
+		return;
+	}
+	if (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE) return;
+	const details = asRecord(entry.details);
+	const list = Array.isArray(details.ids) ? details.ids : [];
+	const updated = Array.isArray(details.updated) ? details.updated : [];
+	fold.injections.push({
+		at,
+		whole: typeof entry.content === "string" && entry.content.startsWith(MEMORY_HEADER),
+		ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
+			typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
+		),
 	});
-	return injections;
+}
+
+/** The injections a compaction has not summarized away, oldest first. */
+function keptInjections(entries: readonly unknown[]): KeptInjection[] {
+	const fold = startFold();
+	for (const entry of entries) foldInjection(fold, entry);
+	return fold.injections;
+}
+
+const injectionIndex = new BranchIndex<InjectionFold>(startFold, foldInjection);
+
+/**
+ * `injectedIds` and `headerInContext` of the session's current branch, read once per prompt: the branch is folded only
+ * from where the last prompt's read ended (`BranchIndex`), and again from its start on another branch.
+ */
+export function sessionInjections(session: BranchSource): {
+	injected: Map<number, number | undefined>;
+	headerInContext: boolean;
+} {
+	const kept = injectionIndex.read(session).injections;
+	return {
+		injected: new Map(kept.flatMap((injection) => injection.ids)),
+		headerInContext: kept.some((injection) => injection.whole),
+	};
 }
 
 /** Of the `injected` ids, those whose memory is unchanged since: a memory edited after its injection is sent again. */
@@ -189,13 +221,28 @@ export function selectInjection(
  */
 function injectedLine(memory: Memory, now: number): string {
 	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
-	const head = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} ${JSON.stringify(flat(memory.title))}`;
+	const prefix = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} `;
+	const title = flat(memory.title);
+	const head = `${prefix}${JSON.stringify(title)}`;
 	const body = flat(memory.body);
-	if (!body) return head;
-	const line = `${head} — ${JSON.stringify(body)}`;
+	const line = `${head}${body ? ` — ${JSON.stringify(body)}` : ""}`;
 	if (line.length <= LINE_MAX) return line;
 	const pointer = ` (${memoryGetCall(memory.id)})`;
-	// Cut the text, not the quoted form, so the closing quote survives; escapes can overshoot LINE_MAX by a little.
-	const room = Math.max(1, LINE_MAX - head.length - 5 - pointer.length);
-	return `${head} — ${JSON.stringify(clipText(body, room))}${pointer}`;
+	const room = LINE_MAX - prefix.length - pointer.length;
+	// Leave room for the body when an oversized title competes with it. The stored memory stays whole.
+	const quotedTitle = boundedQuote(title, body ? room - BODY_RESERVE - 3 : room);
+	const quotedBody = body ? ` — ${boundedQuote(body, room - quotedTitle.length - 3)}` : "";
+	return `${prefix}${quotedTitle}${quotedBody}${pointer}`;
+}
+
+/** Clip the text before quoting, counting JSON escapes too, while preserving complete quotes and code points. */
+function boundedQuote(text: string, budget: number): string {
+	let low = 0;
+	let high = Math.min(text.length, Math.max(0, budget - 2));
+	while (low < high) {
+		const mid = Math.ceil((low + high) / 2);
+		if (JSON.stringify(clipText(text, mid)).length <= budget) low = mid;
+		else high = mid - 1;
+	}
+	return JSON.stringify(clipText(text, low));
 }

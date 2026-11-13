@@ -12,3 +12,4 @@ export * from "./summarization.ts";
 export * from "./tokens.ts";
 export * from "./types.ts";
 export * from "./utils.ts";
+export * from "./summary-stream.ts";

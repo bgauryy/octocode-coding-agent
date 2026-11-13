@@ -175,6 +175,7 @@ const KITTY_PRINTABLE_ALLOWED_MODIFIERS = MODIFIERS.shift | LOCK_MASK;
  * @returns The printable character, or undefined if not a printable CSI-u sequence
  */
 export function decodeKittyPrintable(data: string): string | undefined {
+	if (data.charCodeAt(0) !== 0x1b) return undefined;
 	const match = data.match(KITTY_CSI_U_REGEX);
 	if (!match) return undefined;
 

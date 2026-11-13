@@ -133,13 +133,13 @@ async function promptSize(options: {
  * links in a `backlogPlan` entry): measured 1_532 main. One tool carried them all at 2_176 before the split.
  */
 const BACKLOG_ENTITIES_CEILING = 1_560;
-/** The main session's policy sections and tool surfaces without the entity fields: measured 37_917. */
-const MAIN_CEILING = 37_950;
+/** Main policy and tool surfaces, excluding entity fields; tightened after instruction and description compression. */
+const MAIN_CEILING = 36_950;
 /**
- * A specialist with the shared file and communication tools, without the entity fields: measured 21_523. It declares
+ * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`.
  */
-const SPECIALIST_CEILING = 21_550;
+const SPECIALIST_CEILING = 21_050;
 
 describe("prompt size", () => {
 	it("main session", async () => {

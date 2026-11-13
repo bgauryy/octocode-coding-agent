@@ -528,6 +528,42 @@ describe("OpenAI Codex OAuth", () => {
 		expect(consoleError).not.toHaveBeenCalled();
 	});
 
+	it.each([undefined, "rotated-refresh"])(
+		"keeps or replaces the refresh token when renewal returns %s",
+		async (refresh) => {
+			const access = createAccessToken("renewed-account");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => jsonResponse({ access_token: access, refresh_token: refresh, expires_in: 3600 })),
+			);
+			await expect(
+				openaiCodexOAuth.refresh(
+					{ type: "oauth", access: "old", refresh: "previous-refresh", expires: 0 },
+					neverAbortedSignal,
+				),
+			).resolves.toMatchObject({
+				access,
+				refresh: refresh ?? "previous-refresh",
+				accountId: "renewed-account",
+			});
+		},
+	);
+
+	it.each(["", 42])("rejects a malformed replacement refresh token %s", async (refresh) => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				jsonResponse({ access_token: createAccessToken("account"), refresh_token: refresh, expires_in: 3600 }),
+			),
+		);
+		await expect(
+			openaiCodexOAuth.refresh(
+				{ type: "oauth", access: "old", refresh: "previous-refresh", expires: 0 },
+				neverAbortedSignal,
+			),
+		).rejects.toThrow("invalid refresh_token");
+	});
+
 	it("uses the app's agent name as the browser login originator", async () => {
 		vi.stubGlobal(
 			"fetch",

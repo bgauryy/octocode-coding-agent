@@ -118,6 +118,15 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return runtime;
 	}
 
+	/**
+	 * Stop watching the credential file for changes other processes make. The runtime keeps serving requests and the
+	 * last availability snapshot; only refreshes driven by those outside changes stop. A replaced session's runtime is
+	 * disposed so watchers and refresh passes do not pile up per switch. Repeated calls do nothing.
+	 */
+	dispose(): void {
+		this.availability.dispose();
+	}
+
 	private rebuildProviders(): void {
 		this.layers.rebuildProviders();
 		this.availability.updateModelSnapshot();

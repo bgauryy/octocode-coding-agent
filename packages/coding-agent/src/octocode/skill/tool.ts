@@ -88,8 +88,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 			// The skills section owns the trigger; the snippet only points to it and this text says what the tool does.
 			promptSnippet: renderInstruction("tools/skill/snippet.md"),
 			description:
-				"Load a skill's instructions by name and follow them. The result holds the skill's SKILL.md and its directory: " +
-				"resolve relative paths in the instructions against that directory. Only listed skills load.",
+				"Load and follow a listed skill by name. Returns its SKILL.md and directory; resolve relative paths against that directory.",
 			parameters: Type.Object({
 				name: Type.String({ description: "Listed skill name" }),
 			}),

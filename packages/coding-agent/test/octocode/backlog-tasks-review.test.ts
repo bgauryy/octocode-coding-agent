@@ -61,7 +61,7 @@ describe("closing an item that has tasks", () => {
 		store.tasks.add({ goal: "Open step", item: item.ref }, user);
 		const close = { kind: "wont_do" as const, text: "dropped" };
 		expect(() => store.update(item.ref, { close }, user)).toThrow(
-			`${item.ref} has open tasks: T1: the user finishes or drops them on the backlog board (/backlog) first.`,
+			`${item.ref} has open tasks: T1: finish completed steps with backlog step (id T…, note: result and checks); the user drops unneeded steps on the backlog board (/backlog).`,
 		);
 		expect(() => store.update(item.ref, { close }, agent)).toThrow(/has open tasks/);
 		expect(store.get(item.ref)?.state).not.toBe("done");

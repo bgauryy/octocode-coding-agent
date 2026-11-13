@@ -20,6 +20,7 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { harnessToggles } from "./e2e-helpers/harness-toggles.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TEAM_ENTRY } from "../../src/octocode/team/session/rejoin.ts";
+import { RECENT_TOOLS_ENTRY } from "../../../mcp/src/recent-session.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
@@ -233,7 +234,8 @@ describe("Native features through the SDK", () => {
 		const custom = session.sessionManager
 			.getEntries()
 			.flatMap((entry) => (entry.type === "custom" ? [entry.customType] : []));
-		expect(custom.filter((type) => type !== TEAM_ENTRY)).toEqual([]);
+		// Session state, not banner or UI output: the team record and the MCP tool set a resume restores.
+		expect(custom.filter((type) => type !== TEAM_ENTRY && type !== RECENT_TOOLS_ENTRY)).toEqual([]);
 		expect((ui as { header?: unknown }).header).toBeUndefined();
 		expect((ui as { title?: string }).title).toBeUndefined();
 		// SessionStart hook output reaches the model once, as data.

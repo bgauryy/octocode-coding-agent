@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setCapabilityOverrides, Text, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { purposeRows, reasonRow } from "../../src/octocode/ui/reason-row.ts";
 import { createToolHtmlRenderer } from "../../src/core/export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../../src/core/features/types.ts";
@@ -45,8 +45,8 @@ describe("the reason line of a native tool row", () => {
 		expect(text[1].indexOf("↳")).toBe(gutter.indexOf("⎿") + 1);
 	});
 
-	it("is hidden when it is a single word, such as a bare `Edit`, and shown from two words", () => {
-		expect(lines(row("bash", { command: "ls", reason: "Edit" })).join("\n")).not.toContain("↳");
+	it("retains even a short supplied reason, while informative reasons keep the compact arrow row", () => {
+		expect(lines(row("bash", { command: "ls", reason: "Edit" })).join("\n")).toContain("Reason: Edit");
 		expect(lines(row("bash", { command: "ls", reason: "Run tests" })).join("\n")).toContain("↳ Run tests");
 		expect(lines(row("bash", { command: "ls", reason: "Edit hello to hi." })).join("\n")).toContain(
 			"↳ Edit hello to hi.",
@@ -62,7 +62,7 @@ describe("the reason line of a native tool row", () => {
 		);
 	});
 
-	it("is shown for an MCP tool call only from its returned data, with or without a renderer", () => {
+	it("shows supplied and returned MCP purpose with or without a renderer", () => {
 		const args = { queries: [{ path: ".", mainGoal: "from the input" }], reason: "copied from a native tool" };
 		const structuredContent = {
 			content: [],
@@ -70,9 +70,9 @@ describe("the reason line of a native tool row", () => {
 		};
 		for (const withRenderer of [true, false]) {
 			const component = row("mcp__octocode__localSearch", args, withRenderer);
-			expect(lines(component).join("\n"), String(withRenderer)).not.toContain("↳");
+			expect(lines(component).join("\n"), String(withRenderer)).toContain("from the input");
 			component.updateResult({ content: [], structuredContent, isError: false });
-			expect(lines(component).join("\n"), String(withRenderer)).toContain("↳ find who calls the loader");
+			expect(lines(component).join("\n"), String(withRenderer)).toContain("find who calls the loader");
 		}
 		const silent = row("mcp__octocode__localSearch", args, false);
 		silent.updateResult({ content: [], structuredContent: { results: [{ data: {} }] }, isError: false });
@@ -108,6 +108,8 @@ describe("the reason line of a native tool row", () => {
 	});
 
 	it("is the theme's `toolReason` color in italics, a color of its own in every bundled theme", () => {
+		vi.stubEnv("NO_COLOR", "");
+		vi.stubEnv("TERM", "xterm-256color");
 		const seen = new Set<string>();
 		// The themes define truecolor values; a terminal without truecolor hints gets 256 colours, which may round two of
 		// them to one palette entry, so the comparison pins truecolor.
@@ -125,6 +127,7 @@ describe("the reason line of a native tool row", () => {
 		}
 		expect(seen.size).toBe(4);
 		setCapabilityOverrides({});
+		vi.unstubAllEnvs();
 		initTheme("dark");
 	});
 

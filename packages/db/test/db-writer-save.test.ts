@@ -11,7 +11,12 @@ let agent: AgentDb;
 let other: AgentDb;
 beforeEach(() => {
 	dir = tmp();
-	const locations = { file: path.join(dir, "save.db"), archiveDir: path.join(dir, "archive"), privateParent: false };
+	const locations = {
+		file: path.join(dir, "save.db"),
+		mirrorFile: path.join(dir, "save.transcripts.db"),
+		archiveDir: path.join(dir, "archive"),
+		privateParent: false,
+	};
 	agent = openDatabase(locations);
 	other = openDatabase(locations);
 });
@@ -47,10 +52,10 @@ function snapshot(id: string, count: number, tag: string, pad = 0): Extract<Tran
 		workspace,
 	};
 }
-const stored = (db: AgentDb, id: string) => transcripts.records(db.db, id).slice(1);
+const stored = (db: AgentDb, id: string) => transcripts.records(db.mirror.db, id).slice(1);
 const rowIds = (id: string) =>
 	(
-		other.db.prepare("SELECT rowid AS r FROM session_entries WHERE session_id=? ORDER BY position").all(id) as {
+		other.mirror.db.prepare("SELECT rowid AS r FROM session_entries WHERE session_id=? ORDER BY position").all(id) as {
 			r: number;
 		}[]
 	).map((each) => each.r);
@@ -65,7 +70,7 @@ describe("transcript save in the database writer", () => {
 		expect(stored(other, "s-tail")).toEqual(grown.records.map((each) => each.json));
 		// The first five rows were kept as they were, not deleted and inserted again.
 		expect(rowIds("s-tail").slice(0, 5)).toEqual(before);
-		expect(transcripts.stamp(other.db, "s-tail")).toMatchObject({
+		expect(transcripts.stamp(other.mirror.db, "s-tail")).toMatchObject({
 			byte_size: grown.stamp.size,
 			mtime: grown.stamp.mtime,
 		});
@@ -92,14 +97,14 @@ describe("transcript save in the database writer", () => {
 			seen.push(rows.length);
 			const prefixOf = (lines: string[]) => rows.every((value, n) => value === lines[n]);
 			expect(prefixOf(oldLines) || prefixOf(newLines)).toBe(true);
-			const stamp = transcripts.stamp(other.db, "s-steps");
+			const stamp = transcripts.stamp(other.mirror.db, "s-steps");
 			expect(stamp?.mtime).not.toBe(next.stamp.mtime);
 			expect(stamp?.mtime).not.toBe(old.stamp.mtime);
 		};
 		expect(runTranscriptCommand(agent, next, { pause })).toBe("saved");
 		expect(seen.length).toBeGreaterThan(3);
 		expect(stored(other, "s-steps")).toEqual(newLines);
-		expect(transcripts.stamp(other.db, "s-steps")).toMatchObject({
+		expect(transcripts.stamp(other.mirror.db, "s-steps")).toMatchObject({
 			byte_size: next.stamp.size,
 			mtime: next.stamp.mtime,
 		});
@@ -140,9 +145,9 @@ describe("transcript save in the database writer", () => {
 	it("stops when the transcript was removed between its steps", () => {
 		expect(runTranscriptCommand(agent, snapshot("s-gone", 450, "a"))).toBe("saved");
 		const next = snapshot("s-gone", 500, "b");
-		const pause = () => other.transaction(() => transcripts.removeFile(other.db, next.file, "s-gone"));
+		const pause = () => other.mirror.transaction(() => transcripts.removeFile(other.mirror.db, next.file, "s-gone"));
 		expect(runTranscriptCommand(agent, next, { pause })).toBe("skipped");
-		expect(transcripts.stamp(other.db, "s-gone")).toBeUndefined();
+		expect(transcripts.stamp(other.mirror.db, "s-gone")).toBeUndefined();
 		expect(stored(other, "s-gone")).toEqual([]);
 	});
 
@@ -165,6 +170,6 @@ describe("transcript save in the database writer", () => {
 		};
 		expect(runTranscriptCommand(agent, command)).toBe("saved");
 		expect(stored(other, "s-batch")).toEqual(grown.records.map((each) => each.json));
-		expect(transcripts.stamp(other.db, "s-batch")).toMatchObject({ byte_size: grown.stamp.size });
+		expect(transcripts.stamp(other.mirror.db, "s-batch")).toMatchObject({ byte_size: grown.stamp.size });
 	});
 });

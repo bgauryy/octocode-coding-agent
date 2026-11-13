@@ -2,10 +2,10 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
+import { rewriteClaim } from "./handoff/claim-file.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
 import { type ReceiptSession, ReportReceipts } from "./handoff/receipts.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -18,23 +18,22 @@ import { shortPath } from "../../utils/display-path.ts";
 /** Custom message type of the short mid-turn notice that a background report is on its way (never the report). */
 export const NOTICE_TYPE = "octocode-agent-notice";
 
-/**
- * Background reports finishing within this window reach the parent together, as one wake. The window ends early once
- * every background child still running has a report waiting: nobody else is about to join the batch.
- */
-const REPORT_BATCH_MS = 1_500;
-
 /** Rejected sends are retried 3 times quickly (1 s, 2 s, 4 s), then 3 times slowly, so a long outage heals without a restart. */
 const FAST_RETRIES = 3;
 const SLOW_RETRIES = 3;
 const SLOW_RETRY_MS = 30_000;
 
 /**
- * Delivers background reports. Reports that finish close together are batched: all are sent at once and only the last
- * may start a turn, so three subagents finishing in a second cost one parent turn instead of three. Delivery is
- * at-least-once: recovery copies are deleted only after the parent session records their report IDs. A send call can
- * fail asynchronously: rejected sends get three quick retries and three slow ones (30 s, 1 min, 2 min) in the live session. Accepted but unrecorded
- * sends are never retried speculatively; recovery copies remain until a receipt or shutdown persistence.
+ * Delivers background reports. A report goes out at the end of the tick it arrives in, unless it waits for a sibling of
+ * its own parent step whose report is being built (`hold`, `report-groups.ts`). Then it goes out with that sibling's
+ * report, and only the last send of a batch may start a turn: children of one step that finish together cost one parent
+ * turn. Reports that do not wait go without the held ones. No timer holds a report: every wait ends with the sibling's
+ * run, a stall or the end of its supervised run (`reportingChanged`).
+ * A parent in a turn reads every report that arrived meanwhile as follow-ups, together. Delivery is at-least-once:
+ * recovery copies are deleted only after the parent session records their report IDs. A send call can fail
+ * asynchronously: rejected sends get three quick retries and three slow ones (30 s, 1 min, 2 min) in the live session.
+ * Accepted but unrecorded sends are never retried speculatively; recovery copies remain until a receipt or shutdown
+ * persistence.
  */
 export class ReportQueue {
 	private queued: Report[] = [];
@@ -60,24 +59,56 @@ export class ReportQueue {
 	pendingDir: string | undefined;
 
 	private readonly api: ExtensionAPI;
-	private readonly windowMs: number;
-	private readonly running: (() => Iterable<string>) | undefined;
+	private readonly hold: ((queued: readonly string[]) => ReadonlySet<string>) | undefined;
 	/**
-	 * `running`: the ids of this parent's background children that have not ended (a child that is reporting counts
-	 * until it has). Without it every report waits out the window.
+	 * `hold`: the children (of the queued reports' child ids) whose reports wait for a sibling's report
+	 * (`report-groups.ts`). Without it, or when it throws, every report goes out at the end of its tick.
 	 */
-	constructor(api: ExtensionAPI, windowMs = REPORT_BATCH_MS, running?: () => Iterable<string>) {
+	constructor(api: ExtensionAPI, hold?: (queued: readonly string[]) => ReadonlySet<string>) {
 		this.api = api;
-		this.windowMs = windowMs;
-		this.running = running;
+		this.hold = hold;
 	}
 
-	/** Whether every background child still running has a report in the batch, so waiting gathers nothing more. */
-	private complete(): boolean {
-		if (!this.running) return false;
-		const reported = new Set(this.queued.map((report) => report.details.id));
-		for (const id of this.running()) if (!reported.has(id)) return false;
-		return true;
+	/** The queued reports that go now: those whose sibling's report is not about to join them (`hold`). Unknown state holds none. */
+	private ready(): Report[] {
+		if (!this.hold || this.queued.length === 0) return this.queued;
+		try {
+			const held = this.hold(this.queued.map((report) => report.details.id));
+			return held.size === 0 ? this.queued : this.queued.filter((report) => !held.has(report.details.id));
+		} catch {
+			return this.queued;
+		}
+	}
+
+	/** Whether the parent is between turns; a replaced session counts as idle (its reports go through recovery). */
+	private parentIdle(): boolean {
+		try {
+			return this.idle();
+		} catch {
+			return true;
+		}
+	}
+
+	/** Sends what does not wait at the end of this tick (`ready`); checked again when the timer fires. */
+	private schedule(): void {
+		if (this.timer || this.ready().length === 0) return;
+		// The rest of this tick still joins the batch: reports added in one loop (recovered ones) remain one wake.
+		this.timer = setTimeout(() => {
+			this.timer = undefined;
+			this.flushReady();
+		}, 0);
+		this.timer.unref?.();
+	}
+
+	/** Sends the queued reports that do not wait (`ready`, which fails open); the held ones stay queued for their sibling. */
+	private flushReady(): void {
+		const ready = this.ready();
+		if (ready.length > 0) this.flush(ready);
+	}
+
+	/** What the batch waits for may have changed (a sibling's run ended, or its report build stalled): check again. */
+	reportingChanged(): void {
+		this.schedule();
 	}
 
 	start(
@@ -145,20 +176,17 @@ export class ReportQueue {
 		}
 		this.queued.push(report);
 		this.stopClock ??= onSecond(() => this.recorded());
-		// The rest of this tick still joins the batch: reports added in one loop (recovered ones) remain one wake.
-		const complete = this.complete();
-		if (this.timer && !complete) return;
-		clearTimeout(this.timer);
-		this.timer = setTimeout(() => this.flush(), complete ? 0 : this.windowMs);
-		this.timer.unref?.();
+		this.schedule();
 	}
 
-	flush(): void {
+	/** Sends `only` (every queued report by default) as one batch; the rest stays queued. */
+	flush(only: readonly Report[] = this.queued): void {
 		clearTimeout(this.timer);
 		this.timer = undefined;
-		const batch = this.queued.filter((report) => report.reportId && this.pending.has(report.reportId));
-		this.queued = [];
+		const batch = only.filter((report) => report.reportId && this.pending.has(report.reportId));
+		this.queued = only === this.queued ? [] : this.queued.filter((report) => !only.includes(report));
 		const wake = batch.some((report) => report.wake);
+		const busy = !this.parentIdle();
 		this.notify(batch);
 		const last = batch.at(-1);
 		if (wake && last && !last.wake) {
@@ -175,7 +203,9 @@ export class ReportQueue {
 				this.sent.set(report, details);
 				const sending = this.api.sendMessage(
 					{ customType: AGENT_RESULT_TYPE, content: report.content, display: true, details },
-					{ triggerTurn: wake && index === batch.length - 1, deliverAs: "followUp", together: true },
+					// A busy parent (a turn, or a run deciding whether to go on) reads every send of a waking batch as one
+					// follow-up drained together; an idle one gets the batch written and one turn from the last send.
+					{ triggerTurn: wake && (busy || index === batch.length - 1), deliverAs: "followUp", together: true },
 				);
 				if (sending && typeof sending.then === "function")
 					void Promise.resolve(sending).catch(() => this.retry(report));
@@ -195,13 +225,7 @@ export class ReportQueue {
 	 * that the report follows.
 	 */
 	private notify(batch: Report[]): void {
-		let idle = true;
-		try {
-			idle = this.idle();
-		} catch {
-			// The session was replaced: its reports are delivered through the queue as usual.
-		}
-		if (idle) return;
+		if (this.parentIdle()) return;
 		for (const report of batch) {
 			const id = report.reportId;
 			if (!id || !report.wake || this.noticed.has(id)) continue;
@@ -272,8 +296,9 @@ export class ReportQueue {
 			() => {
 				retry.timer = undefined;
 				if (this.pending.get(id) !== report) return;
+				// A retry waits for a sibling like a first send, and never takes held reports along.
 				this.queued.push(report);
-				this.flush();
+				this.flushReady();
 			},
 			retry.attempts <= FAST_RETRIES
 				? 1000 * 2 ** (retry.attempts - 1)
@@ -292,7 +317,7 @@ export class ReportQueue {
 			this.queued.push(report);
 			any = true;
 		}
-		if (any) this.flush();
+		if (any) this.flushReady();
 	}
 
 	/** The children whose reports are held for delivery now, so nobody tells the model they went silent. */
@@ -344,22 +369,6 @@ export class ReportQueue {
 				// The claim is gone; nothing to give back.
 			}
 		} else if (this.pendingDir) savePendingReport(this.pendingDir, report.details.id, report);
-	}
-}
-
-/** Brings a report's recovery copy up to date with the wake and content it now has. */
-function rewriteClaim(report: Report): void {
-	const claim = claims.get(report);
-	if (!claim) return;
-	try {
-		const saved = JSON.parse(fs.readFileSync(claim.claim, "utf8")) as Report;
-		atomicWriteFileSync(
-			claim.claim,
-			JSON.stringify({ ...saved, wake: report.wake, content: report.content, superseded: report.superseded }),
-			{ mode: 0o600 },
-		);
-	} catch {
-		// Keep live delivery working if recovery storage became unavailable.
 	}
 }
 

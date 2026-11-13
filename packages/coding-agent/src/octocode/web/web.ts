@@ -145,7 +145,7 @@ export function registerWebTool(api: ExtensionAPI, permission: Permission): void
 			label: "Web",
 			promptSnippet: renderInstruction("tools/web/snippet.md"),
 			description:
-				"Pass query to search the web or url to read one http(s) page; supply exactly one. Fetches return static page text and metadata or formatted JSON, without running JavaScript. A PNG, JPEG, GIF or WebP URL returns the image itself (resized when large; the original is saved and named); SVG is read as XML. A cross-host redirect names the next URL instead of following it.",
+				"Supply exactly one: query to search, or url to read an http(s) page. Fetches return static text and metadata or formatted JSON; no JavaScript runs. Image URLs (PNG, JPEG, GIF, WebP) return images, resizing large ones and naming saved originals; SVG returns XML. Cross-host redirects name the next URL without following it.",
 			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
 			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
 			// on the selected tools).

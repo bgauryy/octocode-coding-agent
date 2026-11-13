@@ -24,11 +24,15 @@ interface FallbackCredentialOptions {
  * recognize, is skipped with a warning naming the file. While the `pi` provider source is off, Pi's files are not read.
  */
 export class PiFallbackCredentialStore implements CredentialStore {
-	private readonly primary: AuthStorage;
+	private readonly primary: AuthStorage | ReadOnlyAuthStorage;
 	private readonly piAuthPaths: readonly string[];
 	private readonly options: FallbackCredentialOptions;
 
-	constructor(primary: AuthStorage, piDirs: readonly string[], options: FallbackCredentialOptions = {}) {
+	constructor(
+		primary: AuthStorage | ReadOnlyAuthStorage,
+		piDirs: readonly string[],
+		options: FallbackCredentialOptions = {},
+	) {
 		this.primary = primary;
 		this.piAuthPaths = piDirs.map((dir) => join(dir, "auth.json"));
 		this.options = options;
@@ -48,7 +52,7 @@ export class PiFallbackCredentialStore implements CredentialStore {
 
 	/** Octocode's file only; Pi's files are read fresh on every read. */
 	watch(onChange: () => void): () => void {
-		return this.primary.watch(onChange);
+		return "watch" in this.primary ? this.primary.watch(onChange) : () => {};
 	}
 
 	/** The first usable fallback entry for the provider, unresolved; read fresh so edits to Pi's file apply. */
@@ -100,7 +104,10 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		options: AuthOperationOptions | undefined,
 		onFailure: (held: HeldCredential) => Promise<void>,
 	): Promise<Credential | undefined> {
-		return this.primary.modifyGuarded(providerId, this.seeded(providerId, fn, options), options, onFailure);
+		const seeded = this.seeded(providerId, fn, options);
+		return "modifyGuarded" in this.primary
+			? this.primary.modifyGuarded(providerId, seeded, options, onFailure)
+			: this.primary.modify(providerId, seeded, options);
 	}
 
 	private seeded(

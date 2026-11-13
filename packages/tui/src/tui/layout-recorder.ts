@@ -5,7 +5,11 @@
  * changes, the renderer must know whether the row's content was edited in place (a counter, a spinner mark, a
  * status word) or the layout moved (a component appeared, vanished, grew or shrank). Terminals cannot edit
  * scrollback, so an in-place edit is dropped from the diff, while a moved layout needs the whole transcript
- * replayed. `Container.render` reports each leaf to the recorder that is active for the frame.
+ * replayed. `Container.render` reports its layout to the recorder that is active for the frame.
+ *
+ * Each container reports one node: its children, their rows, and the layouts rendered inside each child. An unchanged
+ * container reports the node of its last frame by reference, so recording costs nothing for the parts of the tree that
+ * did not change; the flat leaves and start rows are built only when asked for.
  */
 
 import type { Component } from "./component.ts";
@@ -17,13 +21,98 @@ export interface LayoutLeaf {
 	length: number;
 }
 
+/** What one container rendered. Never changed after it is reported. */
+export interface LayoutNode {
+	readonly components: readonly Component[];
+	/** Row where each component starts, relative to the node; the last entry is the total. */
+	readonly offsets: readonly number[];
+	/** The layouts rendered inside each child, or undefined where unknown (not recorded). */
+	readonly nested: readonly (readonly NestedLayout[] | undefined)[] | undefined;
+	/** Leaves the node reports: a child that reported no leaf of its own is a leaf itself. */
+	readonly leafCount: number;
+}
+
+/** A node rendered inside a child, `offset` rows below the child's start. */
+export interface NestedLayout {
+	readonly node: LayoutNode;
+	readonly offset: number;
+}
+
+const NO_NESTED: readonly NestedLayout[] = Object.freeze([]);
+
+export function nestedLeafCount(nested: readonly NestedLayout[] | undefined): number {
+	if (!nested) return 0;
+	let count = 0;
+	for (const entry of nested) count += entry.node.leafCount;
+	return count;
+}
+
+function flatten(
+	list: readonly NestedLayout[],
+	start: number,
+	leaves: LayoutLeaf[],
+	starts: Map<Component, number>,
+): void {
+	for (const { node, offset } of list) {
+		let row = start + offset;
+		for (let index = 0; index < node.components.length; index++) {
+			const component = node.components[index];
+			const length = node.offsets[index + 1] - node.offsets[index];
+			starts.set(component, row);
+			const nested = node.nested?.[index];
+			if (nested && nestedLeafCount(nested) > 0) flatten(nested, row, leaves, starts);
+			else leaves.push({ component, start: row, length });
+			row += length;
+		}
+	}
+}
+
 export class LayoutRecorder {
 	/** Row where the container being rendered starts; `Container.render` sets it before rendering each child. */
 	base = 0;
+	private readonly roots: NestedLayout[] = [];
+	/** Per child being rendered, outermost first: the layouts it rendered so far and the row it starts on. */
+	private readonly open: Array<{ collected: NestedLayout[] | undefined; start: number }> = [];
+	private flat: { leaves: LayoutLeaf[]; starts: Map<Component, number> } | undefined;
+
+	/** A container starts rendering the child that starts at `start`; every `beginChild` is followed by `endChild`. */
+	beginChild(start: number): void {
+		this.open.push({ collected: undefined, start });
+		this.base = start;
+	}
+
+	/** The layouts the child rendered since its `beginChild`. */
+	endChild(): readonly NestedLayout[] {
+		return this.open.pop()?.collected ?? NO_NESTED;
+	}
+
+	/** A container rendered `node`, starting at `base`. */
+	attach(node: LayoutNode): void {
+		this.flat = undefined;
+		const child = this.open.at(-1);
+		if (!child) this.roots.push({ node, offset: this.base });
+		else (child.collected ??= []).push({ node, offset: this.base - child.start });
+	}
+
+	private flattened(): { leaves: LayoutLeaf[]; starts: Map<Component, number> } {
+		if (!this.flat) {
+			const leaves: LayoutLeaf[] = [];
+			const starts = new Map<Component, number>();
+			flatten(this.roots, 0, leaves, starts);
+			this.flat = { leaves, starts };
+		}
+		return this.flat;
+	}
+
 	/** Every leaf with its start row, in render order. */
-	readonly leaves: LayoutLeaf[] = [];
+	get leaves(): readonly LayoutLeaf[] {
+		return this.flattened().leaves;
+	}
+
 	/** The start row of every child a container rendered, leaf or not. */
-	readonly starts = new Map<Component, number>();
+	get starts(): ReadonlyMap<Component, number> {
+		return this.flattened().starts;
+	}
 }
 
 let active: LayoutRecorder | undefined;

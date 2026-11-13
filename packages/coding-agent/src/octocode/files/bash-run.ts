@@ -286,9 +286,9 @@ export function foregroundOperations(
  * The per-call fact for a command that returned while processes it started (`server &`) still run in its group:
  * which ones, and how to stop them. Undefined when the group is gone (always on Windows, which has no groups).
  */
-export function strayNote(pid: number): string | undefined {
+export async function strayNote(pid: number): Promise<string | undefined> {
 	if (process.platform === "win32" || !groupAlive(pid)) return undefined;
-	const members = groupMembers(pid);
+	const members = await groupMembers(pid);
 	if (members.length === 0) return undefined;
 	const listed = members
 		.slice(0, LISTED_STRAYS)

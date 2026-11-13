@@ -51,7 +51,7 @@ const MAX_UTF8_BYTES_PER_UNIT = 3;
  * recovery callback repaints the screen whole.
  */
 export class TerminalOutput {
-	private frameCap: number | undefined = DEFAULT_FRAME_OUTPUT_CAP;
+	private frameCapBytes: number | undefined = DEFAULT_FRAME_OUTPUT_CAP;
 	private framesDropped = false;
 	private awaitingDrain = false;
 	private recover: (() => void) | undefined;
@@ -105,9 +105,13 @@ export class TerminalOutput {
 		});
 	}
 
+	get frameCap(): number | undefined {
+		return this.frameCapBytes;
+	}
+
 	/** Queued bytes past which frames are dropped; undefined keeps every frame. */
 	setFrameCap(bytes: number | undefined): void {
-		this.frameCap = bytes !== undefined && Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes) : undefined;
+		this.frameCapBytes = bytes !== undefined && Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes) : undefined;
 	}
 
 	/** What repaints the screen whole once the queue drains after frames were dropped. */
@@ -137,7 +141,8 @@ export class TerminalOutput {
 
 	/**
 	 * The exit event cannot drain stdout's JavaScript queue, so restore bytes go straight to the descriptor. It stays
-	 * nonblocking: a full terminal is retried until `EXIT_WRITE_BUDGET_MS`, then the rest of the bytes are dropped.
+	 * nonblocking: a full terminal is retried until `EXIT_WRITE_BUDGET_MS`, then the rest of the bytes are dropped. A
+	 * terminal that hung up (EIO) or went away takes nothing more: the bytes are dropped, never thrown at the exit.
 	 */
 	writeOnExit(data: string): void {
 		if (!process.stdout.isTTY) return this.write(data);
@@ -147,7 +152,7 @@ export class TerminalOutput {
 			try {
 				offset += fs.writeSync(process.stdout.fd, bytes, offset, bytes.length - offset);
 			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "EAGAIN") throw error;
+				if ((error as NodeJS.ErrnoException).code !== "EAGAIN") return;
 				exitWriteDeadline ??= Date.now() + EXIT_WRITE_BUDGET_MS;
 				if (Date.now() >= exitWriteDeadline) return;
 				pause(5);
@@ -156,12 +161,12 @@ export class TerminalOutput {
 	}
 
 	write(data: string, kind: OutputKind = "essential"): void {
-		if (kind === "frame" && this.frameCap !== undefined) {
+		if (kind === "frame" && this.frameCapBytes !== undefined) {
 			const pending = this.pendingBytes;
 			// Measured only near the cap: a frame far below it is queued without counting its bytes.
-			if (pending + data.length * MAX_UTF8_BYTES_PER_UNIT > this.frameCap) {
+			if (pending + data.length * MAX_UTF8_BYTES_PER_UNIT > this.frameCapBytes) {
 				const bytes = Buffer.byteLength(data);
-				if (pending + bytes > this.frameCap) return this.dropFrame(bytes);
+				if (pending + bytes > this.frameCapBytes) return this.dropFrame(bytes);
 			}
 		}
 		const accepted = process.stdout.write(data);

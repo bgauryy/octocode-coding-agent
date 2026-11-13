@@ -27,8 +27,8 @@ import {
 	matchesLegacySequence,
 	matchesModifyOtherKeys,
 	matchesRawBackspace,
-	parseKeyId,
 } from "./sequences.ts";
+import { type ParsedKeyId, parseKeyId } from "./parse-key-id.ts";
 import { isKittyProtocolActive } from "./state.ts";
 import {
 	ARROW_CODEPOINTS,
@@ -60,8 +60,11 @@ import {
  */
 export function matchesKey(data: string, keyId: KeyId): boolean {
 	const parsed = parseKeyId(keyId);
-	if (!parsed) return false;
+	return parsed !== null && matchesParsedKey(data, parsed);
+}
 
+/** `matchesKey` for a key id parsed once with `parseKeyId` (a keybinding's keys, parsed when the bindings load). */
+export function matchesParsedKey(data: string, parsed: ParsedKeyId): boolean {
 	const { key, ctrl, shift, alt, super: superModifier } = parsed;
 	let modifier = 0;
 	if (shift) modifier |= MODIFIERS.shift;

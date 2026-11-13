@@ -4,6 +4,7 @@ import type { Settings, ThinkingBudgetsSettings, TransportSetting } from "../../
 import { normalizeProviderSources, SOURCE_DEFAULTS } from "../../provider-sources/gate.ts";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
+import { type DefaultModelSelectionOptions, saveDefaultModelSelection } from "../model-default.ts";
 import { DEFAULT_TOOL_NAMES, resolveDefaultTools } from "../tool-list.ts";
 import { SettingsAccessorBase } from "./base.ts";
 
@@ -30,11 +31,20 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 	}
 
 	setDefaultModelAndProvider(provider: string, modelId: string): void {
+		this.setDefaultModelFields(provider, modelId);
+		this.save();
+	}
+
+	/** Save a model and its options together; success means this write reached storage. */
+	saveDefaultModelSelection(provider: string, modelId: string, options?: DefaultModelSelectionOptions): Promise<void> {
+		return saveDefaultModelSelection(this.state, this.persistence, provider, modelId, options);
+	}
+
+	private setDefaultModelFields(provider: string, modelId: string): void {
 		this.globalSettings.defaultProvider = provider;
 		this.globalSettings.defaultModel = modelId;
 		this.markModified("defaultProvider");
 		this.markModified("defaultModel");
-		this.save();
 	}
 
 	setDefaultSelection(

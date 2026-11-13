@@ -17,7 +17,10 @@ interface ShellGroup {
 	started: string;
 }
 
-/** Child side: records the group `pid` leads when the parent asked for it (POSIX only; Windows ends trees by job). */
+/**
+ * Child side: records the group `pid` leads when the parent asked for it (POSIX only; Windows ends trees by job). Its
+ * start is read at once (one `ps` as the command starts, not on a timer): a child killed right after must leave it.
+ */
 export function recordShellGroup(pid: number | undefined, env: NodeJS.ProcessEnv = process.env): void {
 	const file = env[SHELL_GROUPS_FILE_ENV];
 	if (!file || !validPid(pid) || process.platform === "win32") return;
@@ -57,11 +60,11 @@ function readGroups(file: string): ShellGroup[] {
  * the group lives on (`server &`) and every member started at or after it. Killing an unrelated process is the worst
  * outcome, so anything that cannot be proven (`ps` failing) is left alone.
  */
-function stillTheChilds(group: ShellGroup): boolean {
-	const match = processMatch(group.pid, group.started);
+async function stillTheChilds(group: ShellGroup): Promise<boolean> {
+	const match = await processMatch(group.pid, group.started);
 	if (match === "same") return true;
 	if (match === "unknown" || !groupAlive(group.pid)) return false;
-	const members = groupStartTimes(group.pid);
+	const members = await groupStartTimes(group.pid);
 	return (
 		members !== undefined &&
 		members.length > 0 &&
@@ -75,7 +78,9 @@ function stillTheChilds(group: ShellGroup): boolean {
  */
 export async function stopShellGroups(file: string | undefined): Promise<number> {
 	if (!file || process.platform === "win32") return 0;
-	const live = readGroups(file).filter(stillTheChilds);
+	const groups = readGroups(file);
+	const verdicts = await Promise.all(groups.map(stillTheChilds));
+	const live = groups.filter((_, at) => verdicts[at]);
 	await Promise.all(live.map((group) => stopTree(group.pid).catch(() => undefined)));
 	fs.rmSync(file, { force: true });
 	return live.length;

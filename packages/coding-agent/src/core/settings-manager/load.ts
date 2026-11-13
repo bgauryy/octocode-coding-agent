@@ -1,5 +1,7 @@
+import { Value } from "typebox/value";
 import { stripBom } from "../../../../common/src/text.ts";
 import type { Settings } from "../settings-schema.ts";
+import { ModelAvailabilitySettingsProperties } from "../settings-schema/model-availability.ts";
 import { isMergeableObject } from "./merge.ts";
 import type { SettingsScope, SettingsStorage } from "./storage.ts";
 
@@ -21,8 +23,15 @@ function loadSettingsFromStorage(storage: SettingsStorage, scope: SettingsScope,
 	if (content === undefined) {
 		return {};
 	}
-	const settings = JSON.parse(stripBom(content));
-	return migrateSettings(settings);
+	const settings = migrateSettings(JSON.parse(stripBom(content)));
+	if (
+		scope === "global" &&
+		settings.disabledProviders !== undefined &&
+		!Value.Check(ModelAvailabilitySettingsProperties.disabledProviders, settings.disabledProviders)
+	) {
+		throw new Error("Invalid disabledProviders setting: expected an array of provider IDs");
+	}
+	return settings;
 }
 
 export function tryLoadSettingsFromStorage(

@@ -243,6 +243,24 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		});
 	});
 
+	it("resolves the session output folder once for a batch, and saves each result as before", async () => {
+		const items = reads(40, 2_000);
+		const s = setup(idleMessages(items));
+		const chmod = vi.spyOn(fs, "chmodSync");
+		await s.start(T0 + 100 + HOUR + 1_000);
+		const outcome = resultTexts(await s.context());
+		const clearedTexts = outcome.slice(0, 40 - KEEP_RECENT_RESULTS);
+		expect(clearedTexts.every(cleared)).toBe(true);
+		// Same content, same file: the saved copies are named by their hash (ten distinct texts here).
+		const files = clearedTexts.map((text) => savedPathOf(text)!);
+		expect(new Set(files).size).toBe(10);
+		files.forEach((file, index) =>
+			expect(fs.readFileSync(path.resolve(file), "utf8")).toBe(String(index % 10).repeat(2_000)),
+		);
+		// Resolving the folder makes its private directories (three per resolution): once, not once per result.
+		expect(chmod.mock.calls.length).toBeLessThanOrEqual(3);
+	});
+
 	describe("while the cache is warm and the request rewrites it anyway", () => {
 		// Twelve reads: clearing alone would not pay yet (see the long session above), so only the rewrite clears them.
 		const head = { role: "system", content: "base prompt", timestamp: T0 - 1 };

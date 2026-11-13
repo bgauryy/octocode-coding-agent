@@ -51,6 +51,11 @@ export class AltScreenScrollbar {
 		this.setScrollbarHover(undefined);
 	}
 
+	/** Whether the pointer was last seen over a scrollbar. */
+	get hovering(): boolean {
+		return this.scrollbarHover !== undefined;
+	}
+
 	handleScrollbarMouseEvent(event: SgrMouseEvent): boolean {
 		if (this.scrollbarDrag) {
 			if (event.release) {

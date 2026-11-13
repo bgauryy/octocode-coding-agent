@@ -29,7 +29,9 @@ export function compositeScrollToEndIndicator(
 	const scrollbarColumn = box ? getScrollbarGeometry(box)?.column : undefined;
 	const rowsBelow = Math.max(
 		0,
-		(box?.scrollContentLines?.length ?? 0) - scrollView.scrollTop - scrollView.viewportHeight,
+		(box?.scrollContentHeight ?? box?.scrollContentLines?.length ?? 0) -
+			scrollView.scrollTop -
+			scrollView.viewportHeight,
 	);
 	const label = truncateToWidth(scrollToEndIndicator(rowsBelow), clip.width, "");
 	const labelWidth = visibleWidth(label);

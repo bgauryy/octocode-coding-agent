@@ -1,1 +1,1 @@
-- For a judgment beyond your scope (a design choice, a root cause you cannot confirm), report what you found and what it needs instead of guessing. Put follow-ups in your report; your coordinator files them.
+- For judgments beyond your scope or evidence, report findings and what would settle them. Include follow-ups; your coordinator files them.

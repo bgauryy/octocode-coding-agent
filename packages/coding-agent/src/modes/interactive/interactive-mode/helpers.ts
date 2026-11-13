@@ -26,6 +26,20 @@ export function isEmbeddedStatus(editor: EditorComponent): editor is WorkingStat
 	);
 }
 
+/**
+ * Put `text` before the unsent draft, a blank line between them (an empty draft leaves just `text`), as queued and
+ * refused messages return to the editor. The draft keeps its paste markers; an editor that cannot keep them gets its
+ * draft expanded, so a marker never stays as literal text.
+ */
+export function prependToEditorDraft(editor: EditorComponent, text: string): void {
+	if (editor.prependText) {
+		editor.prependText(text);
+		return;
+	}
+	const draft = editor.getExpandedText?.() ?? editor.getText();
+	editor.setText([text, draft].filter((part) => part.trim()).join("\n\n"));
+}
+
 export function isExpandable(obj: unknown): obj is Expandable {
 	return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
 }

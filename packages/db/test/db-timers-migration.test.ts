@@ -10,7 +10,12 @@ import { tmp } from "./helpers.ts";
 const { DatabaseSync } = loadSqlite();
 
 const open = (file: string): AgentDb =>
-	openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false });
+	openDatabase({
+		file,
+		mirrorFile: `${file}.transcripts`,
+		archiveDir: path.join(path.dirname(file), "archive"),
+		privateParent: false,
+	});
 
 /** A file as version 5 left it: the narrow `timers` table, with an active until timer, a done once timer and a gap in the ids. */
 function versionFive(): string {

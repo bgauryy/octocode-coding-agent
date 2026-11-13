@@ -24,7 +24,7 @@ const runnerRow = (state: RunnerState): string =>
 	`  ${GLYPH.live} ${state.id} · ${[
 		`${state.name}${state.version ? ` ${state.version}` : ""}`,
 		state.auth?.method,
-		state.auth?.billing === "metered" ? "metered key" : "plan",
+		state.auth?.billing === "metered" ? "metered key" : state.auth?.billing === "plan" ? "plan" : "billing unknown",
 	]
 		.filter(Boolean)
 		.join(" · ")}`;

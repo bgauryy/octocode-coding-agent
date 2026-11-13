@@ -595,6 +595,47 @@ describe("writeSummary with the shared path", () => {
 		});
 	});
 
+	it("sends the shared and the standalone request through the session's summary request policy", async () => {
+		const timedOut = reply([], "error");
+		const s = setup({
+			// The retry backoff listens on the signal: a real one.
+			signal: new AbortController().signal,
+			reply: (n) =>
+				n === 1
+					? { ...timedOut, errorMessage: "The summary request timed out: nothing arrived for 5m" }
+					: n === 2
+						? reply([{ type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse")
+						: n === 3
+							? { ...timedOut, errorMessage: "terminated" }
+							: reply([text("## Goal\nstandalone after a retry")]),
+		});
+		let watched = 0;
+		const scheduled: string[] = [];
+		const summaryRequest = {
+			watch:
+				(stream: (...args: unknown[]) => unknown) =>
+				(...args: unknown[]) => {
+					watched++;
+					return stream(...args);
+				},
+			retry: { enabled: true, maxRetries: 2, baseDelayMs: 0 },
+			callbacks: {
+				onRetryScheduled: (_a: number, _m: number, _d: number, error: string) => void scheduled.push(error),
+			},
+		};
+		const out = await writeSummary(s.api, { ...(s.event as object), summaryRequest } as never, s.ctx);
+		// The shared request is retried after its timeout (it reads the same cached prefix), then falls back as before;
+		// the standalone request is retried by the same policy.
+		expect(s.calls).toHaveLength(4);
+		expect(watched).toBe(4);
+		expect(scheduled).toEqual(["The summary request timed out: nothing arrived for 5m", "terminated"]);
+		expect(finalPrompt(s.calls[1])).not.toContain("<conversation>");
+		expect(finalPrompt(s.calls[3])).toContain("<conversation>");
+		expect(out?.compaction?.summary).toContain("standalone after a retry");
+		// Every attempt's usage is recorded, not only the last one's.
+		expect(s.recordedUsage).toHaveLength(4);
+	});
+
 	it("names blocked images as the reason for the standalone request, without a warning", async () => {
 		const { api, ctx, event, notices } = setup({ settings: { images: { blockImages: true } } });
 		const out = await writeSummary(api, event, ctx);

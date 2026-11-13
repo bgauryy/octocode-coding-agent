@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+node_path="$(type -P node)"
+readonly repo_root node_path
+cd -- "$repo_root"
+
 # Isolate user resources, credentials, temporary files, and tool configuration.
-temp_parent="${TMPDIR:-/tmp}"
-temp_parent="${temp_parent%/}"
+temp_parent="$(cd -- "${TMPDIR:-/tmp}" && pwd -P)"
 test_root="$(mktemp -d "$temp_parent/octocode-test.XXXXXX")"
 git_askpass="$(type -P false)"
 readonly temp_parent test_root git_askpass
@@ -81,4 +85,22 @@ for name in CI GITHUB_ACTIONS; do
 done
 
 echo "Running tests without API keys in isolated home: $test_root/home"
-env -i "${test_env[@]}" yarn test
+# The runner uses the checked-in Yarn release directly, even with a fresh HOME.
+# Keep the shell alive until cancellation has stopped the runner and its suites.
+runner_pid=""
+cancel() {
+	trap '' INT TERM HUP
+	if [[ -n "$runner_pid" ]]; then
+		kill -s "$1" "$runner_pid" 2>/dev/null || true
+		wait "$runner_pid" || true
+	fi
+	exit "$2"
+}
+trap 'cancel INT 130' INT
+trap 'cancel TERM 143' TERM
+trap 'cancel HUP 129' HUP
+env -i "${test_env[@]}" "$node_path" "$repo_root/scripts/test-workspaces.mjs" "$@" &
+runner_pid=$!
+status=0
+wait "$runner_pid" || status=$?
+exit "$status"

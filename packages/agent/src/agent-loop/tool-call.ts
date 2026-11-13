@@ -88,6 +88,9 @@ async function prepareCall(
 	tools: readonly AgentTool<any>[],
 	early: boolean,
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome | DeferredToolCall> {
+	if (signal?.aborted) {
+		return { kind: "immediate", result: createErrorToolResult("Operation aborted"), isError: true };
+	}
 	const tool = tools.find((t) => t.name === toolCall.name);
 	if (!tool) {
 		return {

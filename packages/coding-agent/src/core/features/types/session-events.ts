@@ -1,6 +1,6 @@
 /** Startup, resource and session lifecycle events. */
 
-import type { CompactionPreparation } from "../../compaction/index.ts";
+import type { CompactionPreparation, SummaryRequestPolicy } from "../../compaction/index.ts";
 import type { RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSource } from "../../session-manager.ts";
 
@@ -83,6 +83,12 @@ export interface SessionBeforeCompactEvent {
 	/** True when the aborted turn is retried after this compaction (overflow recovery) */
 	willRetry: boolean;
 	signal: AbortSignal;
+	/**
+	 * How the session sends this compaction's summary requests: an extension that writes the summary itself wraps its
+	 * stream function with `watch` (progress on the status line, a silent attempt ended as a retryable timeout) and
+	 * retries by `retry`. Absent when a caller builds the event without a session.
+	 */
+	summaryRequest?: SummaryRequestPolicy;
 }
 
 /** Fired after context compaction succeeds */

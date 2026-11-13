@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { SessionHeader, CompactionEntry } from "../../core/session-manager.ts";
-import { type AgentDb, sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
+import { type AgentDb, forks, sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { archiveFolder } from "../history/archive.ts";
@@ -79,9 +80,12 @@ async function transcriptCompactions(
 				if (end === -1) return true;
 			}
 			for (const line of compactionCandidates(rest)) {
-				if (!line.trim()) continue;
-				const value = JSON.parse(line) as Record<string, unknown>;
-				if (value.type !== "compaction") continue;
+				const parsed = parseJsonlLine(line);
+				// A line that is not JSON (part of a record a stopped writer left, sealed by the next write) is skipped, as
+				// the loader skips it.
+				if (!parsed?.ok) continue;
+				const value = parsed.value as Record<string, unknown> | null;
+				if (value?.type !== "compaction") continue;
 				if (typeof value.id !== "string" || typeof value.summary !== "string" || typeof value.timestamp !== "string")
 					throw new Error(`Invalid compaction entry in ${file}`);
 				entries.push(value as unknown as CompactionEntry);
@@ -134,6 +138,8 @@ interface Origin {
 	verified: boolean;
 	/** The offset just past the last whole line read. */
 	end: number;
+	/** The session the transcript's header names. */
+	session: string;
 }
 
 /** What a repair of one transcript found: its compaction entries, whether their origin is proven, and where it ended. */
@@ -141,6 +147,8 @@ interface TranscriptRepair {
 	verified: boolean;
 	entries: number;
 	end: number;
+	/** The session the transcript's header names. */
+	session: string;
 }
 
 /** One recovery batch: parse each transcript once, retain only origin IDs, and refresh on the next operation. */
@@ -162,7 +170,7 @@ export class HistoryRepair {
 	 */
 	async transcript(file: string, from = 0): Promise<TranscriptRepair | undefined> {
 		const origin = await this.visit(file, new Set(), undefined, from);
-		return origin && { verified: origin.verified, entries: origin.ids.size, end: origin.end };
+		return origin && { verified: origin.verified, entries: origin.ids.size, end: origin.end, session: origin.session };
 	}
 
 	/** Index the compactions of the transcript a session's archive record names; undefined when it names none repair may use. */
@@ -184,7 +192,15 @@ export class HistoryRepair {
 		if (!record?.transcript || record.repository !== workspace.id || record.session !== session) return;
 		const target = this.allowedTranscript(record.transcript, workspace, session);
 		const origin = target ? await this.visit(target, new Set(), { workspace: workspace.id, session }) : undefined;
-		return origin && { file: record.transcript, verified: origin.verified, entries: origin.ids.size, end: origin.end };
+		return (
+			origin && {
+				file: record.transcript,
+				verified: origin.verified,
+				entries: origin.ids.size,
+				end: origin.end,
+				session: origin.session,
+			}
+		);
 	}
 
 	private allowedTranscript(
@@ -194,9 +210,11 @@ export class HistoryRepair {
 	): string | undefined {
 		if (!path.isAbsolute(named) || path.extname(named) !== ".jsonl") return undefined;
 		const file = canonicalPath(named);
-		const indexed = transcripts.fileOwner(this.agent.db, file);
+		const indexed = transcripts.fileOwner(this.agent.mirror.db, file);
 		if (indexed)
-			return indexed.workspace_id === workspace.id && (!session || indexed.id === session) ? file : undefined;
+			return sessions.byId(this.agent.db, indexed)?.workspace_id === workspace.id && (!session || indexed === session)
+				? file
+				: undefined;
 		if (!isWithin(file, workspace.root)) return undefined;
 		const containing = readWorkspaceIdentity(path.dirname(file));
 		return containing?.id === workspace.id && containing.binding === workspace.binding ? file : undefined;
@@ -241,9 +259,9 @@ export class HistoryRepair {
 		)
 			return undefined;
 		if (!this.allowedTranscript(file, workspace, header.id)) return undefined;
-		const stamp = transcripts.stamp(this.agent.db, header.id);
+		const stamp = transcripts.stamp(this.agent.mirror.db, header.id);
 		if (stamp && canonicalPath(stamp.file) !== file && fs.existsSync(stamp.file)) return undefined;
-		const inherited = transcripts.inheritedCompactions(this.agent.db, header.id);
+		const inherited = forks.inheritedCompactions(this.agent.db, this.agent.mirror.db, header.id);
 		// A host-created fork has a saved parent snapshot. Never reopen its historical file path.
 		const parentFile =
 			!inherited &&
@@ -252,7 +270,7 @@ export class HistoryRepair {
 			this.allowedTranscript(header.parentSession, workspace);
 		const parent = parentFile ? await this.visit(parentFile, ancestry, { workspace: workspace.id }) : undefined;
 		const verified = !!inherited || (!header.parentSession && !header.parentSessionId) || parent?.verified === true;
-		if (!entries.length) return { ids: new Set(), verified, end };
+		if (!entries.length) return { ids: new Set(), verified, end, session: header.id };
 		const names = await fs.promises
 			.readdir(archiveFolder(header.id, this.env, workspace.root))
 			.catch((): string[] => []);
@@ -268,6 +286,6 @@ export class HistoryRepair {
 				detail: name ? { name, n: Number(name.split("-")[0]) } : null,
 			});
 		}
-		return { ids: new Set(entries.map((entry) => entry.id)), verified, end };
+		return { ids: new Set(entries.map((entry) => entry.id)), verified, end, session: header.id };
 	}
 }

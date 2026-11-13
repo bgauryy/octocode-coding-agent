@@ -1,6 +1,9 @@
-import type * as ChildProcess from "node:child_process";
+import * as ChildProcess from "node:child_process";
 import type * as Fs from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureTool, getLatestVersion, type ToolStatus } from "../src/utils/tools-manager.ts";
 
 const originalOffline = process.env.OCTOCODE_OFFLINE;
@@ -21,10 +24,16 @@ vi.mock("child_process", async (importOriginal) => {
 	};
 });
 
+// No fd or rg on PATH unless a test puts one there: the machine's own must not decide the outcome.
+beforeEach(() => {
+	vi.stubEnv("PATH", "");
+});
+
 afterEach(() => {
 	if (originalOffline === undefined) delete process.env.OCTOCODE_OFFLINE;
 	else process.env.OCTOCODE_OFFLINE = originalOffline;
 	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
 });
 
 function redirectResponse(location: string): Response {
@@ -99,6 +108,20 @@ describe("getLatestVersion", () => {
 });
 
 describe("ensureTool", () => {
+	it("finds a tool on PATH without starting it", async () => {
+		const bin = mkdtempSync(join(tmpdir(), "tools-path-"));
+		try {
+			writeFileSync(join(bin, "fd"), "#!/bin/sh\n");
+			chmodSync(join(bin, "fd"), 0o755);
+			vi.stubEnv("PATH", bin);
+			vi.mocked(ChildProcess.spawnSync).mockClear();
+			await expect(ensureTool("fd", () => {})).resolves.toBe("fd");
+			expect(ChildProcess.spawnSync).not.toHaveBeenCalled();
+		} finally {
+			rmSync(bin, { recursive: true, force: true });
+		}
+	});
+
 	it("reports status through a callback without writing to the console", async () => {
 		process.env.OCTOCODE_OFFLINE = "1";
 		const statuses: ToolStatus[] = [];

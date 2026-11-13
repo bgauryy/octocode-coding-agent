@@ -62,8 +62,19 @@ export function blockerText(plan: PurgePlan): string | undefined {
 	return `Another Octocode process holds data in scope; close it first: ${plan.blockers.map((b) => `${b.what} (pid ${b.pid})`).join(", ")}.`;
 }
 
-/** The size of the agent database file, for the preview. */
-export const databaseBytes = (index: SessionIndex): number => maintenance.checkpoint(index.agent.db).bytesAfter;
+/** The size of the agent database's files (coordination and transcript mirror), for the preview. */
+export const databaseBytes = (index: SessionIndex): number =>
+	maintenance.checkpoint(index.agent.db).bytesAfter + maintenance.checkpoint(index.agent.mirror.db).bytesAfter;
+
+/** Both files' `VACUUM`, as one result: their sizes summed, busy when either was. */
+function vacuumBoth(index: SessionIndex): MaintenanceResult {
+	const parts = [maintenance.vacuum(index.agent.mirror.db), maintenance.vacuum(index.agent.db)];
+	return {
+		busy: parts.some((part) => part.busy),
+		bytesBefore: parts.reduce((sum, part) => sum + part.bytesBefore, 0),
+		bytesAfter: parts.reduce((sum, part) => sum + part.bytesAfter, 0),
+	};
+}
 
 /**
  * Removes what `plan` lists, then the database rows (`purge.workspace` per workspace, or `purge.all`), vacuums, and for
@@ -97,14 +108,15 @@ async function applyPurge(
 	for (const dir of emptied) if (strictlyInside(legacy, dir)) await fs.promises.rmdir(dir).catch(() => undefined);
 	try {
 		const { db } = index.agent;
+		const mirror = index.agent.mirror.db;
 		// The current session keeps every row (mirror, compaction summaries, tasks) and the workspace row it references.
 		const keepSessions = plan.current ? [plan.current] : [];
-		if (plan.scope === "all") result.rows = purge.all(db, { keepSessions });
+		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions });
 		else
 			for (const workspace of plan.workspaces)
-				for (const [table, n] of Object.entries(purge.workspace(db, workspace.id, { keepSessions })))
+				for (const [table, n] of Object.entries(purge.workspace(db, mirror, workspace.id, { keepSessions })))
 					result.rows[table] = (result.rows[table] ?? 0) + n;
-		result.vacuum = maintenance.vacuum(db);
+		result.vacuum = vacuumBoth(index);
 	} catch (error) {
 		result.failed.push({ path: "agent database", error: errorMessage(error) });
 	}

@@ -40,6 +40,7 @@ import {
 	isWebSocketSseFallbackActive,
 	recordWebSocketFailure,
 	recordWebSocketSseFallback,
+	resetOpenAICodexWebSocketDebugStats,
 } from "./openai-codex-responses/websocket-session.ts";
 import { processWebSocketStream } from "./openai-codex-responses/websocket-stream.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
@@ -58,6 +59,7 @@ export {
 } from "./openai-codex-responses/websocket-session.ts";
 
 registerSessionResourceCleanup(closeOpenAICodexWebSocketSessions);
+registerSessionResourceCleanup(resetOpenAICodexWebSocketDebugStats);
 
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
 	model: Model<"openai-codex-responses">,
@@ -147,7 +149,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						stream.end();
 						return;
 					} catch (error) {
-						const aborted = options?.signal?.aborted;
+						const aborted = options?.signal?.aborted || (error instanceof Error && error.name === "AbortError");
 						const connectionLimitBeforeStart = !websocketStarted && isWebSocketConnectionLimitReachedError(error);
 						const previousResponseNotFound = isPreviousResponseNotFoundError(error);
 						if (!aborted && previousResponseNotFound && !retriedMissingWebSocketContinuation) {
@@ -291,7 +293,8 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			stream.end();
 		} catch (error) {
 			stripStreamScratch(output);
-			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+			output.stopReason =
+				options?.signal?.aborted || (error instanceof Error && error.name === "AbortError") ? "aborted" : "error";
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
 			const retryAfterMs = retryAfterMsFromError(error);
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;

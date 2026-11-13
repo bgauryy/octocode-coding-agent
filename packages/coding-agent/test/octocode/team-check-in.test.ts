@@ -7,6 +7,7 @@ import { PARENT_WAITS_ENV } from "../../src/octocode/team/store/env.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 
 const member = (id: string, parentId?: string): Member => ({
 	id,
@@ -160,7 +161,12 @@ describe("a foreground child's report", () => {
 
 	it("closes the questions its parent put to it, as a background child's does", async () => {
 		const closeQuestionsTo = vi.fn();
-		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
+		const runs = {
+			foreground: new Map(),
+			groups: new ReportGroups(),
+			reports: { reportingChanged: () => undefined },
+			team: { closeQuestionsTo, audit },
+		};
 		await runForeground(
 			runs as never,
 			run() as never,
@@ -178,7 +184,12 @@ describe("a foreground child's report", () => {
 		const closeQuestionsTo = vi.fn(() => {
 			throw new Error("database is locked");
 		});
-		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
+		const runs = {
+			foreground: new Map(),
+			groups: new ReportGroups(),
+			reports: { reportingChanged: () => undefined },
+			team: { closeQuestionsTo, audit },
+		};
 		const result = await runForeground(
 			runs as never,
 			run() as never,
@@ -195,7 +206,12 @@ describe("a foreground child's report", () => {
 
 	it("leaves them open when the run failed, so the parent hears they went unanswered", async () => {
 		const closeQuestionsTo = vi.fn();
-		const runs = { foreground: new Map(), team: { closeQuestionsTo, audit } };
+		const runs = {
+			foreground: new Map(),
+			groups: new ReportGroups(),
+			reports: { reportingChanged: () => undefined },
+			team: { closeQuestionsTo, audit },
+		};
 		await runForeground(
 			runs as never,
 			run() as never,

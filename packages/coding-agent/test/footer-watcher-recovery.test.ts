@@ -69,19 +69,21 @@ function provider(path: string) {
 	return result;
 }
 
-it("disposing one footer preserves another footer's reftable polling listener", async () => {
+it("disposing one footer preserves another footer's reftable directory watcher, and polls nothing", async () => {
 	const path = repo("shared");
 	const first = provider(path);
 	const second = provider(path);
 	expect(second.getGitBranch()).toBe("main");
 	const changed = vi.fn();
 	second.onBranchChange(changed);
-	const tables = join(path, ".git", "reftable", "tables.list");
-	expect(polls.get(tables)?.size).toBe(2);
+	const reftable = join(path, ".git", "reftable");
+	// Git replaces tables.list by a rename, which the directory watcher sees: no watcher or stat poll on the file.
+	expect(watchers.map((entry) => entry.path)).toEqual([join(path, ".git"), reftable, join(path, ".git"), reftable]);
+	expect(watchFile).not.toHaveBeenCalled();
 	first.dispose();
-	expect(polls.get(tables)?.size).toBe(1);
+	expect(watchers.slice(0, 2).every(({ close }) => close.mock.calls.length === 1)).toBe(true);
 	writeFileSync(join(path, ".git", "HEAD"), "ref: refs/heads/next\n");
-	for (const listener of polls.get(tables) ?? []) listener({ mtimeMs: 2 } as Stats, { mtimeMs: 1 } as Stats);
+	watchers[3].watcher.emit("change", "rename", "tables.list");
 	await vi.advanceTimersByTimeAsync(501);
 	expect(second.getGitBranch()).toBe("next");
 	expect(changed).toHaveBeenCalledOnce();
@@ -96,8 +98,8 @@ it.each(["directory switch", "watcher retry"])("ignores errors from an old watch
 		old.watcher.emit("error", new Error("Resource temporarily unavailable"));
 		await vi.advanceTimersByTimeAsync(5000);
 	}
-	const replacements = watchers.slice(3);
-	expect(replacements).toHaveLength(3);
+	const replacements = watchers.slice(2);
+	expect(replacements).toHaveLength(2);
 	const calls = watch.mock.calls.length;
 	old.watcher.emit("error", new Error("Late error from a closed watcher"));
 	expect(replacements.every(({ close }) => close.mock.calls.length === 0)).toBe(true);
@@ -124,12 +126,34 @@ it("retries a synchronous watcher failure once and cancels the retry on disposal
 	await vi.advanceTimersByTimeAsync(4999);
 	expect(watch).toHaveBeenCalledOnce();
 	await vi.advanceTimersByTimeAsync(1);
-	expect(watch).toHaveBeenCalledTimes(4);
+	expect(watch).toHaveBeenCalledTimes(3);
 	watchers[0].watcher.emit("error", new Error("Resource temporarily unavailable"));
 	current.dispose();
 	await vi.advanceTimersByTimeAsync(10000);
-	expect(watch).toHaveBeenCalledTimes(4);
+	expect(watch).toHaveBeenCalledTimes(3);
 });
+
+it.each([false, true])(
+	"refreshes branch changes missed during watcher recovery (still failing: %s)",
+	async (stillFailing) => {
+		const path = repo("missed-change");
+		const current = provider(path);
+		expect(current.getGitBranch()).toBe("main");
+		const changed = vi.fn();
+		current.onBranchChange(changed);
+		watchers[0].watcher.emit("error", new Error("Resource temporarily unavailable"));
+		if (stillFailing) {
+			watch.mockImplementation(() => {
+				throw new Error("Resource temporarily unavailable");
+			});
+		}
+		// No watcher can report this write; a successful re-arm does not replay it either.
+		writeFileSync(join(path, ".git", "HEAD"), "ref: refs/heads/next\n");
+		await vi.advanceTimersByTimeAsync(5501);
+		expect(current.getGitBranch()).toBe("next");
+		expect(changed).toHaveBeenCalledOnce();
+	},
+);
 
 it("keeps the WSL HEAD polling fallback active while native watcher recovery is pending", async () => {
 	vi.spyOn(gitPaths, "shouldPollGitHead").mockReturnValue(true);
@@ -146,4 +170,22 @@ it("keeps the WSL HEAD polling fallback active while native watcher recovery is 
 	await vi.advanceTimersByTimeAsync(501);
 	expect(current.getGitBranch()).toBe("next");
 	expect(watch).toHaveBeenCalledOnce();
+});
+
+it("polls WSL reftable changes when HEAD stays unchanged and native watchers stay silent", async () => {
+	vi.spyOn(gitPaths, "shouldPollGitHead").mockReturnValue(true);
+	vi.spyOn(gitPaths, "resolveBranchWithGitSync").mockReturnValue("main");
+	vi.spyOn(gitPaths, "resolveBranchWithGitAsync").mockResolvedValue("next");
+	const path = repo("wsl-reftable");
+	writeFileSync(join(path, ".git", "HEAD"), "ref: refs/heads/.invalid\n");
+	const current = provider(path);
+	expect(current.getGitBranch()).toBe("main");
+	const tables = join(path, ".git", "reftable", "tables.list");
+	expect(polls.get(tables)?.size).toBe(1);
+	writeFileSync(tables, "next-table\n");
+	for (const listener of polls.get(tables) ?? []) listener({ mtimeMs: 2 } as Stats, { mtimeMs: 1 } as Stats);
+	await vi.advanceTimersByTimeAsync(501);
+	expect(current.getGitBranch()).toBe("next");
+	current.dispose();
+	expect(polls.get(tables)?.size).toBe(0);
 });

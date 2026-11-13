@@ -79,7 +79,7 @@ The main session is a real session; each child is started the way `subagents/too
 
 An MCP tool has three layers, and these files show the first two:
 
-- **Provider declaration** (`tools.md`): the trigger line and the top-level field names and types (`thinParameters`, `packages/mcp/src/presentation/declaration.ts`). A tool the block does not describe yet (one a server added after it was described) keeps its full JSON declaration until the block is described again.
+- **Provider declaration** (`tools.md`): the trigger line and the field names and types: top-level fields, the fields of a top-level object or array of objects, and of arrays of objects inside those, at most 32 names per object (`thinParameters`, `packages/mcp/src/presentation/declaration.ts`). A tool the block does not describe yet (one a server added after it was described) keeps its full JSON declaration until the block is described again.
 - **Contract the model reads** (`<mcps>` in `system.md`): the server's instructions and each enabled tool's description and signature (or its JSON Schema with `mcpPresentation: "json"`).
 - **The server's own input schema** (its `tools/list` reply): not rendered here. The host validates every call against it (`validationParameters`, `packages/mcp/src/tool-definition.ts`); whether the server checks again is up to the server. Permission, the read-only role guard and the plan gate decide separately whether a call may run.
 

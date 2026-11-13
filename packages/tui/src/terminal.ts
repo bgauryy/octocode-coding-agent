@@ -18,6 +18,7 @@ import { TerminalOutput } from "./terminal/output.ts";
 import { ProgramStatusReporter } from "./terminal/program-status-reporter.ts";
 import { ProgressIndicator } from "./terminal/progress.ts";
 import { SynchronizedOutputProbe } from "./terminal/synchronized-output.ts";
+import { readTypedLines, typedAheadInput } from "./terminal/typeahead.ts";
 import type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
 import { KittyGraphicsProbe } from "./terminal-image/probe.ts";
 
@@ -113,8 +114,9 @@ export class ProcessTerminal implements Terminal {
 		// A child that held the terminal since the last start() left stdout blocking.
 		this.output.useNonblockingWrites();
 
-		// Save previous state and enable raw mode
+		// Save previous state and enable raw mode; lines typed in line mode before it are taken first.
 		this.wasRaw = process.stdin.isRaw || false;
+		const typedAhead = this.wasRaw ? "" : typedAheadInput(readTypedLines());
 		if (process.stdin.setRawMode) {
 			process.stdin.setRawMode(true);
 		}
@@ -142,6 +144,8 @@ export class ProcessTerminal implements Terminal {
 
 		// Query Kitty keyboard protocol and fall back to modifyOtherKeys when DA confirms no Kitty response.
 		this.queryAndEnableKittyProtocol();
+		// After the caller's start finished, ahead of any raw key: typed earlier, so read first.
+		if (typedAhead) queueMicrotask(() => this.stdinBuffer?.process(typedAhead));
 
 		// Load the native Shift check after start-up work instead of on the first Enter.
 		if (detectsNativeShiftEnter()) this.nativeShiftWarmup = setTimeout(warmNativeModifiers, 0).unref();
@@ -329,6 +333,10 @@ export class ProcessTerminal implements Terminal {
 
 	setFrameOutputCap(bytes: number | undefined): void {
 		this.output.setFrameCap(bytes);
+	}
+
+	get frameOutputCap(): number | undefined {
+		return this.output.frameCap;
 	}
 
 	setOutputRecovery(recover: (() => void) | undefined): void {

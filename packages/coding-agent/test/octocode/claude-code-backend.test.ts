@@ -54,6 +54,7 @@ describe("when the claude-code models are offered", () => {
 		const bin = binaries();
 		expect(claudeCodeLaunch([state({ signedIn: false })], { PATH: bin })).toBeUndefined();
 		expect(claudeCodeLaunch([state({ ...PLAN, billing: "metered" })], { PATH: bin })).toBeUndefined();
+		expect(claudeCodeLaunch([state({ signedIn: true, method: "unclassified" })], { PATH: bin })).toBeUndefined();
 		expect(claudeCodeLaunch([state(undefined)], { PATH: bin })).toBeUndefined();
 		expect(claudeCodeLaunch([state(PLAN, false)], { PATH: bin })).toBeUndefined();
 		expect(claudeCodeLaunch([state(PLAN)], { PATH: binaries(["claude"]) })).toBeUndefined();

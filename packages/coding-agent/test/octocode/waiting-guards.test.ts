@@ -67,6 +67,7 @@ describe("an until timer on an agent that already ended", () => {
 		const root = tmp();
 		const agent = openDatabase({
 			file: path.join(root, "workspaces.db"),
+			mirrorFile: path.join(root, "transcripts.db"),
 			archiveDir: path.join(root, "archive"),
 			privateParent: false,
 		});
@@ -170,7 +171,21 @@ describe("a waiting-only final text of a child with pending work", () => {
 			userTurn,
 			reply("Done: one."),
 			start("bash", { background: true }),
-			{ type: "message_end", message: { role: "custom", customType: JOB_TYPE, content: "Background bash job ended" } },
+			{
+				type: "tool_execution_end",
+				toolName: "bash",
+				args: { background: true },
+				result: { details: { job: "job-1" } },
+			},
+			{
+				type: "message_end",
+				message: {
+					role: "custom",
+					customType: JOB_TYPE,
+					details: { id: "job-1" },
+					content: "Background bash job ended",
+				},
+			},
 			reply("Waiting on nothing now."),
 		]);
 		expect(ended.state.waits).toBe(0);
@@ -191,7 +206,16 @@ describe("a waiting-only final text of a child with pending work", () => {
 			start("timer", { op: "set", after: 5 }),
 			{ type: "tool_execution_end", toolName: "timer", args: { op: "set" }, isError: true },
 			start("timer", { op: "set", after: 5 }),
-			{ type: "message_end", message: { role: "custom", customType: TIMER_TYPE, content: "Timer 1 woke" } },
+			{ type: "tool_execution_end", toolName: "timer", args: { op: "set" }, result: { details: { timer: { id: 1 } } } },
+			{
+				type: "message_end",
+				message: {
+					role: "custom",
+					customType: TIMER_TYPE,
+					details: { id: 1, status: "done" },
+					content: "Timer 1 woke",
+				},
+			},
 		]);
 		expect(state.waits).toBe(0);
 	});

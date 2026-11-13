@@ -109,6 +109,61 @@ describe("mcpExposure recent", () => {
 		expect([...(child.h.state.recentTools() ?? [])]).toEqual(["docs/pick"]);
 	});
 
+	it("declares again, byte for byte, the set a resumed or reloaded session saved; a new session reads the record", async () => {
+		const at = dirs();
+		// The session's branch as the host keeps it: the record goes there, and a later start of the session reads it.
+		const branch: unknown[] = [];
+		const run = async (entries: unknown[]) => {
+			vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", at.agent);
+			const h = mcpHost({
+				servers: [entry()],
+				prepareLaunch: (launched) => ({
+					...launched,
+					config: {
+						...launched.config,
+						command: process.execPath,
+						args: [echo],
+						env: { ECHO_SHOUT_DESCRIPTION: SHOUT },
+					},
+				}),
+				presentation: "declared",
+				exposure: "recent",
+				cwd: at.cwd,
+			});
+			hosts.push(h);
+			h.api.getActiveTools = () =>
+				[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
+			h.api.appendEntry = (customType: string, data: unknown) => entries.push({ type: "custom", customType, data });
+			const ctx = {
+				...h.ctx,
+				sessionManager: { buildSessionProjection: () => ({ messages: [] }), getBranch: () => entries },
+			} as unknown as typeof h.ctx;
+			await h.start(ctx);
+			const sections = await h.prompt(ctx);
+			await h.fire("agent_start", { type: "agent_start" }, ctx);
+			const tools = JSON.stringify(
+				[...h.tools.values()]
+					.filter((tool) => tool.name.startsWith("mcp__docs__"))
+					.map((tool) => [tool.name, tool.description, tool.parameters]),
+			);
+			return { h, tools, mcps: sections.mcps ?? "" };
+		};
+		const first = await run(branch);
+		expect(branch).toEqual([{ type: "custom", customType: "mcp-recent-tools", data: { cwd: at.cwd, tools: [] } }]);
+		// This folder calls the tool during the session: the record changes, the session's set does not.
+		await first.h.call("mcp__docs__shout", { text: "hi" });
+
+		const resumed = await run(branch);
+		expect(resumed.tools).toBe(first.tools);
+		expect(resumed.mcps).toBe(first.mcps);
+		// It holds the set already: nothing more is saved.
+		expect(branch).toHaveLength(1);
+
+		const fresh = await run([]);
+		expect(fresh.tools).not.toBe(first.tools);
+		expect(fresh.mcps).not.toContain("\n- shout\n");
+	});
+
 	it("changes nothing under the default setting", async () => {
 		const direct = await session(dirs(), { exposure: "direct" });
 		expect(direct.mcps).not.toContain("\n- shout");

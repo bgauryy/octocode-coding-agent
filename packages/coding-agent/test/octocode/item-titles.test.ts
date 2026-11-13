@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
@@ -82,6 +82,7 @@ describe("item title cache", () => {
 		setItemTitles(new Map());
 	});
 	afterEach(() => {
+		vi.restoreAllMocks();
 		setItemTitles(new Map());
 		closeSharedAgentDb();
 		if (saved === undefined) delete process.env.OCTOCODE_AGENT_DB;
@@ -101,5 +102,35 @@ describe("item title cache", () => {
 		refreshItemTitles(store);
 		expect(itemTitle("B2")).toBe("Second item");
 		expect(itemTitle("B9")).toBeUndefined();
+	});
+
+	it("loads titles without full item enrichment, isolates workspaces, and replaces old titles", () => {
+		const store = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+		const actor = { id: "user", kind: "human" as const };
+		const ready = { goal: "Expected result", why: "Required work", createdBy: "user" };
+		store.add({ ...ready, title: "Open item" }, actor);
+		store.add({ ...ready, title: "Closed item" }, actor);
+		store.update("B2", { close: { kind: "wont_do", text: "No longer needed" } }, actor);
+		const otherCwd = path.join(tmp, "other");
+		fs.mkdirSync(otherCwd);
+		const other = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(otherCwd).id);
+		other.add({ ...ready, title: "Different workspace" }, actor);
+		const list = vi.spyOn(store, "list").mockImplementation(() => {
+			throw new Error("Full item enrichment");
+		});
+		const db = sharedAgentDb().db;
+		const prepare = vi.spyOn(db, "prepare");
+		refreshItemTitles(store);
+		expect(prepare).toHaveBeenCalledTimes(1);
+		expect(list).not.toHaveBeenCalled();
+		expect(itemTitle("B1")).toBe("Open item");
+		expect(itemTitle("B2")).toBe("Closed item");
+		prepare.mockRestore();
+		store.update("B1", { title: "Renamed item" }, actor);
+		refreshItemTitles(store);
+		expect(itemTitle("B1")).toBe("Renamed item");
+		refreshItemTitles(other);
+		expect(itemTitle("B1")).toBe("Different workspace");
+		expect(itemTitle("B2")).toBeUndefined();
 	});
 });

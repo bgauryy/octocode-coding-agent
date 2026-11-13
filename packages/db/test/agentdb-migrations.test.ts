@@ -1,19 +1,33 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { threadId } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
-import { openDatabase, type AgentDb } from "../src/db.ts";
-import { backUp, prepareSchema } from "../src/migrate.ts";
+import { closeSharedConnections, dbStamp, openDatabase, sharedDatabase, type AgentDb } from "../src/db.ts";
+import { AgentDbMigratingError, backUp, prepareSchema } from "../src/migrate.ts";
 import { FIRST_SCHEMA_VERSION, SCHEMA_PLAN, type Migration, type SchemaPlan } from "../src/migrations.ts";
-import { AgentDbError } from "../src/schema.ts";
-import { loadSqlite } from "../src/sqlite.ts";
+import { AgentDbError, COORDINATION_FILE } from "../src/schema.ts";
+import { isBusy, loadSqlite } from "../src/sqlite.ts";
 import { tmp } from "./helpers.ts";
+
+/** These plans have no step that opens the transcript mirror. */
+const openMirror = (): never => {
+	throw new Error("no mirror in this test");
+};
 
 const { DatabaseSync } = loadSqlite();
 
 const open = (file: string, plan?: SchemaPlan): AgentDb =>
-	openDatabase({ file, archiveDir: path.join(path.dirname(file), "archive"), privateParent: false }, plan);
+	openDatabase(
+		{
+			file,
+			mirrorFile: `${file}.transcripts`,
+			archiveDir: path.join(path.dirname(file), "archive"),
+			privateParent: false,
+		},
+		plan,
+	);
 
 /** A database as this Octocode creates it today, with a row that must survive, closed. */
 function versionOne(): string {
@@ -116,12 +130,47 @@ describe("agent database migrations", () => {
 
 	it("does not run a step when the backup cannot be written", () => {
 		const file = versionOne();
-		fs.mkdirSync(`${file}.v1.bak.${process.pid}.tmp`);
-		fs.writeFileSync(path.join(`${file}.v1.bak.${process.pid}.tmp`, "occupied"), "x");
+		fs.mkdirSync(`${file}.v1.bak.${process.pid}.${threadId}.tmp`);
+		fs.writeFileSync(path.join(`${file}.v1.bak.${process.pid}.${threadId}.tmp`, "occupied"), "x");
 		const calls: number[] = [];
 		expect(() => open(file, { version: 2, migrations: [addTable(2, true, calls)] })).toThrow(/its backup failed/);
 		expect(calls).toEqual([]);
 		expect(versionOf(file)).toBe(1);
+	});
+
+	it("writes the copy under a name of this thread's own, replacing a file an ended run left there", () => {
+		const file = versionOne();
+		const partial = `${file}.v1.bak.${process.pid}.${threadId}.tmp`;
+		fs.writeFileSync(partial, "left by a run that ended");
+		open(file, { version: 2, migrations: [addTable(2)] }).close();
+		expect(versionOf(`${file}.v1.bak`)).toBe(1);
+		expect(metaValue(`${file}.v1.bak`, "keep")).toBe("me");
+		expect(fs.existsSync(partial)).toBe(false);
+	});
+
+	it("never renames a copy that is not a whole database over a good backup", () => {
+		const file = versionOne();
+		const backup = `${file}.v1.bak`;
+		fs.copyFileSync(file, backup);
+		const good = fs.readFileSync(backup);
+		const partial = `${file}.v1.bak.${process.pid}.${threadId}.tmp`;
+		const tearing: Migration = {
+			...addTable(2),
+			backup: () => {
+				// A torn copy: its pages past the header overwritten, and its change counter moved so SQLite reads them again.
+				const fd = fs.openSync(partial, "r+");
+				try {
+					fs.writeSync(fd, Buffer.alloc(4096 - 100, 0xa5), 0, 4096 - 100, 100);
+					fs.writeSync(fd, Buffer.from([0xff, 0xff, 0xff, 0xff]), 0, 4, 24);
+				} finally {
+					fs.closeSync(fd);
+				}
+			},
+		};
+		expect(() => open(file, { version: 2, migrations: [tearing] })).toThrow(/its backup failed/);
+		expect(fs.readFileSync(backup).equals(good)).toBe(true);
+		expect(versionOf(file)).toBe(1);
+		expect(fs.existsSync(partial)).toBe(false);
 	});
 
 	it("backs up what another session has committed only to the WAL, while that session stays open", () => {
@@ -157,7 +206,9 @@ describe("agent database migrations", () => {
 			mine.exec("COMMIT");
 			return result;
 		};
-		expect(prepareSchema(mine, file, transaction, plan)).toEqual({ fts: expect.any(Boolean) });
+		expect(prepareSchema(mine, file, transaction, plan, COORDINATION_FILE, { openMirror })).toEqual({
+			fts: expect.any(Boolean),
+		});
 		mine.close();
 		expect(calls).toEqual([]);
 		expect(versionOf(file)).toBe(2);
@@ -167,7 +218,7 @@ describe("agent database migrations", () => {
 		const file = versionOne();
 		const db = new DatabaseSync(file);
 		db.exec("PRAGMA user_version=2");
-		expect(backUp(db, file, 1)).toBeUndefined();
+		expect(backUp(file, 1)).toBeUndefined();
 		db.close();
 		expect(fs.readdirSync(path.dirname(file)).filter((name) => /\.bak|\.tmp/.test(name))).toEqual([]);
 	});
@@ -178,7 +229,7 @@ describe("agent database migrations", () => {
 		// ALTER TABLE fails if it runs twice, and the insert counts the runs.
 		const script = `
 			const { openDatabase } = await import(${JSON.stringify(dbModule)});
-			const agent = openDatabase({ file: ${JSON.stringify(file)}, archiveDir: ${JSON.stringify(path.dirname(file))}, privateParent: false }, {
+			const agent = openDatabase({ file: ${JSON.stringify(file)}, mirrorFile: ${JSON.stringify(`${file}.transcripts`)}, archiveDir: ${JSON.stringify(path.dirname(file))}, privateParent: false }, {
 				version: 2,
 				migrations: [{ to: 2, additive: true, up: (db) => {
 					db.exec("CREATE TABLE ran (pid); ALTER TABLE ran ADD COLUMN once");
@@ -206,6 +257,122 @@ describe("agent database migrations", () => {
 		expect(db.prepare("SELECT count(*) AS runs FROM ran").get()).toEqual({ runs: 1 });
 		db.close();
 	}, 60_000);
+});
+
+/** Another process holding `file`'s write lock until it is told to end, then running `sql` before its commit. */
+async function holdLock(file: string, sql = "") {
+	const holder = spawn(
+		process.execPath,
+		[
+			"--no-warnings",
+			"-e",
+			`const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(${JSON.stringify(file)});
+			 db.exec("BEGIN IMMEDIATE"); process.stdout.write("held\\n");
+			 process.stdin.once("data", () => { db.exec(${JSON.stringify(sql)}); db.exec("COMMIT"); db.close(); process.exit(0); });`,
+		],
+		{ stdio: ["pipe", "pipe", "inherit"] },
+	);
+	await new Promise<void>((resolve) => holder.stdout.once("data", () => resolve()));
+	return {
+		release: () =>
+			new Promise<void>((resolve) => {
+				holder.once("exit", () => resolve());
+				holder.stdin.write("go\n");
+			}),
+	};
+}
+
+describe("opening an old file another process is migrating", () => {
+	it("takes the lock before any backup: busy, it copies nothing and reports a typed busy error at once", async () => {
+		const file = versionOne();
+		const calls: number[] = [];
+		const plan = { version: 2, migrations: [addTable(2, true, calls)] };
+		const holder = await holdLock(file);
+		const started = performance.now();
+		let error: unknown;
+		try {
+			open(file, plan).close();
+		} catch (caught) {
+			error = caught;
+		}
+		const waited = performance.now() - started;
+		await holder.release();
+		expect(error).toBeInstanceOf(AgentDbMigratingError);
+		expect(isBusy(error)).toBe(true);
+		expect(waited).toBeLessThan(2_000);
+		expect(calls).toEqual([]);
+		expect(fs.readdirSync(path.dirname(file)).filter((name) => /\.bak|\.tmp/.test(name))).toEqual([]);
+		// Once the lock is free, the next open backs up and migrates.
+		open(file, plan).close();
+		expect(calls).toEqual([2]);
+		expect(versionOf(`${file}.v1.bak`)).toBe(1);
+	}, 30_000);
+
+	it("remembers the busy refusal per file until the file changes, then opens the migrated file", async () => {
+		const file = path.join(tmp(), "workspaces.db");
+		const locations = {
+			file,
+			mirrorFile: `${file}.transcripts`,
+			archiveDir: path.join(tmp(), "archive"),
+			privateParent: false,
+		};
+		openDatabase(locations).close();
+		const raw = new DatabaseSync(file);
+		raw.exec(`PRAGMA user_version=${SCHEMA_PLAN.version - 1}`);
+		raw.close();
+		// The other process finishes the migration as it commits.
+		const holder = await holdLock(file, `PRAGMA user_version=${SCHEMA_PLAN.version}`);
+		try {
+			const first = (() => {
+				try {
+					sharedDatabase(locations);
+				} catch (error) {
+					return error;
+				}
+			})();
+			expect(first).toBeInstanceOf(AgentDbMigratingError);
+			const started = performance.now();
+			expect(() => sharedDatabase(locations)).toThrow(first);
+			expect(performance.now() - started).toBeLessThan(100);
+			await holder.release();
+			const agent = sharedDatabase(locations);
+			expect(agent.db.isOpen).toBe(true);
+			expect(fs.existsSync(`${file}.v${SCHEMA_PLAN.version - 1}.bak`)).toBe(false);
+		} finally {
+			closeSharedConnections();
+		}
+	}, 30_000);
+
+	it("retries a busy migration after a lock is released without changing the database", async () => {
+		const file = path.join(tmp(), "workspaces.db");
+		const locations = {
+			file,
+			mirrorFile: `${file}.transcripts`,
+			archiveDir: path.join(tmp(), "archive"),
+			privateParent: false,
+		};
+		openDatabase(locations).close();
+		const raw = new DatabaseSync(file);
+		raw.exec(`PRAGMA user_version=${SCHEMA_PLAN.version - 1}`);
+		// Keep this connection alive so releasing the peer's unchanged transaction cannot delete the WAL.
+		const holder = await holdLock(file);
+		let released = false;
+		try {
+			expect(() => sharedDatabase(locations)).toThrow(AgentDbMigratingError);
+			const stamp = dbStamp(file);
+			await holder.release();
+			released = true;
+			expect(dbStamp(file)).toBe(stamp);
+			await new Promise((resolve) => setTimeout(resolve, 1_100));
+			const agent = sharedDatabase(locations);
+			expect(agent.db.isOpen).toBe(true);
+			expect(versionOf(file)).toBe(SCHEMA_PLAN.version);
+		} finally {
+			if (!released) await holder.release();
+			raw.close();
+			closeSharedConnections();
+		}
+	}, 30_000);
 });
 
 describe("an older Octocode opening a newer agent database", () => {

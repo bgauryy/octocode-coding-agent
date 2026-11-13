@@ -96,6 +96,13 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 		this.save();
 	}
 
+	getReplayRows(): number {
+		const rows = this.settings.terminal?.replayRows;
+		return typeof rows === "number" && Number.isFinite(rows) && rows >= 0
+			? Math.floor(rows)
+			: SETTINGS_DEFAULTS.terminal.replayRows;
+	}
+
 	getShowTerminalProgress(): boolean {
 		return this.settings.terminal?.showTerminalProgress ?? SETTINGS_DEFAULTS.terminal.showTerminalProgress;
 	}

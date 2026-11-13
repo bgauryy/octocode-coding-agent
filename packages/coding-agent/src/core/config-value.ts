@@ -6,6 +6,7 @@
  */
 import {
 	resolveConfigValue as resolveConfigValueBase,
+	resolveConfigValueAsync as resolveConfigValueAsyncBase,
 	resolveConfigValueOrThrow as resolveConfigValueOrThrowBase,
 	resolveHeadersOrThrow as resolveHeadersOrThrowBase,
 	setConfigValueShell,
@@ -19,6 +20,16 @@ export * from "@octocodeai/octocode-ai/utils/resolve-config-value";
 
 export function resolveConfigValue(config: string, env?: Record<string, string>): string | undefined {
 	const value = resolveConfigValueBase(config, env);
+	registerResolvedSecret(value);
+	return value;
+}
+
+/** `resolveConfigValue` that does not block the thread while a `!command` runs. */
+export async function resolveConfigValueAsync(
+	config: string,
+	env?: Record<string, string>,
+): Promise<string | undefined> {
+	const value = await resolveConfigValueAsyncBase(config, env);
 	registerResolvedSecret(value);
 	return value;
 }

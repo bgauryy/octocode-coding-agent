@@ -88,10 +88,12 @@ export class SessionLoads {
 		const onScreen = () => scope === this.view.scope();
 		// A quick first page paints at once, unless the full listing got there first.
 		let fuller = false;
-		void this.ports
-			.quickList?.(scope, controller.signal)
+		void Promise.resolve()
+			.then(() => this.ports.quickList?.(scope, controller.signal))
 			.then((quick) => {
-				if (fuller || !isActive() || !onScreen() || quick.length === 0) return;
+				if (fuller || !isActive() || !quick?.length) return;
+				this.sessions[scope] = quick;
+				if (!onScreen()) return;
 				list.setSessions(quick, showCwd);
 				this.view.requestRender();
 			})

@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { editorLocationCommand, locationText, referenceLocation } from "../src/modes/interactive/reference-opener.ts";
+import { splitConfigWords } from "../src/configuration/command.ts";
+import {
+	type FileLocation,
+	locationInvocation,
+	locationText,
+	referenceLocation,
+} from "../src/modes/interactive/reference-opener.ts";
 import { editorDiffCommand } from "../src/modes/interactive/editor-diff.ts";
+
+/** A configured command line opened at `location`, as the reference launcher splits and opens it. */
+function editorLocationCommand(command: string, location: FileLocation) {
+	const [program, ...args] = splitConfigWords(command);
+	return locationInvocation(program, args, location);
+}
 
 describe("portable reference activation", () => {
 	it("retains file locations and encodes paths independently from editor arguments", () => {

@@ -20,6 +20,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo } from "r
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
+import { sessionTaskProgress } from "../model/hierarchy.ts";
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
@@ -330,11 +331,25 @@ export function LiveProvider({
 }
 
 export function ConnectionStatus() {
-	const status = useStore(useLive().session, (state) => state.status);
+	const live = useLive();
+	const status = useStore(live.session, (state) => state.status);
+	const sessionId = useStore(live.workspace, (state) => state.snapshot?.sessionId);
+	const progress = useStore(live.backlog, (state) => sessionTaskProgress(state.snapshot, sessionId));
 	return (
-		<output id="connection-status" className={`connection tone-${status.tone}`}>
-			{status.tone === "connecting" ? <Spinner size={10} /> : <span className="live-dot" aria-hidden="true" />}
-			{status.text}
-		</output>
+		<>
+			{progress && (
+				<a
+					className="chip"
+					href="#tree"
+					title={status.tone === "live" ? "This session's checklist progress" : "Cached checklist progress"}
+				>
+					{progress}
+				</a>
+			)}
+			<output id="connection-status" className={`connection tone-${status.tone}`}>
+				{status.tone === "connecting" ? <Spinner size={10} /> : <span className="live-dot" aria-hidden="true" />}
+				{status.text}
+			</output>
+		</>
 	);
 }

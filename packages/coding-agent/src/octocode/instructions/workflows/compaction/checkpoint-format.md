@@ -1,34 +1,34 @@
-Write these sections in this order, with these headings:
+Use these headings in order:
 
 {{goalHeading}}
-[What the user is trying to accomplish and why (their reason, if shown); several items for different tasks]
+[The user's goals and reasons, if shown; separate items for different tasks]
 
 ## Constraints & Preferences
-- [Constraints, preferences or requirements the user stated, or "(none)"]
+- [The user's constraints, preferences or requirements, or "(none)"]
 
 ## Progress
 ### Done
 - [x] [Completed work]
 
 ### In Progress
-- [ ] [Work under way]
+- [ ] [Work under way; pending jobs or external effects and how to check their state before retrying]
 
 ### Blocked
 - [What prevents progress, if anything]
 
 ## Key Decisions
-- **[Decision]**: [Brief rationale]
+- **[Decision]**: [Brief rationale, evidence and unverified assumptions]
 
 ## Errors & Fixes
 - [Each error or failed approach: exact error text, cause, fix or "unresolved"; include the user's corrections]
 
 ## Where We Stopped
-- [Work under way in the last messages (the request to write this summary is not one of them and not a user ask), with exact file paths and the assistant's last step. Name a next step only when it follows directly from the latest request; never start tangential work.]
+- [Work under way in the last messages, exact file paths and the assistant's last step. Exclude this summary request: it is not a user ask. Name a next step only if it follows directly from the latest request; never start tangential work.]
 
 ## Critical Context
 - [Data, examples or references needed to continue, or "(none)"]
 
 {{tldrHeading}}
-One or two lines on what these messages did, then a line "{{topicsLabel}} " with 3 to 8 comma-separated keywords (the history index uses it as this stretch's label).
+One or two lines on what these messages did, then a line "{{topicsLabel}} " with 3 to 8 comma-separated keywords for the history index.
 
 Keep sections concise and paths, symbols, commands, error strings, URLs and identifiers exact.

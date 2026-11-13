@@ -36,7 +36,7 @@ async function getRequiredRequestAuth(
 		}
 		throw error;
 	}
-	if (result && (result.auth.apiKey || result.auth.headers)) {
+	if (result) {
 		const requestModel = result.auth.baseUrl ? { ...model, baseUrl: result.auth.baseUrl } : model;
 		return {
 			model: requestModel,

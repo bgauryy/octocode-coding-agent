@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { getToolListError, type TuiMode } from "../../core/settings-manager.ts";
+import type { TuiMode } from "../../core/settings-schema.ts";
+import { getToolListError } from "../../core/settings-manager/tool-list.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";

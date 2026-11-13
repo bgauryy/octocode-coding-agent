@@ -978,6 +978,25 @@ describe("Models runtime", () => {
 		expect(refresh).toHaveBeenCalledOnce();
 	});
 
+	it.each([120_000, 30_000])(
+		"enforces the requested OAuth validity after a short %s ms renewal",
+		async (validityMs) => {
+			const credentials = new InMemoryCredentialStore();
+			const refresh = vi.fn(async (credential) => ({
+				...credential,
+				access: "renewed-token",
+				expires: Date.now() + validityMs,
+			}));
+			const models = createModels({ credentials });
+			models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth({ refresh }) } }));
+			await credentials.modify("p1", async () => ({ type: "oauth", access: "expired", refresh: "r", expires: 0 }));
+			const resolution = models.getAuth("p1", { minOAuthValidityMs: 60_000 });
+			if (validityMs > 60_000) await expect(resolution).resolves.toMatchObject({ auth: { apiKey: "renewed-token" } });
+			else await expect(resolution).rejects.toMatchObject({ code: "oauth" });
+			expect(refresh).toHaveBeenCalledOnce();
+		},
+	);
+
 	it("rejects with code oauth when refresh fails, preserving the stored credential", async () => {
 		const credentials = new InMemoryCredentialStore();
 		const oauth = testOAuth({

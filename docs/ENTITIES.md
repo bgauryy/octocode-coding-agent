@@ -1,6 +1,6 @@
 # Entities: what Octocode stores and how the pieces relate
 
-One SQLite database per Octocode home keeps backlog items, sessions, agents, team messages, memories and more. Each kind has its own record and lifecycle; do not merge them (transcript messages are not team messages, backlog states are not run states, file references are not artifacts). Storage locations and retention: [configuration](../packages/coding-agent/docs/configuration.md#runtime-storage).
+One SQLite database per Octocode home keeps backlog items, sessions, agents, team messages, memories and more; the transcript mirror (session entries and compaction summaries, an index of the JSONL transcripts) lives in a second file beside it. Each kind has its own record and lifecycle; do not merge them (transcript messages are not team messages, backlog states are not run states, file references are not artifacts). Storage locations and retention: [configuration](../packages/coding-agent/docs/configuration.md#runtime-storage).
 
 ```mermaid
 flowchart LR
@@ -18,13 +18,14 @@ An item can involve several sessions, agents and attempts, and a session can wor
 
 ## Database
 
-Schema version 8, migrated additively where possible so an older Octocode can usually still read the file; backlog writes by an older version are refused (see [guarantees](#guarantees)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
+Schema version 10, migrated additively where possible so an older Octocode can usually still read the file (version 10, which moved the transcript mirror into its own file, is not additive); backlog writes by an older version are refused (see [guarantees](#guarantees)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
 | Tables                                                                      | Holds                                                                                                                                              |
 | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts  |
-| `sessions`, `session_transcripts`, `session_entries`, `session_forks`       | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload) and host-created fork links; imports can stay unbound |
-| `compaction_summaries`                                                      | One summary per compacted entry of a session; detail copies on disk have their own retention                                                       |
+| `sessions`, `session_forks`                                                 | Sessions bound to their workspace and host-created fork links; imports can stay unbound                                                            |
+| `session_transcripts`, `session_entries` (transcript mirror)                | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload), rebuildable from the transcript files              |
+| `compaction_summaries` (transcript mirror)                                  | One summary per compacted entry of a session; detail copies on disk have their own retention                                                       |
 | `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                       |
 | `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                        |
 | `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                    |
@@ -34,7 +35,7 @@ Schema version 8, migrated additively where possible so an older Octocode can us
 | `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                            |
 | `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                    |
 
-Migrations 2 to 8 added `agents.end_hint`, the `agent_runs` table with agent location columns, `timers` (and later more wait conditions), `backlog.closed`, `backlog.rank` (manual card order) and cache-write token counts.
+Migrations 2 to 9 added `agents.end_hint`, the `agent_runs` table with agent location columns, `timers` (and later more wait conditions), `backlog.closed`, `backlog.rank` (manual card order), cache-write token counts and the `!` command history; migration 10 moved the transcript mirror's tables into their own file. A session's rows in both files go together when it is deleted; each file's part is one transaction.
 
 ## Agents, runs and mail
 
@@ -107,6 +108,10 @@ Example: `{ "summary": "Added searchable columns", "files": [{ "path": "src/boar
 
 Completions are immutable history: reopening keeps earlier results and a correction appends a replacement. Failed attempts live in runs, reports and notes.
 
+### Checklist steps
+
+A step (`T12`) belongs to an item or a session and stores its goal, state and result. People add, reorder, move or drop steps on the backlog board. An agent reports a completed step with `backlog` using `op: "step"`, its task `id` and a `note` describing the result and checks. Session and item ownership still apply; retrying the same result changes no history. Finishing a step updates progress without completing its item. Dropped steps remain separate from done steps in progress displays.
+
 ### Comments, audits and receipts
 
 | Record  | Behavior                                                                                                                                                                                                                                                                                                            |
@@ -117,7 +122,7 @@ Completions are immutable history: reopening keeps earlier results and a correct
 
 ### Board behavior
 
-Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page (forms, explicit state selection, WebSocket updates that never replace open drafts, conflict handling; no drag and drop); `/backlog html` writes an offline snapshot. Edits and deletes need the expected version and return a conflict with current data when stale. The server checks the database revision every 500 ms to see other processes' writes. Web actions: **Work with current agent** claims the item and queues its context in the session; **Request new agent** queues a delegation request that the `agent` tool still validates, permits and launches; stop applies to the session's own background agents. Permission and question dialogs stay in the terminal. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
+Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page with forms, keyboard and drag controls, conflict handling and WebSocket updates that preserve open drafts; `/backlog html` writes an offline snapshot. Edits and deletes need the expected version and return a conflict with current data when stale. The server checks the database revision every 500 ms to see other processes' writes. **Implement** claims an item and queues its context for the current agent; delegation requests still pass the `agent` tool's checks, and stop applies to the session's own background agents. Permission and question dialogs are available in the terminal and the connected session's web page. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
 
 ## Guarantees
 

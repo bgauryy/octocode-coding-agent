@@ -72,7 +72,10 @@ export function registerBacklogPlanTool(
 					.map(([key]) => key);
 				if (args.op === "list") return list(openBacklog(ctx, options), args, given);
 				const op = args.op;
-				const result = await oneWrite(async () => written(openBacklog(ctx, options), args, op, given));
+				const result = await oneWrite(async () => {
+					signal?.throwIfAborted();
+					return written(openBacklog(ctx, options), args, op, given);
+				});
 				options.changed?.(ctx);
 				return result;
 			},

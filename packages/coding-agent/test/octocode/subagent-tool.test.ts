@@ -13,6 +13,7 @@ import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { processAlive, processStartTime } from "../../src/octocode/shared/process.ts";
 import { type AgentRuns, claimRun, MAX_SUBAGENTS_ENV, Slots } from "../../src/octocode/subagents/claim.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { childStagger } from "../../src/octocode/subagents/stagger.ts";
@@ -943,6 +944,9 @@ describe("agent tool with a scripted child", () => {
 
 	it("staggers background and foreground children of one profile and model through the shared prefix gate", async () => {
 		const stagger = vi.spyOn(childStagger, "run");
+		// A model whose cache read costs less than the write: its siblings save by waiting for the first one's entry.
+		const priced = { api: "anthropic-messages", cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } };
+		Object.assign(s.ctx.model!, priced);
 		try {
 			await s.run({ task: "report from the background", background: true });
 			await s.run({ task: "report from the background", background: true });
@@ -952,6 +956,19 @@ describe("agent tool with a scripted child", () => {
 			expect(stagger.mock.calls[0][0]).toBe(stagger.mock.calls[1][0]);
 			expect(stagger.mock.calls[2][0]).toBe(stagger.mock.calls[0][0]);
 			expect(stagger.mock.calls[0][0]).toContain("general");
+		} finally {
+			stagger.mockRestore();
+			for (const key of Object.keys(priced)) delete (s.ctx.model as unknown as Record<string, unknown>)[key];
+		}
+	});
+
+	it("does not hold the children of a model without cache prices", async () => {
+		const stagger = vi.spyOn(childStagger, "run");
+		try {
+			await s.run({ task: "report from the background", background: true });
+			await s.run({ task: "report from the background", background: true });
+			await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
+			expect(stagger).not.toHaveBeenCalled();
 		} finally {
 			stagger.mockRestore();
 		}
@@ -1353,6 +1370,25 @@ describe("trust for isolated subagents", () => {
 		// No UI to ask and no `--trust`: the worktree is refused before it is created.
 		const headless = setup(repo(), false);
 		await expect(headless.run({ task: "report", isolate: true })).rejects.toThrow(/--trust/u);
+	}, 30_000);
+});
+
+describe("a start that fails after the child joined its step's group", () => {
+	it("leaves the group, foreground and background alike", async () => {
+		const join = vi.spyOn(ReportGroups.prototype, "join");
+		const leave = vi.spyOn(ReportGroups.prototype, "leave");
+		try {
+			// No UI to ask and no `--trust`: the worktree is refused inside the start, after the claim joined the group.
+			const headless = setup(repo(), false);
+			await expect(headless.run({ task: "report", isolate: true })).rejects.toThrow(/--trust/u);
+			await expect(headless.run({ task: "report", isolate: true, background: true })).rejects.toThrow(/--trust/u);
+			const joined = join.mock.calls.map(([id]) => id);
+			expect(joined).toHaveLength(2);
+			for (const id of joined) expect(leave.mock.calls.map(([left]) => left)).toContain(id);
+		} finally {
+			join.mockRestore();
+			leave.mockRestore();
+		}
 	}, 30_000);
 });
 
@@ -1829,7 +1865,7 @@ describe("subagent watchdog and exits", () => {
 describe("background report delivery", () => {
 	it("batches reports so only the last of a batch may start a turn", () => {
 		const f = fakeHost();
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		const report = (id: string, wake: boolean) => ({
 			content: id,
 			details: { id, status: "done" as const, summary: "Done" },

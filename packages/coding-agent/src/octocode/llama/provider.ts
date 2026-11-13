@@ -21,6 +21,7 @@ import {
 	llamaInferenceUrl,
 	normalizeLlamaServerUrl,
 } from "./client.ts";
+import { contextWindowOf } from "./context.ts";
 
 export const LLAMA_PROVIDER_ID = "llama.cpp";
 const DEFAULT_LLAMA_SERVER_URL = "http://127.0.0.1:8080";
@@ -56,27 +57,6 @@ async function routerAutoloadEnabled(
 	} catch {
 		return false;
 	}
-}
-
-function configuredContextWindow(model: LlamaModelInfo): number | undefined {
-	const args = model.status.args ?? [];
-	for (let index = 0; index < args.length - 1; index++) {
-		const flag = args[index];
-		if (flag !== "--ctx-size" && flag !== "-c" && flag !== "-ctx") continue;
-		const contextWindow = Number(args[index + 1]);
-		if (Number.isSafeInteger(contextWindow) && contextWindow > 0) return contextWindow;
-	}
-	return undefined;
-}
-
-function contextWindowOf(model: LlamaModelInfo, cachedContextWindow?: number): number {
-	const runtimeContextWindow = model.meta?.n_ctx;
-	if (runtimeContextWindow && runtimeContextWindow > 0) return runtimeContextWindow;
-	const configuredContext = configuredContextWindow(model);
-	if (configuredContext) return configuredContext;
-	if (cachedContextWindow && cachedContextWindow > 0) return cachedContextWindow;
-	const trainingContextWindow = model.meta?.n_ctx_train;
-	return trainingContextWindow && trainingContextWindow > 0 ? trainingContextWindow : 128000;
 }
 
 type LlamaClassifierApi = "llama-cpp-classify" | "typesafe-system-one";
@@ -115,7 +95,7 @@ function toClassifierModel(
 		baseUrl: decision ? llamaInferenceUrl(serverUrl) : serverUrl,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: contextWindowOf(model, cachedContextWindow),
+		contextWindow: contextWindowOf(model, cachedContextWindow) ?? 128000,
 	};
 }
 
@@ -131,7 +111,7 @@ function toChatModel(
 	props?: LlamaServerProps,
 	cachedContextWindow?: number,
 ): Model<"openai-completions"> {
-	const contextWindow = contextWindowOf(model, cachedContextWindow);
+	const contextWindow = contextWindowOf(model, cachedContextWindow) ?? 128000;
 	const reasoning = props?.chat_template?.includes("enable_thinking") === true;
 	return {
 		id: model.id,

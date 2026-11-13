@@ -37,7 +37,8 @@ export function rowsBefore(db: DatabaseSync, table: HistoryTable, before: number
  * Deletes exactly `rows` (as `rowsBefore` returned them) and returns how many went. Run it inside one write
  * transaction (`AgentDb.transaction`): the table's DELETE guard is dropped and re-created from its stored text in that
  * same transaction, so no other connection, of this build or an older one, ever sees the table unguarded, and the
- * guard comes back exactly as it was.
+ * guard comes back exactly as it was. Mutable command receipts must still have the status and message in the snapshot:
+ * an update after the archive read stays in the database for the next pass.
  */
 export function deleteRows(db: DatabaseSync, table: HistoryTable, rows: readonly Row[]): number {
 	if (rows.length === 0) return 0;
@@ -51,9 +52,9 @@ export function deleteRows(db: DatabaseSync, table: HistoryTable, rows: readonly
 		table === "workspace_commands"
 			? db
 					.prepare(
-						"DELETE FROM workspace_commands WHERE (workspace_id, session_id, id) IN (SELECT value ->> 0, value ->> 1, value ->> 2 FROM json_each(?))",
+						"DELETE FROM workspace_commands WHERE (workspace_id, session_id, id, status, message) IN (SELECT value ->> 0, value ->> 1, value ->> 2, value ->> 3, value ->> 4 FROM json_each(?))",
 					)
-					.run(JSON.stringify(rows.map((row) => [row.workspace_id, row.session_id, row.id])))
+					.run(JSON.stringify(rows.map((row) => [row.workspace_id, row.session_id, row.id, row.status, row.message])))
 			: db
 					.prepare(`DELETE FROM ${table} WHERE id IN (SELECT value FROM json_each(?))`)
 					.run(JSON.stringify(rows.map((row) => row.id)));

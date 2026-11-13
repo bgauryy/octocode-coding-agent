@@ -13,7 +13,12 @@ export const PRUNE_INTERVAL_MS = 60_000;
 /** A member has not heartbeat for `STALE_MS`: its process may only be stalled, so it is hidden but keeps its mail and row. */
 export const stale = (seenAt: number, now: number): boolean => now - seenAt > STALE_MS;
 
-/** Busy wait for a background write (heartbeat, delivery): a locked database is retried on the next tick instead. */
-export const QUICK_BUSY_MS = 100;
+/**
+ * Busy wait for a background write or read (heartbeat, delivery, the ticker's view): none, so the thread that draws the
+ * screen never waits for another process's lock; a locked database is retried on the next tick instead.
+ */
+export const QUICK_BUSY_MS = 0;
+/** First and longest pause between the attempts of `TeamStore.patiently`, which never wait inside SQLite. */
+export const PATIENT_PAUSE_MS = { first: 5, max: 50 };
 /** Busy wait for a write an agent asked for (a lock, a message). */
 export const BUSY_MS = 5_000;

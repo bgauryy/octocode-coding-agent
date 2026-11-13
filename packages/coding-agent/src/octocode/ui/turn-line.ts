@@ -58,7 +58,7 @@ export function registerTurnLine(api: ExtensionAPI): void {
 			// A run this module did not see settle (a replaced session) leaves no start behind.
 			resetRun();
 			beginRun(Date.now());
-			run.begin(ctx.sessionManager.getEntries());
+			run.begin(ctx.sessionManager);
 		}
 		setToolInterruptShown(false);
 	});
@@ -74,13 +74,13 @@ export function registerTurnLine(api: ExtensionAPI): void {
 	api.on("session_compact", async (event, ctx) => {
 		if (!counting) return;
 		run.entry(event.compactionEntry, modelLookup(ctx));
-		run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
+		run.recorded(ctx.sessionManager, modelLookup(ctx));
 	});
 	api.on("session_tree", async (event, ctx) => {
 		if (counting) run.entry(event.summaryEntry, modelLookup(ctx));
 	});
 	api.on("agent_end", async (_event, ctx) => {
-		if (counting) run.recorded(ctx.sessionManager.getEntries(), modelLookup(ctx));
+		if (counting) run.recorded(ctx.sessionManager, modelLookup(ctx));
 	});
 	api.on("agent_settled", async (event, ctx) => {
 		// A queued steer or follow-up starts the next segment of this run; an abort drops the queue's turn to the user.

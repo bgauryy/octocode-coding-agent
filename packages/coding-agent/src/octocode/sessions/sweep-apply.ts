@@ -50,19 +50,27 @@ export async function applySweep(
 		if (candidate.session) failedSessions.add(candidate.session);
 	};
 	const skippedPaths = new Set<SweepCandidate>();
+	const skipSession = (id: string, reason: string) => {
+		if (!skippedSessions.has(id)) result.skipped.push({ path: `session ${id}`, reason });
+		skippedSessions.add(id);
+	};
 	const skip = (candidate: SweepCandidate, reason: string) => {
 		skippedPaths.add(candidate);
-		if (candidate.session) {
-			if (!skippedSessions.has(candidate.session))
-				result.skipped.push({ path: `session ${candidate.session}`, reason });
-			skippedSessions.add(candidate.session);
-		} else result.skipped.push({ path: candidate.path, reason });
+		if (candidate.session) skipSession(candidate.session, reason);
+		else result.skipped.push({ path: candidate.path, reason });
 	};
-	for (const id of new Set(plan.candidates.flatMap(({ session }) => (session ? [session] : [])))) {
-		const own = plan.candidates.find((candidate) => candidate.session === id);
-		if (!own) continue;
-		if (id === options.current) skip(own, "became the current session");
-		else if (running(index.get(id))) skip(own, "is running");
+	const active = (id: string) => {
+		if (id === options.current) skipSession(id, "became the current session");
+		else if (running(index.get(id))) skipSession(id, "is running");
+		return skippedSessions.has(id);
+	};
+	const plannedSessions = new Set([
+		...plan.candidates.flatMap(({ session }) => (session ? [session] : [])),
+		...plan.forgets.map(({ id }) => id),
+		...plan.orphans,
+	]);
+	for (const id of plannedSessions) {
+		active(id);
 	}
 	for (const candidate of plan.candidates) {
 		if (candidate.session && skippedSessions.has(candidate.session)) continue;
@@ -107,9 +115,7 @@ export async function applySweep(
 	for (const refusal of removal.refused) result.skipped.push({ path: `session ${refusal.id}`, reason: refusal.reason });
 	for (const failure of removal.failed) result.failed.push({ path: failure.path, error: failure.error });
 	const rest = plan.forgets
-		.filter(
-			({ id }) => !failedSessions.has(id) && !skippedSessions.has(id) && !allowed.some(({ session }) => session === id),
-		)
+		.filter(({ id }) => !failedSessions.has(id) && !active(id) && !allowed.some(({ session }) => session === id))
 		.map(({ id }) => id);
 	if (rest.length > 0) {
 		try {
@@ -124,7 +130,12 @@ export async function applySweep(
 	}
 	if (plan.retention.days > 0 && plan.orphans.length > 0) {
 		try {
-			result.expired = expire.orphans(index.agent.db, plan.orphans, plan.at - plan.retention.days * DAY_MS);
+			result.expired = expire.orphans(
+				index.agent.db,
+				index.agent.mirror.db,
+				plan.orphans.filter((id) => !failedSessions.has(id) && !active(id)),
+				plan.at - plan.retention.days * DAY_MS,
+			);
 		} catch (error) {
 			result.failed.push({ path: "agent database", error: errorMessage(error) });
 		}
@@ -136,6 +147,7 @@ export async function applySweep(
 	if (changed) {
 		try {
 			maintenance.checkpoint(index.agent.db, 0);
+			maintenance.checkpoint(index.agent.mirror.db, 0);
 		} catch (error) {
 			result.failed.push({ path: "agent database", error: errorMessage(error) });
 		}

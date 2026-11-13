@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { type CompactionEntry } from "../../core/session-manager.ts";
-import { type AgentDb, agentEvents, compactions, transcripts } from "../../../../db/src/api.ts";
+import { type AgentDb, agentEvents, compactions, sessions } from "../../../../db/src/api.ts";
 import { archiveFolder, segmentFiles } from "../history/archive.ts";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
@@ -23,7 +23,7 @@ export function saveCompaction(
 	} = {},
 ): void {
 	const workspace = registeredWorkspace(cwd, agent).id;
-	const known = compactions.get(agent.db, sessionId, entry.id);
+	const known = compactions.get(agent.mirror.db, sessionId, entry.id);
 	if (known && known.workspace !== workspace) throw new Error("Compaction belongs to another workspace");
 	const segment =
 		options.detail !== undefined
@@ -38,10 +38,11 @@ export function saveCompaction(
 	const timestamp = Date.parse(entry.timestamp);
 	const committedAt = Number.isFinite(timestamp) ? timestamp : null;
 	const verified = options.verified ?? true;
-	agent.transaction(() => {
-		transcripts.bind(agent.db, sessionId, workspace);
-		const member = options.agentId ? agentEvents.member(agent.db, options.agentId) : undefined;
-		compactions.save(agent.db, {
+	// The summary lives in the transcript mirror, the session's binding and its event in the coordination file: one
+	// transaction of each, the coordination one inside the mirror's (whose lock comes first), so a failed event rolls
+	// the summary back too.
+	agent.mirror.transaction(() => {
+		compactions.save(agent.mirror.db, {
 			workspace,
 			sessionId,
 			entryId: entry.id,
@@ -58,29 +59,33 @@ export function saveCompaction(
 			detailFile: segment ? path.join(archiveFolder(sessionId, options.env, cwd), segment.name) : null,
 			detailState: segment ? "present" : "missing",
 		});
-		if (verified && committedAt !== null)
-			agentEvents.append(
-				agent.db,
-				workspace,
-				{
-					id: randomUUID(),
-					time: new Date(committedAt).toISOString(),
-					name: options.agentId ?? null,
-					parentId: (member?.parent_id as string | null) ?? null,
-					sessionId,
-					type: "compaction",
-					version: 1,
-					data: {
-						agentId: options.agentId ?? null,
-						registrationId: member?.registration_id ?? null,
-						parentRegistrationId: member?.parent_registration_id ?? null,
-						activationId: options.activationId ?? null,
-						compactionId: `compaction:${sessionId}:${entry.id}`,
-						recovered: options.recovered ?? false,
+		agent.transaction(() => {
+			sessions.bind(agent.db, sessionId, workspace);
+			const member = options.agentId ? agentEvents.member(agent.db, options.agentId) : undefined;
+			if (verified && committedAt !== null)
+				agentEvents.append(
+					agent.db,
+					workspace,
+					{
+						id: randomUUID(),
+						time: new Date(committedAt).toISOString(),
+						name: options.agentId ?? null,
+						parentId: (member?.parent_id as string | null) ?? null,
+						sessionId,
+						type: "compaction",
+						version: 1,
+						data: {
+							agentId: options.agentId ?? null,
+							registrationId: member?.registration_id ?? null,
+							parentRegistrationId: member?.parent_registration_id ?? null,
+							activationId: options.activationId ?? null,
+							compactionId: `compaction:${sessionId}:${entry.id}`,
+							recovered: options.recovered ?? false,
+						},
 					},
-				},
-				`compaction:${sessionId}:${entry.id}`,
-			);
+					`compaction:${sessionId}:${entry.id}`,
+				);
+		});
 	});
 }
 
@@ -91,7 +96,7 @@ export async function writeSummaryLibrary(
 	env: NodeJS.ProcessEnv = process.env,
 	cwd?: string,
 ): Promise<void> {
-	const rows = compactions.forSession(agent.db, sessionId);
+	const rows = compactions.forSession(agent.mirror.db, sessionId);
 	if (!rows.length) return;
 	const folder = archiveFolder(sessionId, env, cwd);
 	await fs.promises.mkdir(folder, { recursive: true, mode: 0o700 });

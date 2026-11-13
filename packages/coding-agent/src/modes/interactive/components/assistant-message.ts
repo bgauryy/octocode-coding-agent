@@ -11,6 +11,7 @@ import {
 	MouseRegion,
 	Spacer,
 	Text,
+	trackRenderChanges,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
@@ -82,14 +83,12 @@ export class AssistantMessageComponent extends Container {
 		contentOptions: ContentOptions = {},
 	) {
 		super();
-
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
 		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 		this.contentOptions = contentOptions;
-
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
@@ -398,3 +397,4 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 }
+trackRenderChanges(AssistantMessageComponent.prototype); // Its rows' state changes only where it rebuilds its children.

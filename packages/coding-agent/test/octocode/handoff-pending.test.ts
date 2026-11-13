@@ -20,7 +20,7 @@ const report = (id: string, wake = true): Report => ({
 	wake,
 });
 function queueFor(f: ReturnType<typeof fakeHost>) {
-	const queue = new ReportQueue(f.api, 60_000);
+	const queue = new ReportQueue(f.api);
 	queue.start({
 		getSessionFile: () => undefined,
 		getEntries: () =>
@@ -147,7 +147,7 @@ describe("pending reports", () => {
 		const f = fakeHost();
 		const send = vi.fn(() => Promise.resolve());
 		f.api.sendMessage = send;
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 		queue.pendingDir = tmp();
 		try {
@@ -237,7 +237,7 @@ describe("pending reports", () => {
 		const f = fakeHost();
 		const send = vi.fn((..._args: Parameters<typeof f.api.sendMessage>) => Promise.reject(new Error("not ready")));
 		f.api.sendMessage = send;
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 		queue.pendingDir = tmp();
 		try {
@@ -272,7 +272,7 @@ describe("pending reports", () => {
 		const receipt = (id: string) =>
 			JSON.stringify({ type: "custom_message", customType: "octocode-agent-result", details: { reportId: id } });
 		fs.writeFileSync(file, `${JSON.stringify({ type: "session" })}\n`);
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => file, getEntries: () => [] });
 		queue.pendingDir = path.join(dir, "reports");
 		try {
@@ -327,7 +327,7 @@ describe("pending reports", () => {
 		f.api.sendMessage = () => {
 			void Promise.reject(new Error("run preparation failed")).catch((error) => errors.push(error.message));
 		};
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 		queue.pendingDir = dir;
 		queue.add(report("general-a"));
@@ -368,7 +368,7 @@ describe("pending reports", () => {
 		const dir = tmp();
 		const f = fakeHost();
 		let recorded = false;
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({
 			getSessionFile: () => undefined,
 			getEntries: () =>

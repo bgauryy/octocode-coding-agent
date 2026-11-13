@@ -190,7 +190,7 @@ export function noteCount(db: Db, item: Item): number {
 }
 
 /** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */
-export function liveHolder(db: Db, assignee: string): string | undefined {
-	const pid = sessionRunningPid(db, assignee);
+export function liveHolder(db: Db, assignee: string, timer = false): string | undefined {
+	const pid = sessionRunningPid(db, assignee, timer);
 	return pid !== undefined && pid !== process.pid ? assignee : undefined;
 }

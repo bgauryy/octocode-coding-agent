@@ -75,9 +75,26 @@ export function transcriptHistory(
 	});
 }
 
-/** The same object, or an equal copy rebuilt from the session file. */
+/**
+ * The same object, or an equal copy rebuilt from the session file. Two messages whose roles are different strings or
+ * whose timestamps are different finite numbers cannot serialize alike, so they are told apart before serializing: a
+ * message the views have not seen is compared with every message they hold.
+ */
 function sameMessage(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
+	const left = asRecord(a);
+	const right = asRecord(b);
+	if (typeof left.role === "string" && typeof right.role === "string" && left.role !== right.role) return false;
+	const at = left.timestamp;
+	const other = right.timestamp;
+	if (
+		typeof at === "number" &&
+		typeof other === "number" &&
+		Number.isFinite(at) &&
+		Number.isFinite(other) &&
+		at !== other
+	)
+		return false;
 	try {
 		return JSON.stringify(a) === JSON.stringify(b);
 	} catch {

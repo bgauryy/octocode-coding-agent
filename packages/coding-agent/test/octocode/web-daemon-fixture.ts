@@ -8,21 +8,40 @@ import type {
 	ApplicationPort,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
+import { afterAll } from "vitest";
+import { webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
+import { readDaemonRecord, recordProcessAlive } from "../../src/octocode/web-daemon/records.ts";
 import type { RevisedWorkspace } from "../../src/octocode/workspace/revision.ts";
+
+const homes: NodeJS.ProcessEnv[] = [];
+
+// A detached daemon outlives the test that started it unless the test stops it; a test that failed before it could
+// stop one leaves it here, so each file stops the daemons its homes still record (the run fails one that outlives it).
+afterAll(() => {
+	for (const env of homes.splice(0)) {
+		const record = readDaemonRecord(webDaemonPaths(env).record);
+		// A test may run the daemon server in this worker (the record names this process): never stop the worker itself.
+		if (!record || record.pid === process.pid || !recordProcessAlive(record)) continue;
+		try {
+			process.kill(record.pid, "SIGKILL");
+		} catch {
+			// Already gone.
+		}
+	}
+});
 
 /** An environment whose Octocode home and agent database are private to one test. */
 export function isolatedEnv(extra: Record<string, string> = {}): { env: NodeJS.ProcessEnv; dir: string } {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "web-daemon-"));
-	return {
-		dir,
-		env: {
-			...process.env,
-			OCTOCODE_HOME: path.join(dir, "home"),
-			OCTOCODE_AGENT_DB: path.join(dir, "agent.db"),
-			OCTOCODE_CODING_AGENT_DIR: path.join(dir, "agent"),
-			...extra,
-		},
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		OCTOCODE_HOME: path.join(dir, "home"),
+		OCTOCODE_AGENT_DB: path.join(dir, "agent.db"),
+		OCTOCODE_CODING_AGENT_DIR: path.join(dir, "agent"),
+		...extra,
 	};
+	homes.push(env);
+	return { dir, env };
 }
 
 export const frame = (sessionId: string, sequence: number): ApplicationFrame => ({

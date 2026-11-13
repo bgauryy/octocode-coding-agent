@@ -220,6 +220,7 @@ type HandlerContext = {
 	getCrashExtensionHint: () => string | undefined;
 	crashReportInstructions: () => string;
 	ui: { stop: () => void };
+	runtimeHost: { dispose: () => Promise<void> };
 };
 
 function createHandlerContext(): HandlerContext {
@@ -234,6 +235,7 @@ function createHandlerContext(): HandlerContext {
 		getCrashExtensionHint: () => undefined,
 		crashReportInstructions: () => "",
 		ui: { stop: vi.fn() },
+		runtimeHost: { dispose: vi.fn(async () => {}) },
 	};
 	return context;
 }
@@ -275,14 +277,50 @@ describe("dead terminal errors on stdin", () => {
 		["read EIO", "EIO"],
 		["setRawMode EIO", "EIO"],
 		["setRawMode ENOTTY", "ENOTTY"],
-	])("stdin %s exits quietly without recording a crash", (message, code) => {
+	])(
+		"stdin %s stops the session's work as a SIGTERM would, then exits quietly without a crash",
+		async (message, code) => {
+			const ctx = setup();
+			const exits = vi.mocked(process.exit).mockImplementation((() => undefined) as never);
+			let disposed!: () => void;
+			ctx.runtimeHost.dispose = vi.fn(() => new Promise<void>((resolve) => (disposed = resolve)));
+
+			process.stdin.emit("error", errnoError(message, code));
+			// The dead terminal's later errors are echoes of the first: one dispose, one exit.
+			process.stdin.emit("error", errnoError("read EIO", "EIO"));
+			await Promise.resolve();
+
+			// Subagents, bash jobs and MCP servers are stopped (the runtime's dispose) before the process exits.
+			expect(ctx.runtimeHost.dispose).toHaveBeenCalledOnce();
+			expect(exits).not.toHaveBeenCalled();
+			disposed();
+			await vi.waitFor(() => expect(exits).toHaveBeenCalledWith(129));
+			expect(exits).toHaveBeenCalledOnce();
+			expect(ctx.recordCrash).not.toHaveBeenCalled();
+			expect(ctx.ui.stop).not.toHaveBeenCalled();
+		},
+	);
+
+	test("a hung-up terminal during a signal's shutdown exits once that shutdown's dispose is done, without a second", async () => {
 		const ctx = setup();
-
-		const exitCode = captureExit(() => process.stdin.emit("error", errnoError(message, code)));
-
-		expect(exitCode).toBe(129);
-		expect(ctx.recordCrash).not.toHaveBeenCalled();
-		expect(ctx.ui.stop).not.toHaveBeenCalled();
+		const exits = vi.mocked(process.exit).mockImplementation((() => undefined) as never);
+		let disposed!: () => void;
+		ctx.runtimeHost.dispose = vi.fn(() => new Promise<void>((resolve) => (disposed = resolve)));
+		const host = createFakeHost(
+			Object.assign(ctx, {
+				themeController: { disableAutoSync: vi.fn() },
+				stop: vi.fn(),
+				ui: { stop: vi.fn(), terminal: { drainInput: () => new Promise<void>(() => {}) } },
+			}),
+		);
+		void lifecycle.shutdown(host, { fromSignal: true });
+		process.stdin.emit("error", errnoError("read EIO", "EIO"));
+		await Promise.resolve();
+		expect(ctx.runtimeHost.dispose).toHaveBeenCalledOnce();
+		expect(exits).not.toHaveBeenCalled();
+		disposed();
+		await vi.waitFor(() => expect(exits).toHaveBeenCalledWith(129));
+		expect(ctx.runtimeHost.dispose).toHaveBeenCalledOnce();
 	});
 
 	test("other stdin errors still crash", () => {

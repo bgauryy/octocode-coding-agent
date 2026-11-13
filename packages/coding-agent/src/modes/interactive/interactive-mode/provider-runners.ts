@@ -1,5 +1,5 @@
 /**
- * `/providers` External agents: the vendor CLIs that run `agent` tasks on their own plan (Claude Code, Codex CLI,
+ * `/providers` External agents: the vendor CLIs that run `agent` tasks with their own sign-in (Claude Code, Codex CLI,
  * OpenCode, Gemini CLI). Each row says whether the CLI and its ACP adapter are installed, its version against the one
  * checked, and whether it is signed in, from the CLI's own status command (cached until its sign-in files change). The
  * list starts nothing: a runner is checked when its own page opens, and that answer is what the list shows next time.
@@ -51,7 +51,7 @@ const signIn = (state: RunnerState): string =>
 		: !state.auth
 			? `sign-in unknown${state.error ? ` (${state.error})` : ""}`
 			: state.auth.signedIn
-				? `signed in${state.auth.method ? ` · ${state.auth.method}` : ""} · ${state.auth.billing === "metered" ? "metered key" : "plan"}`
+				? `signed in${state.auth.method ? ` · ${state.auth.method}` : ""} · ${state.auth.billing === "metered" ? "metered key" : state.auth.billing === "plan" ? "plan" : "billing unknown"}`
 				: "signed out";
 
 function row(state: RunnerState, enabled: boolean): PageRow {
@@ -88,8 +88,10 @@ function row(state: RunnerState, enabled: boolean): PageRow {
 }
 
 /** The environment runners are looked up and checked in: the page's own (tests point it at a temporary home), else this process's. */
-const runnerEnvironment = (source: ProviderSourceEnvironment | undefined): NodeJS.ProcessEnv =>
-	source?.env ? { ...source.env, ...(source.home ? { HOME: source.home } : {}) } : process.env;
+const runnerEnvironment = (source: ProviderSourceEnvironment | undefined): NodeJS.ProcessEnv => ({
+	...(source?.env ?? process.env),
+	...(source?.home ? { HOME: source.home, USERPROFILE: source.home } : {}),
+});
 
 /**
  * Every known runner as last checked, read without starting anything: the main page opens at once. A failure is
@@ -196,6 +198,8 @@ export async function showRunnerDetail(
 			page.ui.stop();
 			let exit: TerminalExit;
 			try {
+				// The restore sequences `stop` queued reach the terminal before this line and the vendor's CLI.
+				await page.ui.terminal?.drainOutput?.();
 				process.stdout.write(
 					`Running \`${[spec.cli, ...spec.login].join(" ")}\`: finish the sign-in, then exit it. Octocode reads nothing of it.\n\n`,
 				);

@@ -27,13 +27,22 @@ export class ModelAvailability {
 	private availabilityErrorSeq = 0;
 	private readonly providerAvailabilitySeq = new Map<string, number>();
 	availabilityError: string | undefined;
+	/** Stops the credential watcher; `dispose` calls it once. */
+	private stopWatching: (() => void) | undefined;
 
 	constructor(models: MutableModels, credentials: RuntimeCredentials) {
 		this.models = models;
 		this.credentials = credentials;
 		// A credential another process saved or removed reaches the sync snapshot only through a refresh pass. The
 		// failure is kept in `availabilityError`; the next pass retries.
-		credentials.watch(() => void this.queueAvailabilityRefresh().catch(() => {}));
+		this.stopWatching = credentials.watch(() => void this.queueAvailabilityRefresh().catch(() => {}));
+	}
+
+	/** Stop following credential changes made by other processes. The snapshot stays readable; repeated calls do nothing. */
+	dispose(): void {
+		const stop = this.stopWatching;
+		this.stopWatching = undefined;
+		stop?.();
 	}
 
 	/**

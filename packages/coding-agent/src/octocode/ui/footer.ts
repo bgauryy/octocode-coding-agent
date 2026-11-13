@@ -12,6 +12,9 @@ import { type FooterState, footerLines } from "./footer/rows.ts";
 
 export { contextBar, type FooterState, footerLines } from "./footer/rows.ts";
 
+const isCompaction = (entry: unknown): boolean =>
+	typeof entry === "object" && entry !== null && (entry as { type?: unknown }).type === "compaction";
+
 /**
  * Replaces Octocode's footer with `footerLines`. The state is sampled on events (session start, each finished message,
  * model and thinking changes, compaction, tree moves), never inside render: context usage walks the whole session.
@@ -39,13 +42,23 @@ export function registerFooter(api: ExtensionAPI): void {
 		commit();
 	};
 	const scan = new SpendScan();
+	/** Compaction entries among those the scan has read (`appended`), so counting them never reads the session again. */
+	let compactions = 0;
 	const addEntry = (entry: unknown, ctx: ExtensionContext) => add(scan.entry(entry), ctx);
-	/** Spend recorded outside a reply (a compaction summary, a cache refresh, a side question) since the last look. */
+	/**
+	 * Spend recorded outside a reply (a compaction summary, a cache refresh, a side question) since the last look, by the
+	 * rule of `SpendScan.recorded`: only `usage` entries, each once.
+	 */
 	const addRecorded = (ctx: ExtensionContext) => {
-		for (const spend of scan.recorded(ctx.sessionManager.getEntries())) add(spend, ctx);
+		const { restart, entries } = scan.appended(ctx.sessionManager);
+		if (restart) compactions = 0;
+		for (const entry of entries) {
+			if (isCompaction(entry)) compactions++;
+			for (const spend of scan.recorded([entry])) add(spend, ctx);
+		}
 	};
-	const countCompactions = (ctx: ExtensionContext) => {
-		set({ compactions: ctx.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length });
+	const countCompactions = () => {
+		set({ compactions });
 	};
 	const add = (spend: Spend | undefined, ctx: ExtensionContext) => {
 		if (!spend) return;
@@ -81,9 +94,13 @@ export function registerFooter(api: ExtensionAPI): void {
 	api.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		set({ running: false, usage: emptyTotals() });
-		countCompactions(ctx);
 		scan.reset();
-		for (const entry of ctx.sessionManager.getEntries()) addEntry(entry, ctx);
+		compactions = 0;
+		for (const entry of scan.appended(ctx.sessionManager).entries) {
+			if (isCompaction(entry)) compactions++;
+			addEntry(entry, ctx);
+		}
+		countCompactions();
 		sample(ctx);
 		commit();
 		ctx.ui.setFooter((tui, theme, data) => {
@@ -150,9 +167,9 @@ export function registerFooter(api: ExtensionAPI): void {
 	api.on("thinking_level_select", refresh);
 	api.on("session_compact", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		countCompactions(ctx);
 		addEntry(event.compactionEntry, ctx);
 		addRecorded(ctx);
+		countCompactions();
 		await refresh(event, ctx);
 	});
 	api.on("agent_start", async (_event, ctx) => {

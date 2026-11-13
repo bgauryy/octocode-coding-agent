@@ -1,5 +1,5 @@
-import { unwatchFile, watchFile } from "node:fs";
 import { getFileRevision } from "../../../../common/src/paths.ts";
+import { watchFileChanges } from "../../../../common/src/watch-file.ts";
 import { normalizeProviderSources } from "../provider-sources/gate.ts";
 import { tryLoadSettingsFromStorage } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
@@ -27,19 +27,22 @@ function adoptProviderToggles(state: SettingsState): boolean {
 
 /**
  * Calls `onChange` after another process saved a different `disabledProviders` or `providerSources` to the global
- * settings file. Polls the file's revision with an unreferenced timer, so it never keeps the process alive; this
- * process's own saves already match memory and call nothing. Returns the stop function.
+ * settings file. A file-system watcher on its folder sees the save (`intervalMs` paces the stat polling only where that
+ * watcher fails), never keeping the process alive; this process's own saves already match memory and call nothing.
+ * Returns the stop function.
  */
 export function watchProviderToggles(state: SettingsState, onChange: () => void, intervalMs = 1000): () => void {
 	const path = state.settingsPaths.global;
 	if (!path) return () => {};
 	let seen = getFileRevision(path);
-	const listener = () => {
-		const revision = getFileRevision(path);
-		if (revision === seen) return;
-		seen = revision;
-		if (adoptProviderToggles(state)) onChange();
-	};
-	watchFile(path, { interval: intervalMs, persistent: false }, listener);
-	return () => unwatchFile(path, listener);
+	return watchFileChanges(
+		path,
+		() => {
+			const revision = getFileRevision(path);
+			if (revision === seen) return;
+			seen = revision;
+			if (adoptProviderToggles(state)) onChange();
+		},
+		{ intervalMs },
+	);
 }

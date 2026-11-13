@@ -156,7 +156,7 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
 		let keep = false;
 		if (record) {
 			const job = { id: record.id, pid: record.pid, command: record.command, log: record.log };
-			const verdict = orphanVerdict(record, latest);
+			const verdict = await orphanVerdict(record, latest);
 			if (verdict === "stop") stops.push(stopTree(record.pid));
 			if (verdict !== "gone") found.push({ ...job, stopped: verdict === "stop" });
 			keep = verdict === "retry";
@@ -176,8 +176,11 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
  * What to do with the job of a dead owner: `stop` it, leave it alone (`leave`; `retry` keeps the record because `ps`
  * failed), or nothing (`gone`: it ended, or its pid now names another process).
  */
-function orphanVerdict(record: JobRecord, latest: ReadonlyMap<number, number>): "stop" | "leave" | "retry" | "gone" {
-	const match = processMatch(record.pid, record.started);
+async function orphanVerdict(
+	record: JobRecord,
+	latest: ReadonlyMap<number, number>,
+): Promise<"stop" | "leave" | "retry" | "gone"> {
+	const match = await processMatch(record.pid, record.started);
 	if (match === "same") return "stop";
 	if (match === "unknown") return record.started ? "retry" : "leave";
 	if (processAlive(record.pid) || !groupAlive(record.pid)) return "gone";
@@ -185,7 +188,7 @@ function orphanVerdict(record: JobRecord, latest: ReadonlyMap<number, number>): 
 	// group may have ended long ago and its pid been reused as another group's leader: only a group whose members all
 	// started at or after the job, with no later job recorded under that pid, is taken for the job's.
 	if (!/^\d+$/.test(record.started ?? "") || (latest.get(record.pid) ?? 0) > Number(record.started)) return "leave";
-	const members = groupStartTimes(record.pid);
+	const members = await groupStartTimes(record.pid);
 	if (members === undefined) return "retry";
 	return members.length > 0 && members.every((member) => Number(member.started) >= Number(record.started))
 		? "stop"

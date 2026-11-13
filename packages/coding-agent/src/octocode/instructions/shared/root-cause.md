@@ -1,1 +1,1 @@
-- Trace bugs to a cause their owner can fix; test unclear causes against their strongest rival. After failure, change approach and check whether the action already took effect before retrying. Report blockers without suppressing errors.
+- Trace bugs to their owning cause; test unclear causes against their strongest rival and name what would disprove them. After failure, change approach; check existing effects before retrying. Report blockers without hiding errors.

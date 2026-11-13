@@ -12,6 +12,8 @@ export class ChildWatchdog {
 	stalled: Error | undefined;
 
 	private tickedAt = this.activeAt;
+	/** Waits in progress that the child's own deadlines must not count (`hold`). */
+	private holds = 0;
 	private timer: NodeJS.Timeout | undefined;
 	private readonly state: Pick<ChildState, "toolsRunning" | "settling" | "busyUntil" | "lastActivity">;
 	private readonly limits: WatchdogLimits;
@@ -60,6 +62,23 @@ export class ChildWatchdog {
 		this.activeAt = now;
 	}
 
+	/**
+	 * Pauses the deadlines while `wait` is pending: a child holding its task for a sibling's cache entry (`stagger.ts`) has
+	 * nothing to say yet, and the sibling's own watchdog bounds that wait. When it ends, the silence and deadlines count
+	 * from then on, as after a wait for the user. Returns `wait` itself.
+	 */
+	hold<T>(wait: Promise<T>, now: () => number = Date.now): Promise<T> {
+		const since = now();
+		this.holds++;
+		const end = () => {
+			this.holds--;
+			const at = now();
+			this.waited(at - since, at);
+		};
+		void wait.then(end, end);
+		return wait;
+	}
+
 	tick(now: number): void {
 		const gap = now - this.tickedAt;
 		this.tickedAt = now;
@@ -72,7 +91,7 @@ export class ChildWatchdog {
 			return;
 		}
 		this.beat?.(now, false);
-		if (this.stalled || this.paused()) return;
+		if (this.stalled || this.holds > 0 || this.paused()) return;
 		const { state, limits } = this;
 		const busy = state.toolsRunning > 0 || state.settling;
 		if (busy ? now < state.busyUntil : now - this.activeAt < limits.idleMs) return;

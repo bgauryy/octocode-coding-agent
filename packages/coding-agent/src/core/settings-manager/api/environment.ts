@@ -6,6 +6,8 @@ export interface EnvironmentSettingsApi {
 	setLastChangelogVersion(version: string): void;
 	getSessionDir(): string | undefined;
 	getExternalEditorCommand(): string;
+	/** `referenceOpener`: `auto` (default), `editor`, or a command; never empty. */
+	getReferenceOpener(): string;
 	getShellPath(): string | undefined;
 	setShellPath(path: string | undefined): void;
 	getQuietStartup(): QuietStartup;

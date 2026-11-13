@@ -10,6 +10,22 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { matchesKey } from "../src/keys/match.ts";
 import { PASTE_IDLE_TIMEOUT_MS, StdinBuffer } from "../src/stdin-buffer.ts";
 
+/** Per-key sequences as the buffer emits them: consecutive typed characters (code point >= U+0020, not DEL or C1) join. */
+function joinTyped(keys: string[]): string[] {
+	const out: string[] = [];
+	const typed = (key: string) => {
+		const code = key.codePointAt(0)!;
+		return [...key].length === 1 && code >= 0x20 && code !== 0x7f && (code < 0x80 || code > 0x9f);
+	};
+	let joining = false;
+	for (const key of keys) {
+		if (typed(key) && joining) out[out.length - 1] += key;
+		else out.push(key);
+		joining = typed(key);
+	}
+	return out;
+}
+
 describe("StdinBuffer", () => {
 	let buffer: StdinBuffer;
 	let emittedSequences: string[];
@@ -44,12 +60,12 @@ describe("StdinBuffer", () => {
 
 		it("should pass through multiple regular characters", () => {
 			processInput("abc");
-			assert.deepStrictEqual(emittedSequences, ["a", "b", "c"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["a", "b", "c"]));
 		});
 
 		it("should handle unicode characters", () => {
 			processInput("hello 世界");
-			assert.deepStrictEqual(emittedSequences, ["h", "e", "l", "l", "o", " ", "世", "界"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["h", "e", "l", "l", "o", " ", "世", "界"]));
 		});
 	});
 
@@ -274,7 +290,10 @@ describe("StdinBuffer", () => {
 					t.mock.timers.tick(49);
 					assert.deepStrictEqual(sequences, []);
 					t.mock.timers.tick(1);
-					assert.deepStrictEqual(sequences, [ambiguous.slice(0, 2), ...ambiguous.slice(2), "x", "\r", "\x03", "\x04"]);
+					assert.deepStrictEqual(
+						sequences,
+						joinTyped([ambiguous.slice(0, 2), ...ambiguous.slice(2), "x", "\r", "\x03", "\x04"]),
+					);
 					assert.strictEqual(legacyBuffer.getBuffer(), "");
 
 					legacyBuffer.process("y\r\x03\x04");
@@ -303,7 +322,7 @@ describe("StdinBuffer", () => {
 			processInput("\x1b");
 			t.mock.timers.tick(100);
 			processInput("[Ahello");
-			assert.deepStrictEqual(emittedSequences, ["\x1b[A", "h", "e", "l", "l", "o"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["\x1b[A", "h", "e", "l", "l", "o"]));
 		});
 
 		it("discards a canceled reply without swallowing subsequent input", () => {
@@ -317,12 +336,12 @@ describe("StdinBuffer", () => {
 	describe("Mixed Content", () => {
 		it("should handle characters followed by escape sequence", () => {
 			processInput("abc\x1b[A");
-			assert.deepStrictEqual(emittedSequences, ["a", "b", "c", "\x1b[A"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["a", "b", "c", "\x1b[A"]));
 		});
 
 		it("should handle escape sequence followed by characters", () => {
 			processInput("\x1b[Aabc");
-			assert.deepStrictEqual(emittedSequences, ["\x1b[A", "a", "b", "c"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["\x1b[A", "a", "b", "c"]));
 		});
 
 		it("should handle multiple complete sequences", () => {
@@ -332,11 +351,11 @@ describe("StdinBuffer", () => {
 
 		it("should handle partial sequence with preceding characters", () => {
 			processInput("abc\x1b[<35");
-			assert.deepStrictEqual(emittedSequences, ["a", "b", "c"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["a", "b", "c"]));
 			assert.strictEqual(buffer.getBuffer(), "\x1b[<35");
 
 			processInput(";20;5m");
-			assert.deepStrictEqual(emittedSequences, ["a", "b", "c", "\x1b[<35;20;5m"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["a", "b", "c", "\x1b[<35;20;5m"]));
 		});
 	});
 
@@ -431,7 +450,7 @@ describe("StdinBuffer", () => {
 
 		it("should emit astral characters whole, never as lone surrogates", () => {
 			processInput("a\u{1F600}b\u{20BB7}");
-			assert.deepStrictEqual(emittedSequences, ["a", "\u{1F600}", "b", "\u{20BB7}"]);
+			assert.deepStrictEqual(emittedSequences, joinTyped(["a", "\u{1F600}", "b", "\u{20BB7}"]));
 		});
 
 		it("should handle rapid typing simulation with Kitty protocol", () => {

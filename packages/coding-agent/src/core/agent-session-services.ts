@@ -50,6 +50,11 @@ export interface AgentSessionServices {
 	settingsManager: SettingsManager;
 	resourceLoader: ResourceLoader;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
+	/**
+	 * Release what these services created: the model runtime's credential watcher when `createAgentSessionServices`
+	 * built the runtime (a runtime passed in stays with its owner). The host calls it once the services are replaced.
+	 */
+	dispose?(): void;
 }
 
 /**
@@ -132,6 +137,7 @@ export async function createAgentSessionServices(
 	extensionsResult.runtime.pendingVirtualModelRegistrations = [];
 	await modelRuntime.refresh({ allowNetwork: false });
 
+	const ownsRuntime = !options.modelRuntime;
 	return {
 		cwd,
 		agentDir,
@@ -139,5 +145,8 @@ export async function createAgentSessionServices(
 		settingsManager,
 		resourceLoader,
 		diagnostics,
+		dispose: () => {
+			if (ownsRuntime) modelRuntime.dispose();
+		},
 	};
 }

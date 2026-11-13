@@ -17,9 +17,11 @@ import {
 	validateAuthCommandArgs,
 } from "../cli/auth-command.ts";
 import { resolveCredentialForPrint } from "../cli/credential-print.ts";
-import { APP_NAME } from "../config.ts";
-import { AuthStorage, ReadOnlyAuthStorage } from "../core/auth-storage.ts";
+import { APP_NAME, getAgentDir } from "../config.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
+import { createDefaultCredentialStore } from "../core/model-runtime/create.ts";
+import { providerSourceGate } from "../core/provider-sources/gate.ts";
+import { SettingsManager } from "../core/settings-manager.ts";
 
 export async function runAuthCommand(args: string[]): Promise<boolean> {
 	if (isAuthCommandHelp(args)) {
@@ -46,13 +48,15 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		process.exitCode = 1;
 		return true;
 	}
+	let modelRuntime: ModelRuntime | undefined;
 	try {
 		if (parsed.diagnostics.length > 0) {
 			throw new AuthCommandError(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
 		}
+		providerSourceGate.set(SettingsManager.create(process.cwd(), getAgentDir()).getProviderSources());
+		const signal = AbortSignal.timeout(15_000);
 		if (command.kind !== "check") {
-			const signal = AbortSignal.timeout(15_000);
-			const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
+			modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
 			const credential = await resolveCredentialForPrint(
 				parsed,
 				modelRuntime,
@@ -68,12 +72,13 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		let result: AuthCheckResult;
 		let credential: string | undefined;
 		try {
-			const credentials = command.noRefresh ? new ReadOnlyAuthStorage() : AuthStorage.create();
-			const modelRuntime = await createAuthCheckModelRuntime(credentials);
-			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh });
+			const credentials = createDefaultCredentialStore({ readOnlyCredentials: command.noRefresh });
+			modelRuntime = await createAuthCheckModelRuntime(credentials, signal);
+			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh, signal });
 			if (command.credentials && result.status === "ready") {
 				credential = await getProviderCredential(result.provider, modelRuntime, credentials, {
 					refresh: !command.noRefresh,
+					signal,
 				});
 				if (!credential) {
 					result = { status: "not_ready", provider: result.provider, reason: "credential_not_available" };
@@ -95,6 +100,8 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		const message = error instanceof AuthCommandError ? error.message : "Failed to resolve credential";
 		console.error(chalk.red(`Error: ${message}`));
 		process.exitCode = command.kind === "check" ? 2 : 1;
+	} finally {
+		modelRuntime?.dispose();
 	}
 	return true;
 }

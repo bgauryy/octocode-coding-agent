@@ -28,6 +28,7 @@ beforeEach(() => {
 	root = tmp();
 	agent = openDatabase({
 		file: path.join(root, "workspaces.db"),
+		mirrorFile: path.join(root, "transcripts.db"),
 		archiveDir: path.join(root, "archive"),
 		privateParent: false,
 	});
@@ -228,17 +229,26 @@ describe("event sources only poke a check", () => {
 		await vi.waitFor(() => expect(woken).toHaveLength(1), { timeout: 3000 });
 	});
 
-	it("a dead watcher brings the next check forward to the polling interval, and stop unsubscribes", () => {
+	it("a dead watcher polls at the fallback interval before the cached safety check", async () => {
 		vi.useFakeTimers({ now: T0 });
 		const stop = vi.fn();
+		let state = "todo";
 		let failed: () => void = () => undefined;
 		const watch = (_c: TimerCondition, _cwd: string, _poke: () => void, onFail: () => void) => {
 			failed = onFail;
 			return stop;
 		};
-		const { row, instance } = watched({ item: { ref: "B1", state: "done" } }, watch);
+		const { row, instance, woken } = watched({ item: { ref: "B1", state: "done" } }, watch, {
+			item: () => state,
+		});
+		await instance.tick();
+		expect(timers.get(agent.db, row.id)!.due_at).toBe(T0 + 60_000);
+		await vi.advanceTimersByTimeAsync(1000);
 		failed();
-		expect(timers.get(agent.db, row.id)!.due_at).toBe(T0 + 15_000);
+		expect(timers.get(agent.db, row.id)!.due_at).toBe(T0 + 16_000);
+		state = "done";
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(woken).toMatchObject([{ status: "done", stop_reason: "met" }]);
 		instance.stop();
 		expect(stop).toHaveBeenCalledOnce();
 	});
@@ -249,6 +259,20 @@ describe("event sources only poke a check", () => {
 		timers.cancel(agent.db, row.id, "s1", Date.now());
 		instance.refresh();
 		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it("a watcher that fails on subscribe keeps an already-due check immediate", async () => {
+		vi.useFakeTimers({ now: T0 });
+		const { instance, woken } = watched(
+			{ item: { ref: "B1", state: "done" } },
+			(_condition, _cwd, _poke, failed) => {
+				failed();
+				return () => undefined;
+			},
+			{ item: () => "done" },
+		);
+		await instance.tick();
+		expect(woken).toMatchObject([{ status: "done", stop_reason: "met" }]);
 	});
 });
 
@@ -556,6 +580,64 @@ describe("the timer tool and check", () => {
 		const second = await set(host, ctx, checkUntil);
 		expect(second.content[0].text).toContain("Judging is capped");
 		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("does not persist a timer when cancelled while awaiting judging consent", async () => {
+		const { host, ctx } = session();
+		const controller = new AbortController();
+		ctx.ui.confirm = async () => {
+			controller.abort(new Error("cancelled"));
+			return true;
+		};
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		try {
+			await expect(
+				host.tools
+					.get("timer")
+					.execute("c", { op: "set", note: "n", until: checkUntil }, controller.signal, undefined, ctx),
+			).rejects.toThrow("cancelled");
+			expect(timers.activeCount(agent.db, "s1")).toBe(0);
+		} finally {
+			await host.fire("session_shutdown", {}, ctx);
+		}
+	});
+
+	it("rejects a judging approval that arrives after the session changes", async () => {
+		const { host, ctx } = session();
+		let answer: (yes: boolean) => void = () => undefined;
+		ctx.ui.confirm = () =>
+			new Promise((resolve) => {
+				answer = resolve;
+			});
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const pending = set(host, ctx, checkUntil);
+		const next = { ...ctx, sessionManager: { getSessionId: () => "s2", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "switch" }, next);
+		answer(true);
+		try {
+			await expect(pending).rejects.toThrow(/session changed/);
+			expect(timers.forSession(agent.db, "s1")).toHaveLength(0);
+			ctx.ui.confirm = async () => false;
+			await expect(set(host, next, checkUntil)).rejects.toThrow(/declined/);
+		} finally {
+			await host.fire("session_shutdown", {}, next);
+		}
+	});
+
+	it("does not carry first-use judging consent into another session", async () => {
+		const { host, ctx } = session();
+		ctx.ui.confirms.push(true);
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		await set(host, ctx, checkUntil);
+		const next = { ...ctx, sessionManager: { getSessionId: () => "s2", getBranch: () => [] } };
+		ctx.ui.confirms.push(false);
+		await host.fire("session_start", { reason: "switch" }, next);
+		try {
+			await expect(set(host, next, checkUntil)).rejects.toThrow(/declined/);
+			expect(timers.activeCount(agent.db, "s2")).toBe(0);
+		} finally {
+			await host.fire("session_shutdown", {}, next);
+		}
 	});
 
 	it("does not ask when the global setting turns it on, and a project setting cannot", async () => {

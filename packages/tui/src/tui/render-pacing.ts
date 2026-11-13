@@ -20,6 +20,9 @@ export interface RenderPacingStats {
 	maxFrameCostMs: number;
 	maxInputToPaintMs: number;
 	maxTimerLagMs: number;
+	/** Frames painted for pointer input, and the shortest time between the start of one and the frame before it. */
+	pointerFrames: number;
+	minPointerFrameGapMs?: number;
 	output?: Readonly<OutputTelemetry>;
 }
 
@@ -43,6 +46,7 @@ export function emptyRenderPacingStats(): RenderPacingStats {
 		maxFrameCostMs: 0,
 		maxInputToPaintMs: 0,
 		maxTimerLagMs: 0,
+		pointerFrames: 0,
 	};
 }
 

@@ -34,6 +34,11 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		return process.platform === "win32" ? "notepad" : "nano";
 	}
 
+	getReferenceOpener(): string {
+		const opener = this.settings.referenceOpener;
+		return typeof opener === "string" && opener.trim() !== "" ? opener.trim() : SETTINGS_DEFAULTS.referenceOpener;
+	}
+
 	getShellPath(): string | undefined {
 		const shellPath = this.settings.shellPath;
 		return shellPath ? normalizePath(shellPath) : shellPath;

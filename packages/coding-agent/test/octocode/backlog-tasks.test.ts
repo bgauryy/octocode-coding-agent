@@ -246,7 +246,7 @@ describe("closing an item with open tasks", () => {
 			return "closed";
 		};
 		expect(refusal()).toBe(
-			`${item.ref} has open tasks: T1, T2, T3, T4, T5 and 2 more: the user finishes or drops them on the backlog board (/backlog) first.`,
+			`${item.ref} has open tasks: T1, T2, T3, T4, T5 and 2 more: finish completed steps with backlog step (id T…, note: result and checks); the user drops unneeded steps on the backlog board (/backlog).`,
 		);
 		expect(store.get(item.ref)!.state).toBe("ongoing");
 		for (let n = 1; n <= 7; n++)

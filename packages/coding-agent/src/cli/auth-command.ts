@@ -75,8 +75,11 @@ export function parseAuthCommand(args: string[]): AuthCommand | undefined {
 			const match = value ? /^(\d+)(ms|s|m|h)$/iu.exec(value) : undefined;
 			if (!match) throw new AuthCommandError("--min-expiry must use a duration such as 30m or 1h");
 			const amount = Number(match[1]);
-			const unit = match[2];
+			const unit = match[2].toLowerCase();
 			minExpiryMs = amount * (unit === "ms" ? 1 : unit === "s" ? 1_000 : unit === "m" ? 60_000 : 3_600_000);
+			if (!Number.isSafeInteger(minExpiryMs)) {
+				throw new AuthCommandError("--min-expiry must fit within a safe integer number of milliseconds");
+			}
 			continue;
 		}
 		if (arg === "--json" || arg === "--credentials" || arg === "--no-refresh") {

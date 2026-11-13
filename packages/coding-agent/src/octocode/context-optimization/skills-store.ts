@@ -9,7 +9,9 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
+import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, withFileLock } from "../../../../common/src/file-write-lock.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The Agent Skills limit for a description; the prompt cuts a longer one. */
@@ -77,10 +79,45 @@ function renderSkillsView(store: SkillsStore): string {
 		.join("\n\n");
 }
 
-export function writeSkillsStore(dir: string, store: SkillsStore): void {
+/**
+ * Replace the store and its view. `record` is for a session recording the skills it discovered: the view is derived and
+ * the store's data is flushed without its folder, so a crash keeps the old store or the new one, and the next session
+ * records the skills again. Rewrites (`/context`) are flushed in full.
+ */
+export function writeSkillsStore(dir: string, store: SkillsStore, purpose: "rewrite" | "record" = "rewrite"): void {
 	mkdirSync(dir, { recursive: true });
-	atomicWriteFileSync(join(dir, "skills.txt"), `${renderSkillsView(store)}\n`);
-	atomicWriteFileSync(skillsStoreFile(dir), `${JSON.stringify(store, null, "\t")}\n`);
+	const record = purpose === "record";
+	atomicWriteFileSync(join(dir, "skills.txt"), `${renderSkillsView(store)}\n`, record ? { durability: "none" } : {});
+	atomicWriteFileSync(
+		skillsStoreFile(dir),
+		`${JSON.stringify(store, null, "\t")}\n`,
+		record ? { durability: "data" } : {},
+	);
+}
+
+/** Reread and update under one cross-process lock; contention yields the thread and never replaces a newer snapshot. */
+export async function updateSkillsStore(
+	dir: string,
+	update: (current: SkillsStore) => SkillsStore,
+	purpose: "rewrite" | "record" = "rewrite",
+): Promise<SkillsStore> {
+	mkdirSync(dir, { recursive: true });
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return await withFileLock(skillsStoreFile(dir), async (assertHeld) => {
+				const current = readSkillsStore(dir);
+				const next = update(current);
+				if (next !== current) {
+					await assertHeld();
+					writeSkillsStore(dir, next, purpose);
+				}
+				return next;
+			});
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ELOCKED" || attempt >= LOCK_ATTEMPTS) throw error;
+			await sleep(LOCK_RETRY_DELAY_MS);
+		}
+	}
 }
 
 /**

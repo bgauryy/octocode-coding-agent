@@ -22,10 +22,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 });
 
 export function bashDescription(): string {
-	return (
-		"Run a command in the working directory. Foreground returns the combined output. " +
-		`Background (use it for builds, full test suites, servers, anything over a minute) returns a job id, pid and log path; completion arrives as a message. A foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. A timeout does not undo side effects: inspect the result before rerunning.\n\n${renderCliGuide(probeCliHost())}`
-	);
+	return `Run commands in the working directory. Run builds, full test suites, servers or work over a minute in background: get job id, pid and log path, then a completion message. Foreground returns combined output and moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. Timeouts do not undo effects; inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */
@@ -57,7 +54,7 @@ export const bashParameters = Type.Object({
 	verify: Type.Optional(
 		Type.Boolean({
 			description:
-				"Record a verification receipt tied to the current edits; a later edit makes it stale, and a zero exit proves only that the command succeeded.",
+				"Record verification for current edits; later edits make it stale. Zero exit proves only command success.",
 		}),
 	),
 	// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.

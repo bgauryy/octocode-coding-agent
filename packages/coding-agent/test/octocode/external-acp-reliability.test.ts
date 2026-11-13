@@ -96,7 +96,7 @@ describe("ACP reliability runner and saved-session crash recovery", () => {
 					"ACP session already has an active prompt.",
 				);
 				const spawned = entries(journal).find((entry) => entry.event === "spawn")!;
-				expect(processMatch(spawned.proxyPid, spawned.proxyStarted)).toBe("same");
+				expect(await processMatch(spawned.proxyPid, spawned.proxyStarted)).toBe("same");
 				process.kill(-spawned.proxyPid, "SIGKILL");
 				const failed = await pending;
 				expect(failed).toBeInstanceOf(AcpError);
@@ -107,7 +107,7 @@ describe("ACP reliability runner and saved-session crash recovery", () => {
 					entries(journal).filter((entry) => entry.direction === "outbound" && entry.method === "session/prompt"),
 				).toHaveLength(before + 1);
 				await backend.close();
-				expect(groupMembers(spawned.proxyPid)).toEqual([]);
+				expect(await groupMembers(spawned.proxyPid)).toEqual([]);
 			}
 			const journal = join(root, "final-recovery.jsonl");
 			const recovered = await AcpBackend.connect(
@@ -128,7 +128,7 @@ describe("ACP reliability runner and saved-session crash recovery", () => {
 				(await recovered.prompt("Reply only the remembered marker and current counter", { timeoutMs: WORK_MS })).text,
 			).toBe("RANDOM_MARKER:14");
 			await recovered.close();
-			expect(groupMembers(entries(journal).find((entry) => entry.event === "spawn")!.proxyPid)).toEqual([]);
+			expect(await groupMembers(entries(journal).find((entry) => entry.event === "spawn")!.proxyPid)).toEqual([]);
 		},
 		180_000,
 	); // 4 s alone: three connect/crash rounds, each with a proxy and an agent process.

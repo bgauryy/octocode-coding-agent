@@ -30,9 +30,54 @@ export function openReadOnlyDb(file: string): Sqlite.DatabaseSync {
 export const isBusy = (error: unknown): boolean =>
 	(Number((error as { errcode?: unknown } | null | undefined)?.errcode) & 0xff) === 5;
 
+const nap = new Int32Array(new SharedArrayBuffer(4));
+/** How long a contended `BEGIN IMMEDIATE` sleeps between tries: shorter than a peer's short write transaction. */
+const RETRY_MS = 1;
+
+/** This connection's `busy_timeout`: how long a statement may wait for another connection's lock. */
+const busyTimeout = (db: Sqlite.DatabaseSync): number =>
+	num((db.prepare("PRAGMA busy_timeout").get() as Row | undefined)?.timeout);
+
+/**
+ * `BEGIN IMMEDIATE` within the connection's own `busy_timeout`, retried every millisecond instead of through SQLite's
+ * busy handler. That handler sleeps 1, 2, 5, 10 … 100 ms between tries, so a thread that meets a peer's short
+ * transactions sleeps past the gaps between them. The budget is the connection's `busy_timeout` at the call (0 tries
+ * once); when it runs out the last SQLITE_BUSY error is thrown, as SQLite's handler would. Only the BEGIN waits this way:
+ * the statements inside the transaction keep the connection's timeout, which is restored before this returns.
+ */
+export function beginImmediate(db: Sqlite.DatabaseSync): void {
+	const budget = busyTimeout(db);
+	if (budget <= 0) {
+		db.exec("BEGIN IMMEDIATE");
+		return;
+	}
+	const deadline = performance.now() + budget;
+	db.exec("PRAGMA busy_timeout=0");
+	let began = false;
+	let failure: unknown;
+	while (!began && failure === undefined) {
+		try {
+			db.exec("BEGIN IMMEDIATE");
+			began = true;
+		} catch (error) {
+			const left = deadline - performance.now();
+			if (!isBusy(error) || left <= 0) failure = error ?? new Error("BEGIN IMMEDIATE failed");
+			else Atomics.wait(nap, 0, 0, Math.min(RETRY_MS, left));
+		}
+	}
+	try {
+		db.exec(`PRAGMA busy_timeout=${budget}`);
+	} catch (error) {
+		// The caller only rolls back a transaction it knows it holds.
+		if (began) db.exec("ROLLBACK");
+		throw error;
+	}
+	if (!began) throw failure;
+}
+
 /** Runs `work` with this connection waiting at most `ms` for another process's lock, then restores its wait. */
 export function withBusyTimeout<T>(db: Sqlite.DatabaseSync, ms: number, work: () => T): T {
-	const previous = num((db.prepare("PRAGMA busy_timeout").get() as Row | undefined)?.timeout);
+	const previous = busyTimeout(db);
 	db.exec(`PRAGMA busy_timeout=${Math.max(0, Math.floor(ms))}`);
 	try {
 		return work();

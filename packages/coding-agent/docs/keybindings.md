@@ -81,7 +81,7 @@ For VS Code, add to `keybindings.json`:
 
 ## Actions
 
-`/links` provides keyboard reference actions in either display mode, including terminals without native hyperlink support. `/links message` chooses an earlier answer; `/copy code` copies original code without terminal decoration. See [references and copying](tui.md#references-and-copying). Ctrl+G and file opens share the same configured editor.
+`/links` provides keyboard reference actions in either display mode, including terminals without native hyperlink support. `/links message` chooses an earlier answer; `/copy code` copies original code without terminal decoration. See [references and copying](tui.md#references-and-copying). Ctrl+G uses the prompt editor (`externalEditor`); file opens use `referenceOpener`, which by default prefers the IDE running the terminal ([configuration](configuration.md)).
 
 ### Terminal UI
 
@@ -171,6 +171,8 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste files on macOS, images, or text from clipboard                                                                                                                                                                                                                                            |
 
 `app.clipboard.pasteImage` inserts the path of a copied file, or saves a copied image to a temporary file and inserts its path; the image is attached when you send the message (see [attach images by path](models.md#attach-images-by-path)).
+
+`app.suspend` stops Octocode and returns the terminal to your shell until you run `fg`. Work that runs without the terminal keeps going while Octocode is stopped: subagents, running bash commands and background jobs each run in a session of their own, without a terminal, so they are not stopped with it. A program that shares the terminal (the external editor, an interactive subcommand) stops with Octocode.
 
 On native Windows, `app.suspend` has no default because Windows terminals do not support Unix job control. If you assign it manually, Octocode shows a status message instead of suspending. WSL uses the normal `ctrl+z` and `fg` behavior.
 

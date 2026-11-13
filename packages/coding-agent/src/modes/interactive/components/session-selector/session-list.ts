@@ -225,7 +225,12 @@ export class SessionList implements Component, Focusable {
 		const lines = renderSearchBox(this.searchInput, width);
 
 		if (this.filteredSessions.length === 0) {
-			lines.push(theme.fg("muted", truncateToWidth(emptyMessage(this.nameFilter, this.showCwd), width, "…")));
+			lines.push(
+				theme.fg(
+					"muted",
+					truncateToWidth(emptyMessage(this.nameFilter, this.showCwd, this.searchInput.getValue()), width, "…"),
+				),
+			);
 			return lines;
 		}
 

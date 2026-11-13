@@ -112,6 +112,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"collapseChangelog",
 			"lastChangelogVersion",
 			"externalEditor",
+			"referenceOpener",
 			"editorPaddingX",
 			"outputPad",
 			"autocompleteMaxVisible",

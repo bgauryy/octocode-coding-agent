@@ -121,6 +121,7 @@ function itemFields(item: Item): string[] {
 			`Verification: ${completion.verification.status} — ${visibleControls(completion.verification.summary)}`,
 			`Files: ${completion.files.map((file) => visibleControls(file.path)).join(", ") || "none"}`,
 		);
+	if (completion?.lesson) lines.push(`Lesson: ${visibleControls(completion.lesson)}`);
 
 	if (item.goal) lines.push(`Goal: ${visibleControls(item.goal)}`);
 	if (item.paths.length) lines.push(`Where: ${item.paths.map((path) => visibleControls(path)).join(", ")}`);
@@ -257,10 +258,27 @@ export function boardText(store: BacklogStore, self?: string): string {
 
 /** How many open tasks this session tracks: its own, and those under the items it holds (ongoing, assigned to `self`). */
 export function openTaskCount(store: BacklogStore, self: string): number {
+	const tally = sessionTaskTally(store, self);
+	return tally.todo + tally.ongoing;
+}
+
+/** This session's checklist progress: its session tasks and the tasks of ongoing items it holds. */
+export function sessionTaskTally(store: BacklogStore, self: string): TaskTally {
 	const { items, sessions } = store.tasks.counts();
-	const open = (tally?: TaskTally) => (tally ? tally.todo + tally.ongoing : 0);
-	const held = store.list({ states: ["ongoing"] }).items.filter((item) => item.assignee === self);
-	return open(sessions[self]) + held.reduce((sum, item) => sum + open(items[item.ref]), 0);
+	const total: TaskTally = { todo: 0, ongoing: 0, done: 0, dropped: 0 };
+	const held = store.list({ states: ["ongoing"], assignees: [self] }).items;
+	for (const tally of [sessions[self], ...held.map((item) => items[item.ref])]) {
+		if (!tally) continue;
+		for (const state of ["todo", "ongoing", "done", "dropped"] as const) total[state] += tally[state];
+	}
+	return total;
+}
+
+/** Dropped steps stay in the denominator and are named separately; an empty checklist has no progress chip. */
+export function taskProgressText(tally: TaskTally): string | undefined {
+	const total = tally.todo + tally.ongoing + tally.done + tally.dropped;
+	if (!total) return undefined;
+	return `${tally.done}/${total} steps done${tally.dropped ? ` · ${tally.dropped} dropped` : ""}`;
 }
 
 /** Keep the web workspace discoverable even when there are no open items; append live backlog counts and this session's open tasks. */

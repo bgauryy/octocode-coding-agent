@@ -61,7 +61,7 @@ describe("InteractiveMode startup input", () => {
 		handleStartupSubmit(createFakeHost(context), "early prompt");
 
 		expect(context.editor.setText).toHaveBeenCalledWith("early prompt");
-		expect(context.showStatus).toHaveBeenCalledWith("Startup is still in progress");
+		expect(context.showStatus).toHaveBeenCalledWith(expect.stringContaining("Sends when startup finishes"));
 	});
 
 	it("queues a normal prompt submitted before the input callback is installed", async () => {

@@ -14,6 +14,7 @@ import { createBranchSummaryMessage, createCompactionSummaryMessage, createCusto
 import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
 import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
+import { summaryMaxTokens } from "./settings.ts";
 import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
@@ -317,7 +318,8 @@ export async function generateBranchSummary(
 	// without running through agent state/events. Retried via completeSummarization
 	// so transient stream drops reuse the configured retry policy.
 	const context = normalizeContext({ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages });
-	const requestOptions: SimpleStreamOptions = { apiKey, headers, env, signal };
+	// The same output cap as a compaction summary; a branch summary sends no thinking.
+	const requestOptions: SimpleStreamOptions = { apiKey, headers, env, signal, maxTokens: summaryMaxTokens(model) };
 	const response = await completeSummarization(model, context, requestOptions, streamFn, retry, callbacks);
 
 	// Check if aborted or errored

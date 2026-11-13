@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { Snapshot } from "@octocodeai/octocode-contracts/snapshot";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
@@ -79,6 +79,33 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("epic → item → task tree", () => {
+	it("shows completed step evidence and updates progress from a live snapshot without finishing its item", () => {
+		history.replaceState(null, "", "#tree");
+		const backlog = createBacklogStore(snapshot);
+		render(<App backlog={backlog} live={null} />);
+		expect(screen.getByText("1 of 2 tasks done")).toBeInTheDocument();
+		const result = "Cache regression passed.\n<script>throw new Error('unsafe')</script>";
+		act(() => {
+			backlog.getState().setSnapshot({
+				...snapshot,
+				items: snapshot.items.map((item) =>
+					item.ref === "B2"
+						? {
+								...item,
+								tasks: item.tasks?.map((step) => (step.ref === "T2" ? { ...step, state: "done", result } : step)),
+							}
+						: item,
+				),
+			});
+		});
+		expect(screen.getByText("2 of 2 tasks done")).toBeInTheDocument();
+		const steps = screen.getByRole("list", { name: "Tasks of B2" });
+		expect(within(steps).getByText(/Result: Cache regression passed/)).toHaveTextContent("<script>");
+		expect(steps.querySelector("script")).toBeNull();
+		const item = screen.getByRole("link", { name: "Index files" }).closest(".item-line") as HTMLElement;
+		expect(within(item).getByRole("img", { name: "In progress" })).toBeInTheDocument();
+	});
+
 	it("shows the epic with its derived state and roll-up, the item with its tasks, and session tasks", () => {
 		page("#tree");
 		expect(screen.getByText("0 of 1 item done · 1 task open")).toBeInTheDocument();

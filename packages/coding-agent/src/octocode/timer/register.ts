@@ -69,6 +69,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 	let scheduler: TimerScheduler | undefined;
 	/** The user said yes to judging once this session, with `timer.check.enabled` off. */
 	let approved = false;
+	let approvalGeneration = 0;
 	/** Read from the global settings only, as `bash.inheritProviderKeys` is: a project file must not start paid calls. */
 	const checkAllowed = () => approved || checkEnabledSetting(options.agentDir);
 	const follower = new DatabaseFollower(() => dbStamp(db().file));
@@ -114,6 +115,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 	/** What `set` must settle before a `check` wait starts: the setting or the user's first-use answer, and a cheaper model. */
 	const checkRefusal = async (ctx: ExtensionContext): Promise<string | undefined> => {
 		if (!checkAllowed()) {
+			const generation = approvalGeneration;
 			if (!ctx.hasUI)
 				return "until.check spends money on a small model and is off: set timer.check.enabled to true, or use a deterministic condition.";
 			const caps = `at most ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session`;
@@ -121,6 +123,8 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 				"Let timers ask a small model?",
 				`A timer wait with until.check calls a cheaper model to judge a condition, ${caps}. Allow for this session?`,
 			);
+			if (generation !== approvalGeneration)
+				return "The session changed while awaiting judging approval. No timer was set.";
 			if (!yes) return "The user declined judging by a small model; use a deterministic condition.";
 			approved = true;
 		}
@@ -172,6 +176,8 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 
 	api.on("session_start", async (_event, ctx) => {
 		scheduler?.stop();
+		approvalGeneration++;
+		approved = false;
 		current = ctx;
 		const sessionId = ctx.sessionManager.getSessionId();
 		// Waits whose deadline passed while their session was not running can no longer be met in time: end them now, not at a later session's check.
@@ -195,6 +201,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		refresh(ctx);
 	});
 	api.on("session_shutdown", async () => {
+		approvalGeneration++;
 		work.set("timer", []);
 		scheduler?.stop();
 		scheduler = undefined;

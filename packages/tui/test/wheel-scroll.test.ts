@@ -7,6 +7,7 @@ function scroll(accelerator: WheelScrollAccelerator, times: number[], direction:
 }
 
 // #9758: fullscreen wheel scrolling was one line per notch on terminals that do not accelerate wheels.
+// Live 2026-11-12: Terminal.app sends one event per notch while scrolling slowly, so a notch moved one line there too.
 describe("WheelScrollAccelerator", () => {
 	it("uses fixed line counts regardless of timing", () => {
 		const accelerator = new WheelScrollAccelerator(3, true);
@@ -15,21 +16,38 @@ describe("WheelScrollAccelerator", () => {
 		assert.strictEqual(accelerator.next(1, 2000), 1);
 	});
 
-	it("keeps slow and medium scrolling at one line per event when the terminal already accelerates", () => {
+	it("moves three lines per isolated notch on every terminal (Terminal.app sends one event per slow notch)", () => {
+		for (const accelerate of [false, true]) {
+			const accelerator = new WheelScrollAccelerator("auto", accelerate);
+			// Live: slow scrolling arrived as single events 250 ms or more apart.
+			const notches = Array.from({ length: 10 }, (_, index) => index * 250);
+			assert.deepStrictEqual(scroll(accelerator, notches), Array(10).fill(3), `accelerate ${accelerate}`);
+			assert.deepStrictEqual(scroll(accelerator, [5000, 6000], -1), [3, 3]);
+		}
+	});
+
+	it("keeps medium scrolling at one line per event when the terminal already accelerates", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
-		const slow = Array.from({ length: 20 }, (_, index) => index * 100);
-		assert.ok(scroll(accelerator, slow).every((lines) => lines === 1));
-		// 40 events a second (25 ms apart) is deliberate scrolling, not a flick.
+		// 40 events a second (25 ms apart) is deliberate scrolling, not a flick: after the first event, one line each.
 		const medium = Array.from({ length: 80 }, (_, index) => 5000 + index * 25);
-		assert.ok(scroll(accelerator, medium).every((lines) => lines === 1));
+		const lines = scroll(accelerator, medium);
+		assert.strictEqual(lines[0], 3);
+		assert.ok(lines.slice(1).every((count) => count === 1));
+		// Between a notch and a flick the lines shrink with the gap, never below the pace of isolated notches.
+		const paced = scroll(
+			accelerator,
+			Array.from({ length: 21 }, (_, index) => 20_000 + index * 50),
+		);
+		const sum = paced.slice(1).reduce((total, count) => total + count, 0);
+		assert.strictEqual(sum, 30, "20 events 50 ms apart move 1.5 lines each");
 	});
 
 	it("keeps up with a 120 events/s flick on such a terminal (Terminal.app's measured rate)", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
 		const flick = Array.from({ length: 240 }, (_, index) => index * 8.33);
 		const lines = scroll(accelerator, flick);
-		// The first events stay one line, so a short flick still lands precisely.
-		assert.deepStrictEqual(lines.slice(0, 3), [1, 1, 1]);
+		// The first event is a notch; the next ones stay one line, so a short flick still lands precisely.
+		assert.deepStrictEqual(lines.slice(0, 3), [3, 1, 1]);
 		const total = lines.reduce((sum, count) => sum + count, 0);
 		// One line per event moved 239 rows; the flick now moves several times that, rising as it lasts.
 		assert.ok(total >= 1200 && total <= 1500, `240 events moved ${total} rows`);
@@ -56,14 +74,15 @@ describe("WheelScrollAccelerator", () => {
 		const accelerator = new WheelScrollAccelerator("auto", false);
 		const flick = Array.from({ length: 30 }, (_, index) => index * 8);
 		assert.ok(scroll(accelerator, flick).at(-1)! > 1);
-		// A slower event ends the run: it and the next ramp events move one line.
+		// A slower event ends the run: it moves the lines of its gap, and the next ramp events one line.
 		assert.strictEqual(accelerator.next(1, 29 * 8 + 40), 1);
-		assert.deepStrictEqual(scroll(accelerator, [400, 408, 416]), [1, 1, 1]);
-		// Alternating directions never build a run, however fast.
+		assert.deepStrictEqual(scroll(accelerator, [400, 408, 416]), [3, 1, 1]);
+		// Alternating directions never build a run, however fast: a reversal moves the lines of its short gap.
 		const mixed = Array.from({ length: 40 }, (_, index) =>
 			accelerator.next(index % 2 === 0 ? -1 : 1, 1000 + index * 8),
 		);
-		assert.ok(mixed.every((lines) => lines === 1));
+		assert.strictEqual(mixed[0], 3, "after a pause");
+		assert.ok(mixed.slice(1).every((lines) => lines === 1));
 		// A fixed line count is never changed.
 		const fixed = new WheelScrollAccelerator(1, false);
 		assert.ok(scroll(fixed, flick).every((count) => count === 1));
@@ -73,26 +92,69 @@ describe("WheelScrollAccelerator", () => {
 
 	it("scales auto mode with wheel velocity", () => {
 		const accelerator = new WheelScrollAccelerator("auto", true);
-		assert.deepStrictEqual(scroll(accelerator, [0, 150, 300, 450]), [1, 1, 1, 1]);
-		assert.deepStrictEqual(scroll(accelerator, [1000, 1050, 1100, 1150]), [1, 2, 2, 2]);
-		assert.deepStrictEqual(scroll(accelerator, [2000, 2020, 2040, 2060]), [1, 5, 5, 5]);
-		assert.deepStrictEqual(scroll(accelerator, [3000, 3010, 3020, 3030]), [1, 6, 6, 6]);
+		assert.deepStrictEqual(scroll(accelerator, [0, 150, 300, 450]), [3, 3, 3, 3]);
+		assert.deepStrictEqual(scroll(accelerator, [1000, 1050, 1100, 1150]), [3, 6, 6, 6]);
+		assert.deepStrictEqual(scroll(accelerator, [2000, 2020, 2040, 2060]), [3, 12, 12, 12]);
+		assert.deepStrictEqual(scroll(accelerator, [3000, 3017, 3034, 3051]), [3, 12, 12, 12]);
 	});
 
 	it("does not accelerate bursts of events for a single notch", () => {
 		const accelerator = new WheelScrollAccelerator("auto", true);
-		assert.deepStrictEqual(scroll(accelerator, [0, 3, 6, 9]), [1, 1, 1, 1]);
+		assert.deepStrictEqual(scroll(accelerator, [0, 3, 6, 9]), [3, 1, 1, 1]);
 	});
 
 	it("resets acceleration on direction changes and pauses", () => {
 		const accelerator = new WheelScrollAccelerator("auto", true);
-		assert.deepStrictEqual(scroll(accelerator, [0, 20, 40]), [1, 5, 5]);
-		assert.strictEqual(accelerator.next(-1, 60), 1);
-		assert.deepStrictEqual(scroll(accelerator, [500, 520]), [1, 5]);
+		assert.deepStrictEqual(scroll(accelerator, [0, 20, 40]), [3, 12, 12]);
+		assert.strictEqual(accelerator.next(-1, 60), 3);
+		assert.deepStrictEqual(scroll(accelerator, [500, 520]), [3, 12]);
 	});
 
 	it("carries fractional lines between events", () => {
 		const accelerator = new WheelScrollAccelerator("auto", true);
-		assert.deepStrictEqual(scroll(accelerator, [0, 40, 80, 120, 160]), [1, 2, 3, 2, 3]);
+		// 3.75 lines per event: without the carried fraction every event would move 3.
+		assert.deepStrictEqual(scroll(accelerator, [0, 80, 160, 240, 320]), [3, 3, 4, 4, 4]);
+	});
+
+	it("gives the events of one terminal read the pace of the gap before it, never a 1 ms gap", () => {
+		// Four events per read, 33 ms apart: the stdin parser hands them over microseconds apart.
+		const reads = Array.from({ length: 40 }, (_, index) => Math.floor(index / 4) * 33 + (index % 4) * 0.01);
+		const batched = scroll(new WheelScrollAccelerator("auto", false), reads);
+		// Before: the clamped 1 ms gap made the fourth event of the first read jump 8 lines.
+		assert.ok(Math.max(...batched) <= 4, `lines per event ${batched.join(",")}`);
+		// The same hand speed (an event every 8.25 ms) spread evenly moves about as far.
+		const even = scroll(
+			new WheelScrollAccelerator("auto", false),
+			Array.from({ length: 40 }, (_, index) => index * 8.25),
+		);
+		const sum = (values: number[]) => values.reduce((total, count) => total + count, 0);
+		assert.ok(sum(batched) >= sum(even) * 0.7 && sum(batched) <= sum(even), `${sum(batched)} vs ${sum(even)}`);
+	});
+
+	it("moves the events of one frame at most 24 lines together, but never caps a fixed count", () => {
+		for (const accelerate of [false, true]) {
+			const accelerator = new WheelScrollAccelerator("auto", accelerate);
+			// A sustained flick, then a read of 30 events piled up behind a stall.
+			scroll(
+				accelerator,
+				Array.from({ length: 100 }, (_, index) => index * 8.33),
+			);
+			const piled = scroll(
+				accelerator,
+				Array.from({ length: 30 }, (_, index) => 900 + index * 0.01),
+			);
+			const total = piled.reduce((sum, count) => sum + count, 0);
+			assert.ok(total <= 24, `accelerate ${accelerate}: ${total} lines in one frame`);
+			assert.ok(piled.at(-1) === 0, "events past the cap move nothing");
+			// The next frame moves again.
+			assert.ok(accelerator.next(1, 900 + 17) > 0);
+		}
+		const fixed = new WheelScrollAccelerator(10, false);
+		assert.ok(
+			scroll(
+				fixed,
+				Array.from({ length: 10 }, (_, index) => index * 0.01),
+			).every((count) => count === 10),
+		);
 	});
 });

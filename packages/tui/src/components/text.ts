@@ -1,7 +1,8 @@
 import type { Component } from "../tui.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
-import { frameContentLines } from "../utils.ts";
+import { fitHorizontalPadding, frameContentLines } from "../utils.ts";
 
 /**
  * Text component - displays multi-line text with word wrapping
@@ -29,6 +30,7 @@ export class Text implements Component {
 		this.cachedText = undefined;
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;
+		renderChanged(this);
 	}
 
 	setCustomBgFn(customBgFn?: (text: string) => string): void {
@@ -36,6 +38,7 @@ export class Text implements Component {
 		this.cachedText = undefined;
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;
+		renderChanged(this);
 	}
 
 	setPaddingX(paddingX: number): void {
@@ -53,6 +56,7 @@ export class Text implements Component {
 		this.cachedText = undefined;
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;
+		renderChanged(this);
 	}
 
 	render(width: number): string[] {
@@ -73,7 +77,7 @@ export class Text implements Component {
 		const normalizedText = this.text.replace(/\t/g, "   ");
 
 		// Reduce margins when necessary so content and padding fit within the available width.
-		const paddingX = Math.min(this.paddingX, Math.max(0, Math.floor((width - 1) / 2)));
+		const paddingX = fitHorizontalPadding(width, this.paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
 
 		// Wrap text (this preserves ANSI codes but does NOT pad)
@@ -90,6 +94,8 @@ export class Text implements Component {
 		return result.length > 0 ? result : [""];
 	}
 }
+
+trackRenderChanges(Text.prototype);
 
 /** Leading SGR sequences, then the leading spaces of the visible text. */
 const LEADING_INDENT = /^((?:\x1b\[[0-9;]*m)*)( +)/;

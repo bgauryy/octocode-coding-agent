@@ -70,10 +70,10 @@ describe("models tool", () => {
 		const { tool } = mode();
 		expect(tool.name).toBe("models");
 		expect(tool.promptSnippet).toMatch(/^[^\n]+$/);
-		// `check` costs a request per provider; the schema says so.
+		// `check` can make model requests; the schema says so.
 		expect(
 			(tool.parameters as { properties: { check: { description: string } } }).properties.check.description,
-		).toContain("one small request per provider");
+		).toContain("listing or small requests (may cost)");
 		expect(Object.keys((tool.parameters as { properties: object }).properties)).toEqual([
 			"provider",
 			"ability",

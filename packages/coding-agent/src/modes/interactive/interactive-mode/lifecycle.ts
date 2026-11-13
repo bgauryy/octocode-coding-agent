@@ -4,7 +4,7 @@
 
 import chalk from "chalk";
 import { foregroundChildActive } from "../../../utils/foreground-child.ts";
-import { killTrackedDetachedChildren, signalTrackedDetachedChildren } from "../../../utils/shell.ts";
+import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
@@ -74,9 +74,9 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		// such as removing sockets does not write to the tty, so it must not be
 		// skipped if a later terminal-restore write fails on a dead or stalled
 		// terminal. If the terminal is gone, the restore writes below emit EIO,
-		// which the stdout/stderr error handler turns into emergencyTerminalExit;
-		// the render loop is already idle, so this cannot hot-spin.
-		await host.runtimeHost.dispose();
+		// which the stdout/stderr error handler turns into an exit once this
+		// dispose is done; the render loop is already idle, so this cannot hot-spin.
+		await disposeOnce(host);
 		host.themeController.disableAutoSync();
 		await host.ui.terminal.drainInput(1000);
 		host.stop();
@@ -93,7 +93,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	await host.ui.terminal.drainInput(1000);
 
 	host.stop();
-	await host.runtimeHost.dispose();
+	await disposeOnce(host);
 
 	const resumeCommand = formatResumeCommand(host.sessionManager);
 	if (resumeCommand) {
@@ -102,6 +102,33 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 
 	await host.ui.terminal.drainOutput?.();
 	process.exit(0);
+}
+
+/** The runtime's dispose, shared by a shutdown and a dead terminal (`onDeadTerminal`): the session is torn down once. */
+const disposing = new WeakMap<object, Promise<void>>();
+function disposeOnce(host: Pick<LifecycleHost, "runtimeHost">): Promise<void> {
+	let done = disposing.get(host);
+	if (!done) {
+		done = host.runtimeHost.dispose();
+		disposing.set(host, done);
+	}
+	return done;
+}
+
+/**
+ * The terminal hung up (its window closed: SIGHUP) or was revoked, so nothing can be shown or restored on it. The work
+ * this session started still stops as on SIGTERM, before the exit: subagents are told to stop (they stop their own
+ * commands and report), bash jobs and MCP servers end. That dispose is the same one the signal's shutdown awaits, and
+ * bounded the same way. Later write errors of the dead terminal are echoes of this one.
+ */
+const deadTerminals = new WeakSet<object>();
+function onDeadTerminal(host: LifecycleHost): void {
+	if (deadTerminals.has(host)) return;
+	deadTerminals.add(host);
+	host.isShuttingDown = true;
+	void disposeOnce(host)
+		.catch(() => undefined)
+		.finally(() => host.emergencyTerminalExit());
 }
 
 /**
@@ -154,8 +181,8 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 			if ((suspended || foregroundChildActive()) && signal === "SIGINT") return;
 			// SIGHUP no longer hard-exits: graceful shutdown emits session_shutdown
 			// first, then attempts terminal restore. A genuinely dead terminal
-			// surfaces as an EIO on the restore writes, which the stdout/stderr
-			// error handler converts into emergencyTerminalExit.
+			// surfaces as an EIO on a write, which the stdout/stderr error handler
+			// turns into an exit once the same dispose has stopped the children.
 			// Subagents are left to the graceful stop (report, worktree save); the exit hook kills any still running.
 			killTrackedDetachedChildren({ sparingGraceful: true });
 			void host.shutdown({ fromSignal: true });
@@ -165,10 +192,8 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 	}
 
 	const terminalErrorHandler = (error: Error) => {
-		if (isDeadTerminalError(error)) {
-			host.emergencyTerminalExit();
-		}
-		throw error;
+		if (!isDeadTerminalError(error)) throw error;
+		onDeadTerminal(host);
 	};
 	// stdin needs the handler too: once the terminal is gone, reads and setRawMode
 	// fail with EIO (orphaned background process group) or ENOTTY (revoked tty).
@@ -222,22 +247,23 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 		stopping = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
-		signalTrackedDetachedChildren("SIGCONT");
 		ui.start();
 		ui.requestRender(true);
 	};
 	process.once("SIGCONT", onResume);
 	const recover = () => {
-		signalTrackedDetachedChildren("SIGCONT");
 		suspended = false;
 		stopping = false;
 		clearInterval(suspendKeepAlive);
 		process.removeListener("SIGINT", ignoreSigint);
 		process.removeListener("SIGCONT", onResume);
 	};
+	// Only the terminal's foreground group stops: this process and the children that share its group and terminal. The
+	// detached children (subagents, bash commands and background jobs) run in sessions of their own with no controlling
+	// terminal, so they keep running: one stopped mid-transaction would hold the shared database's write lock for as
+	// long as this session stays suspended, and a job never reads the terminal it does not have.
 	const suspend = () => {
 		if (!suspended) return;
-		signalTrackedDetachedChildren("SIGSTOP");
 		stopping = true;
 		process.kill(0, "SIGTSTP");
 	};

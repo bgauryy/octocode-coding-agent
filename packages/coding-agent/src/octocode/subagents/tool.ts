@@ -15,6 +15,7 @@ import { type AgentRuns, type Run, Slots } from "./claim.ts";
 import { agentsCommand, stopBackground } from "./command.ts";
 import { ReadReports, scratchRoot, sweepScratch } from "./handoff/scratch.ts";
 import { ReportQueue } from "./handoff.ts";
+import { heldReports, ReportGroups } from "./report-groups.ts";
 import { LateReports } from "./late.ts";
 import { Lingering } from "./linger.ts";
 import { GraphWake } from "./graph-wake.ts";
@@ -113,8 +114,9 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		background: new Map(),
 		foreground: new Map(),
 		live: new Map(),
-		// The batch of reports goes out as soon as no running background child is left to join it.
-		reports: new ReportQueue(api, undefined, () => runs.background.keys()),
+		// A report goes out at once unless a sibling of its own step is about to join it (`report-groups.ts`).
+		reports: new ReportQueue(api, (queued) => heldReports(runs.groups, queued)),
+		groups: new ReportGroups(),
 		read: new ReadReports(),
 		running: new Map(),
 		items: new Map(),
@@ -254,12 +256,14 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		void stopRuns(PERMISSION_STOP);
 	});
 	api.on("turn_end", async (event) => {
+		runs.groups.nextStep();
 		if (event.toolResults.length > 0) runs.reports.stepEnded();
 		return undefined;
 	});
 	registerIdleItems(api, team, runs);
 	api.on("before_agent_start", async () => {
 		runs.graph?.turnStarted();
+		runs.groups.nextStep();
 		return undefined;
 	});
 	api.on("agent_settled", async () => {

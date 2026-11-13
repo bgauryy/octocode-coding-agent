@@ -21,7 +21,7 @@ export interface AuthCheckResult {
 export async function checkProviderAuth(
 	args: Args,
 	modelRuntime: ModelRuntime,
-	options: { refresh: boolean } = { refresh: false },
+	options: { refresh: boolean; signal?: AbortSignal } = { refresh: false },
 ): Promise<AuthCheckResult> {
 	const { provider: cliProvider, model: cliModel } = validateAuthCommandArgs(args, "check");
 	let provider = cliProvider;
@@ -40,9 +40,9 @@ export async function checkProviderAuth(
 		return { status: "not_ready", provider, reason: "provider_not_found" };
 	}
 	try {
-		const auth = await modelRuntime.checkAuth(provider);
+		const auth = await modelRuntime.checkAuth(provider, { signal: options.signal });
 		if (!auth) return { status: "not_ready", provider, reason: "credentials_not_configured" };
-		if (options.refresh && !(await modelRuntime.getAuth(provider))) {
+		if (options.refresh && !(await modelRuntime.getAuth(provider, { signal: options.signal }))) {
 			return { status: "not_ready", provider, reason: "credentials_not_configured" };
 		}
 		return { status: "ready", provider, authType: auth.type };
@@ -55,18 +55,22 @@ export async function getProviderCredential(
 	providerId: string,
 	modelRuntime: ModelRuntime,
 	credentials: CredentialStore,
-	options: { refresh: boolean },
+	options: { refresh: boolean; signal?: AbortSignal },
 ): Promise<string | undefined> {
-	const credential = await credentials.read(providerId);
+	const credential = await credentials.read(providerId, { signal: options.signal });
 	if (!options.refresh && credential?.type === "oauth") return credential.access;
-	return getAuthCredential(await modelRuntime.getAuth(providerId));
+	return getAuthCredential(await modelRuntime.getAuth(providerId, { signal: options.signal }));
 }
 
-export async function createAuthCheckModelRuntime(credentials: CredentialStore): Promise<ModelRuntime> {
+export async function createAuthCheckModelRuntime(
+	credentials: CredentialStore,
+	signal?: AbortSignal,
+): Promise<ModelRuntime> {
 	return ModelRuntime.create({
 		credentials,
 		modelsStore: new InMemoryModelsStore(),
 		allowModelNetwork: false,
 		refreshOnCreate: false,
+		signal,
 	});
 }

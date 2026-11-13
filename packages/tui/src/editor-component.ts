@@ -16,6 +16,18 @@ export interface EditorComponent extends Component {
 
 	setText(text: string): void;
 
+	/**
+	 * Put `text` before the current draft, a blank line between them, keeping the draft's own markers (paste markers
+	 * stay collapsed and still expand). Without it, callers join `text` with `getExpandedText()` through `setText`.
+	 */
+	prependText?(text: string): void;
+
+	/** Put back `text` the app refused to submit, with the editor's own markers and cursor when it can; else `setText`. */
+	restoreSubmitted?(text: string): void;
+
+	/** Submit the current text as the submit key does. */
+	submit?(): void;
+
 	/** Handle raw terminal input (key presses, paste sequences, etc.) */
 	handleInput(data: string): void;
 

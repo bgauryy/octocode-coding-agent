@@ -138,7 +138,9 @@ export class Theme {
 	// Foreground tokens rendered faint (SGR 2) on top of their color.
 	private readonly dimTokens: ReadonlySet<ThemeColor>;
 	private readonly ownAppearance: ThemeAppearance | undefined;
-	private resolvedColors: { terminal: TerminalColors; colors: Readonly<Record<ThemeToken, Color>> } | undefined;
+	private resolvedColors:
+		| { terminal: TerminalColors; appearance: ThemeAppearance; colors: Readonly<Record<ThemeToken, Color>> }
+		| undefined;
 
 	constructor(
 		fgColors: Pick<ThemeColorValues<string | number>, ThemeColor>,
@@ -198,8 +200,9 @@ export class Theme {
 	 */
 	get colors(): Readonly<Record<ThemeToken, Color>> {
 		const terminal = getTerminalColors();
-		if (this.resolvedColors?.terminal !== terminal) {
-			const guess = GUESSED_DEFAULT_COLORS[this.appearance];
+		const appearance = this.appearance;
+		if (this.resolvedColors?.terminal !== terminal || this.resolvedColors.appearance !== appearance) {
+			const guess = GUESSED_DEFAULT_COLORS[appearance];
 			const toColor = (rgb: RgbColor | undefined, fallback: Color) => (rgb ? rgbColor(rgb.r, rgb.g, rgb.b) : fallback);
 			const foreground = toColor(terminal.foreground, guess.foreground);
 			const background = toColor(terminal.background, guess.background);
@@ -210,7 +213,7 @@ export class Theme {
 				const color = colors[token];
 				if (color) colors[token] = mixColors(color, background, 0.4);
 			}
-			this.resolvedColors = { terminal, colors: Object.freeze(colors as Record<ThemeToken, Color>) };
+			this.resolvedColors = { terminal, appearance, colors: Object.freeze(colors as Record<ThemeToken, Color>) };
 		}
 		return this.resolvedColors.colors;
 	}

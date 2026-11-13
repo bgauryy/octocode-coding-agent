@@ -216,7 +216,10 @@ describe("session storage boundaries", () => {
 		const next = manager.appendMessage({ role: "user", content: "next write", timestamp: 2 });
 		const after = readFileSync(file, "utf8");
 		expect(after.startsWith(uncertain)).toBe(true);
-		expect(manager.getEntry(next)?.parentId).toBe(root);
+		// A fragment is sealed and named by a recovery record, which sits between the last whole record and the next.
+		const parent = manager.getEntry(manager.getEntry(next)!.parentId!);
+		if (mode === "partial") expect(parent).toMatchObject({ customType: "octocode-session-recovery", parentId: root });
+		else expect(parent?.id).toBe(root);
 		const reopened = SessionManager.open(file);
 		expect(reopened.getLeafId()).toBe(next);
 		// A whole record that landed is kept, as a branch of its own; a fragment is a malformed line the loader skips.

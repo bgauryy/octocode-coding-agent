@@ -31,6 +31,29 @@ export interface AltScreenMouseGestureHost {
  * capture and synthesized-click gesture of the component that received the press.
  */
 export class AltScreenMouseGesture {
+	/**
+	 * Whether a retained target painted through the implicit document (which forwards into the screen's own children
+	 * without owning a child list) is still mounted; undefined when the target was not painted through it.
+	 */
+	static implicitTargetMounted(
+		target: TuiMouseDispatchTarget,
+		implicitDocument: Component,
+		implicitShown: boolean,
+		children: readonly Component[],
+	): boolean | undefined {
+		const owners = target.owners ?? [];
+		const implicitIndex = owners.indexOf(implicitDocument);
+		if (implicitIndex < 0) return undefined;
+		if (!implicitShown) return false;
+		let component = target.component;
+		for (const owner of owners.slice(0, implicitIndex)) {
+			if (owner instanceof Container && !owner.children.includes(component)) return false;
+			component = owner;
+		}
+		// Keep the painted coordinates, but require a live child.
+		return children.includes(component);
+	}
+
 	private mouseCapture?: TuiMouseDispatchTarget;
 	private mousePressTarget?: TuiMouseDispatchTarget;
 	private mousePressPoint?: { x: number; y: number };

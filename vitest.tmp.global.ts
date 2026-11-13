@@ -1,36 +1,61 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const OWNER_FILE = ".owner-pid";
-// Short on purpose: Unix socket paths inside a test directory are limited to about 104 bytes on macOS.
-const PREFIX = "vt-";
-
-function ownerIsAlive(dir: string): boolean {
-	try {
-		process.kill(Number(readFileSync(join(dir, OWNER_FILE), "utf8")), 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "EPERM";
-	}
-}
+import {
+	GUARD_FILE_ENV,
+	guardRecords,
+	isolateHome,
+	makeRunDir,
+	stopRunProcesses,
+	sweepStaleRunDirs,
+} from "./test-isolation.ts";
 
 /**
- * Gives each test run its own temporary directory and removes it at the end. Vitest stops its workers without running
- * their `process.on("exit")` handlers, so cleanup registered inside a test process does not happen. A run that was
- * killed before its teardown leaves one directory, which the next run removes once its owner is gone.
+ * Isolates each test run before its first worker starts, so every test and every process a test starts inherits it:
+ * its own temporary directory (TMPDIR), its own home (HOME, XDG_*, OCTOCODE_HOME, OCTOCODE_CODING_AGENT_DIR,
+ * OCTOCODE_AGENT_DB) unless the run already came with one (`./test.sh`), and the guard file that `agentDbPath` records a
+ * refusal of the real agent database in, from any process of the run (`test-isolation.ts`).
+ *
+ * At teardown it stops the processes the run left running (they carry the guard file in their environment) and fails
+ * the run for a web daemon that outlived it or a refusal in the guard file, then removes the run's folders. Vitest stops
+ * its workers without running their `process.on("exit")` handlers, so cleanup registered inside a test process does not
+ * happen. A run that was killed before its teardown leaves its folders, which the next run removes once their owner is
+ * gone. The run's home (`VITEST_TEST_USER_HOME`) sits beside the temporary directory, never inside it: the folder trust
+ * gate ignores a trusted subtree that contains the home folder, and tests trust the temporary directory.
  */
-export default function setup(): () => void {
+export default function setup(): () => Promise<void> {
 	const parent = tmpdir();
-	for (const name of readdirSync(parent)) {
-		if (!name.startsWith(PREFIX)) continue;
-		const dir = join(parent, name);
-		if (!ownerIsAlive(dir)) rmSync(dir, { recursive: true, force: true });
-	}
-	const dir = mkdtempSync(join(parent, PREFIX));
-	writeFileSync(join(dir, OWNER_FILE), String(process.pid));
+	sweepStaleRunDirs(parent);
+	const dir = makeRunDir(parent);
+	const userHome = makeRunDir(parent);
+	isolateHome(process.env, () => userHome);
+	process.env.VITEST_TEST_USER_HOME = userHome;
 	process.env.TMPDIR = dir;
 	process.env.TEMP = dir;
 	process.env.TMP = dir;
-	return () => rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+	const guardFile = join(dir, "real-home-opens.log");
+	process.env[GUARD_FILE_ENV] = guardFile;
+	return async () => {
+		const { daemons, others } = await stopRunProcesses(`${GUARD_FILE_ENV}=${guardFile}`);
+		const opened = guardRecords(guardFile);
+		for (const each of [dir, userHome]) rmSync(each, { recursive: true, force: true, maxRetries: 3 });
+		if (others.length > 0)
+			process.stderr.write(
+				["Stopped processes the tests left running (pid, command):", ...others.map(describe), ""].join("\n"),
+			);
+		if (daemons.length === 0 && opened.length === 0) return;
+		// Vitest reports a teardown error but exits 0, so the exit code is set here.
+		process.exitCode = 1;
+		throw new Error(
+			[
+				...(opened.length > 0 ? ["Tests resolved the real agent database (file, pid, caller):", ...opened] : []),
+				...(daemons.length > 0
+					? ["Web daemons outlived the run (stopped now; pid, command):", ...daemons.map(describe)]
+					: []),
+				"Isolate HOME/OCTOCODE_HOME in the test and stop what it starts.",
+			].join("\n"),
+		);
+	};
 }
+
+const describe = ({ pid, command }: { pid: number; command: string }) => `${pid}\t${command}`;

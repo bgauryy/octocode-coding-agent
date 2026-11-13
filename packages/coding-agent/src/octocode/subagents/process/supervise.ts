@@ -46,9 +46,19 @@ interface PreparedChild {
 	resources: ChildResourceFiles;
 }
 
+/** Calls a hook of the run's caller (`settled`, `exited`): they only tune waits, so a throw there never ends the run. */
+function hint(hook: (() => void) | undefined): void {
+	try {
+		hook?.();
+	} catch {
+		// The report and the cleanup do not depend on it.
+	}
+}
+
 /** Spawns the child and supervises it to its report (`runChild` owns the files around it). */
 export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<SubagentOutcome> {
 	const { task, args, cwd, profile, identity, signal, onProgress, onSpawn, host } = run;
+	if (signal?.aborted) return Promise.reject(new Error("Subagent cancelled"));
 	const limits = run.limits ?? WATCHDOG;
 	const ready = run.ready ?? (() => Promise.resolve());
 	const { command, prefix, history, nonce, nonceFile } = prepared;
@@ -95,6 +105,9 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		let cancelled = false;
 		/** When the child began waiting for the user's answer: it is not hung, however long the user takes. */
 		let waitingSince = 0;
+		/** The process exited or never started; a stop was asked for. Either ends the child's work (`working`). */
+		let gone = false;
+		let stopped = false;
 		// A write to a child that already exited fails with EPIPE; its exit settles the run.
 		child.stdin.on("error", () => undefined);
 		const send = (command: Record<string, unknown>): boolean => {
@@ -106,10 +119,19 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		const closeInput = () => {
 			if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
 		};
-		let onSettled: (() => void) | undefined;
+		/** The run settled (its report is known), and then concluded (its outcome is out): `working` below. */
+		let settledHere = false;
+		let concludedHere = false;
+		let resolveSettled: (() => void) | undefined;
 		const settledEvent = new Promise<void>((resolve) => {
-			onSettled = resolve;
+			resolveSettled = resolve;
 		});
+		/** The run settled for good: its report is known, though the child still exits and is cleaned up. */
+		const onSettled = () => {
+			settledHere = true;
+			resolveSettled?.();
+			hint(run.settled);
+		};
 		let onExit: (() => void) | undefined;
 		const exitEvent = new Promise<void>((resolve) => {
 			onExit = resolve;
@@ -133,11 +155,12 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		// One stop per run. The run settles only after it: the SIGKILL of a tree that ignored SIGTERM (and of detached
 		// helpers like a Chrome the child launched) then happens before the parent can exit, not on a timer lost with it.
 		const abort = () => {
+			stopped = true;
+			hint(run.workingChanged);
 			host?.budgets?.remove(identity.id, budget);
 			relay.cancelAll();
 			phase.stop(() => stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS));
 		};
-		signal?.addEventListener("abort", abort, { once: true });
 		// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then the same
 		// stop as above (0: off).
 		const steer = (message: string) => void send({ type: "steer", message });
@@ -160,8 +183,10 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			},
 			onWaiting: (waiting) => {
 				const now = Date.now();
-				if (waiting) waitingSince = now;
-				else {
+				if (waiting) {
+					waitingSince = now;
+					hint(run.workingChanged);
+				} else {
 					watchdog.waited(now - waitingSince, now);
 					stamp(now);
 				}
@@ -181,6 +206,13 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			},
 		);
 		watchdog.start();
+		// Whether the child still works toward its answer: its sibling reports may wait for it (`report-groups.ts`). Once it
+		// settled, whether its report is still on its way: it leaves, exits and is cleaned up, until a stall or the outcome.
+		const working = () =>
+			settledHere
+				? !concludedHere && !streamFailure && !watchdog.stalled
+				: !gone && !stopped && !streamFailure && !watchdog.stalled && relay.open === 0;
+		hint(run.working && (() => run.working?.(working)));
 		// Progress is display only: a failure there (a screenshot write, a stale render) must not throw out of the stream handler.
 		const progress: typeof onProgress = (update) => {
 			try {
@@ -220,7 +252,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 						phase.followUp(INTERRUPT_FOLLOW_UP_MS, () => {
 							if (state.running) cancelled = false;
 							else {
-								onSettled?.();
+								onSettled();
 								leave();
 							}
 						});
@@ -230,7 +262,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 					if (!effect.aborted && unrequested())
 						if (report.lacksOutcome && send({ type: "prompt", message: report.askOutcome() })) return;
 					host?.budgets?.remove(identity.id, budget);
-					onSettled?.();
+					onSettled();
 					return leave();
 				case "incoming":
 					return report.incoming(effect.role, effect.job, effect.quiet);
@@ -276,18 +308,32 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			return true;
 		};
 		child.on("error", (error) => {
+			gone = true;
+			hint(run.exited);
+			hint(run.workingChanged);
 			stderr.close();
 			if (finish()) reject(error);
 		});
 		child.on("exit", (code, exitSignal) => {
 			onExit?.();
+			gone = true;
+			hint(run.exited);
+			hint(run.workingChanged);
 			// A dialog of a child that is gone has nobody to answer: close it in the parent's UI.
 			relay.cancelAll();
 			if (phase.concluded) return;
 			watchdog.stop();
 			// What the child left in its own process group (an MCP server, a dev server, a Chrome) dies with the run, and
 			// before the run settles: the caller removes the child's worktree next, and a holder must not outlive that.
-			if (leftBehind(child.pid)) phase.stop(stopTreeNow);
+			// Judged with one asynchronous `ps`: an exit never waits for it on the thread that draws the screen. The run
+			// settles only after this cleanup, which may end after the run concluded: the stop then starts on its own.
+			phase.cleanup(
+				leftBehind(child.pid).then((left) => {
+					if (!left) return undefined;
+					phase.stop(stopTreeNow);
+					return phase.stopping ?? stopTreeNow();
+				}),
+			);
 			// So do the bash commands it ran in groups of their own, which a child that crashed could not stop itself.
 			phase.cleanup(stopShellGroups(shellGroups));
 			phase.exited(EXIT_GRACE_MS, () => settle(code, exitSignal));
@@ -325,9 +371,13 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 				state,
 				stderr,
 			});
+			concludedHere = true;
 			if ("reject" in end) reject(end.reject);
 			else resolve(end.resolve);
 		};
+		// Attach only after abort's dependencies exist, then catch cancellation during setup or before attachment.
+		signal?.addEventListener("abort", abort, { once: true });
+		if (signal?.aborted) abort();
 		// Install cleanup before invoking a callback that can fail (for example, recording worktree ownership).
 		try {
 			if (child.pid !== undefined) onSpawn?.(child.pid);
@@ -335,11 +385,12 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			streamFailure = error instanceof Error ? error : new Error(String(error));
 			abort();
 		}
-		// A wait ended by an abort sends nothing: `abort` stops the child.
+		// A wait ended by an abort sends nothing: `abort` stops the child. A child waiting there is not stalled (`hold`).
 		if (!streamFailure)
-			void ready().then(
+			void watchdog.hold(ready()).then(
 				() => {
-					if (phase.concluded || streamFailure || signal?.aborted) return;
+					if (gone || stopped || phase.concluded) return;
+					if (streamFailure || signal?.aborted) return;
 					stamp(Date.now());
 					if (send({ type: "prompt", message: budget.prompt(task) })) phase.prompted();
 				},

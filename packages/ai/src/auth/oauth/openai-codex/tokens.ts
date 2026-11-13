@@ -41,7 +41,11 @@ export async function fetchWithLoginCancellation(input: string, init: RequestIni
 	}
 }
 
-async function readTokenResponse(response: Response, operation: TokenOperation): Promise<OAuthToken> {
+async function readTokenResponse(
+	response: Response,
+	operation: TokenOperation,
+	previousRefresh?: string,
+): Promise<OAuthToken> {
 	if (!response.ok) {
 		await response.body?.cancel();
 		throw new Error(`OpenAI Codex token ${operation} failed (${response.status})`);
@@ -53,7 +57,7 @@ async function readTokenResponse(response: Response, operation: TokenOperation):
 	} catch {
 		throw new Error("OpenAI Codex token response is not valid JSON");
 	}
-	return parseOAuthTokenResponse(body, "OpenAI Codex");
+	return parseOAuthTokenResponse(body, "OpenAI Codex", { previousRefresh });
 }
 
 async function exchangeAuthorizationCode(
@@ -97,7 +101,7 @@ export async function refreshAccessToken(refreshToken: string, signal: AbortSign
 		});
 	}
 
-	return readTokenResponse(response, "refresh");
+	return readTokenResponse(response, "refresh", refreshToken);
 }
 
 function getAccountId(accessToken: string): string | null {

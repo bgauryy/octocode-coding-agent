@@ -16,6 +16,7 @@ import {
 } from "./storage.ts";
 import { parseSessionEntryLine } from "./entries.ts";
 import { sessionMirrorSettled } from "./mirror.ts";
+import { listedSessionInfo } from "./listing-cache.ts";
 import type { SessionEntry, SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
 
 function isMessageWithContent(message: AgentMessage): message is Message {
@@ -49,16 +50,22 @@ function getMessageActivityTime(entry: SessionMessageEntry): number | undefined 
 	return Number.isNaN(t) ? undefined : t;
 }
 
-/**
- * Folds a session's entries after its header, in file order, into what a listing shows. The file listing
- * (`buildSessionInfo`) and the live session's catalog row (`octocode/sessions/catalog.ts`) share it, so both derive the
- * same name, first prompt, message count and activity time.
- */
-export function sessionInfoFolder(): {
+/** A fold of one session's entries into its listing; `info` can be read between `add`s. */
+export interface SessionInfoFolder {
 	add(entry: SessionEntry): void;
 	/** The info for `header`; `fallbackModified` dates a session with no timed message and no valid header time. */
 	info(filePath: string, header: SessionHeader, fallbackModified: Date): SessionInfo;
-} {
+}
+
+/**
+ * Folds a session's entries after its header, in file order, into what a listing shows. The file listing
+ * (`buildSessionInfo`) and the live session's catalog row (`octocode/sessions/catalog.ts`) share it, so both derive the
+ * same name, first prompt, message count and activity time. With `text: false` the fold keeps no message text
+ * (`allMessagesText` is empty): the catalog row has no column for it, and joining a long session's text after every
+ * reply cost more than the rest of the fold.
+ */
+export function sessionInfoFolder(options: { text?: boolean } = {}): SessionInfoFolder {
+	const keepText = options.text !== false;
 	let messageCount = 0;
 	let firstMessage = "";
 	const allMessages: string[] = [];
@@ -84,11 +91,13 @@ export function sessionInfoFolder(): {
 			const message = entry.message;
 			if (!isMessageWithContent(message)) return;
 			if (message.role !== "user" && message.role !== "assistant") return;
+			// Without text, only the first user prompt is still wanted.
+			if (!keepText && (firstMessage || message.role !== "user")) return;
 
 			const textContent = extractTextContent(message);
 			if (!textContent) return;
 
-			allMessages.push(textContent);
+			if (keepText) allMessages.push(textContent);
 			if (!firstMessage && message.role === "user") {
 				firstMessage = textContent;
 			}
@@ -155,8 +164,8 @@ export async function buildSessionInfo(
 
 const MAX_CONCURRENT_SESSION_INFO_LOADS = 10;
 const MAX_CONCURRENT_SESSION_DISCOVERY_LOADS = 64;
-/** Longest `listAllSessions` waits for this process's pending mirror writes (`mirror.ts`) before it lists. */
-const LIST_MIRROR_WAIT_MS = 2_000;
+/** Longest a listing of every folder waits for this process's pending mirror writes (`mirror.ts`) before it lists. */
+export const LIST_MIRROR_WAIT_MS = 2_000;
 const CURRENT_SESSION_LIST_PUBLISH_INTERVAL = 10;
 const ALL_SESSION_LIST_PUBLISH_INTERVAL = 100;
 
@@ -178,7 +187,11 @@ function buildSessionInfosWithConcurrency(
 		files,
 		MAX_CONCURRENT_SESSION_INFO_LOADS,
 		async (file, index) => {
-			const info = await buildSessionInfo(file.path, signal, file.stats);
+			const info = await listedSessionInfo(
+				file.path,
+				(stats) => buildSessionInfo(file.path, signal, stats),
+				file.stats,
+			);
 			onLoaded(info, index);
 			return info;
 		},
@@ -222,7 +235,7 @@ async function listSessionsFromDir(
 }
 
 /** The folders `cwd` lists: the one custom folder (filtered by cwd unless it is the default), or the default folders. */
-function cwdFolders(cwd: string, sessionDir?: string): CwdSessionDirectory[] {
+export function cwdFolders(cwd: string, sessionDir?: string): CwdSessionDirectory[] {
 	const dir = sessionDir ? normalizePath(sessionDir) : undefined;
 	if (!dir || dir === getDefaultSessionDirPath(cwd)) return defaultSessionDirectories(cwd);
 	return [{ dir, filterCwd: true }];

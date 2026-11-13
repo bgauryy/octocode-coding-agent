@@ -43,7 +43,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 	it("is sent once at the parent's next step, without waking it; the report still follows as a follow-up", () => {
 		const f = fakeHost();
 		let idle = false;
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => idle);
 		queue.add(report("a"));
 		queue.flush();
@@ -79,7 +79,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(host, 60_000);
+		const queue = new ReportQueue(host);
 		queue.start(manager, () => !harness.session.isStreaming);
 		const requests: string[][] = [];
 		harness.setResponses([
@@ -109,7 +109,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 
 	it("stays silent for an idle parent: the report itself wakes it", () => {
 		const f = fakeHost();
-		const queue = new ReportQueue(f.api, 60_000);
+		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => true);
 		queue.add(report("a"));
 		queue.flush();
@@ -146,7 +146,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			],
 		});
 		await harness.session.bindExtensions({});
-		const queue = new ReportQueue(host, 60_000);
+		const queue = new ReportQueue(host);
 		queue.start(manager, () => !harness.session.isStreaming);
 		queue.pendingDir = path.join(root, "reports");
 		let secondRequest: string[] = [];

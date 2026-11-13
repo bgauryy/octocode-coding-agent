@@ -2,13 +2,13 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmS
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeSharedAgentDb, DbWriterUnavailableError, transcripts } from "../../../db/src/api.ts";
+import { closeSharedAgentDb, DbWriterUnavailableError, forks, sessions, transcripts } from "../../../db/src/api.ts";
 import { AgentSessionRuntime } from "../../src/core/agent-session-runtime.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sessionMirrorSettled, setMirrorNoticeHandler } from "../../src/core/session-manager/mirror.ts";
 import { rebuild, transcriptOf } from "../../src/core/session-manager/mirror-writes.ts";
 import type { SessionState } from "../../src/core/session-manager/state.ts";
-import { sharedAgentDb, sharedAgentDbWriter } from "../../src/storage/database.ts";
+import { sharedAgentDb, sharedTranscriptWriter } from "../../src/storage/database.ts";
 
 let scratch: string;
 let cwd: string;
@@ -32,7 +32,7 @@ afterEach(async () => {
 	rmSync(scratch, { recursive: true, force: true });
 });
 
-const rows = (id: string) => transcripts.records(sharedAgentDb().db, id);
+const rows = (id: string) => transcripts.records(sharedAgentDb().mirror.db, id);
 const lines = (file: string) => readFileSync(file, "utf8").trim().split("\n");
 const message = (content: string) => ({ role: "user" as const, content, timestamp: Date.now() });
 const stateOf = (session: SessionManager) => (session as unknown as { state: SessionState }).state;
@@ -97,7 +97,7 @@ describe("database mirror delivery", () => {
 		const session = SessionManager.create(cwd);
 		for (let n = 0; n < 5; n++) session.appendMessage(message(`turn ${n}`));
 		expect(await sessionMirrorSettled()).toBe(true);
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		const sent: string[] = [];
 		const submit = writer.submit.bind(writer);
 		vi.spyOn(writer, "submit").mockImplementation((command) => {
@@ -119,8 +119,8 @@ describe("database mirror delivery", () => {
 		for (let n = 0; n < 3; n++) session.appendMessage(message(`turn ${n}`));
 		expect(await sessionMirrorSettled()).toBe(true);
 		// The stored last row no longer names the entry at its position.
-		sharedAgentDb().db.prepare("UPDATE session_entries SET entry_id='elsewhere' WHERE position=2").run();
-		const writer = sharedAgentDbWriter();
+		sharedAgentDb().mirror.db.prepare("UPDATE session_entries SET entry_id='elsewhere' WHERE position=2").run();
+		const writer = sharedTranscriptWriter();
 		const sent: string[] = [];
 		const submit = writer.submit.bind(writer);
 		vi.spyOn(writer, "submit").mockImplementation((command) => {
@@ -138,7 +138,7 @@ describe("database mirror delivery", () => {
 		const root = SessionManager.create(cwd);
 		root.materialize();
 		expect(await sessionMirrorSettled()).toBe(true);
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		const submit = writer.submit.bind(writer);
 		let lost = 0;
 		vi.spyOn(writer, "submit").mockImplementation((command) => {
@@ -149,10 +149,11 @@ describe("database mirror delivery", () => {
 		const fork = SessionManager.forkFrom(root.getSessionFile()!, cwd);
 		expect(await sessionMirrorSettled()).toBe(true);
 		expect(lost).toBe(2);
-		const workspace = transcripts.stamp(sharedAgentDb().db, fork.getSessionId())?.workspace_id;
+		const workspace = sessions.byId(sharedAgentDb().db, fork.getSessionId())?.workspace_id;
 		expect(
-			transcripts.lineage(
+			forks.lineage(
 				sharedAgentDb().db,
+				sharedAgentDb().mirror.db,
 				fork.getSessionId(),
 				realpathSync(fork.getSessionFile()!),
 				workspace ?? "",
@@ -165,7 +166,7 @@ describe("database mirror delivery", () => {
 		const session = SessionManager.create(cwd);
 		session.appendMessage(message("first"));
 		expect(await sessionMirrorSettled()).toBe(true);
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		const sent: string[] = [];
 		const submit = writer.submit.bind(writer);
 		vi.spyOn(writer, "submit").mockImplementation((command) => {

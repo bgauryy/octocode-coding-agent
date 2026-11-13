@@ -70,7 +70,7 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 			visited += this.length;
 			return original.apply(this, args);
 		});
-		store.update("B1", { why: "changed" }, actor);
+		store.update("B1", { dependsOn: [] }, actor);
 		filter.mockRestore();
 		return visited;
 	};
@@ -78,6 +78,42 @@ describe("backlog writes do not grow quadratically with the board (B7)", () => {
 	it("builds the cycle check's edges without one scan of the board per item", () => {
 		// One filter per item over every item made the edge map O(n²): 1.4 million visits at 1200 items.
 		expect(filtered(1200)).toBeLessThan(50 * 1200);
+	});
+
+	it("keeps progress-only writes independent of the board size", () => {
+		// Recording one note must not materialize every item and its full completion history.
+		seed("progress", 1200);
+		const store = fixtureBacklog(() => sharedAgentDb(), "progress");
+		const original = Array.prototype.map;
+		let visited = 0;
+		const map = vi.spyOn(Array.prototype, "map").mockImplementation(function (
+			this: unknown[],
+			...args: Parameters<typeof original>
+		) {
+			visited += this.length;
+			return original.apply(this, args);
+		});
+		try {
+			store.update("B1", { note: "Progress recorded" }, actor);
+		} finally {
+			map.mockRestore();
+		}
+		expect(visited).toBeLessThan(200);
+	});
+
+	it("checks long dependency chains without overflowing the call stack", () => {
+		const repo = "long-chain";
+		seed(repo, 12_000);
+		const db = sharedAgentDb();
+		db.db
+			.prepare(
+				"INSERT INTO backlog_links SELECT id, 'depends_on', json_object('resource', 'backlogs', 'repositoryKey', workspace_id, 'id', 'B' || (seq - 1)) FROM backlog WHERE workspace_id = ? AND seq > 1",
+			)
+			.run(repo);
+		const store = fixtureBacklog(() => db, repo);
+		expect(() => store.update("B1", { dependsOn: [] }, actor)).not.toThrow();
+		expect(() => store.update("B1", { dependsOn: ["B12000"] }, actor)).toThrow(/waiting cycle/);
+		expect(store.get("B1")!.dependsOn).toEqual([]);
 	});
 
 	it("still refuses waiting cycles", () => {

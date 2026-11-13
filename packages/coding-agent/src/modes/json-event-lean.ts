@@ -12,6 +12,7 @@ import { type JsonAgentSessionEvent, toJsonEvent } from "./json-event.ts";
  * | `tool_execution_end` | the result without `structuredContent` (the data for programmatic callers) |
  * | `message_start`, `message_end` of a tool result | the message without `content`, `details` and `structuredContent`: `tool_execution_end` of its `toolCallId` carried them |
  * | `message_end` of an assistant message | the message without `requestTrace` |
+ * | `message_update` ending a block (`text_end`, `thinking_end`, `toolcall_end`) | the event without the finished block (`content`, `toolCall`): the deltas built it, and `message_end` carries it |
  * | `turn_end`, `agent_end` | each message as a reference: `role`, `timestamp`, and `toolCallId`, `toolName`, `isError` or `stopReason` when it has them |
  *
  * Every other event, and user and custom messages, are the default ones.
@@ -23,6 +24,9 @@ const isRecord = (value: unknown): value is Record_ =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const REFERENCE_FIELDS = ["role", "timestamp", "toolCallId", "toolName", "isError", "stopReason"] as const;
+
+/** Streamed updates that end a block and repeat it whole. */
+const BLOCK_ENDS = new Set<unknown>(["text_end", "thinking_end", "toolcall_end"]);
 
 function without(record: Record_, keys: readonly string[]): Record_ {
 	const copy: Record_ = {};
@@ -52,6 +56,10 @@ export function toLeanJsonEvent(event: AgentSessionEvent): JsonAgentSessionEvent
 		case "message_start":
 		case "message_end":
 			return { ...json, message: leanMessage(json.message) };
+		case "message_update":
+			return isRecord(json.assistantMessageEvent) && BLOCK_ENDS.has(json.assistantMessageEvent.type)
+				? { ...json, assistantMessageEvent: without(json.assistantMessageEvent, ["content", "toolCall"]) }
+				: json;
 		case "tool_execution_end":
 			return isRecord(json.result) && "structuredContent" in json.result
 				? { ...json, result: without(json.result, ["structuredContent"]) }

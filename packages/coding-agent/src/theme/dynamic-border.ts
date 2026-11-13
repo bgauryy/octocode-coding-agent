@@ -19,7 +19,7 @@ export class DynamicBorder implements Component {
 
 	render(width: number): string[] {
 		if (this.cached?.width === width) return this.cached.lines;
-		const lines = [this.color("─".repeat(Math.max(1, width)))];
+		const lines = width > 0 ? [this.color("─".repeat(width))] : [];
 		this.cached = { width, lines };
 		return lines;
 	}

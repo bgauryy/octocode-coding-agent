@@ -55,10 +55,11 @@ function readClaudeStatus(output: string): RunnerAuth | undefined {
 	const provider = typeof status.apiProvider === "string" ? status.apiProvider : "firstParty";
 	if (!status.loggedIn) return { signedIn: false };
 	const metered = method === "api_key" || (provider !== "firstParty" && provider !== "gateway");
+	const billing = metered ? "metered" : method === "claude.ai" ? "plan" : undefined;
 	return {
 		signedIn: true,
 		...(method ? { method: provider === "firstParty" ? method : `${method} (${provider})` } : {}),
-		billing: metered ? "metered" : "plan",
+		...(billing ? { billing } : {}),
 	};
 }
 
@@ -129,7 +130,7 @@ export const RUNNERS: readonly RunnerSpec[] = [
 		tested: "0.64.0",
 		// No status command: an ACP session check tells signed in from signed out.
 		login: [],
-		signInFiles: (_env, home) => [path.join(home, ".gemini", "oauth_creds.json")],
+		signInFiles: (env, home) => [path.join(configDir(env, "GEMINI_CLI_HOME", home), ".gemini", "oauth_creds.json")],
 		keep: [],
 	},
 ];

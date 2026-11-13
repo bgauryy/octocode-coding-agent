@@ -152,6 +152,21 @@ describe("ctx.ui.custom components closed by whatever takes their place or reset
 		}
 	});
 
+	test("the editor draft comes back with its paste markers after a component closes", async () => {
+		const env = createHost();
+		try {
+			const pasted = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
+			env.editor.handleInput(`\x1b[200~${pasted}\x1b[201~`);
+			const open = await openCustom<string>(env, view("custom"));
+			open.done("one");
+			expect(await open.result).toBe("one");
+			expect(env.editor.getText()).toBe("[paste #1 +20 lines]");
+			expect(env.editor.getExpandedText()).toBe(pasted);
+		} finally {
+			env.ui.stop();
+		}
+	});
+
 	test("a component whose factory calls done before returning is disposed once and leaves the editor in place", async () => {
 		const env = createHost();
 		try {

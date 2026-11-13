@@ -1,6 +1,4 @@
 import type { TuiMouseButton } from "../tui.ts";
-import { detectMultiplexer } from "../multiplexer.ts";
-import { ENABLE_ALL_MOTION_MOUSE, ENABLE_BUTTON_MOTION_MOUSE } from "./constants.ts";
 import type { SgrMouseEvent, WheelEvent } from "./types.ts";
 
 export function decodeMouseButton(button: number): TuiMouseButton {
@@ -58,11 +56,4 @@ export function parseSgrMouseEvent(data: string): SgrMouseEvent | undefined {
 
 export function isMouseSequence(data: string): boolean {
 	return /^\x1b\[<\d+;\d+;\d+[Mm]$/.test(data) || (data.length === 6 && data.startsWith("\x1b[M"));
-}
-
-/** The mouse tracking mode to enable for the current terminal. */
-export function getMouseTrackingSequence(): string {
-	// Multiplexers can lag when every pointer movement is forwarded. Button-motion
-	// tracking preserves clicks, wheel events, selections, and scrollbar dragging.
-	return detectMultiplexer() !== null ? ENABLE_BUTTON_MOTION_MOUSE : ENABLE_ALL_MOTION_MOUSE;
 }

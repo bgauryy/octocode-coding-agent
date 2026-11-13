@@ -495,7 +495,7 @@ describe("isolated subagent worktrees", () => {
 		fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 		const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" });
 		try {
-			recordWorktreePid(worktree, child.pid!);
+			await recordWorktreePid(worktree, child.pid!);
 			expect(JSON.parse(fs.readFileSync(meta, "utf8")).owners.map((each: { pid: number }) => each.pid)).toEqual([
 				dead,
 				child.pid,

@@ -1,4 +1,4 @@
-import { LAYOUT_NODE, type ScrollLayoutNode } from "../layout-node.ts";
+import { type ContentSettler, LAYOUT_NODE, type ScrollLayoutNode } from "../layout-node.ts";
 import type { Component } from "../tui/component.ts";
 import { Container } from "../tui/container.ts";
 
@@ -46,7 +46,7 @@ export class ScrollView extends Container {
 	private scrollbarActive = false;
 	private scrollbarHideTimer: NodeJS.Timeout | undefined;
 	/** Measures the rest of a virtualized frame's content, so a scroll starts from exact positions. */
-	private contentSettler: (() => void) | undefined;
+	private contentSettler: ContentSettler | undefined;
 
 	constructor(component: Component, options: ScrollViewOptions = {}) {
 		super();
@@ -146,7 +146,7 @@ export class ScrollView extends Container {
 	}
 
 	/** Set by layout for a frame that left rows unmeasured; scrolling measures them first. */
-	setContentSettler(settle: (() => void) | undefined): void {
+	setContentSettler(settle: ContentSettler | undefined): void {
 		this.contentSettler = settle;
 	}
 
@@ -154,7 +154,15 @@ export class ScrollView extends Container {
 	settleContent(): void {
 		const settle = this.contentSettler;
 		this.contentSettler = undefined;
-		settle?.();
+		settle?.all();
+	}
+
+	/**
+	 * Measure only what the last frame left unmeasured within the last `rowsFromEnd` rows: a scroll up from the rows in
+	 * view needs exact heights down to its new top, and the frames after it measure the rest within their budget.
+	 */
+	private settleRowsFromEnd(rowsFromEnd: number): void {
+		this.contentSettler?.rows(rowsFromEnd);
 	}
 
 	scrollTo(scrollTop: number, options: ScrollViewScrollToOptions = {}): void {
@@ -182,7 +190,11 @@ export class ScrollView extends Container {
 	scrollBy(lines: number): number {
 		const requested = Number.isFinite(lines) ? Math.trunc(lines) : 0;
 		if (requested === 0) return 0;
-		this.settleContent();
+		// Scrolling down stays within measured rows: everything unmeasured lies above the rows in view.
+		if (requested < 0) {
+			const rowsBelowTop = this.followingEnd ? this.currentViewportHeight : this.contentHeight - this.currentScrollTop;
+			this.settleRowsFromEnd(rowsBelowTop - requested);
+		}
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const start = this.followingEnd ? maxScrollTop : this.currentScrollTop;
 		const next = Math.max(0, Math.min(maxScrollTop, start + requested));
@@ -211,7 +223,7 @@ export class ScrollView extends Container {
 	}
 
 	scrollToEnd(): void {
-		this.settleContent();
+		this.settleRowsFromEnd(this.currentViewportHeight);
 		const next = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
 		this.currentScrollTop = next;

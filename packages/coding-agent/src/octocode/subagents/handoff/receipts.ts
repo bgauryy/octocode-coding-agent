@@ -2,10 +2,11 @@ import fs from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { parseJsonlLine } from "../../../../../common/src/jsonl.ts";
 import type { ReadonlySessionManager } from "../../../core/session-manager.ts";
+import { EntryCursor } from "../../shared/entry-cursor.ts";
 import { AGENT_RESULT_TYPE } from "../../shared/messages.ts";
 
 export type ReceiptSession = Pick<ReadonlySessionManager, "getEntries" | "getSessionFile"> &
-	Partial<Pick<ReadonlySessionManager, "getEntryCount">>;
+	Partial<Pick<ReadonlySessionManager, "getEntryCount" | "getEntry" | "getLeafId" | "getHeader">>;
 
 /** The report ids a parent session has recorded: the session's entries, rather than send-call returns, acknowledge a report. */
 export class ReportReceipts {
@@ -13,7 +14,7 @@ export class ReportReceipts {
 	private readonly known = new Set<string>();
 	/** The transcript file being scanned for receipts, and how many bytes of it end in a complete line already read. */
 	private scanned: { file: string; offset: number } | undefined;
-	private scannedEntries: { length: number; tail: string } | undefined;
+	private readonly entries = new EntryCursor();
 	private scannedEntryCount: number | undefined;
 
 	has(id: string): boolean {
@@ -64,19 +65,14 @@ export class ReportReceipts {
 		if (typeof id === "string") this.known.add(id);
 	}
 
-	/** Entries are immutable and append-only; a replaced tail invalidates the high-water mark. */
+	/**
+	 * Entries are immutable and append-only: only those appended since the last scan are read (`EntryCursor`), and none
+	 * while the count is unchanged.
+	 */
 	private scanEntries(session: ReceiptSession): void {
 		const count = session.getEntryCount?.();
 		if (count !== undefined && count === this.scannedEntryCount) return;
-		const entries = session.getEntries();
-		const scanned = this.scannedEntries;
-		const from =
-			scanned && entries.length >= scanned.length && entries[scanned.length - 1]?.id === scanned.tail
-				? scanned.length
-				: 0;
-		for (let index = from; index < entries.length; index++) this.receipt(entries[index]);
-		const tail = entries.at(-1)?.id;
-		this.scannedEntries = typeof tail === "string" ? { length: entries.length, tail } : undefined;
+		for (const entry of this.entries.next(session).entries) this.receipt(entry);
 		this.scannedEntryCount = count;
 	}
 }

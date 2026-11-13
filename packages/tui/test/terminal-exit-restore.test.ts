@@ -1,7 +1,10 @@
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";
+import fsModule from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { TerminalOutput } from "../src/terminal/output.ts";
 
 const CHILD = fileURLToPath(new URL("./fixtures/exit-restore-child.ts", import.meta.url));
 
@@ -45,6 +48,34 @@ describe("terminal restore on process exit", () => {
 		const { output, status } = run("throw");
 		assert.notStrictEqual(status, 0);
 		assertRestored(output);
+	});
+
+	it("never throws from the exit event: a hung-up terminal's failed write still runs the other hooks and later listeners", () => {
+		const { output, status } = run("dead-terminal");
+		assert.strictEqual(status, 0);
+		assertRestored(output);
+		assert.ok(output.includes("later exit listener ran"), "the exit listeners after the restore still ran");
+	});
+
+	it("drops the restore bytes a hung-up terminal refuses instead of throwing", () => {
+		const tty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+		const writeSync = fsModule.writeSync;
+		let tries = 0;
+		Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+		fsModule.writeSync = () => {
+			tries++;
+			throw Object.assign(new Error("EIO: i/o error, write"), { code: "EIO" });
+		};
+		syncBuiltinESMExports();
+		try {
+			assert.doesNotThrow(() => new TerminalOutput().writeOnExit("\x1b[?1049l"));
+			assert.strictEqual(tries, 1, "one refused write, no retry");
+		} finally {
+			fsModule.writeSync = writeSync;
+			syncBuiltinESMExports();
+			if (tty) Object.defineProperty(process.stdout, "isTTY", tty);
+			else Reflect.deleteProperty(process.stdout, "isTTY");
+		}
 	});
 
 	it("writes the restore once: stopping the UI removes the exit hook", () => {

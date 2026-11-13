@@ -70,8 +70,7 @@ export function registerFileTool(
 				label: "File",
 				promptSnippet: renderInstruction("tools/file/snippet.md"),
 				description:
-					"Applies a batch of file changes; it does not read files. Pass queries (one object per change: type, path, edits or content) or a Codex-style patch string, not both; put a file's replacements in one query. Queries continue after a failed item; a patch validates all first and stops at the first failure; neither rolls back. " +
-					"Read an existing file before a write or delete (a bash read counts only unpiped and unredirected; a write needs every line read). An edit needs no read when every oldText matches exactly; a search tool's content rows count as a read of the lines they show. A stale file refuses the write or delete. Paths outside the workspace need approval.",
+					"Apply file changes; this tool does not read. Use queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; patches validate all first, then stop at the first failure. Neither rolls back. Read an existing file before write/delete; writes need all lines read. Bash reads count only unpiped and unredirected; search content rows count for their shown lines. Edits need no read when every oldText matches exactly. Stale files refuse write/delete; paths outside the workspace need approval.",
 				promptGuidelines: renderInstruction("tools/file/guidelines.md").split("\n"),
 				parameters: Params,
 				prepareArguments: renameReasoning,

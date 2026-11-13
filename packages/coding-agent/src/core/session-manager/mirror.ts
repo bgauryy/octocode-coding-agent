@@ -2,7 +2,7 @@ import { getFileStamp } from "../../../../common/src/paths.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { type FileStamp, type TranscriptCommand, transcripts, writerErrorKind } from "../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
+import { sharedAgentDb, sharedTranscriptWriter } from "../../storage/database.ts";
 import { workspaceIdentity } from "../../storage/workspace.ts";
 import { workspaceGit } from "../../utils/git-repository.ts";
 import type { SessionState } from "./state.ts";
@@ -25,6 +25,7 @@ import {
 	track,
 	transcriptOf,
 } from "./mirror-writes.ts";
+import { continueOpenedMirror } from "./mirror-open.ts";
 
 /**
  * The session's database mirror: header and entries copied to the agent database after the session file, by the
@@ -78,7 +79,8 @@ export function mirrorOpened(state: SessionState, sessionFile: string): void {
 	try {
 		const stamp = getFileStamp(t.file);
 		if (!mirrorLevel(t.sessionId, t.file, stamp)) {
-			rebuild(t, "open");
+			// Behind by lines appended after a stored prefix: only they are sent. Anything else rebuilds from the file.
+			if (!continueOpenedMirror(t, stamp)) rebuild(t, "open");
 			return;
 		}
 		send(t, "open", {
@@ -97,7 +99,7 @@ export function mirrorOpened(state: SessionState, sessionFile: string): void {
 function mirrorLevel(sessionId: string, file: string, stamp: FileStamp): boolean {
 	let saved: ReturnType<typeof transcripts.stamp>;
 	try {
-		saved = transcripts.stamp(sharedAgentDb().db, sessionId);
+		saved = transcripts.stamp(sharedAgentDb().mirror.db, sessionId);
 	} catch {
 		return false;
 	}
@@ -187,7 +189,7 @@ export function recordFork(
 	const attempt = (tries: number): void => {
 		// The same queue as the parent's mirror writes, sent after them, so a parent saved just before is found.
 		flushAll();
-		const writer = sharedAgentDbWriter();
+		const writer = sharedTranscriptWriter();
 		track(
 			writer.submit(command).then(
 				() => undefined,

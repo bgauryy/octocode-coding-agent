@@ -18,6 +18,7 @@ export interface DisplaySettingsApi {
 	setImageWidthCells(width: number): void;
 	getClearOnShrink(): boolean;
 	setClearOnShrink(enabled: boolean): void;
+	getReplayRows(): number;
 	getShowTerminalProgress(): boolean;
 	setShowTerminalProgress(enabled: boolean): void;
 	getReduceMotion(): boolean | "auto";

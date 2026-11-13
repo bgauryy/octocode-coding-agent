@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,4 +15,9 @@ function yarnRelease() {
 /** Runs a repository task through Yarn, e.g. `execYarnSync(["run", "check"], { cwd })`. */
 export function execYarnSync(args, options = {}) {
 	return execFileSync(process.execPath, [yarnRelease(), ...args], options);
+}
+
+/** Starts a repository task through the same pinned Yarn, leaving output and cancellation to the caller. */
+export function spawnYarn(args, options = {}) {
+	return spawn(process.execPath, [yarnRelease(), ...args], options);
 }

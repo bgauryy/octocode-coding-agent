@@ -30,9 +30,19 @@ Fullscreen-only settings (see [settings](settings.md)):
 | `fullscreenWheelScrollLines`   | `auto`, or 1 to 100         | `auto`       | Lines per wheel event                                                                           |
 | `fullscreenFrameQueueLimitKiB` | `0`, or 64 to 65536         | `512`        | Queued output before frames are dropped ([pacing](configuration.md#terminal-output-and-pacing)) |
 
-With `fullscreenWheelScrollLines` at `auto`, slow wheel scrolling moves one line per event and a fast flick moves several, more the longer it lasts; frames sum every wheel event that arrives before they paint. A number fixes the lines per event.
+With `fullscreenWheelScrollLines` at `auto`, a single wheel notch moves three lines (as in vim), steady scrolling moves at least as fast as separate notches, and a fast spin or flick moves more, more the longer it lasts. Frames sum every wheel event that arrives before they paint, up to 24 lines a frame, at the display's 60 Hz. A number fixes the lines per event. While you scroll, spinners and shimmer hold still. The scrollbar shows while you scroll and highlights under the pointer; bare pointer movement is reported only while it shows.
 
 Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen).
+
+## Typing, pasting and sending
+
+| Situation                                                                       | What happens                                                                                                                                                                 |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enter before startup finishes                                                   | The prompt stays in the editor, marked as queued, and is sent once startup is ready. Esc cancels it; editing or clearing it means you are still writing, so nothing is sent. |
+| A large paste (over 10 lines or 1,000 characters)                               | The editor shows a `[paste #1 +40 lines]` marker; the model receives the full text.                                                                                          |
+| A prompt the app refuses (an unknown command, a `!` command while another runs) | It comes back with its paste markers, cursor and undo steps.                                                                                                                 |
+| Prompt history (Up)                                                             | A prompt with pastes comes back with its markers, and sends the same full text again. A long prompt from a resumed session shows as one marker.                              |
+| A paste the terminal sends without bracketed paste mode                         | The editor takes the characters of one terminal read together: the same text, undo steps and completion as typing them, in one step.                                         |
 
 Typing or dismissing completion cancels its pending lookup, so a stalled lookup cannot block later completions. Shell completion limits retained output and stops stalled helper processes. Model command suggestions release canceled requests and discard results from an earlier session context.
 
@@ -42,13 +52,13 @@ Scrolling away from the end keeps your reading position while output arrives. Th
 
 `/links [query]` opens a searchable reference picker for the last answer. `/links message [query]` first chooses an answer, newest first; `/links all [query]` searches the session. Enter chooses a reference and then an action; Escape cancels. Full destinations remain available to inspect or copy even when the picker clips a long label.
 
-| Action                           | Result                                                                                                            |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Open                             | Web URLs use the platform handler; local files use the configured editor; backlog links retain their item handler |
-| Inspect destination              | Show the full destination in the transcript                                                                       |
-| Copy destination / Markdown link | Preserve the complete target                                                                                      |
-| Copy location / path             | Preserve the absolute file path and available line and column                                                     |
-| Reveal parent folder             | Ask the platform file handler to show its parent directory                                                        |
+| Action                           | Result                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Open                             | Web URLs use the platform handler; local files use `referenceOpener`; backlog links retain their item handler |
+| Inspect destination              | Show the full destination in the transcript                                                                   |
+| Copy destination / Markdown link | Preserve the complete target                                                                                  |
+| Copy location / path             | Preserve the absolute file path and available line and column                                                 |
+| Reveal parent folder             | Ask the platform file handler to show its parent directory                                                    |
 
 References retain their session directory, including worktree paths. `src/a.ts:12:3` keeps line 12 and column 3. In fullscreen, activation routes through Octocode; in regular mode, the terminal's native link handler controls clicks, so use `/links` for exact editor handoff. No mouse, OSC 8, VS Code or GUI is required for the picker or copy commands. If a clipboard writer fails, Octocode reports it and the source remains in the transcript. Remote OSC 52 clipboard delivery cannot be acknowledged by the application.
 
@@ -56,9 +66,30 @@ References retain their session directory, including worktree paths. `src/a.ts:1
 
 ## Editor and VS Code workflows
 
-File opening and `/diff --editor "before file" "after file"` reuse `externalEditor`, then `VISUAL`, then `EDITOR`, then the platform default. Code, Code Insiders, Codium and Cursor receive separate `--reuse-window --goto` arguments for file positions. Vim, Neovim, Nano and Emacs receive their own location syntax; unknown editors receive the path. Diff handoff supports Code-family editors, Vim/Neovim, Meld and Beyond Compare. Unsupported editors can use the existing `/diff [path]` terminal view. The compared files remain on disk; no temporary snapshots expire while a GUI is open.
+File references and `/diff --editor "before file" "after file"` use `referenceOpener` ([configuration](configuration.md)); Ctrl+G uses the prompt editor (`externalEditor`, then `VISUAL`, then `EDITOR`, then the platform default).
 
-For VS Code, set `externalEditor` to `code --wait` to edit long prompts with Ctrl+G and return after closing the editor tab. On Windows, use the editor executable if a command-shell wrapper cannot launch. In SSH, WSL or containers, configure an editor in that environment: Octocode does not infer a remote URI from a local path. You can always copy the location for another application.
+```mermaid
+flowchart TD
+    R[referenceOpener] -->|auto| I{Inside an IDE terminal?}
+    I -->|yes, CLI found| C["IDE CLI: --reuse-window --goto file:line:col"]
+    I -->|no| P{GUI CLI on PATH, with a display?}
+    P -->|yes| G["code, cursor, code-insiders, codium, zed or subl"]
+    P -->|no| E[prompt editor]
+    R -->|editor| E
+    R -->|a command| X[that command]
+```
+
+| Editor                                | File position                                               | `/diff --editor`                        | Terminal                                   |
+| ------------------------------------- | ----------------------------------------------------------- | --------------------------------------- | ------------------------------------------ |
+| Code, Code Insiders, VSCodium, Cursor | `--reuse-window --goto path:line:col` in the current window | `--reuse-window --diff before after`    | Kept: the editor starts beside the session |
+| Zed, Sublime Text                     | `path:line:col`                                             | Prompt editor's diff                    | Kept                                       |
+| Vim, Neovim                           | `+call cursor(line,col) path`                               | `-d before after` (prompt editor)       | Handed to the editor until it exits        |
+| Nano, Emacs                           | `+line,col` / `+line:col`                                   | None                                    | Handed to the editor until it exits        |
+| Other                                 | The path                                                    | Meld and Beyond Compare (prompt editor) | Handed to the editor until it exits        |
+
+Inside an IDE terminal, Octocode finds the IDE's own CLI from the terminal's environment, so `code` does not need to be on PATH; in a remote window it uses the remote CLI, which opens the file in your local window. A configured `--wait` is dropped when opening a reference, because Octocode does not wait for a GUI editor. On Windows, Octocode starts the editor's `.exe` that a `.cmd` launcher names, never through a command shell; if it cannot find one, set `referenceOpener` to the `.exe`. Paths are always absolute and passed as separate arguments, never through a shell. Unsupported diff editors can use the `/diff [path]` terminal view. The compared files remain on disk; no temporary snapshots expire while a GUI is open.
+
+For Ctrl+G, a Code-family editor, Zed or Sublime Text gets `--wait` when the command lacks it, so Octocode resumes after you close the tab. In SSH, WSL or containers without an IDE terminal, configure an editor in that environment: Octocode does not infer a remote URI from a local path. You can always copy the location for another application.
 
 VS Code also offers **Terminal: Open Detected Link**, **Open Accessible View**, and accessible terminal navigation. Native detection depends on the current buffer; `/links` reads message source in either display mode. If VS Code intercepts a shortcut, inspect its terminal keybinding routing and use the narrow [Shift+Enter recipe](keybindings.md#shiftenter-and-new-lines), or rebind the Octocode action. Avoid routing every IDE shortcut to the shell. Terminal-tab progress uses the existing progress integration when supported by the host. Ordinary terminals keep the same working line and cancellation controls.
 
@@ -80,6 +111,14 @@ The working line distinguishes model activity, tools and user prompts. After 30 
 
 `/help` opens a searchable command picker (it inserts the command; it does not run it). `/effort` sets reasoning effort; `/context size` sets the session context budget. More on status lines: [native features](native-features.md#live-status).
 
+The footer stays compact as the terminal narrows. When cost or token details do not fit, `… /status` points to the complete report. Warnings and errors take priority over routine status text; overflow alerts use a bounded area with a count of remaining alerts. `/status` puts every current footer status and its full text into the transcript, alongside session, token, cache and cost details. Error and warning labels remain readable without color.
+
+Session loading shows progress before the full list is ready. Rename and delete show their pending state and accept one submission at a time. Closing the picker keeps a late completion from reopening it. A search with no matches offers a way to clear the query.
+
+`/queue` shows queued messages and their delivery order. Edit and close hints follow your configured selection keys; letter shortcuts remain available. Empty queues offer only the close action. Shared panels reduce their padding in very narrow terminals so text and click targets stay aligned.
+
+Tool cards show supplied goals and reasons, including individual queries in a batched call. Query labels keep their association with returned results, and result metadata is distinguished from the call's metadata. Goals have stronger emphasis than explanatory reasons. Compact cards offer an expansion hint for longer metadata; `Ctrl+O` expands the full fields. Argument values remain available, with repeated purpose fields shown in their dedicated rows. Long expanded cards use transcript scrolling. Full HTML exports retain the complete metadata.
+
 ## Links, images, notifications
 
 | Feature       | Behaviour                                                                                                                      | Control                                                                                                                      |
@@ -100,6 +139,7 @@ Run `/debug terminal` to see the selected mode, colors, links, images, keyboard 
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Alt keys read as Escape, or long pastes arrive split (slow SSH) | Raise `OCTOCODE_TUI_ESC_TIMEOUT` or `OCTOCODE_TUI_PASTE_TIMEOUT` (milliseconds)                                       |
 | Leftover rows after content shrinks                             | `terminal.clearOnShrink: true`                                                                                        |
+| Scrollback starts at "earlier rows not redrawn" after a resize  | A redraw writes the last `terminal.replayRows` rows (default 5000); `0` writes every row                              |
 | A component fails to draw                                       | The chat shows `Display failed: <Component> could not render: <error>` once per failure; the rest keeps working       |
 | You need the raw terminal output                                | `OCTOCODE_TUI_WRITE_LOG` copies everything written; `OCTOCODE_TUI_DEBUG=1`, `OCTOCODE_TUI_DEBUG_REDRAW=1` log renders |
 

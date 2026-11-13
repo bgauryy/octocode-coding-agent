@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import os from "node:os";
 import { waitForChildProcess } from "../../../common/src/child-process.ts";
+import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../utils/shell.ts";
 
 /**
  * Options for executing shell commands.
@@ -40,6 +41,10 @@ function signalExitCode(signal: NodeJS.Signals | null): number {
 /**
  * Execute a shell command and return stdout/stderr/code.
  * Supports timeout and abort signal.
+ *
+ * On POSIX the command leads a session of its own (`detached`, so `setsid`): it is not in the terminal's foreground
+ * group, has no controlling terminal to open as `/dev/tty`, and Ctrl+Z or a terminal signal does not reach it. A stop
+ * signals its whole group, so a tree it started ends with it; Octocode exiting kills a group still running.
  */
 export async function execCommand(
 	command: string,
@@ -48,11 +53,16 @@ export async function execCommand(
 	options?: ExecOptions,
 ): Promise<ExecResult> {
 	return new Promise((resolve) => {
+		const group = leadsProcessGroup();
 		const proc = spawn(command, args, {
 			cwd,
 			shell: false,
+			detached: group,
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
+		const pid = proc.pid;
+		if (group && pid) trackDetachedChildPid(pid);
 
 		let stdout = "";
 		let stderr = "";
@@ -63,8 +73,21 @@ export async function execCommand(
 		let forceKill: NodeJS.Timeout | undefined;
 		proc.once("exit", () => {
 			exited = true;
-			clearTimeout(forceKill);
+			// A process group can outlive its root; keep its escalation and exit tracking.
+			if (!group) clearTimeout(forceKill);
 		});
+		/** The command's group (its descendants too); only the command itself once its group is gone or on Windows. */
+		const signal = (name: NodeJS.Signals) => {
+			if (group && pid) {
+				try {
+					process.kill(-pid, name);
+					return;
+				} catch {
+					// The group is gone: only a root that has not exited is left to signal.
+				}
+			}
+			if (!exited) proc.kill(name);
+		};
 		// Stops the wait once the command was told to stop: a writer that left its group outlives the kill.
 		const stopped = new AbortController();
 
@@ -72,11 +95,13 @@ export async function execCommand(
 			if (!killed) {
 				killed = true;
 				stopped.abort();
-				proc.kill("SIGTERM");
+				signal("SIGTERM");
 				// Force kill after 5 seconds if SIGTERM doesn't work
-				if (exited) return;
+				if (exited && !group) return;
 				forceKill = setTimeout(() => {
-					if (!exited) proc.kill("SIGKILL");
+					if (group || !exited) signal("SIGKILL");
+					forceKill = undefined;
+					if (group && pid) untrackDetachedChildPid(pid);
 				}, FORCE_KILL_MS);
 				forceKill.unref();
 			}
@@ -107,7 +132,11 @@ export async function execCommand(
 
 		// Wait for process termination without hanging on inherited stdio handles
 		// held open by detached descendants.
+		const settled = () => {
+			if (group && pid && !forceKill) untrackDetachedChildPid(pid);
+		};
 		waitForChildProcess(proc, stopped.signal)
+			.finally(settled)
 			.then((code) => {
 				if (timeoutId) clearTimeout(timeoutId);
 				if (options?.signal) {

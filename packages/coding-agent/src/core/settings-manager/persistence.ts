@@ -7,6 +7,7 @@ import { migrateSettings } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
+import { settingsWritesDeferred } from "./storage-deferred.ts";
 
 /**
  * Writes settings changes back to storage. Tracks which fields changed during the session, so a write merges only
@@ -56,8 +57,10 @@ export class SettingsPersistence {
 		}
 	}
 
-	recordError(scope: SettingsScope, error: unknown): void {
-		this.state.errors.push(toSettingsError(scope, error, this.state.settingsPaths[scope]));
+	recordError(scope: SettingsScope, error: unknown): Error {
+		const recorded = toSettingsError(scope, error, this.state.settingsPaths[scope]);
+		this.state.errors.push(recorded);
+		return recorded.error;
 	}
 
 	/**
@@ -89,18 +92,50 @@ export class SettingsPersistence {
 		this.modifiedProjectNestedFields.clear();
 	}
 
-	private enqueueWrite(scope: SettingsScope, task: () => void): void {
-		this.writeQueue = this.writeQueue
+	/**
+	 * Write the snapshot's changed fields into the scope's file. A storage that can defer its commit decides the content
+	 * now (readers in this process see it at once) and writes off the event loop; later changes join a write that has not
+	 * started. Otherwise the write runs on this queue as a synchronous transaction.
+	 */
+	private enqueueWrite(
+		scope: SettingsScope,
+		snapshotSettings: Settings,
+		modifiedFields: Set<keyof Settings>,
+		modifiedNestedFields: Map<keyof Settings, Set<string>>,
+	): Promise<Error | undefined> {
+		const merge = (current: string | undefined) =>
+			mergeScopedSettings(current, snapshotSettings, modifiedFields, modifiedNestedFields);
+		const storage = this.state.storage;
+		if (storage.withLockDeferred && settingsWritesDeferred()) {
+			let written: Promise<void>;
+			try {
+				if (scope === "project") this.assertProjectTrustedForWrite();
+				written = storage.withLockDeferred(scope, merge);
+			} catch (error) {
+				return Promise.resolve(this.recordError(scope, error));
+			}
+			const settled = written.then(
+				() => {
+					this.clearModifiedScope(scope);
+					return undefined;
+				},
+				(error: unknown) => this.recordError(scope, error),
+			);
+			this.writeQueue = Promise.all([this.writeQueue, settled]).then(() => undefined);
+			return settled;
+		}
+		const written = this.writeQueue
 			.then(() => {
 				if (scope === "project") {
 					this.assertProjectTrustedForWrite();
 				}
-				task();
+				storage.withLock(scope, merge);
 				this.clearModifiedScope(scope);
+				return undefined;
 			})
-			.catch((error) => {
-				this.recordError(scope, error);
-			});
+			.catch((error: unknown) => this.recordError(scope, error));
+		this.writeQueue = written.then(() => undefined);
+		return written;
 	}
 
 	private cloneModifiedNestedFields(source: Map<keyof Settings, Set<string>>): Map<keyof Settings, Set<string>> {
@@ -111,51 +146,20 @@ export class SettingsPersistence {
 		return snapshot;
 	}
 
-	private persistScopedSettings(
-		scope: SettingsScope,
-		snapshotSettings: Settings,
-		modifiedFields: Set<keyof Settings>,
-		modifiedNestedFields: Map<keyof Settings, Set<string>>,
-	): void {
-		this.state.storage.withLock(scope, (current) => {
-			const currentFileSettings =
-				current !== undefined ? migrateSettings(JSON.parse(stripBom(current)) as Record<string, unknown>) : {};
-			const mergedSettings: Settings = { ...currentFileSettings };
-			for (const field of modifiedFields) {
-				const value = snapshotSettings[field];
-				if (modifiedNestedFields.has(field) && typeof value === "object" && value !== null) {
-					const nestedModified = modifiedNestedFields.get(field)!;
-					const baseNested = (currentFileSettings[field] as Record<string, unknown>) ?? {};
-					const inMemoryNested = value as Record<string, unknown>;
-					const mergedNested = { ...baseNested };
-					for (const nestedKey of nestedModified) {
-						mergedNested[nestedKey] = inMemoryNested[nestedKey];
-					}
-					(mergedSettings as Record<string, unknown>)[field] = mergedNested;
-				} else {
-					(mergedSettings as Record<string, unknown>)[field] = value;
-				}
-			}
-
-			return JSON.stringify(mergedSettings, null, 2);
-		});
-	}
-
-	save(): void {
+	/** Resolves with this attempt's error, if any; ordinary setters still report it through diagnostics. */
+	save(): Promise<Error | undefined> {
 		const state = this.state;
 		state.settings = effectiveSettings(state);
 
 		if (state.globalSettingsLoadError) {
-			return;
+			return Promise.resolve(state.globalSettingsLoadError);
 		}
 
 		const snapshotGlobalSettings = structuredClone(state.globalSettings);
 		const modifiedFields = new Set(this.modifiedFields);
 		const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedNestedFields);
 
-		this.enqueueWrite("global", () => {
-			this.persistScopedSettings("global", snapshotGlobalSettings, modifiedFields, modifiedNestedFields);
-		});
+		return this.enqueueWrite("global", snapshotGlobalSettings, modifiedFields, modifiedNestedFields);
 	}
 
 	private saveProjectSettings(settings: Settings): void {
@@ -171,9 +175,7 @@ export class SettingsPersistence {
 		const snapshotProjectSettings = structuredClone(state.projectSettings);
 		const modifiedFields = new Set(this.modifiedProjectFields);
 		const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedProjectNestedFields);
-		this.enqueueWrite("project", () => {
-			this.persistScopedSettings("project", snapshotProjectSettings, modifiedFields, modifiedNestedFields);
-		});
+		void this.enqueueWrite("project", snapshotProjectSettings, modifiedFields, modifiedNestedFields);
 	}
 
 	/** `nestedKey` writes only that key of an object field, keeping keys another process wrote meanwhile. */
@@ -184,4 +186,33 @@ export class SettingsPersistence {
 		this.markProjectModified(field, nestedKey);
 		this.saveProjectSettings(projectSettings);
 	}
+}
+
+/** `current` file content with the changed fields of `snapshot` merged in: other fields stay as another process wrote them. */
+function mergeScopedSettings(
+	current: string | undefined,
+	snapshotSettings: Settings,
+	modifiedFields: Set<keyof Settings>,
+	modifiedNestedFields: Map<keyof Settings, Set<string>>,
+): string {
+	const currentFileSettings =
+		current !== undefined ? migrateSettings(JSON.parse(stripBom(current)) as Record<string, unknown>) : {};
+	const mergedSettings: Settings = { ...currentFileSettings };
+	for (const field of modifiedFields) {
+		const value = snapshotSettings[field];
+		if (modifiedNestedFields.has(field) && typeof value === "object" && value !== null) {
+			const nestedModified = modifiedNestedFields.get(field)!;
+			const baseNested = (currentFileSettings[field] as Record<string, unknown>) ?? {};
+			const inMemoryNested = value as Record<string, unknown>;
+			const mergedNested = { ...baseNested };
+			for (const nestedKey of nestedModified) {
+				mergedNested[nestedKey] = inMemoryNested[nestedKey];
+			}
+			(mergedSettings as Record<string, unknown>)[field] = mergedNested;
+		} else {
+			(mergedSettings as Record<string, unknown>)[field] = value;
+		}
+	}
+
+	return JSON.stringify(mergedSettings, null, 2);
 }

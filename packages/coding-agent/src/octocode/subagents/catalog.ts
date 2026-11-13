@@ -15,7 +15,7 @@ import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
 
 const CATALOG_URL = "https://models.dev/api.json";
 /** How long a fetched index is fresh. */
-export const CATALOG_TTL_MS = DAY_MS;
+const CATALOG_TTL_MS = DAY_MS;
 const FETCH_TIMEOUT_MS = 10_000;
 
 /** What Octocode reads from one models.dev model entry (prices per million tokens). */
@@ -208,4 +208,38 @@ export function currentCatalog(env: NodeJS.ProcessEnv = process.env): Catalog | 
 	const file = catalogFile(env);
 	void loadCatalog({ file });
 	return readCatalog(file);
+}
+
+/**
+ * `fetchedAt` of a saved index read from its first bytes (`JSON.stringify` of an index writes it first, and a whole
+ * file ends `]}`), so a fresh one need not be parsed. Undefined when the file is missing or does not look so.
+ */
+function savedAt(file: string): number | undefined {
+	let fd: number | undefined;
+	try {
+		fd = fs.openSync(file, "r");
+		const size = fs.fstatSync(fd).size;
+		const head = Buffer.alloc(Math.min(64, size));
+		const tail = Buffer.alloc(Math.min(2, size));
+		fs.readSync(fd, head, 0, head.length, 0);
+		fs.readSync(fd, tail, 0, tail.length, size - tail.length);
+		const at = /^\{"fetchedAt":(\d+)[,}]/.exec(head.toString("utf8"));
+		return at && tail.toString("utf8") === "]}" ? Number(at[1]) : undefined;
+	} catch {
+		return undefined;
+	} finally {
+		if (fd !== undefined) fs.closeSync(fd);
+	}
+}
+
+/**
+ * The background refresh `currentCatalog` starts, for a session that does not route yet: a saved index that is still
+ * fresh is not read (its first reader parses it); a missing, stale or unrecognised one goes through `loadCatalog`.
+ */
+export function refreshCatalog(env: NodeJS.ProcessEnv = process.env): void {
+	if (!modelsDevEnabled(env)) return;
+	const file = catalogFile(env);
+	const at = savedAt(file);
+	if (at !== undefined && Date.now() - at < CATALOG_TTL_MS) return;
+	void loadCatalog({ file });
 }

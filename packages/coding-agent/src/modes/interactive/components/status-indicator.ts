@@ -10,7 +10,8 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
-import { formatDuration } from "../../../octocode/shared/format.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { formatDuration, formatTokens } from "../../../octocode/shared/format.ts";
 import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
@@ -174,20 +175,43 @@ export class RetryStatusIndicator extends StatusIndicator {
 
 type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
+/** What a compaction's summary requests have done so far (`compaction_progress`). */
+export interface CompactionProgress {
+	elapsedMs: number;
+	receivedChars: number;
+}
+
+/** `Compacting context… 1m05s · ~3.2k tokens received · esc cancel` (tokens estimated from characters); the time and size once the summary streams. */
+function compactionMessage(label: string, progress?: CompactionProgress): string {
+	const received =
+		progress && progress.receivedChars > 0
+			? `${SEPARATOR}~${formatTokens(Math.ceil(progress.receivedChars / CHARS_PER_TOKEN))} tokens received`
+			: "";
+	const shown = progress ? ` ${formatDuration(progress.elapsedMs)}${received}` : "";
+	return `${label}${shown} · ${hintText([[interruptKey(), "cancel"]])}`;
+}
+
 export class CompactionStatusIndicator extends StatusIndicator {
+	private readonly label: string;
+
 	constructor(ui: TUI, reason: CompactionStatusReason, colorFn?: (text: string) => string) {
-		const cancelHint = `· ${hintText([[interruptKey(), "cancel"]])}`;
 		const label =
 			reason === "manual"
-				? `Compacting context… ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting… ${cancelHint}`;
+				? "Compacting context…"
+				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting…`;
 		super(
 			"compaction",
 			ui,
 			colorFn ?? ((spinner) => theme.fg("accent", spinner)),
 			colorFn ?? ((text) => theme.fg("muted", text)),
-			label,
+			compactionMessage(label),
 		);
+		this.label = label;
+	}
+
+	/** Shows how long the summary has been written and how much of it arrived; the session sends it at most once a second. */
+	setProgress(progress: CompactionProgress): void {
+		this.setMessage(compactionMessage(this.label, progress));
 	}
 }
 

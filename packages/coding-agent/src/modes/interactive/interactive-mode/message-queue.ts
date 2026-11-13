@@ -6,6 +6,7 @@
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { prependToEditorDraft } from "./helpers.ts";
 import { recallLastQueuedMessage } from "./queue-manager.ts";
 import type { CompactionQueuedMessage } from "./types.ts";
 
@@ -48,7 +49,7 @@ export async function queueInteractiveMessage(
 			},
 		});
 	} catch (error) {
-		if (!accepted) host.editor.setText([text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
+		if (!accepted) prependToEditorDraft(host.editor, text);
 		host.showError(
 			`${accepted ? "Message failed" : "Message was not queued; restored to editor"}: ${errorMessage(error)}`,
 		);
@@ -69,7 +70,7 @@ export async function handleInputDuringCompaction(
 		try {
 			await getApplicationPort(host.session).invoke("prompt", text);
 		} catch (error) {
-			host.editor.setText([text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
+			prependToEditorDraft(host.editor, text);
 			host.showError(`Command did not run; restored to editor: ${errorMessage(error)}`);
 		}
 	} else {
@@ -141,10 +142,7 @@ export function clearAllQueues(host: MessageQueueHost): { steering: string[]; fo
 	};
 }
 
-export function restoreQueuedMessagesToEditor(
-	host: MessageQueueHost,
-	options?: { abort?: boolean; currentText?: string },
-): number {
+export function restoreQueuedMessagesToEditor(host: MessageQueueHost, options?: { abort?: boolean }): number {
 	const { steering, followUp } = host.clearAllQueues();
 	const allQueued = [...steering, ...followUp];
 	if (allQueued.length === 0) {
@@ -153,10 +151,7 @@ export function restoreQueuedMessagesToEditor(
 		}
 		return 0;
 	}
-	const queuedText = allQueued.join("\n\n");
-	const currentText = options?.currentText ?? host.editor.getText();
-	const combinedText = [queuedText, currentText].filter((t) => t.trim()).join("\n\n");
-	host.editor.setText(combinedText);
+	prependToEditorDraft(host.editor, allQueued.join("\n\n"));
 	if (options?.abort) {
 		void getApplicationPort(host.session).invoke("abort");
 	}

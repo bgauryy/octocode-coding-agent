@@ -36,6 +36,8 @@ export interface Terminal {
 	 * queue drains after a drop.
 	 */
 	setFrameOutputCap?(bytes: number | undefined): void;
+	/** Queued bytes past which frames are dropped; undefined when every frame is kept. */
+	readonly frameOutputCap?: number;
 	setOutputRecovery?(recover: (() => void) | undefined): void;
 	/** Optional aggregate output counters; no rendered text is retained. */
 	setOutputTelemetryEnabled?(enabled: boolean): void;

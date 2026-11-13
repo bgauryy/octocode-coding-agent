@@ -346,7 +346,7 @@ describe("skills", () => {
 
 			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
 			expect(introText.trim().split("\n")[0]).toBe(
-				"Use bash to load the file of every skill whose description matches the task; several can apply. Load them before other work.",
+				"Use bash to load the file of every skill whose description matches the task before other work; several can apply.",
 			);
 		});
 

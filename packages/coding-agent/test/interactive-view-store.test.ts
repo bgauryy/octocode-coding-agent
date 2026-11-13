@@ -140,6 +140,29 @@ describe("interactive view store", () => {
 		expect(rows(chatContainer).join("\n")).not.toContain("lines hidden");
 	});
 
+	it("reads the transcript rows to forget detached replies only as the replies double, and forgets them then", () => {
+		const { host, chatContainer } = setup();
+		const getter = Object.getOwnPropertyDescriptor(Container.prototype, "children")!.get!;
+		let reads = 0;
+		vi.spyOn(Container.prototype, "children", "get").mockImplementation(function (this: Container) {
+			if (this === chatContainer) reads++;
+			return getter.call(this);
+		});
+		const render = applicationRenderer(host, { readAsset: () => undefined } as never);
+		const reply = (id: string) =>
+			render({ type: "message.completed", message: { id, role: "assistant", text: id, complete: true } } as never);
+		for (let n = 0; n < 500; n++) reply(`r${n}`);
+		// Checks at 64, 128, 256: never once per reply.
+		expect(reads).toBeLessThanOrEqual(4);
+		// A compaction redraw drops every row without an event here; the replies after it make the next check forget them.
+		chatContainer.clear();
+		for (let n = 0; n < 1_000; n++) reply(`s${n}`);
+		const before = rows(chatContainer).length;
+		// An event for a forgotten reply draws a new row, as for any reply not shown.
+		reply("r1");
+		expect(rows(chatContainer).length).toBeGreaterThan(before);
+	});
+
 	it("expands and recollapses assistant output through the view store", () => {
 		const { uiStore, chatContainer } = setup();
 		const text = Array.from({ length: 140 }, (_, i) => `line ${i}`).join("\n\n");

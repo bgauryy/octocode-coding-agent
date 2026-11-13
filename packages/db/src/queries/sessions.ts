@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { allRows } from "../rows.ts";
+import * as compactions from "./compactions.ts";
 import { inTransaction } from "./transaction.ts";
+import * as transcripts from "./transcripts.ts";
 
 /**
  * What Octocode adds to one Octocode session (`sessions` row): the git branch and HEAD it last saw, its cost and tokens, the
@@ -209,43 +211,52 @@ export interface EraseCounts {
 	timers: number;
 }
 
-const ERASE_STATEMENTS: ReadonlyArray<[keyof EraseCounts, string]> = [
-	// Children before the sessions row: session_entries cascade from transcripts, the rest from sessions (composite FK).
-	["entries", "DELETE FROM session_entries WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["transcripts", "DELETE FROM session_transcripts WHERE session_id IN (SELECT value FROM json_each(?1))"],
+const ERASE_STATEMENTS: ReadonlyArray<[Exclude<keyof EraseCounts, "transcripts" | "entries" | "compactions">, string]> =
 	[
-		"forks",
-		"DELETE FROM session_forks WHERE child_id IN (SELECT value FROM json_each(?1)) OR parent_id IN (SELECT value FROM json_each(?1))",
-	],
-	["compactions", "DELETE FROM compaction_summaries WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["events", "DELETE FROM agent_events WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["tasks", "DELETE FROM backlog_tasks WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["commands", "DELETE FROM workspace_commands WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["timers", "DELETE FROM timers WHERE session_id IN (SELECT value FROM json_each(?1))"],
-	["sessions", "DELETE FROM sessions WHERE id IN (SELECT value FROM json_each(?1))"],
-];
+		[
+			"forks",
+			"DELETE FROM session_forks WHERE child_id IN (SELECT value FROM json_each(?1)) OR parent_id IN (SELECT value FROM json_each(?1))",
+		],
+		["events", "DELETE FROM agent_events WHERE session_id IN (SELECT value FROM json_each(?1))"],
+		["tasks", "DELETE FROM backlog_tasks WHERE session_id IN (SELECT value FROM json_each(?1))"],
+		["commands", "DELETE FROM workspace_commands WHERE session_id IN (SELECT value FROM json_each(?1))"],
+		["timers", "DELETE FROM timers WHERE session_id IN (SELECT value FROM json_each(?1))"],
+		["sessions", "DELETE FROM sessions WHERE id IN (SELECT value FROM json_each(?1))"],
+	];
 
 /**
- * Removes every per-session row of the given sessions in one transaction, for a user's explicit deletion: the `sessions`
- * extras and catalog row, the transcript mirror (`session_transcripts`, `session_entries`), fork edges where the session is
- * child or parent, compaction summaries, its `agent_events`, its session-scoped `backlog_tasks` and its
- * `workspace_commands` receipts and its `timers`. Kept on purpose: `backlog_audits` and `config_audits` (immutable history; deleting a task
- * adds its own audit row), `agents` rows (a team member has its own pid-based lifecycle), `backlog.source_session` and
- * `memories.source_session` (provenance text). The caller checks liveness first: a running session's row would come back
- * at its next write. Housekeeping uses `forget` instead: the mirror outlives the file (an ID-based fork recovers from it).
+ * Removes every per-session row of the given sessions, for a user's explicit deletion: in the transcript mirror (`mirror`)
+ * its transcript, entries and compaction summaries (one transaction there, first), then in the coordination file (one
+ * transaction) the `sessions` extras and catalog row, fork edges where the session is child or parent, its
+ * `agent_events`, its session-scoped `backlog_tasks`, its `workspace_commands` receipts and its `timers`. Kept on purpose:
+ * `backlog_audits` and `config_audits` (immutable history; deleting a task adds its own audit row), `agents` rows (a team
+ * member has its own pid-based lifecycle), `backlog.source_session` and `memories.source_session` (provenance text). The
+ * caller checks liveness first: a running session's row would come back at its next write. Housekeeping uses `forget`
+ * instead: the mirror outlives the file (an ID-based fork recovers from it). Call it outside a coordination transaction:
+ * the mirror's lock is always taken first.
  */
-export function erase(db: DatabaseSync, ids: readonly string[]): EraseCounts {
-	const counts: EraseCounts = {
-		sessions: 0,
-		transcripts: 0,
-		entries: 0,
-		forks: 0,
-		compactions: 0,
-		events: 0,
-		tasks: 0,
-		commands: 0,
-		timers: 0,
-	};
+export function erase(db: DatabaseSync, mirror: DatabaseSync, ids: readonly string[]): EraseCounts {
+	return { ...eraseMirror(mirror, ids), ...eraseRows(db, ids) };
+}
+
+/** The mirror's part of `erase`, in one transaction of the mirror: transcripts, their entries and compaction summaries. */
+export function eraseMirror(
+	mirror: DatabaseSync,
+	ids: readonly string[],
+): Pick<EraseCounts, "transcripts" | "entries" | "compactions"> {
+	if (ids.length === 0) return { transcripts: 0, entries: 0, compactions: 0 };
+	return inTransaction(mirror, () => ({
+		...transcripts.erase(mirror, ids),
+		compactions: compactions.erase(mirror, ids),
+	}));
+}
+
+/** The coordination file's part of `erase`, in one transaction (it joins the caller's). */
+export function eraseRows(
+	db: DatabaseSync,
+	ids: readonly string[],
+): Omit<EraseCounts, "transcripts" | "entries" | "compactions"> {
+	const counts = { sessions: 0, forks: 0, events: 0, tasks: 0, commands: 0, timers: 0 };
 	if (ids.length === 0) return counts;
 	const json = JSON.stringify([...new Set(ids)]);
 	inTransaction(db, () => {
@@ -256,13 +267,22 @@ export function erase(db: DatabaseSync, ids: readonly string[]): EraseCounts {
 
 /**
  * Housekeeping: discards the activity extras of session `id` (git state, spend, pid) and drops its row when nothing durable
- * hangs off it. A transcript mirror or compaction summary keeps the row (its catalog data too): durable history survives
- * missing or unmounted checkouts and a deleted file. `erase` removes everything.
+ * hangs off it. A stored transcript or compaction summary in the mirror keeps the row (its catalog data too): durable
+ * history survives missing or unmounted checkouts and a deleted file. `erase` removes everything.
  */
-export function forget(db: DatabaseSync, id: string): void {
-	db.prepare(`DELETE FROM sessions WHERE id = ? AND NOT EXISTS
-		(SELECT 1 FROM session_transcripts WHERE session_id=sessions.id) AND NOT EXISTS
-		(SELECT 1 FROM compaction_summaries WHERE session_id=sessions.id)`).run(id);
+export function forget(db: DatabaseSync, mirror: DatabaseSync, id: string): void {
+	if (!transcripts.has(mirror, id) && !compactions.has(mirror, id))
+		db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
 	db.prepare(`UPDATE sessions SET branch=NULL, head=NULL, cost=0, tokens=0, files_changed=0, pid=NULL,
 		pid_started=NULL, unpriced=0 WHERE id=?`).run(id);
+}
+
+/** Bind once. A copied file with an existing ID cannot replace another workspace's history. */
+export function bind(db: DatabaseSync, id: string, workspaceId: string | null): void {
+	const result = db
+		.prepare(`INSERT INTO sessions(id,workspace_id) VALUES (?,?)
+		ON CONFLICT(id) DO UPDATE SET workspace_id=COALESCE(sessions.workspace_id,excluded.workspace_id)
+		WHERE sessions.workspace_id IS NULL OR excluded.workspace_id IS NULL OR sessions.workspace_id=excluded.workspace_id`)
+		.run(id, workspaceId);
+	if (!result.changes) throw new Error("Session ID is already bound to another workspace");
 }

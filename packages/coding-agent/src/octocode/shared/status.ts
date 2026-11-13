@@ -11,6 +11,8 @@ export const STATUS = {
 	queued: "octocode-queued",
 	speed: "octocode-speed",
 	backlog: "octocode-backlog",
+	/** Completed/total checklist steps belonging to this session, with dropped steps counted separately. */
+	steps: "octocode-steps",
 	/** A hook command running, with its elapsed time. */
 	hooks: "octocode-hooks",
 	/** Waiting to try again a turn that a report or message started and a provider error ended. */

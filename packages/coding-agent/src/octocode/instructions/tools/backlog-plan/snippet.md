@@ -1,1 +1,1 @@
-Work that outlives the session, needs another person, records a follow-up or failure, or was requested: add an item; also edit, list
+Add durable work, follow-ups, failures or requested items; edit or find items

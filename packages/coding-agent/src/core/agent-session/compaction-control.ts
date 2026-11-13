@@ -1,27 +1,26 @@
 import { type ManualCompactionOptions, validateCompactionInstructions } from "../compaction/manual-options.ts";
 /**
  * Manual and automatic compaction of a session: their abort controllers, events and failure
- * accounting around the shared compaction core (`session-compaction.ts`), and Octocode's default summary.
+ * accounting around the shared compaction core (`session-compaction.ts`); the default summary is `default-compaction.ts`.
  */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { type Model, type RetryCallbacks, streamSimple } from "@octocodeai/octocode-ai/compat";
+import type { Model } from "@octocodeai/octocode-ai/compat";
 import { formatNoModelSelectedMessage } from "../auth-guidance.ts";
 import type { CacheWarmer } from "../cache-warmer.ts";
 import {
-	type CompactionPreparation,
 	type CompactionResult,
 	CompactionFitError,
-	compact,
 	explainNothingToCompact,
 	prepareCompaction,
+	type SummaryRequestPolicy,
+	summaryStreamWatcher,
 } from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, type CompactionReason, runCompaction } from "../session-compaction.ts";
-import { createSessionUsageRecorder } from "../usage-totals.ts";
-import type { SessionInternals, SessionPublic } from "./host.ts";
-import type { RequestAuth } from "./request-auth.ts";
+import type { SessionInternals } from "./host.ts";
 import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
+import { summarizationRetryCallbacks } from "./retry.ts";
 import { recordRunFailure } from "./run-outcome.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
@@ -35,59 +34,6 @@ export class NothingToCompactError extends Error {
 		this.notice = notice;
 		this.name = "NothingToCompactError";
 	}
-}
-
-/** What Octocode's default compaction summary needs; the session passes itself or a test double. */
-export interface DefaultCompactionHost {
-	readonly session: Pick<SessionPublic, "sessionManager" | "settingsManager" | "agent">;
-	emit(event: AgentSessionEvent): void;
-	getSummarizationRequestAuth(
-		model: Model<any>,
-		signal?: AbortSignal,
-	): Promise<RequestAuth & { thinkingLevel: ThinkingLevel }>;
-	summarizationRetryCallbacks(source: { source: "compaction"; reason: CompactionReason }): RetryCallbacks;
-}
-
-/** Generate Octocode's built-in compaction summary for manual and automatic compaction. */
-export async function runDefaultCompaction(
-	host: DefaultCompactionHost,
-	preparation: CompactionPreparation,
-	model: Model<any>,
-	signal: AbortSignal,
-	reason: CompactionReason,
-	customInstructions?: string,
-): Promise<CompactionResult> {
-	const { session } = host;
-	// Resolve the request only when Octocode summarizes itself: routing may call models or fail.
-	const record = createSessionUsageRecorder(session.sessionManager, "compaction_attempt", (entry) =>
-		host.emit({ type: "entry_appended", entry }),
-	);
-	const request = await host.getSummarizationRequestAuth(model, signal);
-	const streamFn = session.agent.streamFunction ?? streamSimple;
-	const result = await compact(
-		preparation,
-		request.model,
-		request.apiKey,
-		request.headers,
-		customInstructions,
-		signal,
-		request.thinkingLevel,
-		async (model, context, options) => {
-			const stream = await streamFn(model, context, options);
-			const result = stream.result.bind(stream);
-			stream.result = async () => {
-				const message = await result();
-				record(message);
-				return message;
-			};
-			return stream;
-		},
-		request.env,
-		session.settingsManager.getRetrySettings(),
-		host.summarizationRetryCallbacks({ source: "compaction", reason }),
-		undefined, // sessionId
-	);
-	return { ...result, usage: undefined };
 }
 
 export interface CompactionControlHost extends Pick<
@@ -129,7 +75,26 @@ export class SessionCompaction {
 			sessionManager: session.sessionManager,
 			extensionRunner: session.extensionRunner,
 			summarize: (...args) => this.host.summarize(...args),
+			summaryRequest: (reason) => this._summaryRequest(reason),
 			refreshContext: () => this.host.refreshContext(),
+		};
+	}
+
+	/**
+	 * How one compaction's summary requests are sent: progress on the status line (`compaction_progress`, at most once a
+	 * second), an attempt that receives nothing for the HTTP idle window (`httpIdleTimeoutMs`) ended as a retryable
+	 * timeout, and the session's retry policy.
+	 */
+	private _summaryRequest(reason: CompactionReason): SummaryRequestPolicy {
+		const { settingsManager } = this.host.session;
+		const emit = (event: AgentSessionEvent) => this.host.emit(event);
+		return {
+			watch: summaryStreamWatcher({
+				idleMs: settingsManager.getHttpIdleTimeoutMs(),
+				onProgress: (progress) => emit({ type: "compaction_progress", reason, ...progress }),
+			}),
+			retry: settingsManager.getRetrySettings(),
+			callbacks: summarizationRetryCallbacks(emit, { source: "compaction", reason }),
 		};
 	}
 

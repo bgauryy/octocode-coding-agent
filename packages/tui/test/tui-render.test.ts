@@ -132,7 +132,8 @@ describe("TUI render scheduling", () => {
 		await new Promise<void>((resolve) => process.nextTick(resolve));
 
 		assert.strictEqual(component.renderCount, renderCountBeforeInput + 1);
-		assert.deepStrictEqual(component.lines, ["typed"]);
+		// Typed characters reach a component without `handleTextRun` one key at a time, as from a real terminal.
+		assert.deepStrictEqual(component.lines, ["d"]);
 		tui.stop();
 	});
 });

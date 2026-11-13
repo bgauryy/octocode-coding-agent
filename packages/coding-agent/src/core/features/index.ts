@@ -5,6 +5,7 @@
 export { createExtensionRuntime } from "./runtime.ts";
 export type { ExtensionErrorListener, ShutdownHandler } from "./runner.ts";
 export { ExtensionRunner } from "./runner.ts";
+export { readsMessagesOnly } from "./runner/clone-messages.ts";
 export type {
 	AgentActivityOutcome,
 	AgentToolResult,

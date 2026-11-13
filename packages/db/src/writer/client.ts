@@ -1,15 +1,17 @@
 import { Worker } from "node:worker_threads";
 import { canonicalPath } from "../../../common/src/canonical-path.ts";
 import { closeSharedConnections, sharedDatabase } from "../db.ts";
-import { isBusy, withBusyTimeout } from "../sqlite.ts";
+import { isBusy } from "../sqlite.ts";
 import {
 	DB_WRITER_WORKER,
 	type DbWriterLocations,
+	type DbWriterRole,
 	type DbWriterMessage,
 	type DbWriterRequest,
 	type DbWriterWorkerData,
 } from "./protocol.ts";
-import { runTranscriptCommand, type TranscriptCommand, type TranscriptResult } from "./transcript-mirror.ts";
+import { type DbWriterCommand, type DbWriterResult, type DerivedCommand, runWriterCommandWithin } from "./derived.ts";
+import type { TranscriptCommand, TranscriptResult } from "./transcript-mirror.ts";
 
 /** Unacknowledged commands one writer holds; a submit past it fails at once rather than queueing without bound. */
 export const DB_WRITER_QUEUE_LIMIT = 256;
@@ -32,7 +34,7 @@ export class DbWriterUnavailableError extends Error {
 	readonly code = "DB_WRITER_UNAVAILABLE";
 }
 
-/** The command ran and failed; it committed nothing. `busy` when another connection held the database past the wait. */
+/** The command failed; a stepped mirror save may have committed a partial copy. `busy` means a lock wait expired. */
 export class DbWriterCommandError extends Error {
 	readonly code = "DB_WRITER_COMMAND";
 	readonly busy: boolean;
@@ -59,14 +61,15 @@ export function writerErrorKind(error: unknown): DbWriterErrorKind | undefined {
 
 interface Waiting {
 	request: DbWriterRequest;
-	resolve: (result: TranscriptResult) => void;
+	resolve: (result: DbWriterResult) => void;
 	reject: (error: Error) => void;
 }
 
 /**
- * One database writer: a worker thread with its own connection that runs typed commands in submission order, each as
- * one transaction, and acknowledges each after its commit. Only data crosses the boundary. One writer per database
- * file (`sharedDbWriter`): another writer would only contend for SQLite's single write lock.
+ * One database writer: a worker thread with its own connection that runs typed commands in submission order, in one
+ * transaction or bounded mirror-save steps, and acknowledges after completion. Only data crosses the boundary. One writer per database
+ * file: `sharedDbWriter` for the coordination file's bookkeeping (`post`), `sharedMirrorWriter` for the transcript
+ * mirror (`submit`); another writer of the same file would only contend for SQLite's single write lock.
  */
 export class DbWriter {
 	private worker: Worker | undefined;
@@ -75,15 +78,20 @@ export class DbWriter {
 	private restarts = 0;
 	private sequence = 0;
 	private readonly waiting = new Map<number, Waiting>();
-	private idle: (() => void)[] = [];
+	private idle = new Set<() => void>();
 	private loading: NodeJS.Timeout | undefined;
 
 	private readonly locations: DbWriterLocations;
+	private readonly role: DbWriterRole;
 	private readonly entry: URL;
 	private readonly readyTimeoutMs: number;
 
-	constructor(locations: DbWriterLocations, options: { entry?: URL; readyTimeoutMs?: number } = {}) {
+	constructor(
+		locations: DbWriterLocations,
+		options: { entry?: URL; readyTimeoutMs?: number; role?: DbWriterRole } = {},
+	) {
 		this.locations = locations;
+		this.role = options.role ?? "coordination";
 		this.entry = options.entry ?? defaultEntry();
 		this.readyTimeoutMs = options.readyTimeoutMs ?? READY_TIMEOUT_MS;
 		// A Bun executable embeds only the entries its build names, and this writer's file is not one: there the commands
@@ -109,13 +117,25 @@ export class DbWriter {
 
 	/** Resolves after the command's transaction committed (or found nothing to do); rejects with one of the errors above. */
 	submit(command: TranscriptCommand): Promise<TranscriptResult> {
+		return this.send(command) as Promise<TranscriptResult>;
+	}
+
+	/**
+	 * A bookkeeping write (`derived.ts`) the caller does not wait for: it runs after every command sent before it, so it
+	 * never overtakes one. Resolves after its commit; rejects with one of the errors above.
+	 */
+	async post(command: DerivedCommand): Promise<void> {
+		await this.send(command);
+	}
+
+	private send(command: DbWriterCommand): Promise<DbWriterResult> {
 		if (this.inline) return this.runInline(command);
 		if (this.waiting.size >= DB_WRITER_QUEUE_LIMIT)
 			return Promise.reject(new DbWriterBusyError("Database writer queue is full"));
 		const worker = this.start();
 		if (!worker) return this.runInline(command);
 		const request = { id: ++this.sequence, command };
-		return new Promise<TranscriptResult>((resolve, reject) => {
+		return new Promise<DbWriterResult>((resolve, reject) => {
 			try {
 				// Cloned now: later changes to the caller's objects do not reach the command.
 				worker.postMessage(request);
@@ -131,15 +151,22 @@ export class DbWriter {
 	async drain(timeoutMs: number): Promise<boolean> {
 		if (this.waiting.size === 0) return true;
 		let timer: NodeJS.Timeout | undefined;
-		const done = await Promise.race([
-			new Promise<boolean>((resolve) => this.idle.push(() => resolve(true))),
-			new Promise<boolean>((resolve) => {
-				timer = setTimeout(() => resolve(false), timeoutMs);
-				timer.unref();
-			}),
-		]);
-		clearTimeout(timer);
-		return done;
+		let finished: (() => void) | undefined;
+		try {
+			return await Promise.race([
+				new Promise<boolean>((resolve) => {
+					finished = () => resolve(true);
+					this.idle.add(finished);
+				}),
+				new Promise<boolean>((resolve) => {
+					timer = setTimeout(() => resolve(false), timeoutMs);
+					timer.unref();
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+			if (finished) this.idle.delete(finished);
+		}
 	}
 
 	/** Stop the worker now; unacknowledged commands reject as unavailable. Later commands run on the calling thread. */
@@ -152,10 +179,10 @@ export class DbWriter {
 		void worker?.terminate().catch(() => undefined);
 	}
 
-	private runInline(command: TranscriptCommand): Promise<TranscriptResult> {
+	private runInline(command: DbWriterCommand): Promise<DbWriterResult> {
 		try {
 			const agent = sharedDatabase(this.locations);
-			return Promise.resolve(withBusyTimeout(agent.db, INLINE_BUSY_MS, () => runTranscriptCommand(agent, command)));
+			return Promise.resolve(runWriterCommandWithin(agent, command, INLINE_BUSY_MS));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return Promise.reject(new DbWriterCommandError(message, isBusy(error)));
@@ -166,7 +193,7 @@ export class DbWriter {
 		if (this.worker) return this.worker;
 		let worker: Worker;
 		try {
-			const workerData: DbWriterWorkerData = { worker: DB_WRITER_WORKER, locations: this.locations };
+			const workerData: DbWriterWorkerData = { worker: DB_WRITER_WORKER, locations: this.locations, role: this.role };
 			worker = new Worker(this.entry, { workerData });
 		} catch {
 			this.inline = true;
@@ -232,7 +259,7 @@ export class DbWriter {
 	private settle(): void {
 		if (this.waiting.size > 0) return;
 		const idle = this.idle;
-		this.idle = [];
+		this.idle = new Set();
 		for (const resolve of idle) resolve();
 	}
 }
@@ -278,12 +305,21 @@ function holdExit(): void {
 	});
 }
 
-/** The process's writer for this database file, started at its first command. */
+/** The process's writer for this coordination file (bookkeeping, `post`), started at its first command. */
 export function sharedDbWriter(locations: DbWriterLocations): DbWriter {
-	const key = canonicalPath(locations.file);
+	return shared(locations, "coordination", locations.file);
+}
+
+/** The process's writer for this transcript mirror file (`submit`), started at its first command. */
+export function sharedMirrorWriter(locations: DbWriterLocations): DbWriter {
+	return shared(locations, "mirror", locations.mirrorFile);
+}
+
+function shared(locations: DbWriterLocations, role: DbWriterRole, file: string): DbWriter {
+	const key = canonicalPath(file);
 	let writer = writers.get(key);
 	if (!writer) {
-		writer = new DbWriter(locations);
+		writer = new DbWriter(locations, { role });
 		writers.set(key, writer);
 	}
 	return writer;

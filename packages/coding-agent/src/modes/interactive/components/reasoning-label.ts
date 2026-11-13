@@ -1,4 +1,4 @@
-import { type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
+import { animationClock, type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { liveShimmer, stateMark } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -111,8 +111,9 @@ export class LiveThinkingLabel implements Component {
 	}
 
 	render(width: number): string[] {
-		const now = Date.now();
-		this.renderedAt = now;
+		this.renderedAt = Date.now();
+		// Drawn at the clock's decoration time: a frame painted while the user scrolls shows the label where it stopped.
+		const now = animationClock.decorationTime();
 		const hint = this.hint ? theme.fg("dim", ` ${this.hint}`) : "";
 		return new Text(
 			`${stateMark(theme, "running", { now })} ${liveShimmer(theme, THINKING_LABEL, now)}${hint}`,

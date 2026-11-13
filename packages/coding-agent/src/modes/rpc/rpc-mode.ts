@@ -25,6 +25,7 @@ import {
 import { createEventOutput, waitForEventBackpressure } from "../event-output.ts";
 import { headlessCommandActions } from "../headless-actions.ts";
 import { handleTerminationSignals } from "../termination-signals.ts";
+import { createEventLines } from "../event-lines.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { toLeanJsonEvent } from "../json-event-lean.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
@@ -63,8 +64,12 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	const output = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
 		writeRawStdout(serializeJsonLine(obj));
 	};
-	const toWire = options.leanEvents ? toLeanJsonEvent : toJsonEvent;
-	const outputEvent = createEventOutput<AgentSessionEvent>((event) => output(toWire(event)));
+	// Lean events repeat no message; the default ones write a large message's serialized text again (`event-lines.ts`).
+	const eventLines = createEventLines();
+	const outputEvent = createEventOutput<AgentSessionEvent>((event) => {
+		if (options.leanEvents) output(toLeanJsonEvent(event));
+		else for (const piece of eventLines(toJsonEvent(event))) writeRawStdout(piece);
+	});
 
 	// Pending extension UI requests waiting for response
 	const pendingExtensionRequests: PendingExtensionRequests = new Map();

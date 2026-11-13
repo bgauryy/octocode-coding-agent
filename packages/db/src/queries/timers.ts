@@ -244,14 +244,14 @@ export function cancelAll(db: DatabaseSync, sessionId: string, now: number): Tim
 }
 
 /**
- * Retention: drops ended timers that ended before `cutoff`, and active ones untouched since then (their session was never
- * resumed to fire them). Returns the rows removed.
+ * Retention: drops ended timers that ended before `cutoff`, and active ones both untouched and overdue since then
+ * (their session was never resumed to fire them). A future wake survives even when its timer was set long ago.
  */
 export function purgeBefore(db: DatabaseSync, cutoff: number): number {
 	return Number(
 		db
 			.prepare(
-				"DELETE FROM timers WHERE (status <> 'active' AND ended_at < ?1) OR (status = 'active' AND updated_at < ?1)",
+				"DELETE FROM timers WHERE (status <> 'active' AND ended_at < ?1) OR (status = 'active' AND updated_at < ?1 AND due_at < ?1)",
 			)
 			.run(cutoff).changes,
 	);

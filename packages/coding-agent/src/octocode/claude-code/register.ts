@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import { type ExtensionAPI, readsMessagesOnly } from "../../core/features/index.ts";
 import { forgetRunner, type RunnerState } from "../external/runner-status.ts";
 import { claudeCodeLaunch } from "./launch.ts";
 import { CLAUDE_CODE_PROVIDER, CLAUDE_CODE_RUNNER } from "./models.ts";
@@ -24,8 +24,11 @@ export function registerClaudeCode(api: ExtensionAPI, states: readonly RunnerSta
 export function attachBackend(api: ExtensionAPI, backend: ClaudeCodeBackend): void {
 	api.registerProvider(backend.provider);
 	api.on("session_start", async (_event, ctx) => backend.bind(ctx.sessionManager.getSessionId(), ctx.cwd));
-	api.on("context", async (_event, ctx) => {
-		if (ctx.model?.provider === CLAUDE_CODE_PROVIDER) backend.markTurn();
-	});
+	api.on(
+		"context",
+		readsMessagesOnly(async (_event, ctx) => {
+			if (ctx.model?.provider === CLAUDE_CODE_PROVIDER) backend.markTurn();
+		}),
+	);
 	api.on("session_shutdown", async () => backend.close());
 }

@@ -341,7 +341,7 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 		// The child adopted the parent's skills, so it can load one by name.
 		expect(declared).toContain("skill");
 		expect(JSON.stringify(f.requests[0].messages)).toContain(
-			"Use the skill tool, one call per name, to load every skill",
+			"Use the skill tool (one call per name) to load every skill",
 		);
 	} finally {
 		await f.close();

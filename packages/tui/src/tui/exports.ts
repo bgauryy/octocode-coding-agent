@@ -26,4 +26,12 @@ export type {
 } from "./overlay-types.ts";
 export { computeRenderDelayMs, type RenderPacingOptions, type RenderPacingStats } from "./render-pacing.ts";
 export type { RenderErrorListener } from "./render-isolation.ts";
+export {
+	isRenderStable,
+	linkRenderChild,
+	renderChanged,
+	renderSerial,
+	settleRender,
+	trackRenderChanges,
+} from "./render-signal.ts";
 export { isViewportTUI, type TUI, type TuiMode, type TuiStopOptions, VIEWPORT_TUI, type ViewportTUI } from "./types.ts";

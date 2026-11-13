@@ -13,6 +13,7 @@ const LOAD = 2000;
  */
 export class ShellHistoryStore {
 	private cache: HistoryEntry[] | undefined;
+	private prefetch: NodeJS.Immediate | undefined;
 	private writes = 0;
 	private readonly env: NodeJS.ProcessEnv;
 
@@ -22,6 +23,11 @@ export class ShellHistoryStore {
 
 	entries(): HistoryEntry[] {
 		if (this.cache) return this.cache;
+		this.load();
+		return this.cache ?? [];
+	}
+
+	private load(): void {
 		try {
 			this.cache = shellHistory.recent(sharedAgentDb(this.env).db, LOAD).map((row) => ({
 				command: row.command,
@@ -33,7 +39,20 @@ export class ShellHistoryStore {
 		} catch {
 			this.cache = [];
 		}
-		return this.cache;
+	}
+
+	/**
+	 * A recorded run changed the ranking: drop the cached entries and read them again once the current work is done, so
+	 * the first key of the next `!` line does not wait for the database. A key that comes first reads them itself.
+	 */
+	private refresh(): void {
+		this.cache = undefined;
+		if (this.prefetch) return;
+		this.prefetch = setImmediate(() => {
+			this.prefetch = undefined;
+			if (!this.cache) this.load();
+		});
+		this.prefetch.unref();
 	}
 
 	/** Counts a run of `command` in `cwd`. */
@@ -45,7 +64,7 @@ export class ShellHistoryStore {
 		} catch {
 			// History is a convenience.
 		}
-		this.cache = undefined;
+		this.refresh();
 	}
 
 	/** Stores how the last run of `command` in `cwd` exited. */
@@ -55,6 +74,6 @@ export class ShellHistoryStore {
 		} catch {
 			// History is a convenience.
 		}
-		this.cache = undefined;
+		this.refresh();
 	}
 }

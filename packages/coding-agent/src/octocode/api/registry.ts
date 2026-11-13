@@ -41,9 +41,13 @@ export function ensurePrivateDir(dir: string): void {
 	}
 }
 
+/**
+ * Replace the instance's record atomically: a reader sees the old record or the new one. Not flushed to disk: a record
+ * describes a running process, which a crash ends, and readers skip a record that does not parse or whose pid is gone.
+ */
 export function writeRecord(dir: string, record: InstanceRecord): void {
 	ensurePrivateDir(dir);
-	atomicWriteFileSync(recordFile(dir, record.id), JSON.stringify(record, null, 2), { mode: 0o600 });
+	atomicWriteFileSync(recordFile(dir, record.id), JSON.stringify(record, null, 2), { mode: 0o600, durability: "none" });
 }
 
 export function removeRecord(dir: string, id: string): void {

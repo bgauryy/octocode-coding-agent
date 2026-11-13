@@ -1,5 +1,6 @@
 import type { AutocompleteProvider } from "../../autocomplete/types.ts";
 import type { SelectList } from "../select-list.ts";
+import type { TokenPattern } from "./autocomplete-patterns.ts";
 import { findAtQuery, startProgressTicker } from "./autocomplete-token.ts";
 import type { EditorState } from "./types.ts";
 
@@ -8,7 +9,7 @@ export interface IndexingProgressOwner {
 	readonly autocompleteProvider?: AutocompleteProvider;
 	readonly autocompleteList?: SelectList;
 	readonly autocompleteIndexing: boolean;
-	readonly autocompleteTriggerPattern: RegExp;
+	readonly autocompleteTriggerPattern: TokenPattern;
 	/** Replaces the list with a row-less `@` list that shows `emptyText`. */
 	showPlaceholder(query: string, indexing: boolean, emptyText?: string): void;
 }

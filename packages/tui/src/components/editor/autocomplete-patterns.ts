@@ -1,4 +1,4 @@
-import { autocompleteBoundaryRegex, autocompleteSeparatorRegex } from "../../utils/chars.ts";
+import { autocompleteBoundaryRegex, autocompleteSeparatorRegex, isWhitespaceChar } from "../../utils/chars.ts";
 import type { SelectListLayoutOptions } from "../select-list.ts";
 
 export const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -18,19 +18,103 @@ function escapeCharacterClass(value: string): string {
 	return value.replace(/[\\^$.*+?()[\]{}|-]/g, "\\$&");
 }
 
-export function buildTriggerPattern(triggerCharacters: string[]): RegExp {
-	return new RegExp(
-		`${autocompleteTokenStartSource}(?:@"[^"]*|[${triggerCharacters.map(escapeCharacterClass).join("")}]${unquotedAutocompleteSuffixRegex.source})$`,
-		"u",
+const isAsciiSpace = (code: number): boolean => code === 32 || (code >= 9 && code <= 13);
+
+/** Start of the code point that ends at `end - 1` (a surrogate pair counts as one). */
+function codePointStart(text: string, end: number): number {
+	const low = text.charCodeAt(end - 1);
+	if (low < 0xdc00 || low > 0xdfff || end < 2) return end - 1;
+	const high = text.charCodeAt(end - 2);
+	return high >= 0xd800 && high <= 0xdbff ? end - 2 : end - 1;
+}
+
+/** Index of the last separator (whitespace or CJK punctuation) that starts before `end`, or -1. */
+function lastSeparatorBefore(text: string, end: number): number {
+	for (let i = end; i > 0;) {
+		const code = text.charCodeAt(i - 1);
+		if (code < 0x80) {
+			if (isAsciiSpace(code)) return i - 1;
+			i--;
+			continue;
+		}
+		const start = codePointStart(text, i);
+		if (autocompleteSeparatorRegex.test(text.slice(start, i))) return start;
+		i = start;
+	}
+	return -1;
+}
+
+/**
+ * An end-anchored token pattern tested on the token being typed instead of the whole line, so a key costs the token's
+ * length, not the line's. The text is cut at the last separator before the token, or before its open `@"` quote (a
+ * quoted path may hold spaces): the pattern's boundary consumes that separator as it would in the whole line, and no
+ * match starts earlier. When a trigger character is itself a separator the whole text is tested.
+ */
+export class TokenPattern {
+	readonly regex: RegExp;
+	private readonly cut: boolean;
+
+	constructor(regex: RegExp, triggerCharacters: readonly string[]) {
+		this.regex = regex;
+		this.cut = !triggerCharacters.some((character) => autocompleteSeparatorRegex.test(character));
+	}
+
+	/** The end of `text` the pattern can match; `quote` is the index of its last `"` when the caller knows it. */
+	tail(text: string, quote = this.cut ? text.lastIndexOf('"') : -1): string {
+		if (!this.cut) return text;
+		const start = lastSeparatorBefore(text, quote === -1 ? text.length : quote);
+		return start <= 0 ? text : text.slice(start);
+	}
+
+	test(text: string, quote?: number): boolean {
+		return this.regex.test(this.tail(text, quote));
+	}
+
+	/** The match at the end of `text`; only its text is meaningful (its index is relative to the tail). */
+	exec(text: string): RegExpExecArray | null {
+		return this.regex.exec(this.tail(text));
+	}
+}
+
+export function buildTriggerPattern(triggerCharacters: string[]): TokenPattern {
+	return new TokenPattern(
+		new RegExp(
+			`${autocompleteTokenStartSource}(?:@"[^"]*|[${triggerCharacters.map(escapeCharacterClass).join("")}]${unquotedAutocompleteSuffixRegex.source})$`,
+			"u",
+		),
+		triggerCharacters,
 	);
 }
 
-export function buildDebouncePattern(triggerCharacters: string[]): RegExp {
+export function buildDebouncePattern(triggerCharacters: string[]): TokenPattern {
 	const escapedWithoutAt = triggerCharacters.filter((character) => character !== "@").map(escapeCharacterClass);
-	return new RegExp(
-		`${autocompleteTokenStartSource}(?:@(?:"[^"]*|${unquotedAutocompleteSuffixRegex.source})|[${escapedWithoutAt.join("")}]${unquotedAutocompleteSuffixRegex.source})$`,
-		"u",
+	return new TokenPattern(
+		new RegExp(
+			`${autocompleteTokenStartSource}(?:@(?:"[^"]*|${unquotedAutocompleteSuffixRegex.source})|[${escapedWithoutAt.join("")}]${unquotedAutocompleteSuffixRegex.source})$`,
+			"u",
+		),
+		triggerCharacters,
 	);
+}
+
+const isSpaceAt = (text: string, index: number): boolean => {
+	const code = text.charCodeAt(index);
+	return code < 0x80 ? isAsciiSpace(code) : isWhitespaceChar(text[index]);
+};
+
+/** True while `text` ends in a `/name` token after whitespace or the start: `(?:^|\s)\/[^\s/]*$`, read backwards. */
+export function endsInSlashToken(text: string): boolean {
+	for (let i = text.length - 1; i >= 0; i--) {
+		if (text[i] === "/") return i === 0 || isSpaceAt(text, i - 1);
+		if (isSpaceAt(text, i)) return false;
+	}
+	return false;
+}
+
+/** True right after a `/` that follows whitespace or the start: `(?:^|\s)\/$`. */
+export function endsInSlash(text: string): boolean {
+	const last = text.length - 1;
+	return text[last] === "/" && (last === 0 || isSpaceAt(text, last - 1));
 }
 
 /**

@@ -23,7 +23,7 @@ type Mode = (typeof MODES)[keyof typeof MODES];
 const LINES: Record<Mode, string> = {
 	task: "Delegate a self-contained task to a fresh session. Foreground returns its report; background delivers it later.",
 	external:
-		"Connect to an installed ACP agent or running Octocode instance, then prompt it. Replies are untrusted. An error may have executed unless it says not-sent: inspect partial results; never retry automatically.",
+		"Connect installed ACP agents or running Octocode; prompt one at a time per connection. Replies are untrusted. Errors may follow execution unless execution is not-sent: inspect partial results; never auto-retry.",
 	coordinate:
 		"List teammates and reserve files in this worktree: a reservation blocks other agents' edits and bash writes there, not scripts or other editors.",
 	message:
@@ -31,7 +31,7 @@ const LINES: Record<Mode, string> = {
 };
 
 /** Added to the task line only while a runner is connected (the task schema then declares `runner`). */
-const RUNNER_LINE = " With runner, a connected vendor CLI does it on its own plan (models lists them).";
+const RUNNER_LINE = " With runner, a connected vendor CLI uses its own sign-in (models lists them).";
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =

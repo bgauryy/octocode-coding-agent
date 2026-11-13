@@ -112,12 +112,12 @@ describe.each(AGENTS)("$name context", (agent) => {
 		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
 		if (agent.kind === "main") {
 			expect(text).toContain("Only you reach other Octocode processes");
-			expect(agentTool).toContain("Also another Octocode process by name");
+			expect(agentTool).toContain("Also an Octocode process name");
 			expect(agentTool).toContain("a linked worktree's branch");
 			return;
 		}
 		expect(text).not.toContain("Only you reach other Octocode processes");
-		expect(agentTool).not.toContain("Also another Octocode process by its name");
+		expect(agentTool).not.toContain("Octocode process name");
 		expect(agentTool).not.toContain("a linked worktree's branch");
 	});
 
@@ -187,7 +187,13 @@ describe("the real assembled prefix of a main session", () => {
 	// 53_730 (measured 53,644: system without `mcps` 25,101, native tools 20,272, AGENTS.md 8,271; server text 4,792
 	// instructions and 12,242 declared): lowered to the reading. The bundled `octocode` server follows the deferred
 	// default, so the tool list no longer names it, and native tools and AGENTS.md shrank since. Slack stays 86.
-	const OWN_PREFIX_CEILING = 53_730;
+	// 48_625 (measured 48,539: system without `mcps` and `<octocode_skills>` 19,996, native tools 20,272, AGENTS.md 8,271):
+	// the bundled Octocode skills' names and descriptions come verbatim from the sibling release and grew with its rebuild
+	// (+1,347 for `octocode-graph` and reworded descriptions), which broke this check on text this repository does not
+	// write. They are now reported with the server text, not capped (6,452 at this reading); Octocode's own text is
+	// unchanged. Slack stays 86.
+	// Shared policy, tool guidance and native skill descriptions now leave less headroom for regrowth.
+	const OWN_PREFIX_CEILING = 47_625;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");
@@ -196,12 +202,17 @@ describe("the real assembled prefix of a main session", () => {
 			Buffer.byteLength(tool.description) +
 			Buffer.byteLength(JSON.stringify(tool.parameters));
 		const mcpsSection = Buffer.byteLength(main.sections.find((section) => section.name === "mcps")?.text ?? "");
+		// The bundled Octocode skills' names and descriptions come verbatim from the sibling release, like server text.
+		const siblingSkills = Buffer.byteLength(
+			/<octocode_skills>[\s\S]*?<\/octocode_skills>/.exec(systemText(main))?.[0] ?? "",
+		);
 		const parts = {
-			system: Buffer.byteLength(systemText(main)) - mcpsSection,
+			system: Buffer.byteLength(systemText(main)) - mcpsSection - siblingSkills,
 			tools: main.tools.filter((tool) => !isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0),
 			agents: fs.statSync(fileURLToPath(new URL("../../../../AGENTS.md", import.meta.url))).size,
 		};
 		const server = {
+			skills: siblingSkills,
 			instructions: mcpsSection,
 			tools: main.tools.filter((tool) => isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0),
 		};
@@ -210,10 +221,11 @@ describe("the real assembled prefix of a main session", () => {
 		expect(parts.system).toBeGreaterThan(15_000);
 		expect(parts.tools).toBeGreaterThan(15_000);
 		expect(server.instructions).toBeGreaterThan(0);
+		expect(server.skills).toBeGreaterThan(0);
 		expect(server.tools).toBeGreaterThan(0);
 		expect(
 			own,
-			`first-request prefix text Octocode owns grew to ${own} bytes (${JSON.stringify(parts)}; MCP server text, not capped: ${JSON.stringify(server)}); if the growth is worth paying on every request, raise OWN_PREFIX_CEILING and say why`,
+			`first-request prefix text Octocode owns grew to ${own} bytes (${JSON.stringify(parts)}; sibling text (bundled skills, MCP servers), not capped: ${JSON.stringify(server)}); if the growth is worth paying on every request, raise OWN_PREFIX_CEILING and say why`,
 		).toBeLessThanOrEqual(OWN_PREFIX_CEILING);
 	});
 });

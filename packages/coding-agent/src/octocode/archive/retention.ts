@@ -20,7 +20,7 @@ export async function expireArchiveDetails(
 	const { days } = resolveRetention(env);
 	if (!days) return;
 	await repairCatalog(agent, new HistoryRepair(agent, env));
-	for (const row of compactions.expirable(agent.db, now - days * DAY_MS)) {
+	for (const row of compactions.expirable(agent.mirror.db, now - days * DAY_MS)) {
 		const workspace = workspaces.byId(agent.db, row.workspace);
 		if (!workspace) continue;
 		const marker = readWorkspaceIdentity(workspace.root);
@@ -34,7 +34,7 @@ export async function expireArchiveDetails(
 			(await fs.promises.lstat(file).catch(() => undefined))?.isSymbolicLink()
 		)
 			continue;
-		agent.transaction(() => compactions.expire(agent.db, row.sessionId, row.entryId));
+		agent.mirror.transaction(() => compactions.expire(agent.mirror.db, row.sessionId, row.entryId));
 		try {
 			await fs.promises.rm(file, { force: true });
 			await writeSummaryLibrary(agent, row.sessionId, env, workspace.root);
@@ -66,7 +66,7 @@ export async function mayRemoveArchive(
 		return false;
 	}
 	const id = path.basename(path.dirname(folder));
-	const rows = compactions.forSession(agent.db, id);
+	const rows = compactions.forSession(agent.mirror.db, id);
 	for (const name of names.filter(isSegmentFile)) {
 		const row = rows.find((entry) => path.basename(entry.detailFile ?? "") === name);
 		if (!row?.originVerified || row.committedAt === null || now - row.committedAt < days * DAY_MS) return false;

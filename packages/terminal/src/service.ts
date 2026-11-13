@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { carapaceComplete } from "./carapace.ts";
@@ -45,6 +46,9 @@ export class ShellCompletionService {
 	private driver: DriverProcess | undefined;
 	private dir: string | undefined;
 	private starts = 0;
+	private starting: Promise<DriverProcess | undefined> | undefined;
+	/** Counts stops: a driver whose start began before a stop is not started. */
+	private generation = 0;
 	private shell: ResolvedShell | undefined | null = null;
 	private carapace: string | undefined | null = null;
 	private readonly path = new PathCommands();
@@ -77,16 +81,36 @@ export class ShellCompletionService {
 		return this.shell;
 	}
 
-	private startDriver(): DriverProcess | undefined {
-		if (this.driver && !this.driver.isClosed) return this.driver;
+	/** The running driver, or one being started (its startup files written without blocking the first Tab). */
+	private startDriver(): Promise<DriverProcess | undefined> {
+		if (this.driver && !this.driver.isClosed) return Promise.resolve(this.driver);
+		this.starting ??= this.launchDriver().finally(() => {
+			this.starting = undefined;
+		});
+		return this.starting;
+	}
+
+	private async launchDriver(): Promise<DriverProcess | undefined> {
 		const shell = this.resolved();
 		if (!shell || this.starts >= MAX_STARTS) return undefined;
 		this.starts++;
+		const generation = this.generation;
 		this.removeDir();
-		const dir = mkdtempSync(join(tmpdir(), `octocode-${shell.spec.name}-`));
+		const dir = await mkdtemp(join(tmpdir(), `octocode-${shell.spec.name}-`));
+		try {
+			await Promise.all(
+				Object.entries(shell.spec.files).map(([name, content]) => writeFile(join(dir, name), content, { mode: 0o600 })),
+			);
+		} catch (error) {
+			rmSync(dir, { recursive: true, force: true });
+			throw error;
+		}
+		// Stopped (a new folder, settings, dispose) while the files were written: start nothing.
+		if (generation !== this.generation) {
+			rmSync(dir, { recursive: true, force: true });
+			return undefined;
+		}
 		this.dir = dir;
-		for (const [name, content] of Object.entries(shell.spec.files))
-			writeFileSync(join(dir, name), content, { mode: 0o600 });
 		const env = { ...this.options.env, ...COMPLETION_ENV };
 		const launch = shell.spec.launch({ binary: shell.binary, dir, loadRc: this.options.loadRc, env });
 		const driver = new DriverProcess(
@@ -125,7 +149,8 @@ export class ShellCompletionService {
 	}
 
 	private async fromShell(text: string, line: ShellLine, signal: AbortSignal): Promise<ShellCompletions | undefined> {
-		const driver = this.startDriver();
+		const driver = await this.startDriver();
+		if (signal.aborted) return undefined;
 		const spec = this.shell?.spec;
 		if (!driver || !spec) return undefined;
 		const offset = spec.segmentOnly ? line.segmentStart : 0;
@@ -160,6 +185,7 @@ export class ShellCompletionService {
 	}
 
 	private stopDriver(): void {
+		this.generation++;
 		this.driver?.close();
 		this.driver = undefined;
 		this.removeDir();

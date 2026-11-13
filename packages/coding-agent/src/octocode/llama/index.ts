@@ -217,11 +217,15 @@ export default function llamaExtension(api: ExtensionAPI): void {
 			const client = await configuredClient(ctx);
 			if (!client) return;
 			await showLlamaUi(ctx, async (ui) => {
-				const readCatalog = async (): Promise<LlamaModelInfo[] | undefined> => {
+				const readCatalog = async (): Promise<
+					{ models: LlamaModelInfo[]; connectionErrorShown: boolean } | undefined
+				> => {
+					let connectionErrorShown = false;
 					while (true) {
 						try {
-							return await syncCatalog(ctx, client);
+							return { models: await syncCatalog(ctx, client), connectionErrorShown };
 						} catch (error) {
+							connectionErrorShown = true;
 							if ((await ui.connectionError(client.serverUrl, connectionErrorMessage(error))) === "close") {
 								return undefined;
 							}
@@ -229,8 +233,9 @@ export default function llamaExtension(api: ExtensionAPI): void {
 					}
 				};
 
-				let catalog = await readCatalog();
-				if (!catalog) return;
+				const initial = await readCatalog();
+				if (!initial) return;
+				let catalog = initial.models;
 				while (true) {
 					const action = await ui.showModels(client.serverUrl, catalog);
 					if (action.type === "close") return;
@@ -245,8 +250,8 @@ export default function llamaExtension(api: ExtensionAPI): void {
 					}
 					const refreshed = await readCatalog();
 					if (!refreshed) return;
-					catalog = refreshed;
-					if (actionFailure && !isConnectionError(actionFailure.error)) {
+					catalog = refreshed.models;
+					if (actionFailure && (!refreshed.connectionErrorShown || !isConnectionError(actionFailure.error))) {
 						const { error } = actionFailure;
 						say(ctx, errorMessage(error), "error");
 					}

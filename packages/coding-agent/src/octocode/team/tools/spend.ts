@@ -16,11 +16,11 @@ export function registerRecordedSpend(api: ExtensionAPI, team: Team): void {
 		if (spend) team.onUsage(spend.usage, undefined, unpricedModel(spend, modelLookup(ctx)) !== undefined);
 	};
 	const addRecorded = (ctx: ExtensionContext) => {
-		for (const spend of scan.recorded(ctx.sessionManager.getEntries())) add(spend, ctx);
+		for (const spend of scan.recordedIn(ctx.sessionManager)) add(spend, ctx);
 	};
 	api.on("session_start", async (_event, ctx) => {
 		scan.reset();
-		scan.recorded(ctx.sessionManager.getEntries());
+		scan.recordedIn(ctx.sessionManager);
 	});
 	api.on("message_end", async (event, ctx) => {
 		if (event.message.role === "assistant") addRecorded(ctx);

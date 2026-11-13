@@ -24,6 +24,17 @@ export interface ChildRun {
 	host?: RelayHost;
 	/** Resolves when the task may be sent (`stagger.ts`); the child boots at once either way. */
 	ready?: () => Promise<void>;
+	/** The child's process exited or failed to start (each start of a retried one): `stagger.ts` stops holding its siblings for it. */
+	exited?: () => void;
+	/**
+	 * The run settled for good: its report is known while the child still exits and is cleaned up. A hint for batching
+	 * reports (`ReportQueue`); a throw here is ignored.
+	 */
+	settled?: () => void;
+	/** Takes how to ask whether the child still works toward its answer: running, not stalled, not waiting for a person, not stopped. */
+	working?: (probe: () => boolean) => void;
+	/** That answer may have turned false (an exit, a stall, a question to the user, a stop); a throw here is ignored. */
+	workingChanged?: () => void;
 }
 
 /**
@@ -73,6 +84,11 @@ export class RunPhase {
 	stop(start: () => Promise<void>): void {
 		if (this.concluded) return;
 		this.#stopping ??= start().catch(() => undefined);
+	}
+
+	/** The stop `stop` started, until it ends; undefined when none did. */
+	get stopping(): Promise<void> | undefined {
+		return this.#stopping;
 	}
 
 	/** Cleanup the run waits for before it concludes; its failure is ignored. */

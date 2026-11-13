@@ -508,7 +508,9 @@ describe("memory tool", () => {
 			for (const line of tool.promptGuidelines as string[]) expect(line.length, line).toBeLessThanOrEqual(230);
 			expect([tool.description, ...tool.promptGuidelines].join(" ")).not.toMatch(/ {2}/);
 			// A memory read by search (not only the injected header) may be stale: the guideline says to check it.
-			expect(tool.promptGuidelines.join(" ")).toMatch(/may be stale: check a file, function or flag it names/);
+			expect(tool.promptGuidelines.join(" ")).toMatch(
+				/Check a memory's named file, function or flag before relying on it/,
+			);
 			expect(MEMORY_HEADER).toMatch(/may be stale/);
 			for (const [name, schema] of Object.entries(
 				tool.parameters.properties as Record<string, { description?: string }>,

@@ -13,6 +13,7 @@ import { type SendResult, sendMessage } from "./session/send.ts";
 import type { TeamView } from "./ticker.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamState } from "./session/state.ts";
+import { patiently } from "./store/patient.ts";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
 export class Team extends TeamState {
@@ -175,6 +176,22 @@ export class Team extends TeamState {
 	unansweredPeerAsks(agentId: string): number {
 		return refs.unansweredPeerAsks(this.sendHost(), agentId);
 	}
+	/**
+	 * Runs a team write the agent asked for (`join`, `leave`, `lock`, `unlock`) without waiting inside SQLite: while
+	 * another process holds the database it is tried again after a pause (`store/patient.ts`). Without a usable store
+	 * `work` runs as it is, so its own error is the one reported.
+	 */
+	async patiently<T>(work: () => T, signal?: AbortSignal): Promise<T> {
+		const store = (() => {
+			try {
+				return this.database.store();
+			} catch {
+				return undefined;
+			}
+		})();
+		return store ? patiently(store, work, signal) : work();
+	}
+
 	/** Reserve paths (a trailing `/` marks a whole directory tree) for this agent. */
 	lock(
 		paths: string[],

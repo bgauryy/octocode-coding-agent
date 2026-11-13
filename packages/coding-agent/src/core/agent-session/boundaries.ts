@@ -8,7 +8,8 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import type { AgentActivityOutcome, BoundaryContextPreview, SessionBoundaryDraft } from "../features/index.ts";
 import { convertToLlm, type CustomMessage } from "../messages.ts";
-import { type SessionEntry, SessionManager } from "../session-manager.ts";
+import { type SessionEntry, SessionManager, type SessionProjection } from "../session-manager.ts";
+import type { DraftAppender } from "../session-manager/projection-memo.ts";
 import type { SessionInternals } from "./host.ts";
 
 export interface BoundariesHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
@@ -48,11 +49,22 @@ export class SessionBoundaries {
 	}
 
 	refreshFinalizedContext(): void {
+		this._refreshContext(true);
+	}
+
+	/**
+	 * Replace the agent's context with the session's projection and announce it. Unless `always`, a context that already
+	 * holds the projection's messages, the same objects in the same order, is left as it is and nothing is announced: a
+	 * turn boundary without drafts ends that way, and announcing it made every view compare the whole context again.
+	 */
+	private _refreshContext(always: boolean): void {
 		const projection = this.host.session.sessionManager.buildSessionProjection();
 		for (const entry of projection.entries) {
 			for (const message of entry.messages) this._entryIdsByMessage.set(message, entry.sourceEntry.id);
 		}
-		this.host.session.agent.state.messages = projection.messages;
+		const agent = this.host.session.agent;
+		if (!always && sameMessages(agent.state.messages, projection.messages)) return;
+		agent.state.messages = projection.messages;
 		this.host.emit({ type: "session_context_changed" });
 	}
 
@@ -177,7 +189,7 @@ export class SessionBoundaries {
 		};
 	}
 
-	private _applyBoundaryDrafts(manager: SessionManager, drafts: SessionBoundaryDraft[]): SessionEntry[] {
+	private _applyBoundaryDrafts(manager: DraftAppender, drafts: SessionBoundaryDraft[]): SessionEntry[] {
 		const appended: SessionEntry[] = [];
 		for (const draft of drafts) {
 			let entryId: string;
@@ -200,13 +212,19 @@ export class SessionBoundaries {
 		return appended;
 	}
 
-	private _createBoundaryPreviewManager(drafts: SessionBoundaryDraft[]): SessionManager {
+	/**
+	 * The projection with the drafts appended after the leaf, without saving them: the session's kept projection with the
+	 * drafts added (`previewProjection`), else a copy of the branch with the drafts applied and projected.
+	 */
+	private _previewProjection(drafts: SessionBoundaryDraft[]): SessionProjection {
 		const sessionManager = this.host.session.sessionManager;
+		const preview = sessionManager.previewProjection((appender) => this._applyBoundaryDrafts(appender, drafts));
+		if (preview) return preview;
 		const header = sessionManager.getHeader();
 		if (!header) throw new Error("Session header is missing");
 		const manager = SessionManager.inMemory(this.host.cwd, undefined, [header, ...sessionManager.getBranch()]);
 		this._applyBoundaryDrafts(manager, drafts);
-		return manager;
+		return manager.buildSessionProjection();
 	}
 
 	private _getPendingBoundaryMessages(): AgentMessage[] {
@@ -214,10 +232,9 @@ export class SessionBoundaries {
 	}
 
 	/**
-	 * Project the branch with the drafts applied. Copying the branch and projecting it is
-	 * O(branch), and a boundary asks for it once per handler and again to check continuation,
-	 * so the result is reused while the drafts and the branch leaf are unchanged. Queue state
-	 * is not part of it and is read fresh by the caller.
+	 * Project the branch with the drafts applied. A boundary asks for it once per handler and
+	 * again to check continuation, so the result is reused while the drafts and the branch leaf
+	 * are unchanged. Queue state is not part of it and is read fresh by the caller.
 	 */
 	private _projectBoundary(drafts: SessionBoundaryDraft[]): BoundaryProjection {
 		const leafId = this.host.session.sessionManager.getLeafId();
@@ -229,7 +246,7 @@ export class SessionBoundaries {
 		) {
 			return cached;
 		}
-		const projection = this._createBoundaryPreviewManager(drafts).buildSessionProjection();
+		const projection = this._previewProjection(drafts);
 		const llmMessages = convertToLlm(projection.messages);
 		const finalRole = llmMessages[llmMessages.length - 1]?.role;
 		const hasNonSystemContext = llmMessages.some((message) => message.role !== "system");
@@ -267,7 +284,7 @@ export class SessionBoundaries {
 
 	private _commitBoundaryDrafts(drafts: SessionBoundaryDraft[]): void {
 		const appended = this._applyBoundaryDrafts(this.host.session.sessionManager, drafts);
-		this.refreshFinalizedContext();
+		this._refreshContext(appended.length > 0);
 		for (const entry of appended) this.host.emit({ type: "entry_appended", entry });
 	}
 
@@ -305,4 +322,9 @@ export class SessionBoundaries {
 			this._boundaryProjection = undefined;
 		}
 	}
+}
+
+/** The same message objects in the same order. */
+function sameMessages(a: readonly AgentMessage[], b: readonly AgentMessage[]): boolean {
+	return a.length === b.length && a.every((message, index) => message === b[index]);
 }

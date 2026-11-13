@@ -81,7 +81,7 @@ describe("closing a backlog item", () => {
 	it("keeps no delete op: remove is not a tool operation and the store has no remove", async () => {
 		const { tool, plan, store } = await setup();
 		const ops = (declared: unknown) => (declared as { properties: { op: { enum: string[] } } }).properties.op.enum;
-		expect(ops(tool.parameters)).toEqual(["get", "claim", "note", "done", "close"]);
+		expect(ops(tool.parameters)).toEqual(["get", "claim", "note", "done", "close", "step"]);
 		expect(ops(plan.parameters)).toEqual(["add", "edit", "list"]);
 		expect((store as unknown as Record<string, unknown>).remove).toBeUndefined();
 	});

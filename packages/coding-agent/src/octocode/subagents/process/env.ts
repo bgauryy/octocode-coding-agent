@@ -121,6 +121,8 @@ export interface Identity {
 	hooks?: HookMode;
 	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
 	cacheTtlMs?: number;
+	/** Siblings of its prefix save by waiting for its cache entry: its model prices a cache read below the write (`staggerPays`). */
+	staggers?: boolean;
 	/** Shared cache group; transport sessions remain unique to each child. */
 	promptCacheKey?: string;
 	/** The parent chose its skills: they ride in its task and its prompt lists none (`SKILLS_IN_TASK_ENV`). */

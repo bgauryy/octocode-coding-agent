@@ -33,7 +33,7 @@ import {
 import { emitExtensionEvent, handleAgentEvent } from "./agent-session/agent-events.ts";
 import type { AgentSessionApi } from "./agent-session/api.ts";
 import { checkCompaction } from "./agent-session/compaction-check.ts";
-import { runDefaultCompaction } from "./agent-session/compaction-control.ts";
+import { runDefaultCompaction } from "./agent-session/default-compaction.ts";
 import { buildExtensionRuntime, reloadExtensionRuntime } from "./agent-session/extension-runtime.ts";
 import type { SessionInternals } from "./agent-session/host.ts";
 import { AgentSessionControl } from "./agent-session/session-control.ts";
@@ -55,7 +55,7 @@ import type {
 import type { BashResult } from "./bash-executor.ts";
 import { runUserBash, type UserBashOptions } from "./agent-session/user-bash.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
-import type { CompactionPreparation, CompactionResult } from "./compaction/index.ts";
+import type { CompactionPreparation, CompactionResult, SummaryRequestPolicy } from "./compaction/index.ts";
 import type { ExtensionRunner, ReplacedSessionContext } from "./features/index.ts";
 import type { BeforeAgentStartTrigger } from "./features/runner.ts";
 import type { CompactionReason } from "./session-compaction.ts";
@@ -169,6 +169,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		signal: AbortSignal,
 		reason: CompactionReason,
 		customInstructions?: string,
+		summaryRequest?: SummaryRequestPolicy,
 	): Promise<CompactionResult> {
 		return runDefaultCompaction(
 			{
@@ -183,6 +184,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			signal,
 			reason,
 			customInstructions,
+			summaryRequest,
 		);
 	}
 

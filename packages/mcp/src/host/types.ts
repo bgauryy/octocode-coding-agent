@@ -59,8 +59,11 @@ export interface McpContext {
 	model: McpModel | undefined;
 	signal: AbortSignal | undefined;
 	isProjectTrusted(): boolean;
-	/** The session's transcript, read for the tools it declares (`declaredParameters`); absent in a host without one. */
-	sessionManager?: { buildSessionProjection(): { messages: readonly unknown[] } };
+	/**
+	 * The session's transcript, read for the tools it declares (`declaredParameters`) and, through its current branch,
+	 * for the in-use set it saved (`recent-session.ts`); absent in a host without one.
+	 */
+	sessionManager?: { buildSessionProjection(): { messages: readonly unknown[] }; getBranch?(): readonly unknown[] };
 }
 
 /** Context of a slash command: the same members; the host's view runner reaches its UI through it. */
@@ -188,6 +191,8 @@ export interface McpExtensionApi {
 	getMcpServers(): RegisteredMcpServer[];
 	/** Sends text as the user's next message (`/mcp prompt`). */
 	sendUserMessage?(content: string): void;
+	/** Saves a record in the session that no model sees (the in-use set, `recent-session.ts`). */
+	appendEntry?(customType: string, data?: unknown): void;
 	events: EventBus;
 }
 

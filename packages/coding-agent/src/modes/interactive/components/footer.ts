@@ -14,6 +14,7 @@ import { cachedPercent, formatCost, formatTokens } from "../../../octocode/share
 import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
+import { plainText } from "./styled-line.ts";
 import { styledLine } from "../../../../../common/src/sanitize.ts";
 import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 
@@ -136,16 +137,18 @@ export class FooterComponent implements Component {
 		// Unknown (no usage yet, or just compacted) reads `?`, never `0.0%`.
 		const contextPercent = contextUsage?.percent != null ? contextPercentValue.toFixed(1) : "?";
 
-		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
+		let pwd = plainText(
+			formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
+		);
 
 		const branch = this.footerData.getGitBranch();
 		if (branch) {
-			pwd = `${pwd} (${branch})`;
+			pwd = `${pwd} (${plainText(branch)})`;
 		}
 
 		const sessionName = this.session.sessionManager.getSessionName();
 		if (sessionName) {
-			pwd = `${pwd}${SEPARATOR}${sessionName}`;
+			pwd = `${pwd}${SEPARATOR}${plainText(sessionName)}`;
 		}
 
 		const statsParts = [];

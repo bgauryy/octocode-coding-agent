@@ -63,6 +63,11 @@ describe("sampleIntervalMs", () => {
 		expect(sampleIntervalMs({ OCTOCODE_PROCESS_SAMPLE_MINUTES: "soon" })).toBe(5 * 60_000);
 		expect(sampleIntervalMs({ OCTOCODE_PROCESS_SAMPLE_MINUTES: "-3" })).toBe(5 * 60_000);
 	});
+
+	it("keeps large finite intervals within Node's timer range, including multiplication overflow", () => {
+		expect(sampleIntervalMs({ OCTOCODE_PROCESS_SAMPLE_MINUTES: "100000" })).toBe(2_147_483_647);
+		expect(sampleIntervalMs({ OCTOCODE_PROCESS_SAMPLE_MINUTES: "1e308" })).toBe(2_147_483_647);
+	});
 });
 
 describe("process sampler", () => {
@@ -76,7 +81,8 @@ describe("process sampler", () => {
 	];
 
 	it("records a sample at once: memory, identity and the children it owns, not those of a subagent", async () => {
-		const sampler = await start(table);
+		const sampler = start(table);
+		await sampler.idle();
 		const [sample] = processSamples.since(agent.db, 0);
 		expect(sample).toMatchObject({
 			pid: 100,
@@ -94,20 +100,72 @@ describe("process sampler", () => {
 			[101, "mcp", 100],
 			[102, "mcp", 101],
 		]);
-		await sampler.stop();
+		sampler.stop();
 	});
 
 	it("records again every interval while running", async () => {
-		const sampler = await start(table, 60_000);
+		const sampler = start(table, 60_000);
 		await vi.advanceTimersByTimeAsync(3 * 60_000);
 		expect(processSamples.since(agent.db, 0)).toHaveLength(4);
-		await sampler.stop();
+		sampler.stop();
+	});
+
+	it("drops elapsed intervals while a process table read is pending", async () => {
+		let answer: (rows: ProcessRow[]) => void = () => undefined;
+		const read = vi
+			.fn<() => Promise<ProcessRow[]>>()
+			.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+			.mockImplementation(table);
+		const sampler = start(read, 1000);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(read).toHaveBeenCalledTimes(1);
+		answer(await table());
+		await sampler.idle();
+		expect(read).toHaveBeenCalledTimes(1);
+		expect(processSamples.since(agent.db, 0)).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(read).toHaveBeenCalledTimes(2);
+		sampler.stop();
+	});
+
+	it("does not launch queued process reads after shutdown", async () => {
+		let answer: (rows: ProcessRow[]) => void = () => undefined;
+		const read = vi
+			.fn<() => Promise<ProcessRow[]>>()
+			.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+			.mockImplementation(table);
+		const sampler = start(read, 1000);
+		await vi.advanceTimersByTimeAsync(5000);
+		sampler.stop();
+		answer(await table());
+		await sampler.idle();
+		expect(read).toHaveBeenCalledTimes(1);
+		expect(processSamples.since(agent.db, 0).map((sample) => sample.ended)).toEqual([true]);
+	});
+
+	it("keeps direct millisecond overrides within Node's timer range", async () => {
+		const read = vi.fn(table);
+		const sampler = start(read, 2_147_483_648);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(read).toHaveBeenCalledTimes(1);
+		sampler.stop();
+	});
+
+	it("records deeply nested process trees without a recursive stack overflow", async () => {
+		const rows = Array.from({ length: 12_000 }, (_, index) => row(101 + index, 100 + index, "worker"));
+		const sampler = start(async () => rows, 0);
+		await sampler.idle();
+		expect(failures).toEqual([]);
+		expect(processSamples.since(agent.db, 0)[0]?.children).toHaveLength(rows.length);
+		sampler.stop();
 	});
 
 	it("stops its timer and writes a final ended sample", async () => {
-		const sampler = await start(table, 60_000);
+		const sampler = start(table, 60_000);
+		await sampler.idle();
+		await vi.advanceTimersByTimeAsync(1000);
 		expect(vi.getTimerCount()).toBe(1);
-		await sampler.stop();
+		sampler.stop();
 		expect(vi.getTimerCount()).toBe(0);
 		const rows = processSamples.since(agent.db, 0);
 		expect(rows.at(-1)?.ended).toBe(true);
@@ -116,16 +174,18 @@ describe("process sampler", () => {
 	});
 
 	it("starts no timer when sampling is off, and still takes the first sample", async () => {
-		const sampler = await start(table, 0);
+		const sampler = start(table, 0);
+		await sampler.idle();
 		expect(vi.getTimerCount()).toBe(0);
 		expect(processSamples.since(agent.db, 0)).toHaveLength(1);
-		await sampler.stop();
+		sampler.stop();
 	});
 
 	it("records memory without children where the process table is unavailable", async () => {
-		const sampler = await start(async () => undefined);
+		const sampler = start(async () => undefined);
+		await sampler.idle();
 		expect(processSamples.since(agent.db, 0)[0]).toMatchObject({ rss: 123, children: [] });
-		await sampler.stop();
+		sampler.stop();
 	});
 
 	it("prunes samples past the retention window", async () => {
@@ -148,20 +208,61 @@ describe("process sampler", () => {
 			}),
 			at: Date.now() - SAMPLE_RETENTION_MS - 1000,
 		});
-		const sampler = await start(table);
+		const sampler = start(table);
+		await sampler.idle();
 		expect(processSamples.since(agent.db, 0).every((sample) => sample.at >= Date.now() - SAMPLE_RETENTION_MS)).toBe(
 			true,
 		);
-		await sampler.stop();
+		sampler.stop();
 	});
 
 	it("reports a failed database write to its caller instead of throwing into the session", async () => {
-		const sampler = await start(table, 60_000);
+		const sampler = start(table, 60_000);
+		await sampler.idle();
 		expect(failures).toEqual([]);
 		agent.close();
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(failures).toHaveLength(1);
-		await expect(sampler.stop()).resolves.toBeUndefined();
+		expect(() => sampler.stop()).not.toThrow();
 		expect(failures.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("returns before the first table read ends: nothing waits for `ps`", async () => {
+		let answer: (rows: ProcessRow[]) => void = () => undefined;
+		const sampler = start(() => new Promise((resolve) => (answer = resolve)));
+		// Nothing is recorded yet, and the caller already has the sampler.
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(processSamples.since(agent.db, 0)).toEqual([]);
+		answer(await table());
+		await sampler.idle();
+		expect(processSamples.since(agent.db, 0)).toHaveLength(1);
+		sampler.stop();
+	});
+
+	it("writes the final sample at once from the last table read, without reading the table again", async () => {
+		let reads = 0;
+		const sampler = start(async () => {
+			reads++;
+			return table();
+		});
+		await sampler.idle();
+		await vi.advanceTimersByTimeAsync(1000);
+		sampler.stop();
+		expect(reads).toBe(1);
+		const last = processSamples.since(agent.db, 0).at(-1);
+		expect(last).toMatchObject({ ended: true, at: Date.now() });
+		expect(last?.children.map((child) => child.pid)).toEqual([101, 102]);
+	});
+
+	it("keeps the final sample the newest when stopped while a table read runs", async () => {
+		let answer: (rows: ProcessRow[]) => void = () => undefined;
+		const sampler = start(() => new Promise((resolve) => (answer = resolve)));
+		sampler.stop();
+		// No table was read yet: the final sample still records the process, without children.
+		expect(processSamples.since(agent.db, 0)).toMatchObject([{ ended: true, children: [] }]);
+		await vi.advanceTimersByTimeAsync(1000);
+		answer(await table());
+		await sampler.idle();
+		expect(processSamples.since(agent.db, 0).map((sample) => sample.ended)).toEqual([true]);
 	});
 });

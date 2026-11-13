@@ -1,23 +1,22 @@
 import { onSecond } from "../../shared/clock.ts";
-import { parentGone, sameProcess, terminateSelf } from "../../shared/process.ts";
+import { liveProcess, parentGone, sameProcess, terminateSelf } from "../../shared/process.ts";
 import { PARENT_PID_ENV } from "../store/env.ts";
 import type { ProcessIdentity } from "../store/members.ts";
-
-/** Every this many parent checks (one a second, on the shared clock) the start time is compared too: a reused pid is noticed within that many seconds, and the event loop is not stalled by a `ps` every second. */
-const PARENT_START_EVERY = 15;
 
 /**
  * Whether the process named by `OCTOCODE_PARENT_PID` (`<pid> <start time>`, the start time when known) is gone. A
  * direct parent is judged by the pid and reparenting; through a launcher, a recorded start time tells a later process
- * that reused the pid from the parent.
+ * that reused the pid from the parent. `compareStart`: `now` compares it at once (one `ps` on this thread), `known` only
+ * as far as the shared process table already shows (`liveProcess`, for a caller that polls), false not at all.
  */
-export function parentProcessGone(value: string, compareStart = true): boolean {
+export function parentProcessGone(value: string, compareStart: "now" | "known" | false = "now"): boolean {
 	const [pid = "", ...started] = value.trim().split(" ");
 	const parentPid = Number(pid);
 	if (!Number.isInteger(parentPid) || parentPid <= 0) return false;
 	if (parentGone(parentPid)) return true;
-	// The start time costs a synchronous `ps`, so a caller that polls compares it only now and then (`compareStart`).
-	return compareStart && process.ppid !== parentPid && started.length > 0 && !sameProcess(parentPid, started.join(" "));
+	if (!compareStart || process.ppid === parentPid || started.length === 0) return false;
+	const live = compareStart === "now" ? sameProcess : liveProcess;
+	return !live(parentPid, started.join(" "));
 }
 
 /** The process `OCTOCODE_PARENT_PID` names (`<pid> <start time>`), or undefined when `env` names none. */
@@ -45,9 +44,9 @@ export function endWithParent(leave: (reason: "parent-gone") => void): void {
 export function watchParentProcess(env: NodeJS.ProcessEnv, gone: () => void): (() => void) | undefined {
 	const parent = env[PARENT_PID_ENV];
 	if (!parent) return undefined;
-	let checks = 0;
+	// Never a `ps` on this thread: a reused pid is noticed once the shared process table, read off it, shows it.
 	return onSecond(() => {
-		if (!parentProcessGone(parent, checks++ % PARENT_START_EVERY === 0)) return;
+		if (!parentProcessGone(parent, "known")) return;
 		gone();
 	});
 }

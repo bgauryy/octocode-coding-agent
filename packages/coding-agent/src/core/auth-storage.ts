@@ -10,12 +10,12 @@ import {
 	type CredentialInfo,
 	type CredentialStore,
 } from "@octocodeai/octocode-ai";
-import { unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
 import { stripBom } from "../../../common/src/text.ts";
+import { watchFileChanges } from "../../../common/src/watch-file.ts";
 import {
 	type AuthStorageBackend,
 	type AuthStorageData,
@@ -24,8 +24,14 @@ import {
 	type LockFailureState,
 } from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
-import { keepInKeychain, keychainEntry, resolveKeychainOAuth } from "./auth-storage/keychain-oauth.ts";
-import { resolveConfigValue } from "./config-value.ts";
+import {
+	keepInKeychain,
+	keychainEntry,
+	resolveKeychainOAuth,
+	resolveKeychainOAuthAsync,
+} from "./auth-storage/keychain-oauth.ts";
+import { resolveConfigValueAsync } from "./config-value.ts";
+import { invalidEntryReason } from "./auth-storage/validation.ts";
 
 export {
 	type AuthStorageBackend,
@@ -142,7 +148,15 @@ export class AuthStorage implements CredentialStore {
 		if (!content) {
 			return {};
 		}
-		return JSON.parse(stripBom(content)) as AuthStorageData;
+		const parsed: unknown = JSON.parse(stripBom(content));
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+			throw new Error("Invalid auth.json: expected an object");
+		}
+		for (const [provider, credential] of Object.entries(parsed)) {
+			const reason = invalidEntryReason(credential);
+			if (reason) throw new Error(`Invalid auth.json credential for provider "${provider}": ${reason}`);
+		}
+		return parsed as AuthStorageData;
 	}
 
 	private updateReadState(data: AuthStorageData, revision?: string): void {
@@ -220,9 +234,14 @@ export class AuthStorage implements CredentialStore {
 	async read(provider: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		const credential = ownCredential(await this.readLatestData(options), provider);
 		options?.signal?.throwIfAborted();
-		if (credential?.type !== "api_key") return resolveKeychainOAuth(credential);
+		// A keychain `!command` runs in the background: the screen keeps drawing while it does.
+		if (credential?.type !== "api_key")
+			return raceWithAbortSignal(resolveKeychainOAuthAsync(credential), options?.signal);
 		if (credential.key === undefined) return credential;
-		return { ...credential, key: resolveConfigValue(credential.key, credential.env) };
+		return {
+			...credential,
+			key: await raceWithAbortSignal(resolveConfigValueAsync(credential.key, credential.env), options?.signal),
+		};
 	}
 
 	async modify(
@@ -334,21 +353,24 @@ export class AuthStorage implements CredentialStore {
 
 	/**
 	 * Calls `onChange` when the file changes after this call, e.g. another Octocode process saved or removed a
-	 * credential. Polls the file's revision with an unreferenced timer, so it never keeps the process alive. Returns the stop function.
+	 * credential. A file-system watcher on its folder sees it (`intervalMs` paces the stat polling only where that
+	 * watcher fails); it never keeps the process alive. Returns the stop function.
 	 * Only revisions are compared: no credential is read or logged.
 	 */
 	watch(onChange: () => void, intervalMs = 1000): () => void {
 		const path = this.authPath;
 		if (!path) return () => {};
 		let seen = getFileRevision(path);
-		const listener = () => {
-			const revision = getFileRevision(path);
-			if (revision === seen) return;
-			seen = revision;
-			onChange();
-		};
-		watchFile(path, { interval: intervalMs, persistent: false }, listener);
-		return () => unwatchFile(path, listener);
+		return watchFileChanges(
+			path,
+			() => {
+				const revision = getFileRevision(path);
+				if (revision === seen) return;
+				seen = revision;
+				onChange();
+			},
+			{ intervalMs },
+		);
 	}
 
 	/** List credential metadata without resolving configured key values. */

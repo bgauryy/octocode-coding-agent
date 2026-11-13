@@ -185,7 +185,7 @@ export interface InteractiveModeMethods {
 	renderWidgets(): void;
 	sendCarriedMessages(): Promise<void>;
 	resetExtensionUI(): void;
-	restoreQueuedMessagesToEditor(options?: { abort?: boolean; currentText?: string }): number;
+	restoreQueuedMessagesToEditor(options?: { abort?: boolean }): number;
 	setCustomEditorComponent(factory: EditorFactory | undefined): void;
 	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
 	setExtensionFooter: ExtensionUIContext["setFooter"];

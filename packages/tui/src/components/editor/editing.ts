@@ -2,7 +2,7 @@ import type { getKeybindings } from "../../keybindings.ts";
 import { decodePastedControlKeys } from "../../paste-control-keys.ts";
 import { matchesKey } from "../../keys/match.ts";
 import { cjkBreakRegex, isWhitespaceChar } from "../../utils/chars.ts";
-import type { EditorModel } from "./model.ts";
+import { createUndoStack, type EditorModel } from "./model.ts";
 import { PASTE_MARKER_REGEX, PASTE_MARKER_SINGLE } from "./segmentation.ts";
 
 /**
@@ -73,27 +73,49 @@ export function insertCharacter(editor: EditorModel, char: string, skipUndoCoale
 	// A new trigger character reopens a list the user closed with Esc.
 	if (editor.autocomplete.autocompleteTriggerCharacters.includes(char)) editor.autocomplete.clearDismissal();
 
-	// Check if we should trigger or update autocomplete
+	autocompleteAfterTyping(editor, char);
+}
+
+/** Opens or updates autocomplete after `char` was typed (the last character before the cursor). */
+export function autocompleteAfterTyping(editor: EditorModel, char: string): void {
 	if (!editor.autocomplete.autocompleteState) {
-		// Auto-trigger for "/" at the start of the input (commands) or at any other token start (skills)
-		if (char === "/" && (editor.isAtStartOfMessage() || editor.isAtSkillMentionStart())) {
+		if (typingTriggersAutocomplete(editor, char, editor.textBeforeCursor()))
 			editor.autocomplete.tryTriggerAutocomplete();
-		}
-		// Auto-trigger for symbol-based completion like @, #, or provider triggers at token boundaries
-		else if (editor.autocomplete.autocompleteTriggerCharacters.includes(char)) {
-			const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-			const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
-			if (editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)) {
-				editor.autocomplete.tryTriggerAutocomplete();
-			}
-		}
-		// Also auto-trigger when typing letters in a slash command or symbol completion context
-		else if (/[a-zA-Z0-9.\-_]/.test(char) || cjkBreakRegex.test(char)) {
-			triggerAutocompleteInCompletionContext(editor);
-		}
 	} else {
 		editor.autocomplete.updateAutocomplete();
 	}
+}
+
+/**
+ * Whether typing `char`, the last character of `textBeforeCursor`, asks for suggestions while no list is open. `quote`:
+ * the index of the last `"` in `textBeforeCursor`, when the caller tracks it.
+ */
+export function typingTriggersAutocomplete(
+	editor: EditorModel,
+	char: string,
+	textBeforeCursor: string,
+	quote?: number,
+): boolean {
+	// "/" at the start of the input (commands) or at any other token start (skills)
+	if (char === "/" && (editor.isAtStartOfMessage(textBeforeCursor) || editor.isAtSkillMentionStart(textBeforeCursor))) {
+		return true;
+	}
+	// Symbol-based completion like @, #, or provider triggers at token boundaries
+	if (editor.autocomplete.autocompleteTriggerCharacters.includes(char)) {
+		return editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor, quote);
+	}
+	// Letters typed in a slash command or symbol completion context
+	if (/[a-zA-Z0-9.\-_]/.test(char) || cjkBreakRegex.test(char))
+		return inCompletionContext(editor, textBeforeCursor, quote);
+	return false;
+}
+
+/** The marker a large text (> 10 lines or > 1000 characters) shows as, `[paste #1 +123 lines]` or `[paste #1 1234 chars]`. */
+export function largePasteMarker(id: number, text: string): string | undefined {
+	let lines = 1;
+	for (let i = text.indexOf("\n"); i !== -1 && lines <= 10; i = text.indexOf("\n", i + 1)) lines++;
+	if (lines > 10) return `[paste #${id} +${text.split("\n").length} lines]`;
+	return text.length > 1000 ? `[paste #${id} ${text.length} chars]` : undefined;
 }
 
 export function handlePaste(editor: EditorModel, pastedText: string): void {
@@ -125,19 +147,11 @@ export function handlePaste(editor: EditorModel, pastedText: string): void {
 	// Split into lines to check for large paste
 	const pastedLines = filteredText.split("\n");
 
-	// Check if this is a large paste (> 10 lines or > 1000 characters)
-	const totalChars = filteredText.length;
-	if (pastedLines.length > 10 || totalChars > 1000) {
-		// Store the paste and insert a marker
+	const marker = largePasteMarker(editor.pasteCounter + 1, filteredText);
+	if (marker) {
+		// Store the paste and insert its marker instead of the text
 		editor.pasteCounter++;
-		const pasteId = editor.pasteCounter;
-		editor.pastes.set(pasteId, filteredText);
-
-		// Insert marker like "[paste #1 +123 lines]" or "[paste #1 1234 chars]"
-		const marker =
-			pastedLines.length > 10
-				? `[paste #${pasteId} +${pastedLines.length} lines]`
-				: `[paste #${pasteId} ${totalChars} chars]`;
+		editor.pastes.set(editor.pasteCounter, filteredText);
 		insertTextAtCursorInternal(editor, marker);
 		return;
 	}
@@ -192,15 +206,46 @@ export function submitValue(editor: EditorModel): void {
 	editor.autocomplete.cancelAutocomplete();
 	const result = editor.expandPasteMarkers(editor.state.lines.join("\n")).trim();
 
+	// The cleared draft is kept whole: a refused submit restores it and history keeps its markers collapsed.
+	editor.submitted = {
+		state: editor.state,
+		pastes: editor.pastes,
+		pasteCounter: editor.pasteCounter,
+		undo: editor.undoStack,
+		text: result,
+	};
 	editor.state = { lines: [""], cursorLine: 0, cursorCol: 0 };
-	editor.pastes.clear();
+	editor.pastes = new Map();
 	editor.pasteCounter = 0;
 	editor.exitHistoryBrowsing();
 	editor.scrollOffset = 0;
-	editor.undoStack.clear();
+	editor.undoStack = createUndoStack();
 	editor.lastAction = null;
 
 	editor.host.notifySubmit(result);
+}
+
+/** A draft's text with the paste registry its markers expand from. */
+export interface DraftText {
+	text: string;
+	pastes: Map<number, string>;
+	pasteCounter: number;
+}
+
+/**
+ * The draft with `text` put before it, a blank line between them (a blank part is dropped), keeping the draft's paste
+ * markers and registry. When `text` itself holds a marker the registry would expand, the draft joins it expanded and
+ * without markers, so each part is sent as written.
+ */
+export function prependedDraft(editor: EditorModel, text: string): DraftText {
+	const join = (draft: string) => [text, draft].filter((part) => part.trim()).join("\n\n");
+	const draft = editor.state.lines.join("\n");
+	for (const match of text.matchAll(PASTE_MARKER_REGEX)) {
+		if (editor.pastes.has(Number(match[1]))) {
+			return { text: join(editor.expandPasteMarkers(draft)), pastes: new Map(), pasteCounter: 0 };
+		}
+	}
+	return { text: join(draft), pastes: new Map(editor.pastes), pasteCounter: editor.pasteCounter };
 }
 
 export function handleBackspace(editor: EditorModel): void {
@@ -317,15 +362,16 @@ function refreshAutocompleteAfterDelete(editor: EditorModel): void {
 	}
 }
 
-/** Trigger autocomplete when the text before the cursor is a slash command or a symbol trigger such as @ or #. */
-function triggerAutocompleteInCompletionContext(editor: EditorModel): void {
-	const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-	const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
-	if (
+/** Whether the text before the cursor is in a slash command, a skill mention or a symbol trigger such as @ or #. */
+export function inCompletionContext(editor: EditorModel, textBeforeCursor: string, quote?: number): boolean {
+	return (
 		editor.isInSlashCommandContext(textBeforeCursor) ||
 		editor.isInSkillMentionContext(textBeforeCursor) ||
-		editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)
-	) {
-		editor.autocomplete.tryTriggerAutocomplete();
-	}
+		editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor, quote)
+	);
+}
+
+/** Trigger autocomplete when the text before the cursor is a slash command or a symbol trigger such as @ or #. */
+function triggerAutocompleteInCompletionContext(editor: EditorModel): void {
+	if (inCompletionContext(editor, editor.textBeforeCursor())) editor.autocomplete.tryTriggerAutocomplete();
 }

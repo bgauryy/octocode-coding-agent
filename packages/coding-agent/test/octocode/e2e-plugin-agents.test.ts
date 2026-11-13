@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { once } from "node:events";
 import path from "node:path";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -37,7 +38,9 @@ async function fixture(where: Where) {
 			`data: ${JSON.stringify({ id: "child", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "done: CHILD_COMPLETE" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 		);
 	});
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const listening = once(server, "listening");
+	server.listen(0, "127.0.0.1");
+	await listening;
 	fs.writeFileSync(
 		path.join(agentDir, "models.json"),
 		JSON.stringify({

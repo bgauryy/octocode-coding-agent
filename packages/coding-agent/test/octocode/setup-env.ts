@@ -5,7 +5,9 @@ import { vi } from "vitest";
 import { testCompileCacheDir } from "../helpers/compile-cache.ts";
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and settings: start from none, so results never depend on who ran the tests.
-for (const name of Object.keys(process.env)) if (name.startsWith("OCTOCODE_")) delete process.env[name];
+// The run's own test markers (`OCTOCODE_TEST_*`, `vitest.tmp.global.ts`) stay: they guard the real agent database in every process a test starts.
+for (const name of Object.keys(process.env))
+	if (name.startsWith("OCTOCODE_") && !name.startsWith("OCTOCODE_TEST_")) delete process.env[name];
 
 // Tests must never touch the user's real home: ~/.octocode (its agent database is shared with every running Octocode), the
 // skills and host configuration discovered under it. A test that blanks OCTOCODE_HOME falls back to <HOME>/.octocode/octocodecode,

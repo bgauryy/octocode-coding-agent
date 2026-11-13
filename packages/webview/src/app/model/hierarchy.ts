@@ -1,5 +1,5 @@
 import { type BacklogTask, TASK_STATES, type TaskState, type TaskTally } from "@octocodeai/octocode-contracts/backlogs";
-import type { SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
+import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contracts/snapshot";
 import type { BacklogIndex } from "./backlog.ts";
 
 export const TASK_STATE_TITLES: Record<TaskState, string> = {
@@ -62,7 +62,23 @@ export function rollupText(value: Rollup): string {
 export function taskTallyText(tasks: readonly BacklogTask[] | undefined): string {
 	if (!tasks?.length) return "";
 	const done = tasks.filter((task) => task.state === "done").length;
-	return `${done} of ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} done`;
+	const dropped = tasks.filter((task) => task.state === "dropped").length;
+	return `${done} of ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} done${dropped ? ` · ${dropped} dropped` : ""}`;
+}
+
+/** The connected session's steps and those of its ongoing items; dropped steps are never counted as done. */
+export function sessionTaskProgress(snapshot: Snapshot, session: string | undefined): string {
+	if (!session) return "";
+	const counts: TaskTally = { todo: 0, ongoing: 0, done: 0, dropped: 0 };
+	for (const task of snapshot.sessionTasks ?? []) {
+		if (task.owner.kind === "session" && task.owner.id === session) counts[task.state]++;
+	}
+	for (const item of snapshot.items) {
+		if (item.state !== "ongoing" || item.assignee !== session) continue;
+		for (const task of item.tasks ?? []) counts[task.state]++;
+	}
+	const total = counts.todo + counts.ongoing + counts.done + counts.dropped;
+	return total ? `Steps ${counts.done}/${total} done${counts.dropped ? ` · ${counts.dropped} dropped` : ""}` : "";
 }
 
 /** The epics an item may nest under: any epic except the item itself; an epic has no parent. */
@@ -87,7 +103,9 @@ export function sessionGroups(tasks: readonly BacklogTask[]): SessionTaskGroup[]
 	const groups = new Map<string, BacklogTask[]>();
 	for (const task of tasks) {
 		if (task.owner.kind !== "session") continue;
-		groups.set(task.owner.id, [...(groups.get(task.owner.id) ?? []), task]);
+		const group = groups.get(task.owner.id);
+		if (group) group.push(task);
+		else groups.set(task.owner.id, [task]);
 	}
 	return [...groups].map(([session, entries]) => ({ session, tasks: entries }));
 }

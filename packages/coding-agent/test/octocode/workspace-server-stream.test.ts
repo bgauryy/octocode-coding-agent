@@ -1,6 +1,7 @@
 import type { AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceServerFixture } from "./workspace-server-fixture.ts";
+import type { Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 
 let app: Awaited<ReturnType<typeof workspaceServerFixture>>;
 beforeEach(async () => {
@@ -12,6 +13,26 @@ afterEach(async () => {
 });
 
 describe("workspace WebSocket handlers without network I/O", () => {
+	it("updates a crashed claim without a database write or a full board reload", async () => {
+		app.store.add(
+			{ title: "Claimed", goal: "Check result", why: "Needed", state: "ongoing", createdBy: "other" },
+			{ id: "other" },
+		);
+		const holder = vi.spyOn(app.store, "liveHolder").mockReturnValue("other");
+		const list = vi.spyOn(app.store, "list");
+		const socket = app.upgrade().client!;
+		socket.hello({ token: app.token, protocolVersion: 1 });
+		const latest = () => socket.packets.filter((packet) => packet.type === "snapshot").at(-1)?.data as Snapshot;
+		expect(latest().items[0].assigneeLive).toBe(true);
+		list.mockClear();
+		const revision = app.store.revision;
+		holder.mockReturnValue(undefined);
+		await vi.waitFor(() => expect(latest().items[0].assigneeLive).toBe(false), { timeout: 3500 });
+		expect(app.store.revision).toBe(revision);
+		expect(list).not.toHaveBeenCalled();
+		expect(holder).toHaveBeenLastCalledWith("other", true);
+	});
+
 	it("rejects invalid upgrades and handshakes without exposing state", () => {
 		for (const headers of [{ host: "example.test" }, { origin: "https://example.test" }]) {
 			const denied = app.upgrade(headers);
