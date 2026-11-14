@@ -61,8 +61,13 @@ export function savePendingReport(dir: string, id: string, report: Report): stri
 export async function takePendingReports(dir: string): Promise<Report[]> {
 	let names: string[];
 	try {
-		await releaseDeadClaims(dir, await fsp.readdir(dir), CLAIM_MARKER, (original) => original.endsWith(".json"));
-		names = (await fsp.readdir(dir)).filter((name) => name.endsWith(".json")).sort();
+		names = await fsp.readdir(dir);
+		if (names.some((name) => name.includes(CLAIM_MARKER))) {
+			await releaseDeadClaims(dir, names, CLAIM_MARKER, (original) => original.endsWith(".json"));
+			// A released claim may now be available under its original name.
+			names = await fsp.readdir(dir);
+		}
+		names = names.filter((name) => name.endsWith(".json")).sort();
 	} catch {
 		return [];
 	}

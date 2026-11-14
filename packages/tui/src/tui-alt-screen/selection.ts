@@ -112,8 +112,7 @@ export function scrollScrollbarToPointer(
 ): void {
 	const maxThumbOffset = geometry.trackHeight - geometry.thumbHeight;
 	const thumbOffset = Math.max(0, Math.min(maxThumbOffset, pointerY - geometry.trackTop - grabOffset));
-	const scrollTop = maxThumbOffset === 0 ? 0 : Math.round((thumbOffset / maxThumbOffset) * geometry.maxScrollTop);
-	scrollView.scrollTo(scrollTop);
+	scrollView.scrollToFraction(maxThumbOffset === 0 ? 0 : thumbOffset / maxThumbOffset);
 }
 
 /** The plain text of a selection, read from scroll content or from the last rendered frame. */

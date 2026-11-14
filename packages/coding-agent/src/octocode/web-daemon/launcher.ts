@@ -132,7 +132,7 @@ export async function findWebDaemon(env: NodeJS.ProcessEnv = process.env): Promi
  */
 async function live(file: string): Promise<Live | undefined> {
 	const record = readDaemonRecord(file);
-	if (!record || !recordProcessAlive(record)) return undefined;
+	if (!record || !(await recordProcessAlive(record))) return undefined;
 	const origin = recordOrigin(record);
 	const token = recordToken(record);
 	if (!origin || !token) return undefined;
@@ -197,7 +197,7 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 			removeRecord(paths.record, (text) => text.includes(current!.record.nonce));
 		} else {
 			const stale = readDaemonRecord(paths.record);
-			if (stale && !recordProcessAlive(stale)) removeRecord(paths.record);
+			if (stale && !(await recordProcessAlive(stale))) removeRecord(paths.record, (text) => text.includes(stale.nonce));
 		}
 		// A launcher that stalled past the lock's stale limit no longer excludes others: it must not spawn beside them.
 		release.assertHeld();

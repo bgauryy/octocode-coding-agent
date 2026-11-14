@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { isLoopbackHostname } from "../shared/net.ts";
-import { processStartTime, sameProcess } from "../shared/process.ts";
+import { processStartTime, sameProcessAsync } from "../shared/process.ts";
 import type { BacklogWeb, OpenBacklogWeb } from "./context.ts";
 import { acquireRegistryLock } from "./shared-web-lock.ts";
 import {
@@ -144,7 +144,7 @@ export function sharedWorkspaceWeb(openWeb: OpenBacklogWeb, env: NodeJS.ProcessE
 		let started: BacklogWeb | undefined;
 		try {
 			const existing = await readRecord(entryPath);
-			if (existing && isLoopbackUrl(existing.url) && sameProcess(existing.pid, existing.pid_started)) {
+			if (existing && isLoopbackUrl(existing.url) && (await sameProcessAsync(existing.pid, existing.pid_started))) {
 				const token = extractAccessToken(existing.url);
 				if (token && (await serverUp(existing.url, token))) {
 					return {

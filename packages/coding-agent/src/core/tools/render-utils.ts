@@ -1,5 +1,6 @@
 import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { clipText } from "../../../../common/src/clip.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
@@ -68,8 +69,7 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	const pairs = sanitizeTerminalText(
 		entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" "),
 	);
-	const preview = pairs.length > COLLAPSED_ARGS_CHARS ? `${pairs.slice(0, COLLAPSED_ARGS_CHARS - 3)}...` : pairs;
-	return `${header} ${theme.fg("muted", preview)}`;
+	return `${header} ${theme.fg("muted", clipText(pairs, COLLAPSED_ARGS_CHARS))}`;
 }
 
 /** Renderer state of {@link startToolTimer} and {@link toolTimerText}, kept in `ToolRenderContext.state`. */

@@ -13,9 +13,11 @@ import { plural } from "../shared/text.ts";
  * stemmed and identifiers split (`loginRedirect`, `auth-storage/keychain.ts`, `B314` each match their parts), and a
  * passage scores by BM25 over the query terms, weighted by how many of them it covers and by quoted phrases it contains.
  * Each archive file counts only what the session said (`archiveRankedText`), not the wording its writer repeats in
- * every file of its kind; shown lines are the file's own. Files are read one at a time, yielding between them, and only
- * matching passages are kept, so no size cap applies; a `query` filter runs first, in the archive-search worker, in
- * bounded scans that resume until every file is read. A file whose own label (its TL;DR) or header (its TL;DR and topics
+ * every file of its kind; shown lines are the file's own. Files are read one at a time, yielding between them and
+ * checking for cancellation inside a long file. The first pass keeps only each matching passage's counts (no file text),
+ * and the second reads again only the files holding the best `TOP` passages to show their lines, so memory grows with the
+ * number of matching passages, not with the size of the history; a `query` filter runs first, in the archive-search
+ * worker, in bounded scans that resume until every file is read. A file whose own label (its TL;DR) or header (its TL;DR and topics
  * lines) has query terms ranks its passages higher, since a segment about the topic is likelier to hold the answer.
  * The last few rankings are kept in memory with the size and time of every file they read, so the next page of the same
  * search reads nothing again while those files are unchanged.
@@ -94,9 +96,33 @@ interface Passage {
 	/** 0-based first and last line. */
 	start: number;
 	end: number;
-	tf: Map<string, number>;
+	/** Occurrences of each query term, by its index in `Query.terms`. */
+	tf: Uint32Array;
+	/** Query terms with a nonzero count. */
+	covered: number;
 	length: number;
+	/** Quoted phrases the passage contains. */
+	phrases: number;
 	score: number;
+}
+
+/** Passages scanned in one file between cancellation checks and yields. */
+const PASSAGES_PER_TURN = 256;
+
+/** `file` read as lines, or undefined when it is gone, not a regular file or a link; `stamp` is its size and mtime. */
+async function readLines(file: string): Promise<{ lines: string[]; stamp: string } | undefined> {
+	try {
+		const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+		try {
+			const stat = await handle.stat();
+			if (!stat.isFile()) return undefined;
+			return { lines: (await handle.readFile("utf8")).split("\n"), stamp: `${stat.size}:${stat.mtimeMs}` };
+		} finally {
+			await handle.close();
+		}
+	} catch {
+		return undefined;
+	}
 }
 
 export interface RankResult {
@@ -173,6 +199,29 @@ function matchesWithin(matched: ReadonlySet<number> | undefined, start: number, 
 	return false;
 }
 
+/** Up to `SHOWN_LINES` lines of `passage` with a query term, after its heading line when it starts at one. */
+function shownLines(
+	lines: readonly string[],
+	ranked: readonly string[],
+	passage: Passage,
+	wanted: ReadonlySet<string>,
+): string[] {
+	const shown: string[] = [];
+	const last = Math.min(passage.end, lines.length - 1);
+	if (passage.start <= last && BOUNDARY.test(lines[passage.start]))
+		shown.push(`${lineLabel(passage.start + 1, false)}${lines[passage.start].slice(0, LINE_CHARS)}`);
+	for (let at = passage.start; at <= last && shown.length < SHOWN_LINES; at++) {
+		const tf = new Map<string, number>();
+		count(ranked[at] ?? "", wanted, tf);
+		if (tf.size === 0 || (at === passage.start && shown.length > 0)) continue;
+		const line = lines[at];
+		shown.push(
+			`${lineLabel(at + 1, true)}${line.length > LINE_CHARS ? `${line.slice(0, LINE_CHARS)}… [${line.length} characters: read it with file and line ${at + 1}]` : line}`,
+		);
+	}
+	return shown;
+}
+
 /**
  * The passages of `files` that best match `keywords`, ranked by BM25, `TOP` at most, paged; `filter` (the `query` regex)
  * keeps passages with a line it matches (`filterMatches`). The head names each term's passage count, so a term found
@@ -201,105 +250,112 @@ export async function rankHistory(
 		};
 	}
 	const wanted = new Set(query.terms);
-	const df = new Map<string, number>(query.terms.map((term) => [term, 0]));
+	const termIndex = new Map(query.terms.map((term, index) => [term, index]));
+	const df = new Uint32Array(query.terms.length);
 	const passages: Passage[] = [];
-	/** Each kept file's lines as read and as counted (`archiveRankedText`), by file index. */
-	const texts = new Map<number, { lines: string[]; ranked: readonly string[] }>();
-	/** The query terms each kept file's label and header carry, by file index. */
-	const headed = new Map<number, number>();
+	/** The query terms each kept file's label and header carry, and the stamp it was ranked at, by file index. */
+	const kept = new Map<number, { headed: number; stamp: string }>();
 	const filtered = filter ? await filterMatches(files, filter, signal) : undefined;
 	let total = 0;
 	let totalLength = 0;
 	for (let index = 0; index < files.length; index++) {
 		signal?.throwIfAborted();
-		let lines: string[];
-		try {
-			const handle = await fs.open(files[index].file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-			try {
-				if (!(await handle.stat()).isFile()) continue;
-				lines = (await handle.readFile("utf8")).split("\n");
-			} finally {
-				await handle.close();
-			}
-		} catch {
-			continue;
-		}
+		const read = await readLines(files[index].file);
+		if (!read) continue;
+		const { lines } = read;
 		const ranked = archiveRankedText(files[index].file, lines);
-		let kept = false;
+		let matched = false;
 		const headTerms = new Set<string>();
 		for (const word of files[index].label.match(WORD) ?? [])
 			for (const term of wordTerms(word)) if (wanted.has(term)) headTerms.add(term);
-		for (let start = 0; start < lines.length;) {
+		for (let start = 0, scanned = 0; start < lines.length; scanned++) {
+			if (scanned > 0 && scanned % PASSAGES_PER_TURN === 0) {
+				signal?.throwIfAborted();
+				await yieldTurn();
+			}
 			let end = start;
 			while (end + 1 < lines.length && end + 1 - start < PASSAGE_LINES && !BOUNDARY.test(lines[end + 1])) end++;
-			const tf = new Map<string, number>();
+			const counts = new Map<string, number>();
 			let length = 0;
-			for (let at = start; at <= end; at++) length += count(ranked[at], wanted, tf);
+			for (let at = start; at <= end; at++) length += count(ranked[at], wanted, counts);
 			total++;
 			totalLength += length;
-			if (start === 0) for (const term of tf.keys()) headTerms.add(term);
-			if (tf.size > 0 && (!filtered || matchesWithin(filtered.get(index), start, end))) {
-				for (const term of tf.keys()) df.set(term, (df.get(term) ?? 0) + 1);
-				passages.push({ file: index, start, end, tf, length, score: 0 });
-				kept = true;
+			if (start === 0) for (const term of counts.keys()) headTerms.add(term);
+			if (counts.size > 0 && (!filtered || matchesWithin(filtered.get(index), start, end))) {
+				const tf = new Uint32Array(query.terms.length);
+				for (const [term, n] of counts) {
+					const at = termIndex.get(term)!;
+					tf[at] = n;
+					df[at]++;
+				}
+				let phrases = 0;
+				if (query.phrases.length > 0) {
+					const text = ranked
+						.slice(start, end + 1)
+						.join("\n")
+						.toLowerCase();
+					for (const phrase of query.phrases) if (text.includes(phrase)) phrases++;
+				}
+				passages.push({ file: index, start, end, tf, covered: counts.size, length, phrases, score: 0 });
+				matched = true;
 			}
 			start = end + 1;
 		}
-		if (kept) {
-			texts.set(index, { lines, ranked });
-			headed.set(index, headTerms.size);
-		}
+		if (matched) kept.set(index, { headed: headTerms.size, stamp: read.stamp });
 		await yieldTurn();
 	}
 	const average = total > 0 ? totalLength / total : 1;
-	const idf = new Map(
-		query.terms.map((term) => {
-			const n = df.get(term) ?? 0;
-			return [term, Math.log(1 + (total - n + 0.5) / (n + 0.5))];
-		}),
-	);
+	const idf = query.terms.map((_, at) => Math.log(1 + (total - df[at] + 0.5) / (df[at] + 0.5)));
 	for (const passage of passages) {
 		let score = 0;
-		for (const [term, tf] of passage.tf)
-			score += (idf.get(term) ?? 0) * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * passage.length) / average)));
-		score *= 0.5 + (0.5 * passage.tf.size) / query.terms.length;
-		score *= 1 + (HEADER_BOOST * (headed.get(passage.file) ?? 0)) / query.terms.length;
-		if (query.phrases.length > 0) {
-			const text = texts
-				.get(passage.file)!
-				.ranked.slice(passage.start, passage.end + 1)
-				.join("\n")
-				.toLowerCase();
-			for (const phrase of query.phrases) if (text.includes(phrase)) score *= PHRASE_BOOST;
+		for (let at = 0; at < passage.tf.length; at++) {
+			const tf = passage.tf[at];
+			if (tf > 0) score += idf[at] * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * passage.length) / average)));
 		}
+		score *= 0.5 + (0.5 * passage.covered) / query.terms.length;
+		score *= 1 + (HEADER_BOOST * (kept.get(passage.file)?.headed ?? 0)) / query.terms.length;
+		score *= PHRASE_BOOST ** passage.phrases;
 		passage.score = score;
 	}
 	const top = passages.sort((a, b) => b.score - a.score || a.file - b.file || a.start - b.start).slice(0, TOP);
 	const label = (term: string) => query.labels.get(term) ?? term;
-	const termLine = query.terms.map((term) => `${label(term)} ${df.get(term) ?? 0}`).join(" · ");
-	const missing = query.terms.filter((term) => !df.get(term)).map(label);
+	const termLine = query.terms.map((term, at) => `${label(term)} ${df[at]}`).join(" · ");
+	const missing = query.terms.filter((_, at) => df[at] === 0).map(label);
+	const matchedFiles = new Set(passages.map((p) => p.file)).size;
 	const head = [
-		`${plural(passages.length, "passage")} match in ${new Set(passages.map((p) => p.file)).size} of ${plural(files.length, "file")}${passages.length > TOP ? `; the best ${TOP} are ranked` : ""}, by BM25 relevance; > marks a line with a term. Read around one with file and line.`,
+		`${plural(passages.length, "passage")} match in ${matchedFiles} of ${plural(files.length, "file")}${passages.length > TOP ? `; the best ${TOP} are ranked` : ""}, by BM25 relevance; > marks a line with a term. Read around one with file and line.`,
 		`Passages per term: ${termLine}.${missing.length > 0 ? ` In none: ${missing.join(", ")}; try a synonym, another spelling or an identifier.` : ""}`,
 	];
+	// Second pass: only the files holding a shown passage are read again, one at a time.
+	const shownByFile = new Map<number, string[][]>();
+	for (const fileIndex of new Set(top.map((passage) => passage.file))) {
+		signal?.throwIfAborted();
+		const read = await readLines(files[fileIndex].file);
+		const changed = !read || read.stamp !== kept.get(fileIndex)?.stamp;
+		const ranked = read ? archiveRankedText(files[fileIndex].file, read.lines) : [];
+		for (const passage of top) {
+			if (passage.file !== fileIndex) continue;
+			const shown = read ? shownLines(read.lines, ranked, passage, wanted) : [];
+			if (changed)
+				shown.push(
+					read
+						? "  (the file changed after it was ranked; read it again with file and line)"
+						: "  (the file can no longer be read)",
+				);
+			const list = shownByFile.get(fileIndex) ?? [];
+			list.push(shown);
+			shownByFile.set(fileIndex, list);
+		}
+		await yieldTurn();
+	}
+	const taken = new Map<number, number>();
 	const blocks = top.map((passage, rank) => {
 		const { file, session, label } = files[passage.file];
-		const { lines, ranked } = texts.get(passage.file)!;
-		const shown: string[] = [];
-		if (BOUNDARY.test(lines[passage.start]))
-			shown.push(`${lineLabel(passage.start + 1, false)}${lines[passage.start].slice(0, LINE_CHARS)}`);
-		for (let at = passage.start; at <= passage.end && shown.length < SHOWN_LINES; at++) {
-			const tf = new Map<string, number>();
-			count(ranked[at], wanted, tf);
-			if (tf.size === 0 || (at === passage.start && shown.length > 0)) continue;
-			const line = lines[at];
-			shown.push(
-				`${lineLabel(at + 1, true)}${line.length > LINE_CHARS ? `${line.slice(0, LINE_CHARS)}… [${line.length} characters: read it with file and line ${at + 1}]` : line}`,
-			);
-		}
+		const at = taken.get(passage.file) ?? 0;
+		taken.set(passage.file, at + 1);
 		return {
 			heading: `## ${rank + 1}. score ${passage.score.toFixed(2)} · ${file} · ${session.id} (${session.relation}) · ${label} · lines ${passage.start + 1}–${passage.end + 1}`,
-			lines: shown,
+			lines: shownByFile.get(passage.file)?.[at] ?? [],
 		};
 	});
 	const pages = paginate([{ lines: [...head, ""] }, ...blocks]);
@@ -308,7 +364,7 @@ export async function rankHistory(
 		pages,
 		total: passages.length === 0 ? 0 : pages.length,
 		hits: passages.length,
-		files: new Set(passages.map((p) => p.file)).size,
+		files: matchedFiles,
 	};
 	rankings.delete(key);
 	rankings.set(key, ranking);

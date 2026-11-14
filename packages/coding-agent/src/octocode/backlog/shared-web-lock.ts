@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import lockfile from "proper-lockfile";
-import { processStartTime, sameProcess } from "../shared/process.ts";
+import { processStartTime, sameProcessAsync } from "../shared/process.ts";
 
 /** A lock whose mtime is older than this is taken over even when its owner cannot be identified (no owner file). */
 const STALE_MS = 30_000;
@@ -58,7 +58,7 @@ async function readOwner(lockPath: string): Promise<LockOwner | undefined> {
  */
 async function breakDeadOwner(lockPath: string): Promise<boolean> {
 	const owner = await readOwner(lockPath);
-	if (!owner || sameProcess(owner.pid, owner.pid_started)) return false;
+	if (!owner || (await sameProcessAsync(owner.pid, owner.pid_started))) return false;
 	let release: (() => Promise<void>) | undefined;
 	// A breaker stalled past the mutex's stale limit may have lost it to another breaker: it then removes nothing.
 	let compromised = false;

@@ -2,6 +2,7 @@ import { sha256 } from "../../../../common/src/atomic-file.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { JudgeOutcome, JudgeRequest } from "./conditions/types.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 
 /** What a `check` may spend and how often it may call the model. Defaults the user accepted. */
 export const CHECK_CAPS = {
@@ -96,6 +97,7 @@ export class Judge {
 	}
 
 	async judge(request: JudgeRequest): Promise<JudgeOutcome> {
+		request.signal?.throwIfAborted();
 		const { host } = this;
 		const ctx = host.ctx();
 		if (!ctx || !host.allowed())
@@ -119,11 +121,11 @@ export class Judge {
 			return { verdict: "skipped", reason: "the evidence is unchanged since the last judgment" };
 		if (previous && now - previous.at < CHECK_CAPS.minGapMs)
 			return { verdict: "skipped", reason: `judgments are at least ${CHECK_CAPS.minGapMs / 1000}s apart` };
-		const reply = await host.small.call(ctx, {
-			text: judgePrompt({ ...request, evidence }),
-			signal: AbortSignal.timeout(CHECK_CAPS.timeoutMs),
-			maxTokens: CHECK_CAPS.maxTokens,
-		});
+		const limit = deadline(CHECK_CAPS.timeoutMs, request.signal);
+		const reply = await host.small
+			.call(ctx, { text: judgePrompt({ ...request, evidence }), signal: limit.signal, maxTokens: CHECK_CAPS.maxTokens })
+			.finally(limit.clear);
+		request.signal?.throwIfAborted();
 		if ("error" in reply) {
 			// A failed call still counts toward the gap, and the evidence stays unjudged.
 			this.last.set(request.id, { hash: previous?.hash ?? "", at: now });

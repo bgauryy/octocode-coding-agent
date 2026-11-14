@@ -15,6 +15,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { getSessionsDir } from "../../src/config.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { getDefaultSessionDirPath } from "../../src/core/session-manager/storage.ts";
 import { legacySessionDirectoryPath } from "../../src/core/session-manager/directories.ts";
 import { quickList } from "../../src/octocode/sessions/catalog.ts";
@@ -22,6 +23,11 @@ import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 
 let scratch: string;
 let cwd: string;
+const managers = new Set<SessionManager>();
+function track(manager: SessionManager): SessionManager {
+	managers.add(manager);
+	return manager;
+}
 
 beforeEach(() => {
 	scratch = mkdtempSync(join(tmpdir(), "octocode-legacy-sessions-"));
@@ -30,7 +36,10 @@ beforeEach(() => {
 	vi.stubEnv("OCTOCODE_HOME", join(scratch, "home"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", join(scratch, "agent.db"));
 });
-afterEach(() => {
+afterEach(async () => {
+	for (const manager of managers) manager.retire();
+	managers.clear();
+	if (!(await sessionMirrorSettled())) throw new Error("Session mirror did not settle before cleanup");
 	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	rmSync(scratch, { recursive: true, force: true });
@@ -67,7 +76,7 @@ describe("legacy per-cwd session folders", () => {
 
 	it("does not create the legacy folder", async () => {
 		await SessionManager.list(cwd);
-		SessionManager.continueRecent(cwd);
+		track(SessionManager.continueRecent(cwd));
 		expect(SessionManager.findById(cwd, "none")).toBeUndefined();
 		expect(existsSync(legacySessionDirectoryPath(cwd))).toBe(false);
 	});
@@ -81,19 +90,19 @@ describe("legacy per-cwd session folders", () => {
 
 	it("continues the newest session across the workspace and legacy folders", () => {
 		const legacyOld = legacySession("legacy-old", cwd, 600);
-		expect(SessionManager.continueRecent(cwd).getSessionFile()).toBe(legacyOld);
+		expect(track(SessionManager.continueRecent(cwd)).getSessionFile()).toBe(legacyOld);
 
-		const workspace = SessionManager.create(cwd);
+		const workspace = track(SessionManager.create(cwd));
 		workspace.appendMessage({ role: "user", content: "hi", timestamp: Date.now() });
-		expect(SessionManager.continueRecent(cwd).getSessionFile()).toBe(workspace.getSessionFile());
+		expect(track(SessionManager.continueRecent(cwd)).getSessionFile()).toBe(workspace.getSessionFile());
 
 		const legacyNew = legacySession("legacy-new", cwd, -600);
-		expect(SessionManager.continueRecent(cwd).getSessionFile()).toBe(legacyNew);
+		expect(track(SessionManager.continueRecent(cwd)).getSessionFile()).toBe(legacyNew);
 	});
 
 	it("opens a legacy file in place with the workspace folder as its session directory", async () => {
 		const file = legacySession("opened", cwd);
-		const manager = SessionManager.open(file);
+		const manager = track(SessionManager.open(file));
 		expect(manager.getSessionFile()).toBe(file);
 		expect(manager.getSessionDir()).toBe(getDefaultSessionDirPath(cwd));
 		expect(manager.usesDefaultSessionDir()).toBe(true);
@@ -104,7 +113,9 @@ describe("legacy per-cwd session folders", () => {
 		expect(readdirSync(legacySessionDirectoryPath(cwd))).toHaveLength(1);
 
 		// What /new does: a new session in the manager's own directory lands in the workspace folder.
-		const next = SessionManager.create(cwd, manager.usesDefaultSessionDir() ? undefined : manager.getSessionDir());
+		const next = track(
+			SessionManager.create(cwd, manager.usesDefaultSessionDir() ? undefined : manager.getSessionDir()),
+		);
 		next.appendMessage({ role: "user", content: "fresh", timestamp: Date.now() });
 		expect(dirname(next.getSessionFile()!)).toBe(getDefaultSessionDirPath(cwd));
 		expect(readdirSync(legacySessionDirectoryPath(cwd))).toHaveLength(1);
@@ -114,7 +125,7 @@ describe("legacy per-cwd session folders", () => {
 
 	it("branches a legacy session into the workspace folder, creating it when missing", () => {
 		const file = legacySession("branchy", cwd);
-		const manager = SessionManager.open(file);
+		const manager = track(SessionManager.open(file));
 		const first = manager.appendMessage({ role: "user", content: "one", timestamp: Date.now() });
 		manager.appendMessage({
 			role: "assistant",
@@ -129,7 +140,7 @@ describe("legacy per-cwd session folders", () => {
 	it("opens a legacy session whose cwd no longer exists without creating that folder", () => {
 		const gone = join(scratch, "gone", "deep");
 		const file = legacySession("gone", gone, 0, legacySessionDirectoryPath(gone));
-		const manager = SessionManager.open(file);
+		const manager = track(SessionManager.open(file));
 		expect(manager.getSessionFile()).toBe(file);
 		expect(existsSync(join(scratch, "gone"))).toBe(false);
 	});
@@ -144,7 +155,7 @@ describe("legacy per-cwd session folders", () => {
 	it("lists every file once in listAll", async () => {
 		const mine = legacySession("all-mine", cwd);
 		const other = legacySession("all-other", join(scratch, "elsewhere"));
-		const workspace = SessionManager.create(cwd);
+		const workspace = track(SessionManager.create(cwd));
 		workspace.appendMessage({ role: "user", content: "hi", timestamp: Date.now() });
 		const paths = (await SessionManager.listAll()).map((s) => s.path);
 		expect(new Set(paths).size).toBe(paths.length);

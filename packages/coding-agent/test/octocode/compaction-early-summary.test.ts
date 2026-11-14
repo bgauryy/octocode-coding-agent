@@ -160,16 +160,24 @@ describe("early compaction summary", () => {
 		expect(summaryOf(await writeSummary(other.api, other.compaction({ preparation: moved }), other.ctx))).toContain(
 			"summary 2",
 		);
+		// Each discarded early summary is noted, so speculative spend that bought nothing can be counted.
+		expect(other.notes).toContainEqual(
+			expect.stringMatching(/^early-summary: the early summary was discarded .*another plan/),
+		);
 
 		const manual = setup();
 		startEarlySummary(manual.api, manual.prewarm, manual.ctx, false);
 		await writeSummary(manual.api, manual.compaction({ reason: "manual" }), manual.ctx);
 		expect(manual.calls).toHaveLength(2);
+		expect(manual.notes).toContainEqual(
+			expect.stringMatching(/discarded .*the compaction is manual, not at the threshold/),
+		);
 
 		const focused = setup();
 		startEarlySummary(focused.api, focused.prewarm, focused.ctx, false);
 		await writeSummary(focused.api, focused.compaction({ customInstructions: "only the parser" }), focused.ctx);
 		expect(focused.calls).toHaveLength(2);
+		expect(focused.notes).toContainEqual(expect.stringMatching(/discarded .*its own instructions/));
 	});
 
 	it("is not requested while the session's cache is cold or after its plan was dropped", async () => {
@@ -192,6 +200,12 @@ describe("early compaction summary", () => {
 		early.abort();
 		expect(summaryOf(await writeSummary(api, compaction(), ctx))).toContain("summary 2");
 		expect(calls).toHaveLength(2);
+		// It had finished: its request was billed and is noted as discarded, not silently dropped.
+		expect(notes).toContainEqual(
+			expect.stringMatching(
+				/^early-summary: the early summary was discarded after its request finished \(billed, not used\): its plan was dropped/,
+			),
+		);
 	});
 
 	it("does not reuse an early summary from different transient instructions", async () => {

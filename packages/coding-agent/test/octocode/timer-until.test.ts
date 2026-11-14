@@ -781,3 +781,118 @@ describe("a timer stored with a removed condition", () => {
 		expect(ended).toMatchObject({ status: "failed", stop_reason: expect.stringContaining("test path -nt mark") });
 	});
 });
+
+describe("timer check resource ownership", () => {
+	const add = () =>
+		timers.insert(
+			agent.db,
+			timerFields({ note: "check", until: { command: "true" } }, T0, { ...owner, workspaceId, cwd: root }),
+		);
+
+	it("aborts a stopped scheduler's checks without writing or waking after a late result", async () => {
+		const row = add();
+		let finish!: (value: { met: boolean; exit: number; output: string }) => void;
+		let signal: AbortSignal | undefined;
+		const wake = vi.fn();
+		const wrote = vi.fn();
+		const failed = vi.fn();
+		const forget = vi.fn();
+		const scheduler = new TimerScheduler({
+			db: () => agent,
+			sessionId: "s1",
+			now: () => T0,
+			wake,
+			wrote,
+			failed,
+			forget,
+			check: (_condition, input) => {
+				signal = input.signal;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			},
+		});
+		started.push(scheduler);
+		scheduler.hold(row.id);
+		scheduler.refresh();
+		const holding = scheduler.settle();
+		const checking = scheduler.tick();
+		expect(signal?.aborted).toBe(false);
+		scheduler.stop();
+		expect(signal?.aborted).toBe(true);
+		await holding;
+		const writes = wrote.mock.calls.length;
+		finish({ met: true, exit: 0, output: "late" });
+		await checking;
+		expect(wrote).toHaveBeenCalledTimes(writes);
+		expect(wake).not.toHaveBeenCalled();
+		expect(failed).not.toHaveBeenCalled();
+		expect(forget).toHaveBeenCalledExactlyOnceWith(row.id);
+		expect(timers.get(agent.db, row.id)?.status).toBe("active");
+	});
+
+	it("cancels a removed timer's check while the scheduler remains live", async () => {
+		const row = add();
+		let signal: AbortSignal | undefined;
+		const failed = vi.fn();
+		const scheduler = new TimerScheduler({
+			db: () => agent,
+			sessionId: "s1",
+			now: () => T0,
+			wake: vi.fn(),
+			failed,
+			check: (_condition, input) =>
+				new Promise((_resolve, reject) => {
+					signal = input.signal;
+					signal?.addEventListener("abort", () => reject(signal!.reason), { once: true });
+				}),
+		});
+		started.push(scheduler);
+		scheduler.refresh();
+		const checking = scheduler.tick();
+		timers.finish(agent.db, row.id, "cancelled", "user", T0);
+		scheduler.refresh();
+		expect(signal?.aborted).toBe(true);
+		await checking;
+		expect(failed).not.toHaveBeenCalled();
+	});
+
+	it("stops an in-flight model judgment and never starts one with an aborted signal", async () => {
+		const { judge, host } = judging([]);
+		const controller = new AbortController();
+		let signal: AbortSignal | undefined;
+		const call = vi.spyOn(host.small, "call").mockImplementation(
+			(_ctx, input) =>
+				new Promise((resolve) => {
+					signal = input.signal;
+					signal.addEventListener("abort", () => resolve({ error: "aborted" }), { once: true });
+				}),
+		);
+		const result = judge.judge(ask({ signal: controller.signal }));
+		const rejected = expect(result).rejects.toThrow("cancelled");
+		controller.abort(new Error("cancelled"));
+		expect(signal?.aborted).toBe(true);
+		await rejected;
+		await expect(judge.judge(ask({ signal: controller.signal }))).rejects.toThrow("cancelled");
+		expect(call).toHaveBeenCalledOnce();
+	});
+
+	it("stops the process group of a running until-command check", async () => {
+		const controller = new AbortController();
+		const result = check()(
+			{ kind: "command", command: "echo $$ > check.pid; exec sleep 60" },
+			{ cwd: root, signal: controller.signal },
+		);
+		const rejected = expect(result).rejects.toThrow("cancelled");
+		try {
+			await vi.waitFor(() => expect(fs.existsSync(path.join(root, "check.pid"))).toBe(true));
+			const pid = Number(fs.readFileSync(path.join(root, "check.pid"), "utf8").trim());
+			controller.abort(new Error("cancelled"));
+			await rejected;
+			expect(() => process.kill(pid, 0)).toThrow();
+		} finally {
+			controller.abort(new Error("cancelled"));
+			await result.catch(() => {});
+		}
+	});
+});

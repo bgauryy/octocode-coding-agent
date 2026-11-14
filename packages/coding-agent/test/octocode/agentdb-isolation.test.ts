@@ -30,7 +30,8 @@ it("keeps each configured database usable until the storage owner closes it", ()
 	closeSharedAgentDb();
 	expect(() => first.db.prepare("SELECT 1")).toThrow();
 	expect(() => second.db.prepare("SELECT 1")).toThrow();
-	expect(sharedAgentDb(a)).not.toBe(first);
+	// Identity, not `not.toBe`: vitest deep-compares for its hint, which reads the closed handle's throwing `mirror` getter.
+	expect(sharedAgentDb(a) === first).toBe(false);
 });
 
 it("does not close healthy databases when another configured file is refused", () => {

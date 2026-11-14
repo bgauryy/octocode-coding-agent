@@ -77,7 +77,7 @@ header.top { position: sticky; top: 0; z-index: 5; padding: 0 16px; background: 
 .brand h1 { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--text-2); }
 .brand-mark { width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, var(--accent), var(--teal)); }
 .brand-sep { color: var(--text-3); font-weight: 400; }
-.header-actions { display: flex; align-items: center; flex-shrink: 0; gap: 8px; margin-left: auto; }
+.header-actions { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; gap: 8px; margin-left: auto; }
 .palette-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 0; min-height: 30px; padding: 4px 8px 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .palette-trigger .palette-label { text-align: left; }
 .palette-trigger:hover { border-color: var(--text-3); color: var(--text-2); }

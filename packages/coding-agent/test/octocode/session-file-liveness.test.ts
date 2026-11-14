@@ -13,7 +13,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-it("reads a session file's live process through the shared index and clears after session end", () => {
+it("reads a session file's live process through the shared index and clears after session end", async () => {
 	const root = tmp();
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
 	const manager = SessionManager.create(root);
@@ -21,16 +21,16 @@ it("reads a session file's live process through the shared index and clears afte
 	const index = new SessionIndex(sharedAgentDb());
 	index.start(manager.getSessionId());
 	const file = manager.getSessionFile()!;
-	expect(sessionFileRunningPid(file)).toBe(process.pid);
+	expect(await sessionFileRunningPid(file)).toBe(process.pid);
 	index.end(manager.getSessionId());
-	expect(sessionFileRunningPid(file)).toBeUndefined();
+	expect(await sessionFileRunningPid(file)).toBeUndefined();
 });
 
-it("returns undefined for an unavailable session file", () => {
-	expect(sessionFileRunningPid(path.join(tmp(), "missing.jsonl"))).toBeUndefined();
+it("returns undefined for an unavailable session file", async () => {
+	expect(await sessionFileRunningPid(path.join(tmp(), "missing.jsonl"))).toBeUndefined();
 });
 
-it("reads only the header: never loads or rewrites the transcript another process may be appending to", () => {
+it("reads only the header: never loads or rewrites the transcript another process may be appending to", async () => {
 	const root = tmp();
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
 	const id = "01a1f000-0000-7000-8000-000000000002";
@@ -48,7 +48,7 @@ it("reads only the header: never loads or rewrites the transcript another proces
 	fs.writeFileSync(file, text);
 	new SessionIndex(sharedAgentDb()).start(id);
 	const load = vi.spyOn(SessionManager, "open");
-	expect(sessionFileRunningPid(file)).toBe(process.pid);
+	expect(await sessionFileRunningPid(file)).toBe(process.pid);
 	expect(fs.readFileSync(file, "utf8")).toBe(text);
 	expect(load).not.toHaveBeenCalled();
 });

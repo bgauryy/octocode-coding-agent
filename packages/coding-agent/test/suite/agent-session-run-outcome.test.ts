@@ -1,10 +1,10 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { recordLockOwner } from "../../../common/src/lock-owner.ts";
 import { createHarness } from "./harness.ts";
@@ -134,15 +134,19 @@ describe("a write failure at the end of a run", () => {
 	it("still settles, so abort, waits and the next prompt do not hang", async () => {
 		const { harness, dir, release } = await wedgeAttempt();
 		try {
-			// The reply was produced, so the held message's failed write does not fail the run: it stays queued, with a warning.
+			// The reply was produced, so a record the lock holds back does not fail the run: it stays in memory, part of the
+			// session at once, and the timed retry writes it once the lock is free (`held-retry.ts`).
 			await harness.session.prompt("go");
 			expect(harness.session.lastRunOutcome?.status).toBe("completed");
-			expect(harness.session.lastRunOutcome?.warning).toMatch(/lock/i);
+			const file = harness.session.sessionManager.getSessionFile()!;
+			expect(harness.session.sessionManager.getEntries().some((entry: any) => entry.content === "held")).toBe(true);
+			expect(readFileSync(file, "utf8")).not.toContain('"content":"held"');
 			expect(harness.session.isStreaming).toBe(false);
 			expect(harness.session.isIdle).toBe(true);
 			await harness.session.waitForIdle();
 			await harness.session.abort();
 			release();
+			await vi.waitFor(() => expect(readFileSync(file, "utf8")).toContain('"content":"held"'), { timeout: 5000 });
 			await harness.session.prompt("again");
 			expect(harness.session.lastRunOutcome?.status).toBe("completed");
 		} finally {

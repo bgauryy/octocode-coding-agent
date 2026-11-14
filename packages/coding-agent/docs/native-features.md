@@ -97,6 +97,43 @@ A subagent always runs with `--rpc-ask`; its parent relays each question and che
 
 [Web workspace](web-workspace.md) covers `/web` (the user-level web daemon's page for every session, with the session's own server as the fallback when the daemon cannot start), the Activity view, the backlog board, the Docs view and the Profiler; [memory](memory.md) covers notes and `/memory`. People read profile data with `octocode profile`; agents read it with the `archive` tool's `profile` source (main session only).
 
+### Where a turn's time goes
+
+Every agent records timings in its own transcript, so the profiler can name the slow phase instead of only the total. Recording uses timestamps only (nothing per token) and has no setting.
+
+```mermaid
+flowchart LR
+  P[Prompt] -->|turn start| R[Model request]
+  R -->|first token, stream| T[Tool calls]
+  T -->|prepare, queued, execute, finalize, held| R
+  R -->|failed| W[Retry backoff] --> R
+```
+
+| Recorded on    | Phase       | What it covers                                                                                                                                                                                |
+| -------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model response | first token | From the request until its first content arrived: connection, provider queueing and prompt processing                                                                                         |
+| Model response | stream      | The rest of the response                                                                                                                                                                      |
+| Model response | longest gap | The longest wait between two events of the response (transcript only). A long gap after the first token is the provider pausing mid-response, shown live as "no model event for N s"          |
+| Tool result    | prepare     | Argument checks, PreToolUse hooks and the permission decision, including a wait for your answer                                                                                               |
+| Tool result    | queued      | Waiting for the batch schedule: a call that changes state runs alone, so it waits for earlier calls and later calls wait for it                                                               |
+| Tool result    | execute     | The tool itself (the duration shown before)                                                                                                                                                   |
+| Tool result    | finalize    | PostToolUse hooks and result processing                                                                                                                                                       |
+| Tool result    | held        | Until the result went back to the model; the results of one message go back together, so a fast call waits for the slowest                                                                    |
+| Timeline only  | turn start  | From a prompt to its first model request (prompt hooks, context assembly, memory recall, compaction), drawn when it takes 250 ms or more                                                      |
+| Timeline only  | retry       | From a failed request to the retry that followed it                                                                                                                                           |
+| Session entry  | stall       | A window in which the agent's event loop was blocked for 200 ms or more, named after the request, tool call, turn end or compaction that closed it; a compaction after the run is watched too |
+| Compaction     | summary     | How long writing the checkpoint held the turn, drawn as a span ending at the compaction, labeled with how it was written and whether an early summary was used                                |
+
+A tool call started early (while the model was still streaming) is marked so; its preparation did not delay the batch. `octocode profile --timeline` lists the phases beside each event, `--trace` exports them on a `phases` thread of each agent, and the web Profiler shows them in an event's details. `--insights` adds these checks:
+
+| Check               | Reported when                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `slow-phase`        | A tool call spent 5 s or more outside its execution in one phase; your permission wait is left out, since `permission-wait` reports it |
+| `slow-first-token`  | A model took 30 s or more to send its first token                                                                                      |
+| `slow-turn-start`   | A prompt took 10 s or more to reach its first model request                                                                            |
+| `retry-wait`        | An agent spent 10 s or more in total between failed requests and their retries                                                         |
+| `main-thread-stall` | The event loop was blocked 200 ms or more; 1 s or more is medium                                                                       |
+
 ## Tool selection and migration
 
 Each tool below is active unless the Default column says otherwise. `defaultTools` and `--tools` replace or modify the selection; `/configuration enable|disable tool:<name>` or per-run `--enable`/`--disable` switch one ([configuration](configuration.md#changing-configuration)). Role profiles, plan mode and permissions can narrow it further. There is no `/tools` command.
@@ -114,7 +151,7 @@ Each tool below is active unless the Default column says otherwise. `defaultTool
 | `askUser`     | Active                                                                           | [Questions](#questions-to-a-person)                                                                                                                                                                            |
 | `agent`       | Active                                                                           | [Agent operations](#agent-operations)                                                                                                                                                                          |
 | `timer`       | Active; also in subagents except lean ones; kept while `agent` is active         | [Timer](#timer)                                                                                                                                                                                                |
-| `models`      | Active in the main session; none for subagents                                   | Inspection, not an `agent` type: this session's model, providers with credential status, models a task can run on; `check: true` tries model listing, then small model requests if needed (may cost)                                    |
+| `models`      | Active in the main session; none for subagents                                   | Inspection, not an `agent` type: this session's model, providers with credential status, models a task can run on; `check: true` tries model listing, then small model requests if needed (may cost)           |
 | `skill`       | Active; hidden when no skill is invocable                                        | [skills](skills.md)                                                                                                                                                                                            |
 | `mcp`         | Active when the built-in MCP host registers it                                   | [MCP](mcp.md#let-the-model-manage-servers)                                                                                                                                                                     |
 
@@ -132,10 +169,10 @@ Tool descriptions own each tool's arguments. Rules that span tools:
 
 `timer` (`op` `set`, `list`, `cancel`) wakes the session that set it with its note.
 
-| Trigger | Fires                                                                                                                                                 |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `after` | once after N seconds                                                                                                                                  |
-| `every` | every N seconds (at least 30), up to `maxRuns` (default 20) or a `deadline`                                                                           |
+| Trigger | Fires                                                                                                                                                       |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `after` | once after N seconds                                                                                                                                        |
+| `every` | every N seconds (at least 30), up to `maxRuns` (default 20) or a `deadline`                                                                                 |
 | `until` | once when one trigger holds: `unlocked`, `item`, `agent` or `command` (exits 0), with optional `check`; stops at its deadline (default an hour) and says so |
 
 A file or a port is a `command`: `test -e path` waits for a file, `nc -z localhost 3000` for a listening port. A call that names the removed `file` or `port` condition is refused with its command form, and a timer stored with one ends `failed` with the same note. `job` and `message` kinds do not exist.
@@ -144,9 +181,11 @@ A file or a port is a `command`: `test -e path` waits for a file, `nc -z localho
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Persistence | Timers belong to one session and survive restart and resume; a missed wake comes once; two processes never fire one twice; at most 10 active per session; `cancel` takes the id `set` returned (`all: true` stops all); erasing a session removes its timers                                                                                                                                                                                                         |
 | Wake        | A follow-up message that starts a turn; the footer counts active timers; a headless run waits for the next wake before it ends                                                                                                                                                                                                                                                                                                                                       |
-| Polling     | Events poke a check; a safety-net poll (30 s; 60 s for item and agent; 15 s for `command`; or `every` with a 5 s minimum for `until` checks) catches misses; a check that finds nothing writes nothing                                                                                                                                                                                                                                                                                                     |
+| Polling     | Events poke a check; a safety-net poll (30 s; 60 s for item and agent; 15 s for `command`; or `every` with a 5 s minimum for `until` checks) catches misses; a check that finds nothing writes nothing                                                                                                                                                                                                                                                               |
 | `check`     | A question beside one trigger: after the trigger fires and its evidence (up to 6,000 characters) changed, at least 30 s after the last call, the `small`-route model returns `met`, `not_met` or `unsure`; only `met` wakes. Caps: $0.01 per judgment, 5 judgments or $0.05 per wait, $0.25 per session; hitting one ends the wait `failed` with `check budget`. Off until `timer.check.enabled` (global settings only) is `true` or you answer a first-use question |
 | Permissions | An until-command (or a `check` trigger) is gated as the `bash` call it is when set, and against plan mode and read-only roles each time it runs                                                                                                                                                                                                                                                                                                                      |
+
+Stopping or switching sessions cancels running timer checks and removes their watchers; persisted timers remain available when that session resumes. Cancelling a timer also cancels its running check. Late results cannot wake a stopped session. Command checks keep a bounded output tail while running: the last 2,000 characters, with a marker when earlier output was omitted.
 
 ### MCP and native tools
 
@@ -373,13 +412,13 @@ flowchart LR
   X -->|yes, signed in| RT["agent task with runner:<br/>a child on the vendor's plan"]
 ```
 
-| Route                                                 | Who starts it                                     | What it needs                                                    | What it costs                                                                                                                         |
-| ----------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Subagent on a provider model                          | The agent (`agent` task)                          | The provider on, with a working credential                       | API price per token, or your plan's usage limits with a plan sign-in; Claude Pro/Max runs only through the Claude Code external agent |
-| Subagent on a named model                             | The agent, or you by asking for that model        | As above; `models` lists what can run a task                     | As above; free models cost nothing                                                                                                    |
+| Route                                                 | Who starts it                                     | What it needs                                                    | What it costs                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Subagent on a provider model                          | The agent (`agent` task)                          | The provider on, with a working credential                       | API price per token, or your plan's usage limits with a plan sign-in; Claude Pro/Max runs only through the Claude Code external agent              |
+| Subagent on a named model                             | The agent, or you by asking for that model        | As above; `models` lists what can run a task                     | As above; free models cost nothing                                                                                                                 |
 | Runner task (Claude Code, Codex, Gemini, opencode)    | The agent, with `agent` task `runner`             | `externalAgents: true`, the CLI and its ACP adapter, signed in   | The vendor account's billing; known plans show subscription usage, and other routes retain any reported dollar cost. Unknown billing stays unknown |
-| External agent (Claude Code, Codex, Gemini, opencode) | The agent, with `agent` type `external`           | `externalAgents: true`, the vendor's CLI on `PATH` and signed in | The vendor account's own billing or plan                                                                                              |
-| External agent from the terminal                      | You, with `/agents external connect` and `prompt` | The vendor's CLI on `PATH` and signed in                         | The vendor account's own billing or plan                                                                                              |
+| External agent (Claude Code, Codex, Gemini, opencode) | The agent, with `agent` type `external`           | `externalAgents: true`, the vendor's CLI on `PATH` and signed in | The vendor account's own billing or plan                                                                                                           |
+| External agent from the terminal                      | You, with `/agents external connect` and `prompt` | The vendor's CLI on `PATH` and signed in                         | The vendor account's own billing or plan                                                                                                           |
 
 A listed provider or external agent is not proof that it works. A connected opencode peer, for example, starts on its own default model, which may need funds. Check with `/modelsettings` → Credential check, or connect and send one short prompt.
 
@@ -741,6 +780,8 @@ flowchart LR
 A session's own name is in the `environment` section of its prompt, after the cached prefix; `coordinate list` shows other sessions with name, busy state and folder and marks this repository's coordinator. `/new`, `/resume` and `/fork` start a new conversation with a new name and instance ID, so a message to the old name fails with what is running. A process message does not wait for the receiver's run; the answer arrives as a message from its name, so two sessions cannot wait on each other. Its text arrives [marked as external](session-api.md#what-the-session-sees), and whether it arrives is [the receiver's permission mode](permissions.md#external-messages). `forward`, `replyTo` and `interrupt` reach teammates only, and a subagent has no process route: a restricted child must not ask an unrestricted session to act. An outside agent stays `agent` type `external` ([lifecycle](#external-agent-lifecycle)).
 
 ### Finishing a worktree
+
+Octocode merges into the same checkout one at a time, including requests from separate sessions. Waiting for a merge is cancellable and stops after 30 seconds if the checkout remains busy; an active merge finishes or rolls back before the next begins. Other checkouts can merge independently. This coordination covers Octocode merge commands; avoid running a manual Git merge in that checkout at the same time.
 
 ```mermaid
 sequenceDiagram

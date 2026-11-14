@@ -101,6 +101,8 @@ Provider visibility switches are global. An invalid `disabledProviders` value is
 
 `defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action selects the current model and saves the paired global default together, after the write is acknowledged. Trusted workspace defaults take precedence over global ones.
 
+The web Settings page saves or clears the startup provider and model as one pair in the chosen global or trusted workspace file. Its source badges show the effective precedence; changing the pair keeps the current chat's model.
+
 `/configuration` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key.
 
 ```text
@@ -228,7 +230,7 @@ Project resources need trust, except `AGENTS.md`-style instruction files, which 
 
 ## Pi configuration fallback
 
-With the default home, Octocode also reads `~/.pi/agent/` and `~/.pi/` (in that order); Octocode wins.
+Octocode and Pi provider sources are enabled by default; no import step is required. With the default home, Octocode also reads `~/.pi/agent/` and `~/.pi/` (in that order); Octocode wins.
 
 For providers only, the Octocode Pi extension's folders come first: `models.json` and `auth.json` are read, read only, from `~/.octocode/agent/` and `~/.octocode/`, then from Pi's folders. Nothing else is read there. The order for a provider is Octocode's home, `~/.octocode/agent/`, `~/.octocode/`, `~/.pi/agent/`, `~/.pi/`; the first definition wins. Turning the `pi` provider source off stops all of these.
 

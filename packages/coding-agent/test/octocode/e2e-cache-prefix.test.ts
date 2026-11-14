@@ -24,6 +24,7 @@ import {
 	withEnv,
 	type AgentContext,
 	type Fixture,
+	type ParentSkillCatalog,
 } from "./agent-context/capture.ts";
 import { instructionBlocks, toolsText } from "./agent-context/fingerprint.ts";
 
@@ -369,10 +370,13 @@ describe("two children of one profile with different tasks", () => {
 	it.each([undefined, "researcher", "implementer"])(
 		"profile %s sends the same system prompt and tool array",
 		async (role) => {
+			// Real siblings inherit one parent catalog, even while an installed package is rebuilt.
+			const parentSkills: ParentSkillCatalog = {};
 			const [a, b] = [
-				await captureChild(role ?? "general", role, tasks[0]),
-				await captureChild(role ?? "general", role, tasks[1]),
+				await captureChild(role ?? "general", role, tasks[0], { parentSkills }),
+				await captureChild(role ?? "general", role, tasks[1], { parentSkills }),
 			];
+			expect(parentSkills.snapshot?.resources.length).toBeGreaterThan(0);
 			// Not vacuous: the tasks do differ in what each child reads first.
 			expect(a.messages.map((message) => message.text)).not.toEqual(b.messages.map((message) => message.text));
 			expect(toolsText(b)).toBe(toolsText(a));

@@ -37,6 +37,7 @@ export class ReportGroups {
 	private step = 0;
 	private readonly groupOf = new Map<string, number>();
 	private readonly groups = new Map<number, Map<string, Member>>();
+	private readonly remaining = new Map<number, number>();
 
 	/** The parent's step ended or a new turn began: children started from now on form a new group. */
 	nextStep(): void {
@@ -47,12 +48,15 @@ export class ReportGroups {
 	join(id: string, background: boolean): void {
 		const step = this.groupOf.get(id);
 		if (step !== undefined) {
-			this.groups.get(step)?.delete(id);
-			if (this.groups.get(step)?.size === 0) this.groups.delete(step);
+			const previous = this.groups.get(step);
+			if (previous?.get(id)?.ended !== true) this.remaining.set(step, (this.remaining.get(step) ?? 1) - 1);
+			previous?.delete(id);
+			if (step !== this.step || previous?.size === 0) this.forgetEnded(step);
 		}
 		const group = this.groups.get(this.step) ?? new Map<string, Member>();
 		group.set(id, { background, settled: false });
 		this.groups.set(this.step, group);
+		this.remaining.set(this.step, (this.remaining.get(this.step) ?? 0) + 1);
 		this.groupOf.set(id, this.step);
 	}
 
@@ -74,14 +78,12 @@ export class ReportGroups {
 	 */
 	leave(id: string): void {
 		const member = this.member(id);
-		if (!member) return;
+		if (!member || member.ended) return;
 		member.settled = true;
 		member.ended = true;
 		const step = this.groupOf.get(id)!;
-		const group = this.groups.get(step)!;
-		if ([...group.values()].some((each) => !each.ended)) return;
-		this.groups.delete(step);
-		for (const each of group.keys()) this.groupOf.delete(each);
+		this.remaining.set(step, this.remaining.get(step)! - 1);
+		this.forgetEnded(step);
 	}
 
 	/**
@@ -98,6 +100,13 @@ export class ReportGroups {
 			if (other !== id && member.background && member.settled && !member.ended && !batch.has(other) && building(member))
 				return true;
 		return false;
+	}
+
+	private forgetEnded(step: number): void {
+		if (this.remaining.get(step) !== 0) return;
+		for (const id of this.groups.get(step)?.keys() ?? []) this.groupOf.delete(id);
+		this.groups.delete(step);
+		this.remaining.delete(step);
 	}
 
 	private member(id: string): Member | undefined {

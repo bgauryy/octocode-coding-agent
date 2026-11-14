@@ -275,11 +275,11 @@ describe("MemoryStore", () => {
 		expect(() => add(store, { title: "widget FACTORY" })).toThrow(/Similar memory/);
 	});
 
-	it("marks usage and keeps the auto setting in meta", () => {
+	it("marks usage and keeps the auto setting in meta", async () => {
 		const store = new MemoryStore(freshDb(), "repo-a");
 		const memory = add(store, { title: "Used one" });
-		store.markUsed([memory.id], 5000);
-		store.markUsed([]);
+		await store.markUsed([memory.id], 5000);
+		await store.markUsed([]);
 		expect(store.get(memory.id)).toMatchObject({ useCount: 1, lastUsed: 5000 });
 		expect(store.autoSetting()).toBe(true);
 		store.setAutoSetting(false);
@@ -420,7 +420,10 @@ describe("memory tool", () => {
 			"M1 (workspace, procedure, 0d) Build with yarn",
 		);
 		expect(text(await run(tool, { op: "search", query: "nothing here" }))).toContain("memories: 0 matches");
-		expect(text(await run(tool, { op: "get", id: "M1" }))).toContain("keywords: compile bundle");
+		const got = text(await run(tool, { op: "get", id: "M1" }));
+		expect(got).toContain("keywords: compile bundle");
+		// An explicit read names the session that wrote the note, so its source can be traced through `archive`.
+		expect(got).toMatch(/^author: agent · source session session-test · updated 0d ago/m);
 		expect(text(await run(tool, { op: "list" }))).toContain("M1");
 		expect(
 			text(await run(tool, { op: "set", id: "M1", pinned: true }, ctxFor({ selects: ["Allow once"] }).ctx)),

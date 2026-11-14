@@ -42,27 +42,23 @@ export function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
 		}
 	}
 
-	const updateLatestActivity = (node: SessionTreeNode): number => {
-		let latestActivity = node.session.modified.getTime();
-		for (const child of node.children) {
-			latestActivity = Math.max(latestActivity, updateLatestActivity(child));
-		}
-		node.latestActivity = latestActivity;
-		return latestActivity;
-	};
-
-	for (const root of roots) {
-		updateLatestActivity(root);
+	// Post-order through an explicit stack: long fork chains must not consume the call stack.
+	const ordered: SessionTreeNode[] = [];
+	const pending = [...roots];
+	const seen = new Set<SessionTreeNode>();
+	while (pending.length > 0) {
+		const node = pending.pop()!;
+		if (seen.has(node)) continue;
+		seen.add(node);
+		ordered.push(node);
+		for (const child of node.children) pending.push(child);
 	}
-
-	// Sort children and roots by latest activity in each subtree (descending)
-	const sortNodes = (nodes: SessionTreeNode[]): void => {
-		nodes.sort((a, b) => b.latestActivity - a.latestActivity);
-		for (const node of nodes) {
-			sortNodes(node.children);
-		}
-	};
-	sortNodes(roots);
+	for (let i = ordered.length - 1; i >= 0; i--) {
+		const node = ordered[i];
+		for (const child of node.children) node.latestActivity = Math.max(node.latestActivity, child.latestActivity);
+		node.children.sort((a, b) => b.latestActivity - a.latestActivity);
+	}
+	roots.sort((a, b) => b.latestActivity - a.latestActivity);
 
 	return roots;
 }
@@ -73,19 +69,23 @@ export function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
 export function flattenSessionTree(roots: SessionTreeNode[]): FlatSessionNode[] {
 	const result: FlatSessionNode[] = [];
 
-	const walk = (node: SessionTreeNode, depth: number, ancestorContinues: boolean[], isLast: boolean): void => {
+	const pending = roots
+		.map((node, index) => ({ node, depth: 0, ancestorContinues: [] as boolean[], isLast: index === roots.length - 1 }))
+		.reverse();
+	const seen = new Set<SessionTreeNode>();
+	while (pending.length > 0) {
+		const { node, depth, ancestorContinues, isLast } = pending.pop()!;
+		if (seen.has(node)) continue;
+		seen.add(node);
 		result.push({ session: node.session, depth, isLast, ancestorContinues });
-
-		for (let i = 0; i < node.children.length; i++) {
-			const childIsLast = i === node.children.length - 1;
-			// Only show continuation line for non-root ancestors
-			const continues = depth > 0 ? !isLast : false;
-			walk(node.children[i], depth + 1, [...ancestorContinues, continues], childIsLast);
+		for (let i = node.children.length - 1; i >= 0; i--) {
+			pending.push({
+				node: node.children[i],
+				depth: depth + 1,
+				ancestorContinues: [...ancestorContinues, depth > 0 ? !isLast : false],
+				isLast: i === node.children.length - 1,
+			});
 		}
-	};
-
-	for (let i = 0; i < roots.length; i++) {
-		walk(roots[i], 0, [], i === roots.length - 1);
 	}
 
 	return result;

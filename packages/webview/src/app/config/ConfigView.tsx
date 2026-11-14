@@ -1,7 +1,6 @@
 import type {
 	ConfigCredentialCommand,
 	ConfigProviderCommand,
-	ConfigSetting,
 	ConfigSettingCommand,
 	ConfigSnapshot,
 	SignInCommand,
@@ -12,7 +11,8 @@ import { plural } from "../model/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, Button, EmptyState } from "../ui/primitives.tsx";
-import { SettingEditor, type SaveSetting } from "./SettingEditor.tsx";
+import type { SaveSetting } from "./SettingEditor.tsx";
+import { SettingsPanel } from "./SettingsPanel.tsx";
 import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
 import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
 import { type HarnessApi, HarnessPanel } from "./HarnessPanel.tsx";
@@ -25,8 +25,6 @@ type LoadState =
 	| { status: "loading" }
 	| { status: "error"; message: string; key: string }
 	| { status: "ready"; snapshot: ConfigSnapshot; key: string };
-
-const SETTING_SOURCE_LABELS = { global: "Global", workspace: "Workspace", default: "Default" } as const;
 
 function ProviderGroup({
 	title,
@@ -94,8 +92,8 @@ function Providers({
 			<div className="panel-header">
 				<h2 id="config-providers">Provider credentials</h2>
 				<p className="muted">
-					Shows where a credential exists, never its value. When several sources exist, this page does not say which one
-					a request uses. {save && "A key you save here is not shown again."}
+					Configured means a credential source is present; access has not been verified. When several sources exist,
+					this page does not say which one a request uses. {save && "A key you save here is not shown again."}
 				</p>
 				<p className="config-keychain">
 					<StateMark state={snapshot.keychainAvailable ? "done" : "stopped"} size={12} />{" "}
@@ -141,73 +139,6 @@ function Providers({
 					/>
 				</>
 			)}
-		</section>
-	);
-}
-
-function SettingRow({
-	setting,
-	save,
-	workspace,
-}: {
-	setting: ConfigSetting;
-	save?: SaveSetting;
-	workspace?: { id: string; trusted: boolean };
-}) {
-	return (
-		<li className="config-row">
-			<div className="config-row-head">
-				<code className="config-name">{setting.key}</code>
-				{setting.value === undefined ? (
-					<span className="muted">Not set</span>
-				) : (
-					<code>{typeof setting.value === "string" ? setting.value : JSON.stringify(setting.value)}</code>
-				)}
-				<Badge tone={setting.source === "workspace" ? "accent" : "neutral"}>
-					<span className="visually-hidden">Source: </span>
-					{SETTING_SOURCE_LABELS[setting.source]}
-				</Badge>
-			</div>
-			{save && <SettingEditor key={workspace?.id ?? ""} setting={setting} save={save} workspace={workspace} />}
-		</li>
-	);
-}
-
-function Settings({
-	snapshot,
-	save,
-	workspace,
-}: {
-	snapshot: ConfigSnapshot;
-	save?: SaveSetting;
-	workspace?: { id: string; trusted: boolean };
-}) {
-	return (
-		<section className="panel" aria-labelledby="config-settings">
-			<div className="panel-header">
-				<h2 id="config-settings">Settings</h2>
-				{save ? (
-					<p className="muted">
-						A workspace value replaces the global one. Running sessions pick a change up with <code>/reload</code>.
-					</p>
-				) : (
-					<p className="muted">
-						Read-only here. Change settings with <code>/settings</code> in a terminal session; running sessions pick
-						them up with <code>/reload</code>.
-					</p>
-				)}
-			</div>
-			{snapshot.settingsErrors?.map((error) => (
-				<p key={error.scope} className="callout tone-danger" role="alert">
-					{error.scope === "global" ? "Global settings file: " : "Workspace settings file: "}
-					{error.message}
-				</p>
-			))}
-			<ul className="row-list" aria-label="Settings">
-				{snapshot.settings.map((setting) => (
-					<SettingRow key={setting.key} setting={setting} save={save} workspace={workspace} />
-				))}
-			</ul>
 		</section>
 	);
 }
@@ -384,7 +315,7 @@ export function ConfigView(props: ConfigViewProps) {
 				signIn={snapshot.writable ? signIn : undefined}
 				onSignedIn={reload}
 			/>
-			<Settings
+			<SettingsPanel
 				snapshot={snapshot}
 				save={snapshot.writable ? saveSetting : undefined}
 				workspace={repoId && snapshot.workspace ? { id: repoId, trusted: snapshot.workspace.trusted } : undefined}

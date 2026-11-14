@@ -14,6 +14,7 @@ import {
 	prepareToolCall,
 } from "./tool-call.ts";
 import type { EarlyRun } from "./early-start.ts";
+import { sinceMs, toolCallPhases } from "./tool-timing.ts";
 import { resolveToolConcurrency, ToolSchedule } from "./tool-schedule.ts";
 
 /**
@@ -108,11 +109,7 @@ async function executeToolCallsSequential(
 		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
 		let finalized: AgentToolCallOutcome;
 		if (preparation.kind === "immediate") {
-			finalized = {
-				toolCall,
-				result: preparation.result,
-				isError: preparation.isError,
-			};
+			finalized = immediateOutcome(toolCall, preparation);
 		} else {
 			const executed = await executePreparedToolCall(
 				preparation,
@@ -181,11 +178,7 @@ async function executeToolCallsParallel(
 				? earlyPreparation
 				: await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
 		if (preparation.kind === "immediate") {
-			const finalized = {
-				toolCall,
-				result: preparation.result,
-				isError: preparation.isError,
-			} satisfies AgentToolCallOutcome;
+			const finalized = immediateOutcome(toolCall, preparation);
 			await emitToolExecutionEnd(finalized, emit);
 			finalizedCalls.push(finalized);
 			if (signal?.aborted) {
@@ -210,6 +203,9 @@ async function executeToolCallsParallel(
 						config,
 						signal,
 					);
+					// Its preparation overlapped the model's stream, so it did not delay the batch.
+					const phases = toolCallPhases({ ...finalized.phases, early: true });
+					if (phases) finalized.phases = phases;
 					await emitToolExecutionEnd(finalized, emit);
 					return finalized;
 				}),
@@ -217,9 +213,10 @@ async function executeToolCallsParallel(
 			continue;
 		}
 		const concurrency = resolveToolConcurrency(preparation.tool, preparation.args);
+		const queuedAt = performance.now();
 		finalizedCalls.push(
 			schedule.add(concurrency, () =>
-				runPreparedToolCall(currentContext, assistantMessage, preparation, config, signal, emit),
+				runPreparedToolCall(currentContext, assistantMessage, preparation, config, signal, emit, sinceMs(queuedAt)),
 			),
 		);
 		if (signal?.aborted) {
@@ -250,6 +247,7 @@ async function runPreparedToolCall(
 	config: AgentLoopConfig,
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
+	queuedMs: number,
 ): Promise<AgentToolCallOutcome> {
 	const { toolCall } = preparation;
 	if (signal?.aborted) {
@@ -275,8 +273,24 @@ async function runPreparedToolCall(
 		config,
 		signal,
 	);
+	const phases = toolCallPhases({ ...finalized.phases, queuedMs });
+	if (phases) finalized.phases = phases;
 	await emitToolExecutionEnd(finalized, emit);
 	return finalized;
+}
+
+/** The outcome of a call that ended in preparation (unknown tool, invalid arguments, blocked or aborted). */
+function immediateOutcome(
+	toolCall: AgentToolCall,
+	preparation: Extract<Awaited<ReturnType<typeof prepareToolCall>>, { kind: "immediate" }>,
+): AgentToolCallOutcome {
+	const phases = toolCallPhases({ prepareMs: preparation.prepareMs });
+	return {
+		toolCall,
+		result: preparation.result,
+		isError: preparation.isError,
+		...(phases ? { phases } : {}),
+	};
 }
 
 /**

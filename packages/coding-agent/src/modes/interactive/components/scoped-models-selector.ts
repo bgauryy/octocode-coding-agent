@@ -10,11 +10,14 @@ import {
 	matchesKey,
 	Spacer,
 	Text,
+	truncateToWidth,
+	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { getModelSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { shortcutsFooter } from "./scoped-models-selector/footer.ts";
 import {
 	clearAll,
 	enableAll,
@@ -26,7 +29,7 @@ import {
 } from "./scoped-models-selector/enabled-ids.ts";
 import { plainText } from "./styled-line.ts";
 import { providerBadge } from "./model-selector/rows.ts";
-import type { ProviderKind } from "../../../core/model-runtime/catalog.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ModelItem {
 	fullId: string;
@@ -39,7 +42,7 @@ interface ModelsConfig {
 	enabledModelIds: string[] | null;
 	refreshStatus?: string;
 	/** Each provider's kind for its badge (`ModelRuntime.getProviderKind`); without it the badge names the provider only. */
-	providerKind?: (provider: string) => ProviderKind;
+	providerKind?: (provider: string) => string;
 }
 
 interface ModelsCallbacks {
@@ -48,6 +51,7 @@ interface ModelsCallbacks {
 	/** Called when user wants to persist current selection to settings */
 	onPersist: (enabledModelIds: string[] | null) => void | Promise<void>;
 	onCancel: () => void;
+	requestRender?: () => void;
 }
 
 /**
@@ -78,6 +82,9 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	private maxVisible = 8;
 	private isDirty = false;
 	private refreshStatusText?: Text;
+	private layoutWidth = 80;
+	private saving = false;
+	private saveError?: string;
 
 	constructor(config: ModelsConfig, callbacks: ModelsCallbacks) {
 		super();
@@ -95,12 +102,8 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("accent", theme.bold("Model shortcuts — choose models for keyboard cycling")), 0, 0),
-		);
-		this.addChild(
-			new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} to save to settings.`), 0, 0),
-		);
+		this.addChild(new Text(theme.fg("accent", theme.bold("Model shortcuts")), 0, 0));
+		this.addChild(new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} saves globally.`), 0, 0));
 		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
@@ -165,18 +168,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		const countText = allEnabled
 			? "all enabled"
 			: `${enabledCount}/${this.allIds.length} enabled${unavailableCount ? ` · ${unavailableCount} unavailable` : ""}`;
-		const parts = [
-			`${keyText("tui.select.confirm")} toggle`,
-			`${keyText("app.models.enableAll")} all`,
-			`${keyText("app.models.clearAll")} clear`,
-			`${keyText("app.models.toggleProvider")} provider`,
-			`${keyText("app.models.reorderUp")}/${keyText("app.models.reorderDown")} reorder`,
-			`${keyText("app.models.save")} save`,
-			countText,
-		];
-		return this.isDirty
-			? theme.fg("dim", `  ${parts.join(" · ")} `) + theme.fg("warning", "(unsaved)")
-			: theme.fg("dim", `  ${parts.join(" · ")}`);
+		return shortcutsFooter(countText, this.layoutWidth, this.isDirty, this.saving, this.saveError);
 	}
 
 	private refresh(): void {
@@ -223,7 +215,21 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
 			const providerText = theme.fg("muted", ` ${badge}`);
 			const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
-			this.listContainer.addChild(new Text(`${prefix}${status}${modelText}${providerText}`, 0, 0));
+			const clippedBadge = truncateToWidth(
+				providerText,
+				Math.max(
+					0,
+					Math.min(
+						this.layoutWidth - 4,
+						item.model ? Math.min(24, Math.floor(this.layoutWidth / 3)) : visibleWidth(providerText),
+					),
+				),
+				"…",
+			);
+			const label = truncateToWidth(modelText, Math.max(0, this.layoutWidth - 4 - visibleWidth(clippedBadge)), "…");
+			this.listContainer.addChild(
+				new Text(truncateToWidth(`${prefix}${status}${label}${clippedBadge}`, this.layoutWidth, "…"), 0, 0),
+			);
 		}
 
 		if (startIndex > 0 || endIndex < this.filteredItems.length) {
@@ -239,7 +245,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 				new Text(
 					theme.fg(
 						"muted",
-						`  ${selected.model ? `Model Name: ${plainText(selected.model.name)}` : "Model unavailable"}`,
+						`  ${selected.model ? `${plainText(selected.model.name)} · ${providerBadge(plainText(selected.model.provider), this.providerKind?.(selected.model.provider))}` : `Unavailable: ${plainText(selected.fullId)}`}`,
 					),
 					0,
 					0,
@@ -250,6 +256,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 
 	handleInput(data: string): void {
 		const kb = getKeybindings();
+		if (this.saving && !kb.matches(data, "tui.select.cancel")) return;
 
 		if (kb.matches(data, "tui.select.up")) {
 			if (this.filteredItems.length === 0) return;
@@ -333,9 +340,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		}
 
 		if (kb.matches(data, "app.models.save")) {
-			void this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
-			this.isDirty = false;
-			this.footerText.setText(this.getFooterText());
+			void this.persist();
 			return;
 		}
 
@@ -361,5 +366,30 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 
 	getSearchInput(): Input {
 		return this.searchInput;
+	}
+
+	override render(width: number): string[] {
+		if (this.layoutWidth !== width) {
+			this.layoutWidth = width;
+			this.updateList();
+			this.footerText.setText(this.getFooterText());
+		}
+		return super.render(width);
+	}
+
+	private async persist(): Promise<void> {
+		this.saving = true;
+		this.saveError = undefined;
+		this.footerText.setText(this.getFooterText());
+		try {
+			await this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
+			this.isDirty = false;
+		} catch (error) {
+			this.saveError = `Could not save shortcuts: ${errorMessage(error)}`;
+		} finally {
+			this.saving = false;
+			this.footerText.setText(this.getFooterText());
+			this.callbacks.requestRender?.();
+		}
 	}
 }

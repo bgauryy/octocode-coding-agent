@@ -88,21 +88,25 @@ describe("/providers source toggle", () => {
 
 		const run = showProviderManager(host, "", { sourceEnvironment: environment });
 		const list = await open(0);
-		expect(text(list)).toMatch(/Cerebras .*enabled/);
-		choose(list, "Pi ");
-		choose(await open(1), "Turn off");
-		const off = await open(2);
+		expect(text(list)).toMatch(/Cerebras .*configured/);
+		choose(list, "Sources and custom models");
+		choose(await open(1), "Pi ");
+		choose(await open(2), "Turn off");
+		const off = await open(3);
 		expect(settingsManager.getProviderSources()).toEqual({ pi: false });
 		expect(availableProviders()).not.toContain("cerebras");
-		expect(text(off)).not.toMatch(/Cerebras/);
 		expect(text(off)).toMatch(/Pi .* off/);
-
-		choose(off, "Pi ");
-		choose(await open(3), "Turn on");
-		const on = await open(4);
+		off.handleInput("\x1b");
+		const mainOff = await open(4);
+		expect(text(mainOff)).not.toMatch(/Cerebras/);
+		choose(mainOff, "Sources and custom models");
+		choose(await open(5), "Pi ");
+		choose(await open(6), "Turn on");
+		(await open(7)).handleInput("\x1b");
+		const on = await open(8);
 		expect(settingsManager.getProviderSources()).toEqual({});
 		expect(availableProviders()).toContain("cerebras");
-		expect(text(on)).toMatch(/Cerebras .*enabled/);
+		expect(text(on)).toMatch(/Cerebras .*configured/);
 		on.handleInput("\x1b");
 		await run;
 	});

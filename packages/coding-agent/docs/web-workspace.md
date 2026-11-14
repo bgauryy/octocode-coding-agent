@@ -69,9 +69,12 @@ Like the Harness panel, only the page opened from the terminal reads or changes 
 ## Activity
 
 - The composer names the terminal session that receives your message. Start a task, guide current work or queue a follow-up; replies stream into the page and the terminal.
+- Draft text and message mode survive navigation between sessions and reloads in the same browser tab. The tab keeps up to ten recent drafts, with a 64K-character limit per draft and 256K total. Larger drafts remain in the current composer but are not restored after navigation or reload. Sending clears that session’s saved draft. Attachments are not saved.
 - Receipts tell received, queued and handled apart from the agent's answer. The last three sent messages stay in memory so a failed send can be restored without overwriting a newer draft. While disconnected you can keep drafting; sending and stopping wait for reconnection.
 - **Approvals and questions:** the page and the terminal race for the first answer, and the page says why an answer was not taken (for example, already answered in the terminal). The permission gate still decides. Every permission prompt shows as an approval; editor and custom dialogs stay terminal-only. A background subagent's approval relayed to the session also shows as needing you.
 - Requests time out after 15 seconds. A timeout does not prove a write failed: check the item or activity before retrying. Retries keep their request id, so an accepted request is not repeated.
+
+Earlier conversation and session updates show up to 100 cards at a time. **Older loaded** and **Newer loaded** move through the records already fetched; **Load earlier** fetches another page from the session. **Search loaded history** searches those fetched records, including pages currently out of view. Clear the search to return to your previous page.
 
 Other views: **Profiler** (its Agents panel holds the same structured reports as the terminal, a bounded recent feed; the transcript keeps full output), **Settings** ([below](#settings-page)) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
 

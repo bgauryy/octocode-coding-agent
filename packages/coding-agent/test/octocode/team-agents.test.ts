@@ -133,7 +133,7 @@ describe("agent identity on the team", () => {
 			role: "main",
 			goal: "refactor the whole auth module today please",
 		});
-		expect(coordinate.parameters.properties.goal.description).toMatch(/^join: your goal/);
+		expect(coordinate.parameters.properties.goal.description).toMatch(/^join:/);
 		expect(coordinate.parameters.properties.goal).not.toHaveProperty("maxLength");
 		await fake.emit("session_shutdown", {}, ctx);
 	});

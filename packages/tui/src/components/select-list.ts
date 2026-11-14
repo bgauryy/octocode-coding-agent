@@ -195,6 +195,8 @@ export class SelectList implements Component {
 		if (this.filteredItems.length === 0 && !kb.matches(keyData, "tui.select.cancel")) return;
 		if (kb.matches(keyData, "tui.select.up")) this.moveSelection(-1);
 		else if (kb.matches(keyData, "tui.select.down")) this.moveSelection(1);
+		else if (kb.matches(keyData, "tui.select.pageUp")) this.movePage(-1);
+		else if (kb.matches(keyData, "tui.select.pageDown")) this.movePage(1);
 		else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selectedItem = this.filteredItems[this.selectedIndex];
 			if (selectedItem && this.onSelect) {
@@ -213,6 +215,12 @@ export class SelectList implements Component {
 		if (count === 0) return;
 		this.selectedIndex = (this.selectedIndex + delta + count) % count;
 		this.notifySelectionChange();
+	}
+
+	private movePage(direction: -1 | 1): void {
+		const previousIndex = this.selectedIndex;
+		this.setSelectedIndex(this.selectedIndex + direction * this.maxVisible);
+		if (this.selectedIndex !== previousIndex) this.notifySelectionChange();
 	}
 
 	private getVisibleRange(): { startIndex: number; endIndex: number } {

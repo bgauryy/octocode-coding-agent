@@ -57,6 +57,7 @@ function scrollBox(
 function settlePending(node: ScrollLayoutNode, contentWidth: number): void {
 	const document = documents.get(node.state);
 	if (!document) return;
+	document.cancelSlices();
 	if (document.tableCurrent && document.width === contentWidth && document.pendingCount > 0) {
 		if (document.matches(node.component) || document.prepare(node.component, contentWidth)) {
 			const top = document.locate(node.state.scrollTop).index;
@@ -137,9 +138,8 @@ export function layoutScroll(
 	const { height } = frame;
 	const state = node.state;
 	let virtual: ReturnType<typeof layoutVirtual>;
-	// A scrollbar draws the position among every row: with heights still estimated it would be off, so it is exact.
-	const scrollbarShown = state.isScrollbarVisible === true || state.scrollbar === "always";
-	if (state.virtualize === true && height !== undefined && !scrollbarShown) {
+	// Scrollbars use the estimated height while background measurements preserve the visible item.
+	if (state.virtualize === true && height !== undefined) {
 		const document = documentFor(node);
 		// After a width change, the first frame, or a change to many items at once (expand all, a new theme), only the
 		// rows in view are laid out now; the rest are measured over the next frames and between them.
@@ -148,7 +148,10 @@ export function layoutScroll(
 		if (document.exactWidth !== contentWidth)
 			virtual = layoutVirtual(context, node, document, { ...frame, height, contentWidth });
 	}
-	state.setContentSettler?.(virtual?.settle);
+	state.setContentSettler?.(virtual?.settle, () => {
+		documents.get(state)?.dispose();
+		documents.delete(state);
+	});
 	if (!virtual) return layoutExact(context, node, component, { ...frame, contentWidth }, layoutChild);
 	const rect = { x: frame.x, y: frame.y, width: frame.width, height: Math.max(0, Math.floor(height!)) };
 	return scrollBox(context, node, component, rect, frame.clip, virtual.docBox, virtual.content);

@@ -1,9 +1,28 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import lockfile from "proper-lockfile";
 import { withFileWriteLock } from "../../../common/src/file-write-lock.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
+
+/**
+ * Whether another writer is waiting on `target`'s file write lock. A contender polls the holder's owner record
+ * (`common/src/lock-owner.ts`, `<lock>.owner`) every 50 ms and refuses itself before asking proper-lockfile, so two reads
+ * of that record while the test holds the lock mean a writer is queued behind it.
+ */
+function watchContention(target: string): { contended: () => boolean; restore: () => void } {
+	const owner = path.join(
+		path.dirname(target),
+		`.octocode-${createHash("sha256").update(target).digest("hex")}.lock.owner`,
+	);
+	const original = fs.readFileSync;
+	let reads = 0;
+	const spy = vi.spyOn(fs, "readFileSync").mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+		if (String(args[0]) === owner) reads++;
+		return original(...args);
+	});
+	return { contended: () => reads >= 2, restore: () => spy.mockRestore() };
+}
 
 afterEach(() => vi.unstubAllEnvs());
 const decision = (value: unknown) => ({
@@ -526,26 +545,15 @@ for (const fileTool of [false, true]) {
 				await new Promise<void>((r) => (release = r));
 			});
 			await acquiredPromise;
-			const originalLock = lockfile.lock.bind(lockfile);
-			let contended = false;
-			const observer = vi
-				.spyOn(lockfile, "lock")
-				.mockImplementation(async (...args: Parameters<typeof lockfile.lock>) => {
-					try {
-						return await originalLock(...args);
-					} catch (error) {
-						if (args[0] === target && (error as NodeJS.ErrnoException).code === "ELOCKED") contended = true;
-						throw error;
-					}
-				});
-			restoreObserver = () => observer.mockRestore();
+			const watch = watchContention(target);
+			restoreObserver = watch.restore;
 			const command = "printf MUST_NOT_RUN > raced-effect.txt";
 			pending = fileTool
 				? f.run("file", {
 						queries: [{ type: "write", path: "raced-effect.txt", content: "MUST_NOT_RUN", reason: "Race" }],
 					})
 				: f.run("bash", { command });
-			await vi.waitFor(() => expect(contended).toBe(true), { timeout: 5000 });
+			await vi.waitFor(() => expect(watch.contended()).toBe(true), { timeout: 5000 });
 			fs.writeFileSync(
 				path.join(f.cwd, ".claude/settings.json"),
 				JSON.stringify({
@@ -591,23 +599,12 @@ it("cancellation while a real settings write waits prevents publication and comm
 			await new Promise<void>((r) => (release = r));
 		});
 		await acquiredPromise;
-		const originalLock = lockfile.lock.bind(lockfile);
-		let contended = false;
-		const observer = vi
-			.spyOn(lockfile, "lock")
-			.mockImplementation(async (...args: Parameters<typeof lockfile.lock>) => {
-				try {
-					return await originalLock(...args);
-				} catch (error) {
-					if (args[0] === target && (error as NodeJS.ErrnoException).code === "ELOCKED") contended = true;
-					throw error;
-				}
-			});
-		restoreObserver = () => observer.mockRestore();
+		const watch = watchContention(target);
+		restoreObserver = watch.restore;
 		pending = f.run("bash", {
 			command: "printf MUST_NOT_RUN > canceled-effect.txt",
 		});
-		await vi.waitFor(() => expect(contended).toBe(true), { timeout: 5000 });
+		await vi.waitFor(() => expect(watch.contended()).toBe(true), { timeout: 5000 });
 		const aborted = f.session.abort();
 		release();
 		await held;

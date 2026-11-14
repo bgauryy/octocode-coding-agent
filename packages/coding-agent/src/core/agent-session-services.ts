@@ -77,76 +77,81 @@ export async function createAgentSessionServices(
 			modelsPath: join(agentDir, "models.json"),
 			signal: options.modelRuntimeSignal,
 		}));
-	modelRuntime.setDisabledProviders(settingsManager.getDisabledProviders());
-	const resourceLoader = new DefaultResourceLoader({
-		...options.resourceLoaderOptions,
-		cwd,
-		agentDir,
-		settingsManager,
-	});
-	await resourceLoader.reload();
+	try {
+		modelRuntime.setDisabledProviders(settingsManager.getDisabledProviders());
+		const resourceLoader = new DefaultResourceLoader({
+			...options.resourceLoaderOptions,
+			cwd,
+			agentDir,
+			settingsManager,
+		});
+		await resourceLoader.reload();
 
-	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
-	if (!options.modelRuntime) {
-		const dirs = [agentDir, ...getLegacyProviderDirs(agentDir)];
-		const keyFiles = [
-			...dirs.map((dir) => join(dir, "auth.json")),
-			...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),
-		];
-		for (const file of keyFiles) {
-			diagnostics.push(...checkAuthFileSafety(file).map((message) => ({ type: "warning" as const, message })));
+		const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
+		if (!options.modelRuntime) {
+			const dirs = [agentDir, ...getLegacyProviderDirs(agentDir)];
+			const keyFiles = [
+				...dirs.map((dir) => join(dir, "auth.json")),
+				...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),
+			];
+			for (const file of keyFiles) {
+				diagnostics.push(...checkAuthFileSafety(file).map((message) => ({ type: "warning" as const, message })));
+			}
+			for (const message of modelRuntime.getConfigWarnings()) diagnostics.push({ type: "warning", message });
 		}
-		for (const message of modelRuntime.getConfigWarnings()) diagnostics.push({ type: "warning", message });
-	}
-	const extensionsResult = resourceLoader.getExtensions();
-	for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {
-		try {
-			modelRuntime.registerProvider(name, config);
-		} catch (error) {
-			const message = errorMessage(error);
-			diagnostics.push({
-				type: "error",
-				message: `Extension "${extensionPath}" error: ${message}`,
-			});
+		const extensionsResult = resourceLoader.getExtensions();
+		for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {
+			try {
+				modelRuntime.registerProvider(name, config);
+			} catch (error) {
+				const message = errorMessage(error);
+				diagnostics.push({
+					type: "error",
+					message: `Extension "${extensionPath}" error: ${message}`,
+				});
+			}
 		}
-	}
-	extensionsResult.runtime.pendingProviderRegistrations = [];
-	for (const { provider, extensionPath } of extensionsResult.runtime.pendingNativeProviderRegistrations) {
-		try {
-			modelRuntime.registerNativeProvider(provider);
-		} catch (error) {
-			const message = errorMessage(error);
-			diagnostics.push({
-				type: "error",
-				message: `Extension "${extensionPath}" error: ${message}`,
-			});
+		extensionsResult.runtime.pendingProviderRegistrations = [];
+		for (const { provider, extensionPath } of extensionsResult.runtime.pendingNativeProviderRegistrations) {
+			try {
+				modelRuntime.registerNativeProvider(provider);
+			} catch (error) {
+				const message = errorMessage(error);
+				diagnostics.push({
+					type: "error",
+					message: `Extension "${extensionPath}" error: ${message}`,
+				});
+			}
 		}
-	}
-	extensionsResult.runtime.pendingNativeProviderRegistrations = [];
-	for (const { definition, extensionPath } of extensionsResult.runtime.pendingVirtualModelRegistrations) {
-		try {
-			modelRuntime.registerVirtualModel(definition);
-		} catch (error) {
-			const message = errorMessage(error);
-			diagnostics.push({
-				type: "error",
-				message: `Extension "${extensionPath}" error: ${message}`,
-			});
+		extensionsResult.runtime.pendingNativeProviderRegistrations = [];
+		for (const { definition, extensionPath } of extensionsResult.runtime.pendingVirtualModelRegistrations) {
+			try {
+				modelRuntime.registerVirtualModel(definition);
+			} catch (error) {
+				const message = errorMessage(error);
+				diagnostics.push({
+					type: "error",
+					message: `Extension "${extensionPath}" error: ${message}`,
+				});
+			}
 		}
-	}
-	extensionsResult.runtime.pendingVirtualModelRegistrations = [];
-	await modelRuntime.refresh({ allowNetwork: false });
+		extensionsResult.runtime.pendingVirtualModelRegistrations = [];
+		await modelRuntime.refresh({ allowNetwork: false });
 
-	const ownsRuntime = !options.modelRuntime;
-	return {
-		cwd,
-		agentDir,
-		modelRuntime,
-		settingsManager,
-		resourceLoader,
-		diagnostics,
-		dispose: () => {
-			if (ownsRuntime) modelRuntime.dispose();
-		},
-	};
+		const ownsRuntime = !options.modelRuntime;
+		return {
+			cwd,
+			agentDir,
+			modelRuntime,
+			settingsManager,
+			resourceLoader,
+			diagnostics,
+			dispose: () => {
+				if (ownsRuntime) modelRuntime.dispose();
+			},
+		};
+	} catch (error) {
+		if (!options.modelRuntime) modelRuntime.dispose();
+		throw error;
+	}
 }

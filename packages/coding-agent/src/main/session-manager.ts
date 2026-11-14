@@ -156,9 +156,9 @@ export function validateSessionIdFlags(parsed: Args): void {
 	}
 }
 
-function openSessionOrExit(path: string, sessionDir?: string): SessionManager {
+async function openSessionOrExit(path: string, sessionDir?: string): Promise<SessionManager> {
 	try {
-		return SessionManager.open(path, sessionDir);
+		return await SessionManager.openAsync(path, sessionDir);
 	} catch (error: unknown) {
 		const message = errorMessage(error);
 		console.error(chalk.red(`Error: ${message}`));
@@ -191,7 +191,7 @@ async function confirmSessionNotRunning(
 	parsed: Args,
 	settingsManager: SettingsManager,
 ): Promise<void> {
-	const runningPid = sessionFile ? sessionFileRunningPid(sessionFile) : undefined;
+	const runningPid = sessionFile ? await sessionFileRunningPid(sessionFile) : undefined;
 	if (runningPid === undefined) return;
 	if (!isInteractiveStart(parsed)) {
 		console.error(
@@ -318,14 +318,14 @@ export async function createSessionManager(
 				console.log(chalk.dim("No session selected"));
 				process.exit(0);
 			}
-			return SessionManager.open(selectedPath, sessionDir);
+			return await SessionManager.openAsync(selectedPath, sessionDir);
 		} finally {
 			stopThemeWatcher();
 		}
 	}
 
 	if (parsed.continue) {
-		const recent = SessionManager.continueRecent(cwd, sessionDir);
+		const recent = await SessionManager.continueRecentAsync(cwd, sessionDir);
 		await confirmSessionNotRunning(recent.getSessionFile(), parsed, settingsManager);
 		return recent;
 	}
@@ -334,7 +334,7 @@ export async function createSessionManager(
 		const existingSession = findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
 		if (existingSession) {
 			await confirmSessionNotRunning(existingSession.path, parsed, settingsManager);
-			return SessionManager.open(existingSession.path, sessionDir);
+			return SessionManager.openAsync(existingSession.path, sessionDir);
 		}
 		const elsewhere = await findSessionFileAnywhere(parsed.sessionId, sessionDir);
 		if (elsewhere) {

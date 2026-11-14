@@ -59,6 +59,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	);
 	const batch: ToolDefinitions = [];
 	const demoted: string[] = [];
+	// Read once: it asks the settings, which are the same for every tool of this pass.
+	const declared = presentation.declared;
 	for (const tool of connection.tools) {
 		const name = names.get(tool.name) ?? createMcpToolName(server, tool.name);
 		toolOwners.set(name, owner(tool.name));
@@ -72,7 +74,6 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		const thin = !loaded && presentation.isThin(server, tool);
 		// A thin declaration depends on the tool's own block of the generated file, not on the rest of the catalog.
 		const metadata = {
-			tool,
 			namespace,
 			exposure,
 			defaultActive,
@@ -80,10 +81,18 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			compact: thin ? presentation.signature(server, tool.name) : null,
 			summary: thin ? presentation.summary(server, tool.name) : null,
 			// `declared`: no generated file describes a deferred tool, so its declaration keeps the server's description.
-			whole: thin && presentation.declared,
+			whole: thin && declared,
 			deferred: thin && presentation.isDeferred(server, tool.name),
 		};
-		const cached = isDeepStrictEqual(registeredMetadata.get(name), metadata) ? cachedDefinitions.get(name) : undefined;
+		// The catalog hands out the same tool object while the server lists it unchanged (`catalog.ts`), so the tool the
+		// definition was built from is compared by identity first; the deep comparison runs only for a new object.
+		const registered = registeredMetadata.get(name);
+		const cached =
+			registered &&
+			(registered.tool === tool || isDeepStrictEqual(registered.toolCopy, tool)) &&
+			isDeepStrictEqual(registered.rest, metadata)
+				? cachedDefinitions.get(name)
+				: undefined;
 		if (cached) {
 			if (definitions.get(name) !== cached) {
 				definitions.set(name, cached);
@@ -130,7 +139,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				return client;
 			},
 		});
-		registeredMetadata.set(name, structuredClone(metadata));
+		registeredMetadata.set(name, { tool, toolCopy: structuredClone(tool), rest: structuredClone(metadata) });
 		cachedDefinitions.set(name, definition);
 		definitions.set(definition.name, definition);
 		batch.push(definition);

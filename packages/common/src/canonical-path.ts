@@ -62,7 +62,8 @@ function withParents(file: string, hops: number): string {
 /** Where the symlink `file` points (as written in the link), or undefined when it is not a symlink. */
 function linkTarget(file: string): string | undefined {
 	try {
-		return fs.lstatSync(file).isSymbolicLink() ? fs.readlinkSync(file) : undefined;
+		// A missing name (the common case: the walk up from a file not created yet) answers without building an error.
+		return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() ? fs.readlinkSync(file) : undefined;
 	} catch {
 		return undefined;
 	}

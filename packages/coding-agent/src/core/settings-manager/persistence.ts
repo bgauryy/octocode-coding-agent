@@ -179,11 +179,15 @@ export class SettingsPersistence {
 	}
 
 	/** `nestedKey` writes only that key of an object field, keeping keys another process wrote meanwhile. */
-	updateProjectSettings(field: keyof Settings, update: (settings: Settings) => void, nestedKey?: string): void {
+	updateProjectSettings(
+		field: keyof Settings | readonly (keyof Settings)[],
+		update: (settings: Settings) => void,
+		nestedKey?: string,
+	): void {
 		this.assertProjectTrustedForWrite();
 		const projectSettings = structuredClone(this.state.projectSettings);
 		update(projectSettings);
-		this.markProjectModified(field, nestedKey);
+		for (const key of typeof field === "string" ? [field] : field) this.markProjectModified(key, nestedKey);
 		this.saveProjectSettings(projectSettings);
 	}
 }

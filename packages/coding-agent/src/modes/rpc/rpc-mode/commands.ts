@@ -203,7 +203,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 
 		case "switch_session": {
 			// Two processes appending to one session overwrite each other's history; no one is here to confirm the risk.
-			const runningPid = sessionFileRunningPid(command.sessionPath);
+			const runningPid = await sessionFileRunningPid(command.sessionPath);
 			if (runningPid !== undefined && runningPid !== process.pid)
 				return error(
 					id,

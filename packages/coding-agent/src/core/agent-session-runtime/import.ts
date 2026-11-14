@@ -1,4 +1,5 @@
-import { constants, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { constants, existsSync, mkdirSync } from "node:fs";
+import { copyFile, rm } from "node:fs/promises";
 import { basename, join, parse, resolve } from "node:path";
 import { assertSessionCwdExists, MissingSessionCwdError } from "../session-cwd.ts";
 import { SessionManager } from "../session-manager.ts";
@@ -64,22 +65,22 @@ export function prepareImportDestination(
  * Copy the file into place and open it. Validates the copy before the current session is torn down;
  * a rejected file leaves no copy behind.
  */
-export function openImportedSession(
+export async function openImportedSession(
 	resolvedPath: string,
 	destination: { destinationPath: string; sourceAlreadyStored: boolean },
 	options: { sessionDir: string; cwdOverride?: string; cwd: string },
-): SessionManager {
+): Promise<SessionManager> {
 	const { destinationPath, sourceAlreadyStored } = destination;
 	if (!sourceAlreadyStored) {
-		copyFileSync(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
+		await copyFile(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
 	}
 
 	let sessionManager: SessionManager;
 	try {
-		sessionManager = SessionManager.open(destinationPath, options.sessionDir, options.cwdOverride);
+		sessionManager = await SessionManager.openAsync(destinationPath, options.sessionDir, options.cwdOverride);
 		assertSessionCwdExists(sessionManager, options.cwd);
 	} catch (error) {
-		if (!sourceAlreadyStored) rmSync(destinationPath, { force: true });
+		if (!sourceAlreadyStored) await rm(destinationPath, { force: true });
 		if (error instanceof MissingSessionCwdError) throw error;
 		throw new SessionImportInvalidError(resolvedPath, error);
 	}

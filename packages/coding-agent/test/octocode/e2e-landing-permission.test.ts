@@ -14,6 +14,7 @@ import {
 	resultsOf,
 	script,
 	session,
+	sessionIdle,
 	type Session,
 } from "./e2e-a2a-helpers.ts";
 import {
@@ -72,7 +73,11 @@ async function askedFor(each: Session, count: number) {
 	return dialogs(each.run)[count - 1];
 }
 
-const finished = (steps: string) => reachedStep(endpoint, steps, 1, "the tool's result");
+/** The tool's result reached the model and the run ended, so the next prompt does not meet a busy session. */
+async function finished(each: Session, steps: string) {
+	await reachedStep(endpoint, steps, 1, "the tool's result");
+	await sessionIdle(each);
+}
 
 describe("git merge in the main checkout, on the default branch, in full mode", () => {
 	it("asks over RPC, naming the command and the branch; once asks again, for this session does not, and shares the tool's grant", async () => {
@@ -90,7 +95,7 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		expect(dialog.options).toEqual([ONCE, ALL, "Deny", expect.any(String)]);
 		expect(fs.existsSync(path.join(box.project, "one.txt"))).toBe(false);
 		answer(started.run, dialog.id, ONCE);
-		await finished(first);
+		await finished(started, first);
 		expect(fs.existsSync(path.join(box.project, "one.txt"))).toBe(true);
 
 		// "Once" held for one call.
@@ -98,17 +103,17 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		const again = await askedFor(started, 2);
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(false);
 		answer(started.run, again.id, ALL);
-		await finished(second);
+		await finished(started, second);
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(true);
 
 		// "For this session" holds for the next one, and for the tool's merge: one grant.
 		const third = runs(started, "git merge --no-ff --no-edit three");
-		await finished(third);
+		await finished(started, third);
 		expect(fs.existsSync(path.join(box.project, "three.txt"))).toBe(true);
 		const worktree = linkedWorktree(box, "tool-branch");
 		const tool = script([merge("tool-branch"), { text: "done" }]);
 		prompt(started.run, "tool", tool);
-		await finished(tool);
+		await finished(started, tool);
 		expect(resultsOf(endpoint, tool)).toContain("Merged tool-branch");
 		expect(fs.existsSync(path.join(worktree, "feature.txt"))).toBe(true);
 		expect(dialogs(started.run)).toHaveLength(2);
@@ -126,7 +131,7 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		await askedFor(started, 3);
 		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
 		answer(started.run, dialogs(started.run)[2].id, "Deny");
-		await finished(fourth);
+		await finished(started, fourth);
 		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
 		expect(resultsOf(endpoint, fourth)).toContain(
 			"The user denied the worktree merge: git merge --no-ff --no-edit four",
@@ -182,14 +187,14 @@ describe("the other asks still behave", () => {
 		const dialog = await askedFor(started, 1);
 		expect(dialog.permission.action).toBe("worktree.merge");
 		answer(started.run, dialog.id, ALL);
-		await finished(first);
+		await finished(started, first);
 		expect(fs.existsSync(path.join(box.project, "one.txt"))).toBe(true);
 		const second = runs(started, "git merge --no-ff --no-edit two");
 		const shellAsk = await askedFor(started, 2);
 		expect(shellAsk.title).toContain("git merge --no-ff --no-edit two");
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(false);
 		answer(started.run, shellAsk.id, ONCE);
-		await finished(second);
+		await finished(started, second);
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(true);
 		await close(started);
 	});

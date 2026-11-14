@@ -7,8 +7,10 @@
  * it always did. The compaction takes the early summary only for the same plan (model, cut point, summarized messages
  * and thinking level). The file lists are rebuilt then, since the run may have touched files in between.
  *
- * Each step leaves a note in the session (`record.ts`, kind `early-summary`): requested, ready, or why it cannot be
- * used. The compaction entry says in its `details` that its summary was requested early and how long it waited.
+ * Each step leaves a note in the session (`record.ts`, kind `early-summary`): requested, ready, why it cannot be used,
+ * and, when the compaction does not take it, that it was discarded and whether its request had finished (billed) or was
+ * still running, so speculative spend that bought nothing can be counted. The compaction entry says in its `details`
+ * that its summary was requested early and how long it waited.
  */
 
 import type { Api, Model } from "@octocodeai/octocode-ai";
@@ -26,6 +28,42 @@ interface EarlySummary {
 	requestedAt: number;
 	/** The summary and the file lists it ends with, or undefined when the request failed, was unusable or was aborted. */
 	written: Promise<{ result: CompactionResult; lists: string } | undefined>;
+	/** The request has ended (with or without a usable summary). */
+	settled: boolean;
+}
+
+/** Notes, in the session the summary was requested for, that an early summary was not used and why. */
+type DiscardNote = (reason: string) => void;
+
+function discarded(entry: EarlySummary, reason: string, note: DiscardNote | undefined): void {
+	note?.(
+		entry.settled
+			? `the early summary was discarded after its request finished (billed, not used): ${reason}`
+			: `the early summary was discarded while its request was running: ${reason}`,
+	);
+}
+
+/** Why a compaction does not take the early summary, for its discard note. */
+export function skipReason(
+	paidAlready: boolean,
+	downshift: boolean,
+	event: { reason: string; customInstructions?: string },
+): string {
+	if (paidAlready) return "a summary of the same input was already paid for";
+	if (downshift) return "the compaction summarizes on the model before a downshift";
+	if (event.customInstructions) return "the compaction has its own instructions";
+	return `the compaction is ${event.reason}, not at the threshold`;
+}
+
+/**
+ * Drops this session's early summary when the compaction will not take it (a manual or focused compaction, a
+ * downshift, a summary already paid for), noting why. Does nothing when there is none.
+ */
+export function discardEarlySummary(sessionManager: object, reason: string, note: DiscardNote): void {
+	const entry = early.get(sessionManager);
+	if (!entry) return;
+	early.delete(sessionManager);
+	discarded(entry, reason, note);
 }
 
 /** The early summary of each session (by its session manager). */
@@ -106,7 +144,11 @@ export function startEarlySummary(
 		})
 		.catch(() => undefined);
 	const plan = planOf(model, preparation, api.getThinkingLevel(), event.summaryRequest?.forceSystemPrompt);
-	early.set(ctx.sessionManager, { plan, signal, requestedAt, written });
+	const entry: EarlySummary = { plan, signal, requestedAt, written, settled: false };
+	void written.finally(() => {
+		entry.settled = true;
+	});
+	early.set(ctx.sessionManager, entry);
 }
 
 /**
@@ -121,12 +163,20 @@ export async function takeEarlySummary(
 	thinking: string,
 	signal: AbortSignal,
 	forcedSystemPrompt?: string,
+	note?: DiscardNote,
 ): Promise<{ result: CompactionResult; early: { requestedAt: string; waitedMs: number } } | undefined> {
 	const entry = early.get(sessionManager);
 	if (!entry) return undefined;
 	early.delete(sessionManager);
-	if (signal.aborted || entry.signal.aborted || entry.plan !== planOf(model, preparation, thinking, forcedSystemPrompt))
+	if (signal.aborted) return undefined;
+	if (entry.signal.aborted) {
+		discarded(entry, "its plan was dropped (the branch, model or settings changed)", note);
 		return undefined;
+	}
+	if (entry.plan !== planOf(model, preparation, thinking, forcedSystemPrompt)) {
+		discarded(entry, "it was written for another plan (cut point, messages, model or instructions differ)", note);
+		return undefined;
+	}
 	let stop: (() => void) | undefined;
 	const aborted = new Promise<undefined>((resolve) => {
 		stop = () => resolve(undefined);
@@ -140,8 +190,15 @@ export async function takeEarlySummary(
 		signal.removeEventListener("abort", stop);
 		entry.signal.removeEventListener("abort", stop);
 	}
-	if (!written || signal.aborted || entry.signal.aborted || !written.result.summary.endsWith(written.lists))
+	if (!written || signal.aborted) return undefined;
+	if (entry.signal.aborted || !written.result.summary.endsWith(written.lists)) {
+		discarded(
+			entry,
+			entry.signal.aborted ? "its plan was dropped while the compaction waited" : "its file lists did not match",
+			note,
+		);
 		return undefined;
+	}
 	const text = written.result.summary.slice(0, written.result.summary.length - written.lists.length);
 	const now = fileLists(preparation);
 	return {

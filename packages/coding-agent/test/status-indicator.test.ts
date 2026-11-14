@@ -1,5 +1,5 @@
 import { getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
 import {
@@ -14,8 +14,14 @@ import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("status indicators", () => {
+	beforeEach(() => {
+		vi.stubEnv("NO_COLOR", "");
+		vi.stubEnv("TERM", "xterm-256color");
+		vi.stubEnv("COLORTERM", "truecolor");
+	});
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.unstubAllEnvs();
 	});
 
 	it("keeps idle status at the same height as standalone status indicators", () => {
@@ -38,12 +44,15 @@ describe("status indicators", () => {
 			vi.useRealTimers();
 			return lines;
 		};
-		const [, detail] = at(1000);
-		expect(stripAnsi(detail)).toMatch(/^ \S Writing the summary \(\d+s · esc interrupt\)$/);
-		expect(stripAnsi(detail)).not.toContain("Main");
-		expect(at(1000)[1]).not.toBe(at(1600)[1]);
-		indicator.dispose();
-		setKeybindings(previousKeybindings);
+		try {
+			const [, detail] = at(1000);
+			expect(stripAnsi(detail)).toMatch(/^ \S Writing the summary \(\d+s · esc interrupt\)$/);
+			expect(stripAnsi(detail)).not.toContain("Main");
+			expect(at(1000)[1]).not.toBe(at(1600)[1]);
+		} finally {
+			indicator.dispose();
+			setKeybindings(previousKeybindings);
+		}
 	});
 
 	it("counts the whole run from the run clock and clips the detail, never the time", () => {

@@ -13,9 +13,10 @@ import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintText, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { foldHint, hintText, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
 
-// Preview line limit when not expanded (matches tool execution behavior)
+// Last lines of a user `!` command shown while collapsed: more than an agent's tool row, since the user asked for this
+// output and reads it directly.
 const PREVIEW_LINES = 20;
 
 export class BashExecutionComponent extends Container {
@@ -287,9 +288,7 @@ export class BashExecutionComponent extends Container {
 						`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`,
 					);
 				} else {
-					statusParts.push(
-						`${theme.fg("muted", `… ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
-					);
+					statusParts.push(foldHint(hiddenLineCount, true));
 				}
 			}
 

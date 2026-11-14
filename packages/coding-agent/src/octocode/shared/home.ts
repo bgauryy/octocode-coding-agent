@@ -169,11 +169,13 @@ export function claudeSettingsSources(
 	home = os.homedir(),
 ): { path: string; anchor: string }[] {
 	const user = claudeConfigDir(home);
+	// One checkout lookup for both project files.
+	const root = trusted ? repoKey(cwd).root : undefined;
 	return [
 		{ path: path.join(user, "settings.json"), anchor: user },
-		...(trusted
+		...(root !== undefined
 			? ["settings.json", "settings.local.json"].map((name) => ({
-					path: path.join(repoKey(cwd).root, ".claude", name),
+					path: path.join(root, ".claude", name),
 					anchor: cwd,
 				}))
 			: []),

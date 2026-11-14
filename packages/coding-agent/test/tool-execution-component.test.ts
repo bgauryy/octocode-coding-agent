@@ -1,9 +1,11 @@
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import {
 	animationClock,
+	getKeybindings,
 	MOTION,
 	resetCapabilitiesCache,
 	setCapabilities,
+	setKeybindings,
 	Text,
 	type TUI,
 	type TuiMouseEvent,
@@ -12,6 +14,7 @@ import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import type { ToolDefinition } from "../src/core/features/types.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { type BashOperations, createBashTool, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
@@ -329,8 +332,13 @@ describe("ToolExecutionComponent parity", () => {
 			component.updateResult({ content: [], isError: false, durationMs: 4_200 }, false);
 			return stripAnsi(component.render(120).join("\n"));
 		};
-		expect(render(true)).toContain("Took 4.2s");
-		expect(render(false)).toContain("Took 4.2s");
+		// The recorded duration, shown once on the outcome line, not again as a `Took` line.
+		for (const live of [true, false]) {
+			const text = render(live);
+			expect(text).toContain("✓ 4.2s");
+			expect(text.match(/4\.2s/g)).toHaveLength(1);
+			expect(text).not.toContain("Took");
+		}
 	});
 
 	test("does not duplicate built-in headers when passed the active built-in definition", () => {
@@ -499,7 +507,7 @@ describe("ToolExecutionComponent parity", () => {
 
 		const collapsed = stripAnsi(component.render(300).join("\n"));
 		expect(collapsed).toContain('custom_tool query="octocode" long="xxx');
-		expect(collapsed).toContain("...");
+		expect(collapsed).toContain("…");
 		expect(collapsed).not.toContain(longValue);
 
 		component.setExpanded(true);
@@ -531,10 +539,18 @@ describe("ToolExecutionComponent parity", () => {
 
 		const collapsed = stripAnsi(component.render(120).join("\n"));
 		expect(collapsed).toContain("custom_tool");
-		expect(collapsed).toContain("line-10");
-		expect(collapsed).not.toContain("line-11");
-		expect(collapsed).toContain("5 more lines");
-		expect(collapsed).toContain("to expand");
+		expect(collapsed).toContain("line-5");
+		expect(collapsed).not.toContain("line-6");
+		expect(collapsed).toContain("… +10 lines");
+		const bindings = getKeybindings();
+		setKeybindings(new KeybindingsManager());
+		try {
+			component.invalidate();
+			component.setExpanded(false);
+			expect(stripAnsi(component.render(120).join("\n"))).toContain("… +10 lines (ctrl+o to expand)");
+		} finally {
+			setKeybindings(bindings);
+		}
 
 		component.setExpanded(true);
 		const expanded = stripAnsi(component.render(120).join("\n"));
@@ -592,10 +608,10 @@ describe("ToolExecutionComponent parity", () => {
 			return component.render(80).join("\n");
 		};
 		const failed = finished(true);
-		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1s)/);
+		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1\.2s)/);
 		expect(failed).toContain(theme.fg("text", "kaboom"));
 		const passed = finished(false);
-		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1s)/);
+		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1\.2s)/);
 		expect(passed).toContain(theme.fg("toolOutput", "kaboom"));
 	});
 });

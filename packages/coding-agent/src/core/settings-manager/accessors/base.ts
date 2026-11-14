@@ -35,7 +35,7 @@ export abstract class SettingsAccessorBase {
 	}
 
 	protected updateProjectSettings(
-		field: keyof Settings,
+		field: keyof Settings | readonly (keyof Settings)[],
 		update: (settings: Settings) => void,
 		nestedKey?: string,
 	): void {

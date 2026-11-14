@@ -22,6 +22,7 @@ export const LIVE_CSS = `/* Command palette */
 .item-implementation p { font-size: 12px; }
 
 .activity-view, .agents-view, .audit-view { max-width: 1040px; width: 100%; margin-inline: auto; }
+.activity-view { grid-template-columns: minmax(0, 1fr); }
 .overview { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
 .metric { display: grid; gap: 2px; min-width: 140px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); }
 a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
@@ -50,10 +51,11 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .composer-actions > .btn { min-height: 36px; }
 .queue-chips, .receipts li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .receipts { display: grid; gap: 6px; }
+.receipts li > span { min-width: 0; overflow-wrap: anywhere; }
 .feed-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .feed-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .feed-status .live-dot { color: var(--success); }
-.activity-feed { display: grid; gap: 10px; }
+.activity-feed { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .result-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--border); border-left: 3px solid var(--tone); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 160px; }
 .result-card.is-compact { padding: 10px 12px; gap: 6px; border-left-width: 2px; box-shadow: none; }
 .result-card [role=alert]:not(:empty) { color: var(--danger); font-size: 13px; }

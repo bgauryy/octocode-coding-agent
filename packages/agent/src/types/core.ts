@@ -10,6 +10,7 @@ import type {
 	SimpleStreamOptions,
 	TextContent,
 	Tool,
+	ToolCallPhases,
 	ToolResultMessage,
 	TranscriptContext,
 	Usage,
@@ -181,6 +182,8 @@ export interface AgentToolCallOutcome {
 	isError: boolean;
 	/** Milliseconds `execute()` took, measured with a monotonic clock; absent when the tool did not run. */
 	durationMs?: number;
+	/** The call's time around `execute()`: preparation, schedule wait and finalization (`ToolCallPhases`). */
+	phases?: ToolCallPhases;
 }
 
 /**

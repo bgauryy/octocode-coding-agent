@@ -23,14 +23,16 @@ export async function selectSession(
 		const keybindings = KeybindingsManager.create();
 		setKeybindings(keybindings);
 		let resolved = false;
+		let selecting = false;
 
 		const selector = new SessionSelectorComponent(
 			currentSessionsLoader,
 			allSessionsLoader,
 			// oxlint-disable-next-line typescript/no-misused-promises -- the selector ignores the callback's result; it resolves the enclosing promise itself
 			async (path: string) => {
-				if (resolved) return;
-				const runningPid = sessionFileRunningPid(path);
+				if (resolved || selecting) return;
+				selecting = true;
+				const runningPid = await sessionFileRunningPid(path);
 				if (runningPid !== undefined) {
 					ui.stop();
 					const confirmed = await showStartupSelector(

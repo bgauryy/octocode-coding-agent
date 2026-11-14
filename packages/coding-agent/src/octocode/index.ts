@@ -78,6 +78,7 @@ import { changeNote } from "./team/edits.ts";
 import { registerCollab } from "./team/tools.ts";
 import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
+import { registerStallRecorder } from "./profiler/stalls.ts";
 import { registerActivity } from "./ui/activity.ts";
 import { packageVersion, registerUi } from "./ui/chrome.ts";
 import { Delivery } from "./ui/delivery.ts";
@@ -281,6 +282,7 @@ export default function octocode(host: ExtensionAPI): void {
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);
+	registerStallRecorder(api);
 	// What the agent does now: Octocode's working line (main session) and the team panel's activity column (every agent).
 	const activity = registerActivity(api, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
 	// Every call a permission check lets through (full mode asks nothing) shows as a short line while its tool runs.

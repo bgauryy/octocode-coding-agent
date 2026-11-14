@@ -76,7 +76,7 @@ describe("terminal content boundary", () => {
 			isError: false,
 		});
 		const preview = stripAnsi(component.render(80).join("\n"));
-		expect(preview).toContain("4990 more lines");
+		expect(preview).toContain("… +4995 lines");
 		expect(preview).not.toContain("line 4999");
 		expect(component.render(80).length).toBeLessThan(30);
 		component.setExpanded(true);
@@ -145,9 +145,9 @@ describe("terminal content boundary", () => {
 			isError: false,
 		});
 		const preview = stripAnsi(component.render(80).join("\n"));
-		expect(preview).toContain("BLOCK 9");
-		expect(preview).not.toContain("BLOCK 10");
-		expect(preview).toContain("5 more lines");
+		expect(preview).toContain("BLOCK 4");
+		expect(preview).not.toContain("BLOCK 5");
+		expect(preview).toContain("… +10 lines");
 		component.setExpanded(true);
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("BLOCK 14");
 	});

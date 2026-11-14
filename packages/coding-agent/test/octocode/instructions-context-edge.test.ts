@@ -65,7 +65,7 @@ describe("instruction context edges", () => {
 	it("leaves the ban on polling to the timer tool's snippet: the delegation policy only says what to wait on", () => {
 		// Tool descriptions own tool mechanics (AGENTS.md); the policy says when to wait on an item, not how not to.
 		const snippet = renderInstruction("tools/timer/snippet.md", {});
-		expect(snippet).toContain("never sleep, poll or `tail -f`");
+		expect(snippet).toContain("Use it instead of sleep, polling or `tail -f`");
 		for (const research of [FAKE_RESEARCH, undefined]) {
 			// The waiting rule is in the `children` section, sent once the session waits on an agent.
 			const sections = octocodePromptSections({ research, profiles: [], canDelegate: true, childStarted: true });

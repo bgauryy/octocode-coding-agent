@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { getFileStamp } from "../../../common/src/paths.ts";
+import { parseJsonlLine } from "../../../common/src/jsonl.ts";
 import { bindingKey } from "../binding.ts";
 import type { AgentDb } from "../db.ts";
 import * as forks from "../queries/forks.ts";
@@ -11,8 +13,8 @@ import { planSave, type SaveSteps, startSave } from "./transcript-save.ts";
  * The session-mirror commands the database writer runs (`client.ts`, `worker.ts`). The session file is the record; these
  * rows are a derived copy in the transcript mirror file (`agent.mirror`). The session's workspace binding and fork edges
  * are coordination rows (`agent.db`), written in a coordination transaction nested inside the mirror's (the mirror's lock
- * first, always). Every command is plain data: its stamps were taken by the session writer under its file lock,
- * right after the bytes they describe, and are never re-read here, so a stored stamp cannot get ahead of the stored entries.
+ * first, always). Commands carry records with their original stamp, or ask this worker to read a file snapshot whose
+ * identity, size and mtime stay unchanged during the read. A stored stamp never gets ahead of its stored entries.
  */
 
 /** `size` in bytes, `mtime` in nanoseconds and `binding` (`ino:birth`) of a session file, as `getFileStamp` returns them. */
@@ -50,6 +52,7 @@ export type TranscriptCommand =
 			entries?: { position: number; record: MirrorRecord }[];
 	  })
 	| (TranscriptTarget & { kind: "save"; stamp: FileStamp; header: string; records: MirrorRecord[] })
+	| (TranscriptTarget & { kind: "save-file"; binding: string })
 	| {
 			kind: "fork";
 			child: string;
@@ -70,6 +73,10 @@ export type TranscriptResult = "saved" | "current" | "stale" | "skipped";
  * transactions (`transcript-save.ts`). Throws what the caller reports as a pending mirror.
  */
 export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand, steps?: SaveSteps): TranscriptResult {
+	if (command.kind === "save-file") {
+		const snapshot = readSnapshot(command);
+		return snapshot ? runTranscriptCommand(agent, snapshot, steps) : "skipped";
+	}
 	const mirror = agent.mirror;
 	if (command.kind === "fork") return agent.transaction(() => linkFork(agent, command));
 	// Read before the write lock: comparing a large transcript must not hold other writers.
@@ -130,6 +137,55 @@ export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand,
 		return "saved";
 	});
 	return rest ? rest() : result;
+}
+
+/** Read and parse on the writer thread. Atomic replacement or an append during the read invalidates the snapshot. */
+function readSnapshot(
+	command: Extract<TranscriptCommand, { kind: "save-file" }>,
+): Extract<TranscriptCommand, { kind: "save" }> | undefined {
+	const stamp = getFileStamp(command.file);
+	if (stamp.binding !== command.binding) return undefined;
+	const fd = fs.openSync(
+		command.file,
+		fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0),
+	);
+	let bytes: Buffer;
+	try {
+		const opened = fs.fstatSync(fd, { bigint: true });
+		if (!opened.isFile()) throw new Error("Session file is not a regular file");
+		if (`${opened.ino}:${opened.birthtimeNs}` !== stamp.binding) return undefined;
+		bytes = fs.readFileSync(fd);
+		const after = getFileStamp(command.file);
+		if (after.binding !== stamp.binding) return undefined;
+		if (bytes.length !== stamp.size || after.size !== stamp.size || after.mtime !== stamp.mtime)
+			throw new Error("Session file changed while it was read");
+	} finally {
+		fs.closeSync(fd);
+	}
+	let header: string | undefined;
+	const records: MirrorRecord[] = [];
+	for (let at = 0; at < bytes.length;) {
+		const newline = bytes.indexOf(10, at);
+		const end = newline < 0 ? bytes.length : newline;
+		const json = bytes.toString("utf8", at, end);
+		at = end + 1;
+		const parsed = parseJsonlLine(json);
+		if (!parsed?.ok || !parsed.value) continue;
+		const record = parsed.value as { id?: unknown; parentId?: unknown; type?: unknown };
+		if (header === undefined) {
+			if (record.type !== "session" || record.id !== command.sessionId)
+				throw new Error("Session file identity changed");
+			header = json;
+		} else
+			records.push({
+				id: String(record.id),
+				parentId: typeof record.parentId === "string" ? record.parentId : null,
+				type: String(record.type),
+				json,
+			});
+	}
+	if (header === undefined) throw new Error("Session file identity changed");
+	return { ...command, kind: "save", stamp, header, records };
 }
 
 /** Register the transcript's workspace; a transcript bound to another, or to one that is gone, is refused. */

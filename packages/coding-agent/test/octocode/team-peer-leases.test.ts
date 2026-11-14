@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
+import childProcess, { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { peerDbPath, peerRegistryDir } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
+import { refreshProcessTable } from "../../src/octocode/shared/process-table.ts";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
 import {
 	PEER_APPLICATION_ID,
@@ -325,6 +326,23 @@ function deadPid(): number {
 }
 
 describe("registry of the package's non-default databases", () => {
+	it("never starts a synchronous process lookup during an edit's peer discovery", async () => {
+		const dir = path.join(home(), "active");
+		const started = processStartTime(process.ppid);
+		entry(dir, "parent", { pid: process.ppid, started: started ?? null, updatedAt: NOW - 2 * PEER_REGISTRY_GRACE_MS });
+		const lookup = vi.spyOn(childProcess, "execFileSync");
+		try {
+			const registry = new PeerRegistry(dir);
+			expect(registry.databases(NOW)).toEqual(["/db.sqlite"]);
+			expect(lookup).not.toHaveBeenCalled();
+			await refreshProcessTable();
+			expect(registry.databases(NOW)).toEqual(["/db.sqlite"]);
+			expect(lookup).not.toHaveBeenCalled();
+		} finally {
+			lookup.mockRestore();
+		}
+	});
+
 	it("lists the database of an entry whose process runs, or that was written within the lease grace", () => {
 		const dir = path.join(home(), "active");
 		entry(dir, "alive", { database: "/alive.sqlite", updatedAt: NOW - 10 * PEER_REGISTRY_GRACE_MS });

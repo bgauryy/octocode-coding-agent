@@ -3,6 +3,7 @@ import { StringEnum } from "./schema.ts";
 
 export * from "./harness-config.ts";
 export * from "./tool-exposure.ts";
+export * from "./config-settings.ts";
 
 /** Version of the configuration read model; bump when a field changes meaning. */
 export const CONFIG_PROTOCOL_VERSION = 1 as const;
@@ -50,6 +51,17 @@ export const ProviderAuthMethodsSchema = Type.Object(
 					name: Type.String({ minLength: 1, maxLength: 128 }),
 					/** The provider's page that issues keys; always an https link. */
 					keyPage: Type.Optional(Type.String({ pattern: "^https://[^\\s]+$", maxLength: 512 })),
+				},
+				{ additionalProperties: false },
+			),
+		),
+		plan: Type.Optional(
+			Type.Object(
+				{
+					billing: StringEnum(["plan", "metered"] as const),
+					terms: Type.String({ minLength: 1, maxLength: 2048 }),
+					deprecated: Type.Optional(Type.String({ maxLength: 2048 })),
+					disabled: Type.Optional(Type.String({ maxLength: 2048 })),
 				},
 				{ additionalProperties: false },
 			),
@@ -118,11 +130,6 @@ export const ProviderCredentialStatusSchema = Type.Object(
 );
 export type ProviderCredentialStatus = Static<typeof ProviderCredentialStatusSchema>;
 
-/** The settings the page shows and may change, in page order. Each is a string; a workspace value replaces the global one. */
-export const CONFIG_SETTING_KEYS = ["defaultProvider", "defaultModel"] as const;
-export const ConfigSettingKeySchema = StringEnum(CONFIG_SETTING_KEYS);
-export type ConfigSettingKey = Static<typeof ConfigSettingKeySchema>;
-
 export const SETTING_SOURCES = ["global", "workspace", "default"] as const;
 export const SettingSourceSchema = StringEnum(SETTING_SOURCES);
 export type SettingSource = Static<typeof SettingSourceSchema>;
@@ -138,31 +145,6 @@ export const ConfigSettingSchema = Type.Object(
 	{ additionalProperties: false },
 );
 export type ConfigSetting = Static<typeof ConfigSettingSchema>;
-
-/** The files a setting can be written to. `default` is a source, never a target. */
-export const CONFIG_SETTING_SCOPES = ["global", "workspace"] as const;
-export const ConfigSettingScopeSchema = StringEnum(CONFIG_SETTING_SCOPES);
-export type ConfigSettingScope = Static<typeof ConfigSettingScopeSchema>;
-
-/**
- * `POST /api/admin/config/settings`: set or clear one allow-listed setting in one file. `value: null` removes the key
- * from that file, so the other scope (or the default) applies again. A `workspace` write names the repository the
- * daemon indexed (`repoId`, never a path) and needs the workspace to be trusted.
- */
-export const ConfigSettingCommandSchema = Type.Object(
-	{
-		key: ConfigSettingKeySchema,
-		scope: ConfigSettingScopeSchema,
-		/** No control characters, so a value cannot break a line of a log or a settings file. */
-		value: Type.Union([
-			Type.String({ minLength: 1, maxLength: 256, pattern: "^[^\\u0000-\\u001f\\u007f]+$" }),
-			Type.Null(),
-		]),
-		repoId: Type.Optional(Type.String({ pattern: "^[\\w.-]{1,128}$" })),
-	},
-	{ additionalProperties: false },
-);
-export type ConfigSettingCommand = Static<typeof ConfigSettingCommandSchema>;
 
 /** The longest key the page accepts. */
 export const MAX_CREDENTIAL_KEY_LENGTH = 8192;

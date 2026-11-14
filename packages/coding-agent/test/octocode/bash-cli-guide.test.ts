@@ -72,17 +72,14 @@ describe("renderCliGuide", () => {
 		const mac = renderCliGuide(host("darwin", ["yq"]));
 		// Read routing belongs to the research policy: the guide holds host facts only.
 		expect(mac).not.toMatch(/Code research:|The commands below are for|^Find:|^Read:/m);
-		expect(mac.split("\n")[0]).toBe(
-			"Host: macOS arm64. On PATH: git, rg; not found: yq. gh: logged in. Check any other tool with `command -v` before relying on it.",
-		);
-		expect(mac).toContain("BSD tools");
-		expect(mac).not.toContain("GNU tools");
+		expect(mac.split("\n")[0]).toMatch(/^Host: macOS arm64\. On PATH: git, rg; not found: yq\. gh: logged in\./);
+		expect(mac).toContain("Host notes: BSD:");
+		expect(mac).not.toContain("GNU:");
 		const linux = renderCliGuide(host("linux"));
-		expect(linux.split("\n")[0]).toBe(
-			"Host: Linux arm64. On PATH: git, rg. gh: logged in. Check any other tool with `command -v` before relying on it.",
-		);
+		expect(linux.split("\n")[0]).toMatch(/^Host: Linux arm64\. On PATH: git, rg\. gh: logged in\./);
+		expect(linux).toContain("Host notes: GNU:");
 		expect(linux).toContain("sha256sum");
-		expect(linux).not.toContain("BSD tools");
+		expect(linux).not.toContain("Host notes: BSD:");
 		expect(renderCliGuide(host("win32"))).toContain("type: powershell");
 		expect(renderCliGuide(host("freebsd"))).toContain("Host notes: check flags");
 	});

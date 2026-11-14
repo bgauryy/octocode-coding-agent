@@ -240,11 +240,9 @@ describe("startup banner from the context view", () => {
 
 	it("condenses a settings file's ignored keys into one line", () => {
 		expect(describeIgnoredKeys(["thinkingBudgets.xhigh", "compaction"])).toBe(
-			"2 ignored keys (thinkingBudgets.xhigh unknown, compaction removed): /configuration unset thinkingBudgets.xhigh compaction",
+			"2 ignored keys (thinkingBudgets.xhigh, compaction): /configuration unset thinkingBudgets.xhigh compaction",
 		);
-		expect(describeIgnoredKeys(["typo"], "project")).toBe(
-			"1 ignored key (typo unknown): /configuration unset typo --local",
-		);
+		expect(describeIgnoredKeys(["typo"], "project")).toBe("1 ignored key (typo): /configuration unset typo --local");
 		expect(describeIgnoredKeys([])).toBeUndefined();
 	});
 });

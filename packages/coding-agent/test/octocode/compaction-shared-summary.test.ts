@@ -602,7 +602,8 @@ describe("writeSummary with the shared path", () => {
 		expect(out?.compaction?.details).toEqual({
 			readFiles: ["src/a.ts"],
 			modifiedFiles: ["src/b.ts", "src/new.ts"],
-			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared" },
+			// `ms`: how long writing the summary held the turn, for the profiler.
+			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared", ms: expect.any(Number) },
 		});
 		expect(out?.compaction?.usage).toBeUndefined();
 		expect(recordedUsage).toHaveLength(1);

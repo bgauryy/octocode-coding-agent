@@ -12,7 +12,6 @@ import { deferSettingsWrites } from "../../../core/settings-manager/storage-defe
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { takeUnnotifiedCrash } from "../../../core/crash-log.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
-import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
 import { holdCompileCacheFlush } from "../../../cli/compile-cache.ts";
 import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { ensureTool } from "../../../utils/tools-manager.ts";
@@ -157,13 +156,6 @@ export async function init(host: StartupHost): Promise<void> {
 		// Start the UI before initializing extensions so session_start handlers can use interactive dialogs
 		host.ui.start();
 		host.isInitialized = true;
-		// Uncommon syntax grammars load the first time shown code names one (`syntax-highlight.ts`). Re-render (a full
-		// transcript replay in regular mode) only when code already shown named a language that has just loaded.
-		onHighlightLanguagesLoaded(() => {
-			if (!host.isInitialized) return;
-			host.ui.invalidate();
-			host.ui.requestRender();
-		});
 		host.programStatus.report();
 		host.ensurePngTranscoder();
 

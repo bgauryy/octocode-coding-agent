@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type FileEntry, SessionManager } from "../../src/core/session-manager.ts";
 import { lockSessionFile } from "../../src/core/session-manager/shared-file.ts";
 import { assistantMsg, userMsg } from "../utilities.ts";
@@ -31,6 +31,27 @@ const until = async (done: () => boolean, ms: number) => {
 };
 
 describe("a session record while another writer holds the session lock", () => {
+	for (const initial of [false, true]) {
+		it(`never sleeps on the event loop for a held ${initial ? "initial" : "existing"} append`, async () => {
+			if (initial) {
+				session = SessionManager.create(dir, dir);
+				file = session.getSessionFile()!;
+				expect(existsSync(file)).toBe(false);
+			}
+			const release = lockSessionFile(file);
+			const wait = vi.spyOn(Atomics, "wait");
+			try {
+				const id = session.appendMessage(userMsg("no blocking wait"));
+				expect(session.getEntry(id)).toBeDefined();
+				expect(wait).not.toHaveBeenCalled();
+			} finally {
+				wait.mockRestore();
+				release();
+			}
+			await until(() => existsSync(file) && written("no blocking wait"), 5_000);
+			expect(written("no blocking wait")).toBe(true);
+		});
+	}
 	it("keeps a reply in memory after a short wait instead of holding the thread for seconds", () => {
 		const release = lockSessionFile(file);
 		try {

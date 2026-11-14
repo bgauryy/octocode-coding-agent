@@ -15,6 +15,7 @@ import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { contentText } from "../shared/util.ts";
 import type { UiState } from "../../theme/status.ts";
+import { TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
 import { rowMark, uiStateOf } from "./motion.ts";
 import { phaseOf, rowState, runStart, track } from "./rows.ts";
 import { bodyLines, clip, expandKey, GUTTER, INDENT, plural } from "../shared/text.ts";
@@ -34,8 +35,6 @@ import type { ColorToken, Phase, RenderContext } from "./types.ts";
  * Expanded shows every line. Every string drawn here is sanitized: tool arguments and output are untrusted.
  */
 
-/** Result lines shown while collapsed. */
-const COLLAPSED_LINES = 5;
 /** A body this short shows whole even when collapsed: folding it would hide a few lines behind a one-line hint. */
 export const SHOW_ALL_LINES = 12;
 /** Header summary budget in characters, before the width clip. */
@@ -300,7 +299,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	const raw = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
 	const paint = (line: string) => (raw ? theme.fg(color, line) : line);
 	const body = options.lines ?? raw!;
-	const max = Math.max(0, options.max ?? COLLAPSED_LINES);
+	const max = Math.max(0, options.max ?? TOOL_PREVIEW_LINES);
 	// The `⎿` gutter leads the first row of the block only; every later row (and each wrapped continuation) hangs under the text.
 	const lead = () => (rows.length === 0 ? theme.fg("dim", GUTTER) : INDENT);
 	const hang = (text: string): Row => ({ text, wrap: true, indent: INDENT, lead: lead() });

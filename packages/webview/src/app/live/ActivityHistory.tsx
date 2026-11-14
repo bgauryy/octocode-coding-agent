@@ -4,7 +4,7 @@ import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
 import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
-import { ResultCard } from "./ResultCard.tsx";
+import { LoadedHistoryList } from "./LoadedHistoryList.tsx";
 import { useLive } from "./session.tsx";
 
 /** Activity cursors are independent of message history, so notices cannot hide older conversation pages. */
@@ -15,6 +15,7 @@ export function ActivityHistory({ sessionId }: { sessionId: string }) {
 	const [history, setHistory] = useState<{ activities: ApplicationActivity[]; before?: string; hasMore: boolean }>();
 	const [events, setEvents] = useState<FeedEvent[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [loadRevision, setLoadRevision] = useState(0);
 	const [error, setError] = useState("");
 	const projection = useRef(new ApplicationProjection());
 	const hasMore = history?.hasMore ?? hasMoreLive;
@@ -31,6 +32,8 @@ export function ActivityHistory({ sessionId }: { sessionId: string }) {
 				).values(),
 			];
 			setHistory({ activities, before: page.activityBefore, hasMore: page.hasMoreActivities ?? false });
+			const known = new Set((history?.activities ?? []).map((activity) => activity.id));
+			if (page.activities?.some((activity) => !known.has(activity.id))) setLoadRevision((revision) => revision + 1);
 			setEvents(
 				projection.current.update(
 					{
@@ -62,13 +65,7 @@ export function ActivityHistory({ sessionId }: { sessionId: string }) {
 			{events.length > 0 && (
 				<details open>
 					<summary>{events.length} earlier session updates</summary>
-					<ol className="activity-feed">
-						{events.map((event) => (
-							<li key={event.id}>
-								<ResultCard event={event} />
-							</li>
-						))}
-					</ol>
+					<LoadedHistoryList events={events} loadRevision={loadRevision} label="Loaded session updates" />
 				</details>
 			)}
 		</section>

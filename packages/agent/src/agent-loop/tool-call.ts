@@ -11,6 +11,7 @@ import type {
 import type { ToolUpdateSink } from "./events.ts";
 import { type ListenerErrorReporter, reportListenerErrorToStderr } from "../listener-errors.ts";
 import { AgentToolExecutionError } from "../tool-error.ts";
+import { sinceMs, toolCallPhases } from "./tool-timing.ts";
 
 export type PreparedToolCall = {
 	kind: "prepared";
@@ -18,12 +19,15 @@ export type PreparedToolCall = {
 	tool: AgentTool<any>;
 	args: unknown;
 	revalidate?: BeforeToolCallResult["revalidate"];
+	/** Milliseconds the preparation took (validation and `beforeToolCall`, including a permission wait). */
+	prepareMs?: number;
 };
 
 export type ImmediateToolCallOutcome = {
 	kind: "immediate";
 	result: AgentToolResult<any>;
 	isError: boolean;
+	prepareMs?: number;
 };
 
 /** An early attempt whose `beforeToolCall` answered `defer`: nothing ran and nothing is reported. */
@@ -80,6 +84,14 @@ export function prepareEarlyToolCall(
 }
 
 async function prepareCall(
+	...args: Parameters<typeof prepareCallUntimed>
+): Promise<PreparedToolCall | ImmediateToolCallOutcome | DeferredToolCall> {
+	const started = performance.now();
+	const prepared = await prepareCallUntimed(...args);
+	return prepared.kind === "deferred" ? prepared : { ...prepared, prepareMs: sinceMs(started) };
+}
+
+async function prepareCallUntimed(
 	currentContext: AgentContext,
 	assistantMessage: AssistantMessage,
 	toolCall: AgentToolCall,
@@ -327,6 +339,7 @@ export async function finalizeExecutedToolCall(
 ): Promise<AgentToolCallOutcome> {
 	let result = executed.result;
 	let isError = executed.isError;
+	const started = performance.now();
 
 	if (config.afterToolCall) {
 		try {
@@ -362,11 +375,13 @@ export async function finalizeExecutedToolCall(
 		}
 	}
 
+	const phases = toolCallPhases({ prepareMs: prepared.prepareMs, finalizeMs: sinceMs(started) });
 	return {
 		toolCall: prepared.toolCall,
 		result,
 		isError,
 		durationMs: executed.durationMs,
+		...(phases ? { phases } : {}),
 	};
 }
 

@@ -145,8 +145,8 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | ------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------- |
 | `tui.altScreen.pageUp`         | `pageUp`                                                             | Scroll the transcript up by one page               |
 | `tui.altScreen.pageDown`       | `pageDown`                                                           | Scroll the transcript down by one page             |
-| `tui.altScreen.halfPageUp`     | None                                                                 | Scroll the transcript up by half a page            |
-| `tui.altScreen.halfPageDown`   | None                                                                 | Scroll the transcript down by half a page          |
+| `tui.altScreen.halfPageUp`     | `shift+pageUp`                                                       | Scroll the transcript up by half a page            |
+| `tui.altScreen.halfPageDown`   | `shift+pageDown`                                                     | Scroll the transcript down by half a page          |
 | `tui.altScreen.lineUp`         | None                                                                 | Scroll the transcript up by one line               |
 | `tui.altScreen.lineDown`       | None                                                                 | Scroll the transcript down by one line             |
 | `tui.altScreen.previousPrompt` | `ctrl+shift+up`, `ctrl+up` (`ctrl+up` only on Windows and WSL)       | Jump to the previous marked message                |
@@ -196,15 +196,16 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Models and Thinking
 
-| Keybinding id             | Default                                     | Description                                                               |
-| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
-| `app.model.select`        | `ctrl+l`                                    | Open model selector                                                       |
-| `app.model.cycleForward`  | `ctrl+p`                                    | Cycle to next model                                                       |
-| `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model                                                   |
-| `app.models.save`         | `ctrl+s`                                    | Save the selected default model or scoped model configuration to settings |
-| `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)     |
-| `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                   |
-| `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                        |
+| Keybinding id             | Default                                     | Description                                                                    |
+| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `app.model.select`        | `ctrl+l`                                    | Open model selector                                                            |
+| `app.model.cycleForward`  | `ctrl+p`                                    | Cycle to next model                                                            |
+| `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model                                                        |
+| `app.models.save`         | `ctrl+s`                                    | Save the global default model or model shortcuts after storage succeeds        |
+| `app.models.details`      | `ctrl+d`                                    | Toggle model identifiers, billing, pricing and cache details; PgUp/PgDn scroll |
+| `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)          |
+| `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                        |
+| `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                             |
 
 In the model selector, `tui.editor.cursorLeft` and `tui.editor.cursorRight` (`left`/`right`, `ctrl+b`/`ctrl+f`) switch the shown provider: all providers, then each provider in turn. The line under the search box names the provider shown.
 

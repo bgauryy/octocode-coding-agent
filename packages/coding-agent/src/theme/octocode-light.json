@@ -15,7 +15,7 @@
 		"muted": "#4B5563",
 		"dim": "#5B6472",
 		"faint": "#6E7781",
-		"line": "#B4BEC9",
+		"line": "#89939F",
 		"lineSoft": "#CAD4DE",
 		"ink": "#24292F"
 	},
@@ -31,7 +31,7 @@
 		"dim": "dim",
 		"text": "",
 		"thinkingText": "muted",
-		"selectedBg": "#EAEEF2",
+		"selectedBg": "#F0EAFB",
 		"userMessageBg": "#EFF3F6",
 		"userMessageText": "",
 		"customMessageBg": "#F3E8FF",
@@ -68,10 +68,10 @@
 		"thinkingOff": "faint",
 		"thinkingMinimal": "muted",
 		"thinkingLow": "cyan",
-		"thinkingMedium": "purple",
-		"thinkingHigh": "gold",
-		"thinkingXhigh": "coral",
-		"thinkingMax": "red",
+		"thinkingMedium": "lav",
+		"thinkingHigh": "purpleDeep",
+		"thinkingXhigh": "purple",
+		"thinkingMax": "#A21CAF",
 		"bashMode": "dim"
 	}
 }

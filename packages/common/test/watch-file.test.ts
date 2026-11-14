@@ -27,6 +27,7 @@ function replace(file: string, content: string): void {
 afterEach(() => {
 	vi.restoreAllMocks();
 	for (const stop of stops.splice(0)) stop();
+	vi.useRealTimers();
 	for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -35,7 +36,7 @@ describe("watchFileChanges", () => {
 		const dir = tempDir();
 		const file = path.join(dir, "auth.json");
 		fs.writeFileSync(file, "{}");
-		const polls = vi.spyOn(fs, "watchFile");
+		const polls = vi.spyOn(fs.promises, "stat");
 		const onChange = watch(file);
 		await settle();
 		onChange.mockClear();
@@ -76,16 +77,70 @@ describe("watchFileChanges", () => {
 	it("polls while the folder is missing, then sees the file and re-arms the native watcher", async () => {
 		const dir = path.join(tempDir(), "agent");
 		const file = path.join(dir, "auth.json");
-		const unwatch = vi.spyOn(fs, "unwatchFile");
+		const native = vi.spyOn(fs, "watch");
+		const polls = vi.spyOn(fs.promises, "stat");
 		const onChange = watch(file, { intervalMs: 20 });
 		fs.mkdirSync(dir);
 		replace(file, "{}");
 		await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 3000 });
 		// The native watcher took over: polling stopped, and a later replacement is still seen.
-		await vi.waitFor(() => expect(unwatch).toHaveBeenCalled(), { timeout: 3000 });
+		await vi.waitFor(() => expect(native).toHaveBeenCalledTimes(2), { timeout: 3000 });
+		const pollCount = polls.mock.calls.length;
 		onChange.mockClear();
 		replace(file, '{"a":1}');
 		await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 3000 });
+		expect(polls).toHaveBeenCalledTimes(pollCount);
+	});
+
+	it.each([false, true])("sees creation included in the first async stat (forced polling: %s)", async (poll) => {
+		const dir = path.join(tempDir(), "agent");
+		const file = path.join(dir, "auth.json");
+		vi.spyOn(fs.promises, "stat").mockImplementationOnce(async () => {
+			// Force creation before the first async stat completes, regardless of thread-pool scheduling.
+			fs.mkdirSync(dir);
+			fs.writeFileSync(file, "{}");
+			return fs.statSync(file);
+		});
+		const native = vi.spyOn(fs, "watch");
+		const onChange = watch(file, { intervalMs: 20, poll });
+		await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 3000 });
+		expect(native).toHaveBeenCalledTimes(poll ? 0 : 2);
+		onChange.mockClear();
+		replace(file, '{"native":true}');
+		await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 3000 });
+	});
+
+	it("keeps one stat in flight and ignores its completion after closing", async () => {
+		vi.useFakeTimers();
+		const file = path.join(tempDir(), "auth.json");
+		fs.writeFileSync(file, "{}");
+		const pending = Promise.withResolvers<fs.Stats>();
+		const polls = vi.spyOn(fs.promises, "stat").mockReturnValue(pending.promise);
+		const native = vi.spyOn(fs, "watch");
+		const onChange = watch(file, { intervalMs: 20, poll: true });
+		await vi.advanceTimersByTimeAsync(200);
+		expect(polls).toHaveBeenCalledOnce();
+		stops.pop()?.();
+		pending.resolve(fs.statSync(file));
+		await vi.advanceTimersByTimeAsync(200);
+		expect(polls).toHaveBeenCalledOnce();
+		expect(native).not.toHaveBeenCalled();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("stops the missing-directory rearm retry when closed", async () => {
+		const dir = path.join(tempDir(), "agent");
+		const file = path.join(dir, "auth.json");
+		const native = vi.spyOn(fs, "watch");
+		const onChange = watch(file, { intervalMs: 20 });
+		stops.pop()?.();
+		native.mockClear();
+		fs.mkdirSync(dir);
+		fs.writeFileSync(file, "{}");
+		await settle();
+		expect(native).not.toHaveBeenCalled();
+		expect(onChange).not.toHaveBeenCalled();
 	});
 
 	it("polls from the start where the native watcher is unreliable, replacements included", async () => {
@@ -96,6 +151,7 @@ describe("watchFileChanges", () => {
 		const onChange = watch(file, { poll: true, intervalMs: 20 });
 		// The first stat is the baseline a change is measured against.
 		await settle(100);
+		onChange.mockClear();
 		replace(file, "ref: refs/heads/next-branch\n");
 		await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 3000 });
 		expect(native).not.toHaveBeenCalled();
@@ -112,7 +168,7 @@ describe("watchFileChanges", () => {
 			watchers.push(watcher);
 			return watcher;
 		});
-		const polls = vi.spyOn(fs, "watchFile");
+		const polls = vi.spyOn(fs.promises, "stat");
 		const onChange = watch(file, { intervalMs: 20 });
 		watchers[0].emit("error", new Error("EIO"));
 		expect(polls).toHaveBeenCalledOnce();

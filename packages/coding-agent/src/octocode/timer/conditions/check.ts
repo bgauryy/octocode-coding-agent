@@ -44,9 +44,11 @@ export function checkSpec(base: BaseSpecs): ConditionSpec<CheckCondition> {
 		pollMs: 15_000,
 		async check(condition, env) {
 			const outcome = await base.check(condition.on, env);
+			env.signal?.throwIfAborted();
 			if (outcome.refused || !outcome.met || !env.row) return { ...outcome, met: false };
 			const verdict = await env.deps.judge({
 				id: env.row.id,
+				signal: env.signal,
 				sessionId: env.row.sessionId,
 				question: condition.question,
 				trigger: base.describe(condition.on),

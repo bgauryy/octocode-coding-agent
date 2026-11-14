@@ -45,6 +45,6 @@ describe("summarization with ambient authentication", () => {
 		const agent = new Agent({ streamFn: streamSimple });
 		await expect(
 			getSummarizationRequestAuth({ modelRuntime: runtime, agent, messages: [], thinkingLevel: "off" }, model),
-		).rejects.toThrow("No API key found for unconfigured-fixture");
+		).rejects.toThrow("No usable credentials for unconfigured-fixture");
 	});
 });

@@ -189,6 +189,17 @@ export interface AssistantMessage {
 	 */
 	durationMs?: number;
 	/**
+	 * Milliseconds from `timestamp` until the first content of the response arrived (the provider's time to first token,
+	 * including connection and queueing), on the same clock as `durationMs`. Absent when no content arrived.
+	 */
+	firstTokenMs?: number;
+	/**
+	 * The longest wait in milliseconds between two events of the response, counting from `timestamp` to its end, on the
+	 * same clock as `durationMs`. A long gap after the first token is the provider going quiet mid-response, which
+	 * `firstTokenMs` alone does not show.
+	 */
+	longestGapMs?: number;
+	/**
 	 * What the request that produced this response sent, layer by layer (sizes and hashes, no text). Recorded by the
 	 * host for profiling; provider converters never read it, so it is not part of any request.
 	 */
@@ -217,6 +228,26 @@ export interface NestedToolCalls {
 	complete: boolean;
 }
 
+/**
+ * A tool call's time outside its execution (`durationMs`), in milliseconds on a monotonic clock. A phase that took
+ * under a millisecond is left out.
+ */
+export interface ToolCallPhases {
+	/** Argument validation and the pre-call check: hooks and the permission decision, including a wait for the user. */
+	prepareMs?: number;
+	/** Waiting for the batch schedule: an exclusive call waits for running calls, a later call for an exclusive one. */
+	queuedMs?: number;
+	/** The post-call step: result hooks and output processing. */
+	finalizeMs?: number;
+	/**
+	 * From the call's end until its result message was made: the end event's listeners and, when the message's calls ran
+	 * in parallel, the wait for its slowest call (results go back together, in call order).
+	 */
+	heldMs?: number;
+	/** Started while the model was still streaming its message. */
+	early?: true;
+}
+
 export type ToolResultMessage<TDetails = JsonValue> =
 	IsJsonCompatible<TDetails> extends true
 		? {
@@ -236,6 +267,8 @@ export type ToolResultMessage<TDetails = JsonValue> =
 				timestamp: number;
 				/** Milliseconds the tool's execution took, measured with a monotonic clock. Absent for legacy results. */
 				durationMs?: number;
+				/** Where the rest of the call's time went, around its execution. Absent for legacy results. */
+				phases?: ToolCallPhases;
 			}
 		: never;
 

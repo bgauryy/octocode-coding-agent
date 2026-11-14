@@ -49,6 +49,19 @@ export interface OpenAICodexWebSocketDebugStats {
 const websocketSessionCache = new Map<string, Map<string, CachedWebSocketConnection>>();
 const websocketDebugStats = new Map<string, OpenAICodexWebSocketDebugStats>();
 const websocketSseFallbackSessions = new Set<string>();
+/**
+ * Most ids the debug stats and the fallback set keep. A request with an id of its own (a summary, a check) is never
+ * reset by a session's cleanup, so the oldest go first past this.
+ */
+const MAX_TRACKED_IDS = 256;
+
+function evictOldest(keys: { size: number; keys(): IterableIterator<string>; delete(key: string): boolean }): void {
+	while (keys.size > MAX_TRACKED_IDS) {
+		const oldest = keys.keys().next();
+		if (oldest.done) return;
+		keys.delete(oldest.value);
+	}
+}
 const sessionConnections = new Set<{ sessionId: string | undefined; controller: AbortController }>();
 const uncachedConnections = new Map<WebSocketLike, string | undefined>();
 
@@ -80,6 +93,7 @@ export function getOrCreateWebSocketDebugStats(sessionId: string): OpenAICodexWe
 			sseFallbacks: 0,
 		};
 		websocketDebugStats.set(sessionId, stats);
+		evictOldest(websocketDebugStats);
 	}
 	return stats;
 }
@@ -91,8 +105,10 @@ export function getOpenAICodexWebSocketDebugStats(sessionId: string): OpenAICode
 
 export function resetOpenAICodexWebSocketDebugStats(sessionId?: string): void {
 	if (sessionId) {
-		websocketDebugStats.delete(sessionId);
-		websocketSseFallbackSessions.delete(sessionId);
+		// Requests of a session can carry ids derived from it (`<id>:side:<n>`): they end with it.
+		const owned = (id: string) => id === sessionId || id.startsWith(`${sessionId}:`);
+		for (const id of websocketDebugStats.keys()) if (owned(id)) websocketDebugStats.delete(id);
+		for (const id of websocketSseFallbackSessions) if (owned(id)) websocketSseFallbackSessions.delete(id);
 		return;
 	}
 	websocketDebugStats.clear();
@@ -139,6 +155,7 @@ export function recordWebSocketSseFallback(sessionId: string | undefined): void 
 export function recordWebSocketFailure(sessionId: string | undefined, error: unknown): void {
 	if (!sessionId) return;
 	websocketSseFallbackSessions.add(sessionId);
+	evictOldest(websocketSseFallbackSessions);
 
 	const stats = getOrCreateWebSocketDebugStats(sessionId);
 	stats.websocketFailures++;

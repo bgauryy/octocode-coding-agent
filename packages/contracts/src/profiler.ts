@@ -150,8 +150,9 @@ export interface ProfileRequest {
 
 /**
  * What happened on an agent's lane of the timeline. `request` is a model request (detail in `ProfileRequest`), `tool` a
- * tool call from start to result, `message` a message between agents (the `peer` is the other side), `wait` time spent
- * blocked (on a permission answer, a reply, a reserved path or the user), `idle` a gap with nothing running.
+ * tool call's execution, `message` a message between agents (the `peer` is the other side), `wait` time spent
+ * blocked (on a permission answer, a reply, a retry backoff, the start of a turn, a reserved path or the user), `idle` a
+ * gap with nothing running, `stall` a window in which the agent's event loop was blocked.
  */
 export const PROFILE_EVENT_KINDS = [
 	"request",
@@ -166,8 +167,18 @@ export const PROFILE_EVENT_KINDS = [
 	"spawn",
 	"exit",
 	"permission",
+	"stall",
 ] as const;
 export type ProfileEventKind = (typeof PROFILE_EVENT_KINDS)[number];
+
+/**
+ * Where a request's or tool call's time went, in milliseconds. A request: `firstToken` (until its first content
+ * arrived) and `stream` (the rest). A tool call: `prepare` (argument checks, hooks and the permission decision), `queued`
+ * (waiting for the batch schedule), `execute`, `finalize` (result hooks and processing) and `held` (until its result went
+ * back with its batch). A phase under a millisecond is absent.
+ */
+export const PROFILE_PHASES = ["firstToken", "stream", "prepare", "queued", "execute", "finalize", "held"] as const;
+export type ProfilePhase = (typeof PROFILE_PHASES)[number];
 
 export interface ProfileEvent {
 	/** Stable across polls: `<agentId>:<kind>:<source id>`. */
@@ -186,6 +197,10 @@ export interface ProfileEvent {
 	outcome?: "ok" | "error" | "aborted";
 	/** Tokens involved: a request's input total, a tool result's size estimate. */
 	tokens?: number;
+	/** A request's or tool call's time by phase, when it was recorded. */
+	phases?: Partial<Record<ProfilePhase, number>>;
+	/** A tool call that started while the model was still streaming: its `prepare` overlapped the stream. */
+	early?: boolean;
 	/** Where the detail lives: the agent's request index, transcript entry index, or team message id. */
 	ref?: { request?: number; entry?: number; message?: number };
 }
@@ -222,6 +237,11 @@ export const PROFILE_FINDING_KINDS = [
 	"permission-wait",
 	"interrupt",
 	"cost",
+	"slow-phase",
+	"slow-first-token",
+	"slow-turn-start",
+	"retry-wait",
+	"main-thread-stall",
 ] as const;
 export type ProfileFindingKind = (typeof PROFILE_FINDING_KINDS)[number];
 

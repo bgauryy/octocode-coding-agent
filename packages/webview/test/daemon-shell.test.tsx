@@ -69,10 +69,31 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("DaemonShell", () => {
+	it.each([false, true])("reports whether the live session list was truncated (%s)", async (truncated) => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async (url: string) =>
+					new Response(JSON.stringify(url === "/api/sessions" ? { ...sessions, truncated } : repos), { status: 200 }),
+			),
+		);
+		render(<DaemonShell access="tok" />);
+		expect(await screen.findAllByRole("link", { name: /^Open octo-repo session / })).toHaveLength(3);
+		const notice = screen.queryByText("Showing the first 3 live sessions.");
+		if (truncated) expect(notice).toBeInTheDocument();
+		else expect(notice).toBeNull();
+	});
+
 	it("lists live sessions with a link that opens that session's own live view", async () => {
 		render(<DaemonShell access="tok" />);
-		const links = await screen.findAllByRole("link", { name: "Open session" });
+		const links = await screen.findAllByRole("link", { name: /^Open octo-repo session / });
 		expect(links[0]).toHaveAttribute("href", "/?s=sess%20one#activity");
+		expect(links.map((link) => link.getAttribute("aria-label"))).toEqual([
+			"Open octo-repo session sess one",
+			"Open octo-repo session blocked",
+			"Open octo-repo session working",
+		]);
+		expect(screen.getByTitle("sess one")).toHaveTextContent("sess one");
 		expect(screen.getAllByText("octo-repo")).toHaveLength(3);
 		expect(screen.getByText("/work/octo")).toBeInTheDocument();
 		// Each session says what it is doing; a blocked one shows the question it waits on.
@@ -110,7 +131,10 @@ describe("DaemonShell", () => {
 		};
 		const saved: ConfigSnapshot = {
 			...writable,
-			settings: [{ key: "defaultModel", value: "gpt-5", source: "global" }],
+			settings: [
+				{ key: "defaultProvider", value: "openai", source: "global" },
+				{ key: "defaultModel", value: "gpt-5", source: "global" },
+			],
 		};
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		vi.stubGlobal(
@@ -130,6 +154,7 @@ describe("DaemonShell", () => {
 		);
 		render(<DaemonShell access="tok" />);
 		const input = await screen.findByLabelText("Value for defaultModel");
+		await userEvent.type(screen.getByLabelText("Default provider"), "openai");
 		await userEvent.type(input, "gpt-5");
 		await userEvent.click(screen.getByRole("button", { name: "Save" }));
 		await screen.findByText(/Saved to global settings/);
@@ -137,7 +162,11 @@ describe("DaemonShell", () => {
 		const post = calls.find((call) => call.url === "/api/admin/config/settings")!;
 		expect(post.init?.method).toBe("POST");
 		expect(post.init?.headers).toMatchObject({ Authorization: "Bearer tok", "content-type": "application/json" });
-		expect(JSON.parse(post.init?.body as string)).toEqual({ key: "defaultModel", scope: "global", value: "gpt-5" });
+		expect(JSON.parse(post.init?.body as string)).toEqual({
+			key: "modelDefault",
+			scope: "global",
+			value: { provider: "openai", model: "gpt-5" },
+		});
 
 		await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Workspace" }), "r1");
 		await waitFor(() => expect(calls.some((call) => call.url === "/api/config?repoId=r1")).toBe(true));

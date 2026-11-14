@@ -20,7 +20,67 @@ const report = (id: string, extra: Partial<Report> = {}): Report => ({
 	...extra,
 });
 
+/** Follow ordinary strong fields only: weak maps and callback closures cannot own this newly created report. */
+function retains(root: unknown, target: object, seen = new Set<object>()): boolean {
+	if (root === target) return true;
+	if (!root || typeof root !== "object" || seen.has(root)) return false;
+	seen.add(root);
+	const values =
+		root instanceof Map ? [...root.keys(), ...root.values()] : root instanceof Set ? [...root] : Object.values(root);
+	return values.some((value) => retains(value, target, seen));
+}
+
 describe("the mid-turn notice of a background report (B11)", () => {
+	it.each(["recorded", "persisted"] as const)("releases deferred notice payloads once a report is %s", (ending) => {
+		const entries: unknown[] = [];
+		const f = fakeHost();
+		const queue = new ReportQueue(f.api);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => entries as never }, () => false);
+		const finished = report("large", { reportId: "large-report", content: "x".repeat(64 * 1024) });
+		try {
+			queue.add(finished);
+			queue.flush();
+			expect(retains(queue, finished)).toBe(true);
+			if (ending === "recorded") {
+				entries.push({ type: "custom_message", customType: AGENT_RESULT_TYPE, details: { reportId: "large-report" } });
+				queue.recorded();
+			} else queue.persist();
+			expect(retains(queue, finished)).toBe(false);
+			queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => false);
+			queue.stepEnded();
+			expect(f.sent.filter(({ message }) => message.customType === NOTICE_TYPE)).toHaveLength(0);
+		} finally {
+			queue.persist();
+		}
+	});
+
+	it("delivers one current notice after persistence/recovery of the same report id", () => {
+		const f = fakeHost();
+		const queue = new ReportQueue(f.api);
+		const session = { getSessionFile: () => undefined, getEntries: () => [] };
+		queue.start(session, () => false);
+		try {
+			queue.add(report("child", { reportId: "same-report" }));
+			queue.flush();
+			queue.persist();
+			queue.start(session, () => false);
+			queue.add(
+				report("child", {
+					reportId: "same-report",
+					details: { id: "child", status: "done", outcome: "blocked", summary: "needs input" },
+				}),
+			);
+			queue.flush();
+			queue.stepEnded();
+			queue.stepEnded();
+			const notices = f.sent.filter(({ message }) => message.customType === NOTICE_TYPE);
+			expect(notices).toHaveLength(1);
+			expect(notices[0].message.content).toContain("child blocked");
+		} finally {
+			queue.persist();
+		}
+	});
+
 	it("is a short steering message with the agent, outcome and report path, and never the child's words", () => {
 		const text = noticeText(
 			report("w1", {

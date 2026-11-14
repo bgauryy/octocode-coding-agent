@@ -20,6 +20,38 @@ class Storage implements SettingsStorage {
 }
 
 describe("saving a default model", () => {
+	it("persists or clears the provider/model pair in a single write", async () => {
+		const storage = new Storage();
+		const settings = SettingsManager.fromStorage(storage);
+		settings.setDefaultSelectionPair("global", { provider: "local", model: "qwen" });
+		await settings.flush();
+		expect(storage.writes).toBe(1);
+		expect(JSON.parse(storage.content)).toEqual({ theme: "dark", defaultProvider: "local", defaultModel: "qwen" });
+		settings.setDefaultSelectionPair("global", undefined);
+		await settings.flush();
+		expect(storage.writes).toBe(2);
+		expect(JSON.parse(storage.content)).toEqual({ theme: "dark" });
+	});
+
+	it("rolls back failed shortcut persistence and serializes it with a later default save", async () => {
+		const storage = new Storage();
+		storage.content = JSON.stringify({ enabledModels: ["old/model"], theme: "dark" });
+		storage.failures = 1;
+		const settings = SettingsManager.fromStorage(storage);
+		const failed = settings.saveEnabledModels(["new/model"]);
+		const next = settings.saveDefaultModelSelection("new", "model");
+		await expect(failed).rejects.toThrow("fixture write failed");
+		await next;
+		expect(settings.getEnabledModels()).toEqual(["old/model"]);
+		expect(JSON.parse(storage.content)).toEqual({
+			enabledModels: ["old/model"],
+			theme: "dark",
+			defaultProvider: "new",
+			defaultModel: "model",
+		});
+		await settings.saveEnabledModels(["new/model"]);
+		expect(SettingsManager.fromStorage(storage).getEnabledModels()).toEqual(["new/model"]);
+	});
 	it("writes the model, provider, optional thinking and enabled scope in one transaction and survives reload", async () => {
 		const storage = new Storage();
 		storage.content = JSON.stringify({

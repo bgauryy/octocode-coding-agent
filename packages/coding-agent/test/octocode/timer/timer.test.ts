@@ -121,6 +121,42 @@ function scheduler(check: (calls: number) => CheckOutcome = () => ({ met: false,
 }
 
 describe("the timer scheduler", () => {
+	it("fires a later reminder while condition checks are pending, with bounded concurrency and no duplicate checks", async () => {
+		const rows = Array.from({ length: 7 }, () => add({ note: "condition", until: { command: "true" }, every: 5 }));
+		const releases: Array<() => void> = [];
+		const checked: number[] = [];
+		const woken: string[] = [];
+		let now = T0 + 5_000;
+		const instance = new TimerScheduler({
+			db: () => agent,
+			sessionId: "s1",
+			now: () => now,
+			check: async (_condition, input) => {
+				checked.push(input.row!.id);
+				await new Promise<void>((resolve) => releases.push(resolve));
+				return { met: true, exit: 0, output: "" };
+			},
+			wake: (row) => woken.push(row.note),
+		});
+		started.push(instance);
+		instance.refresh();
+		const first = instance.tick();
+		expect(checked).toHaveLength(4);
+		add({ note: "reminder", after: 0 }, "s1", now);
+		instance.refresh();
+		now += 1_000;
+		await instance.tick();
+		expect(woken).toEqual(["reminder"]);
+		expect(new Set(checked).size).toBe(4);
+		for (const release of releases.splice(0)) release();
+		await first;
+		const second = instance.tick();
+		expect(checked).toHaveLength(7);
+		for (const release of releases.splice(0)) release();
+		await second;
+		expect(new Set(checked).size).toBe(rows.length);
+		expect(woken.filter((note) => note === "condition")).toHaveLength(7);
+	});
 	it("fires a one-shot once with its note", async () => {
 		add({ note: "check the build", after: 5 });
 		const { instance, woken } = scheduler();

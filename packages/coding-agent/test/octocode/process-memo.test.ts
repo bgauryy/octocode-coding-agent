@@ -24,8 +24,17 @@ vi.mock("node:child_process", async (actual) => {
 		}) as typeof real.execFile,
 	};
 });
-const { killTree, liveProcess, processAlive, processMatch, processStartTime, sameProcess, VERDICT_TTL_MS } =
-	await Promise.resolve(importedModule2);
+const {
+	killTree,
+	liveProcess,
+	processAlive,
+	processMatch,
+	processStartTime,
+	processStartTimeAsync,
+	sameProcess,
+	sameProcessAsync,
+	VERDICT_TTL_MS,
+} = await Promise.resolve(importedModule2);
 const { TeamStore } = await Promise.resolve(importedModule3);
 const { refreshProcessTable, resetProcessTable } = await Promise.resolve(importedModule4);
 
@@ -61,6 +70,28 @@ const member = (id: string, who: { pid: number; started: string }): Member => ({
 });
 
 describe("sameProcess is one memoized judgement", () => {
+	it("shares async checks across concurrent cleanup callers without synchronous ps", async () => {
+		const who = await peer();
+		resetProcessTable();
+		ps.calls = 0;
+		ps.async = 0;
+		const results = await Promise.all(Array.from({ length: 50 }, () => sameProcessAsync(who.pid, who.started)));
+		expect(results.every(Boolean)).toBe(true);
+		expect(ps.calls).toBe(0);
+		expect(ps.async).toBe(1);
+	});
+
+	it("shares in-flight start-time reads and releases them after completion", async () => {
+		const who = await peer();
+		ps.calls = 0;
+		ps.async = 0;
+		const results = await Promise.all(Array.from({ length: 20 }, () => processStartTimeAsync(who.pid)));
+		expect(results).toEqual(Array(20).fill(who.started));
+		expect(ps.calls).toBe(0);
+		expect(ps.async).toBe(1);
+		await processStartTimeAsync(who.pid);
+		expect(ps.async).toBe(2);
+	});
 	it("compares a live pid's start time once per TTL, whoever asks", async () => {
 		const who = await peer();
 		const t0 = 1_000_000_000_000;

@@ -101,3 +101,63 @@ describe("SettingsList", () => {
 		assert.deepStrictEqual(changes, [{ id: "tui-mode", value: "fullscreen" }]);
 	});
 });
+
+it("restores a filtered selection when rebuilding and safely ignores a missing id", () => {
+	const entries = [
+		{ id: "alpha", label: "target alpha", currentValue: "on" },
+		{ id: "beta", label: "target beta", currentValue: "off" },
+	];
+	const list = new SettingsList(
+		entries,
+		12,
+		testTheme,
+		() => {},
+		() => {},
+		{ enableSearch: true, initialQuery: "target" },
+	);
+	list.handleInput("\x1b[B");
+	assert.equal(list.getSearchQuery(), "target");
+	assert.equal(list.getSelectedId(), "beta");
+	const restored = new SettingsList(
+		entries,
+		12,
+		testTheme,
+		() => {},
+		() => {},
+		{ enableSearch: true, initialQuery: list.getSearchQuery() },
+	);
+	restored.selectItem(list.getSelectedId()!);
+	assert.equal(restored.getSelectedId(), "beta");
+	restored.selectItem("missing");
+	assert.equal(restored.getSelectedId(), "beta");
+	const empty = new SettingsList(
+		entries,
+		12,
+		testTheme,
+		() => {},
+		() => {},
+		{ enableSearch: true, initialQuery: "absent" },
+	);
+	empty.selectItem("beta");
+	assert.equal(empty.getSelectedId(), undefined);
+});
+
+it("keeps the filtered setting selected when input only moves the query cursor", () => {
+	const changes: string[] = [];
+	const list = new SettingsList(
+		[
+			{ id: "alpha", label: "target alpha", currentValue: "on", values: ["on", "off"] },
+			{ id: "beta", label: "target beta", currentValue: "on", values: ["on", "off"] },
+		],
+		12,
+		testTheme,
+		(id) => changes.push(id),
+		() => {},
+		{ enableSearch: true, initialQuery: "target" },
+	);
+	list.handleInput("\x1b[B");
+	for (const key of ["\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F", "\x1b[6~"]) list.handleInput(key);
+	assert.equal(list.getSearchQuery(), "target");
+	list.handleInput("\r");
+	assert.deepEqual(changes, ["beta"]);
+});

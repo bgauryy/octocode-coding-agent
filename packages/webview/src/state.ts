@@ -1,6 +1,7 @@
 import type { ApplicationAsset } from "@octocodeai/octocode-contracts";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { createStore } from "zustand/vanilla";
+import { createSessionDrafts, type SessionDraftStorage } from "./session-drafts.ts";
 
 export type ActivityFilter = "all" | "results" | "tools" | "agents" | "attention";
 export interface WorkspaceDraft {
@@ -29,14 +30,16 @@ interface WorkspaceState {
 	setPaused: (paused: boolean) => void;
 }
 
-/** Each browser owns a store; credentials and agent content are never persisted. */
-export function createWorkspaceStore() {
+/** Each browser owns a store; only unsent composer text and mode are retained in this tab. */
+export function createWorkspaceStore(storage?: SessionDraftStorage) {
+	const sessionDrafts = createSessionDrafts(storage);
 	return createStore<WorkspaceState>()((set) => ({
-		drafts: {},
+		drafts: sessionDrafts.read(),
 		requests: {},
 		setRequest: (key, request) => set((state) => ({ requests: { ...state.requests, [key]: request } })),
 		setDraft: (key, draft) =>
 			set((state) => {
+				sessionDrafts.write(key, draft);
 				const drafts = { ...state.drafts };
 				if (draft) drafts[key] = draft;
 				else delete drafts[key];
@@ -50,7 +53,13 @@ export function createWorkspaceStore() {
 			set((state) => {
 				const changedSession = state.snapshot !== null && state.snapshot.sessionId !== snapshot.sessionId;
 				if (changedSession)
-					return { snapshot, drafts: {}, requests: {}, paused: false, displayedEvents: snapshot.events };
+					return {
+						snapshot,
+						drafts: sessionDrafts.read(snapshot.sessionId),
+						requests: {},
+						paused: false,
+						displayedEvents: snapshot.events,
+					};
 				const sameEvents =
 					state.paused ||
 					state.displayedEvents === snapshot.events ||

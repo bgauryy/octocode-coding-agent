@@ -51,10 +51,12 @@ class AnimationClock {
 		this.reschedule();
 		// Let every frozen or resumed owner repaint once in its new state.
 		const now = Date.now();
-		for (const subscriber of this.subscribers) {
-			if (subscriber.kind !== "decor") continue;
+		// Callbacks may replace subscriptions; new owners wait for the next notification.
+		const subscribers = [...this.subscribers];
+		for (const subscriber of subscribers) {
+			if (subscriber.kind !== "decor" || !this.subscribers.has(subscriber)) continue;
 			subscriber.due = now + subscriber.everyMs;
-			subscriber.listener(now);
+			this.notify(subscriber, now);
 		}
 	}
 
@@ -102,6 +104,18 @@ class AnimationClock {
 		this.timer.unref?.();
 	}
 
+	/** Mode changes and regular ticks isolate failed callbacks in the same way. */
+	private notify(subscriber: Subscriber, now: number): void {
+		try {
+			subscriber.listener(now);
+		} catch (error) {
+			// Drop the failing animation and report its error as a rejection, which the app shows without exiting.
+			this.subscribers.delete(subscriber);
+			this.reschedule();
+			void Promise.reject(error);
+		}
+	}
+
 	private tick(): void {
 		const now = Date.now();
 		// The clock ticks at the fastest cadence: a call runs on the first tick at or after its due time (never early, so
@@ -114,15 +128,7 @@ class AnimationClock {
 			subscriber.due += subscriber.everyMs;
 			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
 			if (subscriber.due <= now) subscriber.due = now + subscriber.everyMs;
-			try {
-				subscriber.listener(now);
-			} catch (error) {
-				// A throw out of the timer would end the process and skip the other subscribers: drop the failing animation
-				// and report its error as a rejection, which the app shows without exiting.
-				this.subscribers.delete(subscriber);
-				this.reschedule();
-				void Promise.reject(error);
-			}
+			this.notify(subscriber, now);
 		}
 	}
 }

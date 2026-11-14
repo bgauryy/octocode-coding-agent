@@ -10,6 +10,7 @@ import { getBuiltinCommand } from "../src/core/slash-commands.ts";
 import { getLoginProviderOptions, showOAuthSelector } from "../src/modes/interactive/interactive-mode/login-flow.ts";
 import { removeProviderCredential } from "../src/modes/interactive/interactive-mode/provider-actions.ts";
 import { showProviderManager } from "../src/modes/interactive/interactive-mode/provider-manager.ts";
+import { showSourcesPage } from "../src/modes/interactive/interactive-mode/provider-sources-page.ts";
 import type { ProviderKind } from "../src/core/model-runtime/catalog.ts";
 import { providerHealth, type ProviderHealth } from "../src/octocode/subagents/provider-health.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -144,6 +145,22 @@ let home: string;
 const sourceEnvironment = () => ({ home, env: {}, agentDir: join(home, ".octocode", "octocodecode") });
 
 describe("provider setup flow", () => {
+	it("names AWS profile and bearer-token configuration instead of promising an API-key-only flow", async () => {
+		const { host, value, runtime } = manager();
+		const cloud = {
+			id: "cloud",
+			name: "Cloud",
+			auth: { apiKey: { name: "AWS credentials or bearer token", login: async () => ({}) } },
+		};
+		runtime.getProviders = () => [cloud] as never;
+		runtime.getProvider = () => cloud;
+		const run = showProviderManager(host, "cloud", { sourceEnvironment: sourceEnvironment() });
+		const page = await pageAt(value, 0);
+		expect(textOf(page)).toContain("Configure — AWS credentials or bearer token");
+		choose(page, "Configure — AWS");
+		await run;
+		expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("cloud", "Cloud", expect.any(Function));
+	});
 	beforeAll(() => initTheme("dark"));
 	beforeEach(() => {
 		setKeybindings(new KeybindingsManager());
@@ -192,31 +209,36 @@ describe("provider setup flow", () => {
 		expect(getBuiltinCommand("modelsettings")?.description).toContain("routing");
 	});
 
-	it("main page: Signed in, Sign in, Sources, Detected and Custom models in order, each provider once", async () => {
+	it("keeps everyday access on the main page and source diagnostics on the advanced page", async () => {
 		const { host, value } = manager();
 		mkdirSync(join(home, ".codex"));
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
 		const output = textOf(page);
-		const at = ["Signed in", "Sign in", "Sources", "Detected", "Custom models"].map((heading) =>
+		const at = ["Configured", "Connect", "External agents", "Advanced"].map((heading) =>
 			output.search(new RegExp(`^ ${heading}$`, "m")),
 		);
 		expect(at.every((position) => position >= 0)).toBe(true);
 		expect(at).toEqual([...at].sort((a, b) => a - b));
 		expect(output).not.toMatch(/^ Disabled$/m);
 		expect(output.match(/OpenAI\b/g)?.length).toBeGreaterThanOrEqual(1);
-		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +enabled/);
+		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +configured/);
 		expect(output).toContain("+ Add a provider");
-		expect(output).toMatch(/Octocode .*auth\.json.* on/);
-		expect(output).toMatch(/Pi .*auth\.json.* on/);
-		expect(output).toMatch(/COPILOT_GITHUB_TOKEN .* off/);
-		// Sign in with ChatGPT on OpenAI superseded the legacy Codex provider.
-		expect(output).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI(?! Codex)/);
-		expect(output).toContain("Octocode models.json");
-		expect(output).toContain("/home/test/.octocode/models.json");
+		expect(output).not.toMatch(/^ Sources$/m);
 		expect(output).toContain("not verified");
+		choose(page, "Sources and custom models");
+		const advanced = await pageAt(value, 1);
+		const diagnostic = textOf(advanced);
+		expect(diagnostic).toMatch(/Octocode .*auth\.json.* on/);
+		expect(diagnostic).toMatch(/Pi .*auth\.json.* on/);
+		expect(diagnostic).toMatch(/COPILOT_GITHUB_TOKEN .* off/);
+		// Sign in with ChatGPT on OpenAI superseded the legacy Codex provider.
+		expect(diagnostic).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI(?! Codex)/);
+		expect(diagnostic).toContain("Octocode models.json");
+		expect(diagnostic).toContain("/home/test/.octocode/models.json");
 		expect(value.showLoginDialog).not.toHaveBeenCalled();
-		page.handleInput(ESC);
+		advanced.handleInput(ESC);
+		(await pageAt(value, 2)).handleInput(ESC);
 		await run;
 	});
 
@@ -260,14 +282,14 @@ describe("provider setup flow", () => {
 		mkdirSync(join(home, ".codex"));
 		mkdirSync(join(home, ".claude"));
 		writeFileSync(join(home, ".codex", "auth.json"), '{"tokens":"SECRET-NEVER-SHOWN"}');
-		const codexRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const codexRun = showSourcesPage({ host, reopen: vi.fn() }, [], sourceEnvironment());
 		const codexPage = await pageAt(value, 0);
 		expect(textOf(codexPage)).not.toContain("SECRET-NEVER-SHOWN");
 		choose(codexPage, "Codex CLI");
 		await codexRun;
 		expect(value.showLoginDialog).toHaveBeenCalledWith("openai", "OpenAI", expect.any(Function));
 
-		const claudeRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const claudeRun = showSourcesPage({ host, reopen: vi.fn() }, [], sourceEnvironment());
 		const claudePage = await pageAt(value, 1);
 		expect(textOf(claudePage)).toMatch(/Claude Code +~\/\.claude → add an API key for Anthropic/);
 		choose(claudePage, "Claude Code");
@@ -276,7 +298,7 @@ describe("provider setup flow", () => {
 
 		// An installed Claude Code CLI changes nothing: the row still offers the API key only.
 		installClaude();
-		const installedRun = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const installedRun = showSourcesPage({ host, reopen: vi.fn() }, [], sourceEnvironment());
 		const installedPage = await pageAt(value, 2);
 		expect(textOf(installedPage)).toMatch(/Claude Code +~\/\.claude → add an API key for Anthropic/);
 		choose(installedPage, "Claude Code");
@@ -292,7 +314,7 @@ describe("provider setup flow", () => {
 		settings.setProviderSourceEnabled = setProviderSourceEnabled;
 		const refresh = vi.fn(async () => {});
 		Object.assign(value.session.modelRuntime, { refresh });
-		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		const run = showSourcesPage({ host, reopen: vi.fn() }, [], sourceEnvironment());
 		const list = await pageAt(value, 0);
 		choose(list, "Octocode ");
 		const octocode = await pageAt(value, 1);
@@ -466,7 +488,7 @@ describe("provider setup flow", () => {
 			const local = { id: "local", name: "Local", auth: {} };
 			runtime.getProviders = () => [local] as never;
 			runtime.getProvider = () => local as never;
-			const main = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+			const main = showSourcesPage({ host, reopen: vi.fn() }, [], sourceEnvironment());
 			const list = await pageAt(value, 0);
 			// Exact path checks need a wide viewport under long isolated temporary prefixes.
 			expect(textOf(list, 320)).toContain(`${join(dir, "models.json")} · defines local`);
@@ -494,7 +516,9 @@ describe("provider setup flow", () => {
 		]);
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
-		expect(textOf(page)).toMatch(/gone-gateway +saved credential · provider not defined/);
+		expect(textOf(page)).toContain("Needs attention");
+		expect(textOf(page)).toMatch(/gone-gateway +saved credential · provider definition missing.*unavailable/);
+		expect(textOf(page)).not.toContain("Signed in");
 		page.handleInput(ESC);
 		await run;
 	});
@@ -725,7 +749,7 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		expect(textOf(list, 220)).toMatch(
-			/Anthropic +Claude subscription token · refused: Anthropic allows it only in Claude Code \(External agents\) · 0 models/,
+			/Anthropic +Claude subscription token refused; use Claude Code in External agents · 0 models.*unavailable/,
 		);
 		expect(textOf(list, 220)).not.toContain("sk-ant-oat01-test");
 		choose(list, "Anthropic");

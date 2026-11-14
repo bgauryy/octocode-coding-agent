@@ -247,6 +247,17 @@ export function addReply(totals: UsageTotals, usage: unknown, unpriced: boolean)
 /** A model's registry rates by provider and id (`ctx.modelRegistry.find`); undefined when the registry does not know it. */
 export type ModelLookup = (provider: string, id: string) => { cost?: ModelCost } | undefined;
 
+/** Cache registry results only for one synchronous history pass; pricing still resolves for each reply's timestamp. */
+export function memoizedModelLookup(find: ModelLookup): ModelLookup {
+	const providers = new Map<string, Map<string, ReturnType<ModelLookup>>>();
+	return (provider, id) => {
+		let models = providers.get(provider);
+		if (!models) providers.set(provider, (models = new Map()));
+		if (!models.has(id)) models.set(id, find(provider, id));
+		return models.get(id);
+	};
+}
+
 export const modelLookup =
 	(ctx: Pick<ExtensionContext, "modelRegistry">): ModelLookup =>
 	(provider, id) =>

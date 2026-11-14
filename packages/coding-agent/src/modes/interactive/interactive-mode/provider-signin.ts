@@ -32,12 +32,15 @@ export function signInActions(
 				() => host.showLoginDialog(id, name, back),
 			);
 		} else if (option.method?.login) {
+			const methodName = option.method.name;
 			const verb = sessionOverride
 				? "Update saved"
 				: saved.some((entry) => entry.providerId === id)
 					? "Replace"
 					: "Add";
-			actions.set(`${verb} API key`, () => host.showApiKeyLoginDialog(id, name, back));
+			actions.set(/\bAPI key\b/i.test(methodName) ? `${verb} API key` : `Configure — ${methodName}`, () =>
+				host.showApiKeyLoginDialog(id, name, back),
+			);
 		} else {
 			actions.set(`Setup instructions — ${option.method?.name ?? "external credentials"}`, () =>
 				host.showAmbientAuthDialog(option, back),
@@ -88,7 +91,11 @@ export async function showSignIn(ctx: PageContext, saved: readonly CredentialInf
 	const signIns = new Set<string>();
 	const providers: AuthSelectorProvider[] = [...methods].map(([id, options]) => {
 		const kinds = options.map((option) =>
-			option.authType === "api_key" ? "API key" : option.subscription ? "subscription sign-in" : "account sign-in",
+			option.authType === "api_key"
+				? (option.method?.name ?? "API key")
+				: option.subscription
+					? "subscription sign-in"
+					: "account sign-in",
 		);
 		// The sign-in's own name ("OpenAI (ChatGPT subscription)") makes it findable by what the user pays for.
 		const oauth = options.find((option) => option.authType === "oauth");
@@ -98,7 +105,7 @@ export async function showSignIn(ctx: PageContext, saved: readonly CredentialInf
 			name: runtime.getProvider(id)?.name ?? id,
 			authType: "api_key",
 			...(oauth?.method ? { method: oauth.method } : {}),
-			detail: `${kinds.join(" or ")}${runtime.getProviderAuthStatus(id).configured ? " · signed in" : ""}`,
+			detail: `${kinds.join(" or ")}${runtime.getProviderPlan(id)?.billing === "plan" ? " · billed by plan" : ""}${runtime.getProviderAuthStatus(id).configured ? " · configured" : ""}`,
 		};
 	});
 	// Sign-ins (subscriptions and accounts) first: a few among dozens of API-key providers, and what most users come for.

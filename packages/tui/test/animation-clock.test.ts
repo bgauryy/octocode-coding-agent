@@ -9,6 +9,56 @@ function advance(ms: number, step = 20): void {
 }
 
 describe("animationClock", () => {
+	it("notifies motion-mode changes from a stable subscription snapshot", () => {
+		let calls = 0;
+		let stop: (() => void) | undefined;
+		const listen = () => {
+			calls++;
+			stop?.();
+			stop = animationClock.subscribe(listen, { everyMs: 80, kind: "decor" });
+			// Bound the pre-fix live-Set traversal so this regression fails instead of hanging the process.
+			if (calls >= 3) stop();
+		};
+		stop = animationClock.subscribe(listen, { everyMs: 80, kind: "decor" });
+		try {
+			animationClock.setReducedMotion(true);
+			assert.strictEqual(calls, 1, "a replacement subscription starts on the next notification");
+		} finally {
+			stop();
+		}
+	});
+
+	it("isolates a failed motion-mode repaint and still notifies the other animations", () => {
+		const reported: unknown[] = [];
+		const reject = mock.method(Promise, "reject", (error: unknown) => {
+			reported.push(error);
+			return Promise.resolve();
+		});
+		let healthy = 0;
+		const stopFailing = animationClock.subscribe(
+			() => {
+				throw new Error("disposed repaint");
+			},
+			{ everyMs: 80, kind: "decor" },
+		);
+		const stopHealthy = animationClock.subscribe(() => healthy++, { everyMs: 80, kind: "decor" });
+		try {
+			assert.doesNotThrow(() => animationClock.setReducedMotion(true));
+			assert.strictEqual(healthy, 1);
+			assert.deepStrictEqual(
+				reported.map((error) => (error as Error).message),
+				["disposed repaint"],
+			);
+			animationClock.setReducedMotion(false);
+			assert.strictEqual(healthy, 2);
+			assert.strictEqual(reported.length, 1, "failed subscriber was released");
+		} finally {
+			stopFailing();
+			stopHealthy();
+			reject.mock.restore();
+		}
+	});
+
 	afterEach(() => {
 		animationClock.setReducedMotion(false);
 		mock.timers.reset();

@@ -49,12 +49,12 @@ function positionOf(cursor: string | undefined): Position | undefined {
 }
 
 /** The whole memory `id` names (`M7`), counted as used. */
-export function getMemory(store: MemoryStore, id: string): string {
+export async function getMemory(store: MemoryStore, id: string): Promise<string> {
 	const parsed = parseMemoryId(id);
 	if (parsed === undefined) throw new Error(`"${id}" is not a memory id (M<n>).`);
 	const memory = store.get(parsed);
 	if (!memory) throw noMemory(parsed);
-	store.markUsed([memory.id]);
+	await store.markUsed([memory.id]);
 	return describeMemory(memory);
 }
 
@@ -118,8 +118,8 @@ export async function readMemories(
 				...(ranked ? { offset: offset + i + 1 } : {}),
 			};
 			// Without the index, a keyword search keeps the rows that hold a word, scored by how many.
-			const overlap =
-				!ranked && words.length > 0 ? words.filter((word) => texts[i].toLowerCase().includes(word)).length : undefined;
+			const lower = !ranked && words.length > 0 ? texts[i].toLowerCase() : undefined;
+			const overlap = lower === undefined ? undefined : words.filter((word) => lower.includes(word)).length;
 			if ((matched && !matched.has(i)) || overlap === 0) continue;
 			const score = row.score ?? overlap;
 			found.push({ memory: row, ...(score === undefined ? {} : { score }) });
@@ -131,7 +131,7 @@ export async function readMemories(
 		}
 	}
 	if (words.length > 0) found.sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.memory.id - a.memory.id);
-	if (params.op === "search") store.markUsed(found.map((hit) => hit.memory.id));
+	if (params.op === "search") await store.markUsed(found.map((hit) => hit.memory.id));
 	const lines = found.map((hit) => `M${hit.memory.id}\n${memoryToolLine(hit.memory, PREVIEW_CHARS)}`);
 	const cursor = more && at ? Buffer.from(JSON.stringify(at)).toString("base64url") : undefined;
 	return {

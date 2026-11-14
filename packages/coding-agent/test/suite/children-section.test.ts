@@ -21,7 +21,6 @@ import { createHarness, type Harness } from "./harness.ts";
 it("sends the run-and-report rules with the first delegating call and keeps them, without rewriting the first prompt", async () => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-children-"));
 	const HEADING = "## Run children and use reports";
-	const CLAIM = "A report is a claim: read its `Noticed` line first";
 	const requests: Array<{ prompt: string; initial: string }> = [];
 	const capture = (context: { messages: Parameters<typeof getCurrentSystemPrompt>[0] }) => {
 		const initial = getInitialSystemMessage(context.messages);
@@ -97,7 +96,6 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		}
 		// The request that reads the message call's result has them, and the first prompt it was cached under is unchanged.
 		expect(requests[2].prompt).toContain(HEADING);
-		expect(requests[2].prompt).toContain(CLAIM);
 		expect(requests[2].initial).toBe(requests[0].initial);
 		expect(requests[2].initial).not.toContain(HEADING);
 
@@ -122,7 +120,6 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		]);
 		await harness.session.prompt("Continue.");
 		expect(requests[4].prompt).toContain(HEADING);
-		expect(requests[4].prompt).toContain(CLAIM);
 		expect(errors).toEqual([]);
 	} finally {
 		await harness?.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });

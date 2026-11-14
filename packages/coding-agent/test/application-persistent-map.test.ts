@@ -16,6 +16,18 @@ function random(seed: number): (below: number) => number {
 const entriesOf = <T>(map: ReadonlyMap<string, T>) => [...map];
 
 describe("PersistentMap", () => {
+	it("seeks values by insertion index across trie boundaries without changing older versions", () => {
+		const model = new Map<string, number>(Array.from({ length: 2000 }, (_, index) => [`k${index}`, index] as const));
+		const stored = PersistentMap.from(model);
+		const next = stored.set("k1999", -1).set("new", 2000);
+		for (const start of [-10, 0, 1, 31, 32, 33, 1023, 1024, 1025, 1999, 2000, 3000]) {
+			expect([...stored.valuesFrom(start)]).toEqual([...model.values()].slice(Math.max(0, start)));
+			expect([...next.valuesFrom(start)]).toEqual(
+				[...new Map(model).set("k1999", -1).set("new", 2000).values()].slice(Math.max(0, start)),
+			);
+		}
+	});
+
 	for (const seed of [3, 11, 2026]) {
 		it(`matches Map on random sets, and every kept version stays as it was (seed ${seed})`, () => {
 			const pick = random(seed);

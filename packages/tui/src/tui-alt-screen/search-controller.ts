@@ -31,6 +31,8 @@ export class AltScreenSearchController {
 	private readonly host: AltScreenSearchHost;
 	/** The search whose index is being built between frames. */
 	private indexing: ActiveSearch | undefined;
+	/** A query without a selected match starts from the viewport once its row positions are exact. */
+	private pendingAnchor: ActiveSearch | undefined;
 	private readonly searchNavigationButtonStyle: (text: string, hovered: boolean) => string;
 
 	constructor(host: AltScreenSearchHost, searchNavigationButtonStyle: (text: string, hovered: boolean) => string) {
@@ -47,8 +49,7 @@ export class AltScreenSearchController {
 			(query) => this.updateSearchQuery(query),
 			this.searchNavigationButtonStyle,
 		);
-		// The search starts from the rows in view: their position must count every row above them.
-		this.host.getPrimaryScrollView().settleContent();
+		// Opening an empty search must not measure the entire transcript. The first query settles its anchor below.
 		const search: ActiveSearch = {
 			component,
 			index: new AltScreenSearchIndex(),
@@ -71,6 +72,7 @@ export class AltScreenSearchController {
 		const search = this.activeSearch;
 		if (!search) return;
 		this.activeSearch = undefined;
+		this.pendingAnchor = undefined;
 		search.overlay?.hide();
 		this.host.requestRender();
 	}
@@ -79,7 +81,7 @@ export class AltScreenSearchController {
 		const search = this.activeSearch;
 		if (!search || query === search.query) return;
 		const selected = search.matches[search.selectedIndex];
-		if (!selected) this.host.getPrimaryScrollView().settleContent();
+		this.pendingAnchor = !selected && query.trim() ? search : undefined;
 		search.anchorRow = selected?.segments[0]?.row ?? this.host.getPrimaryScrollView().scrollTop;
 		search.query = query;
 		search.selectionMode = "query";
@@ -142,14 +144,25 @@ export class AltScreenSearchController {
 		if (!search) return false;
 		const scrollView = layout.primaryScrollView ?? this.host.implicitScrollView;
 		const box = getScrollViewBox(layout, scrollView);
-		const lines = box?.scrollContentLines;
-		if (!lines || !search.query.trim()) {
+		if (search.query.trim() && !scrollView.isContentSettled) {
+			// Layout already measures hidden rows in yielding slices and requests a frame when their positions are exact.
+			search.matches = [];
+			search.component.setSearching(0);
+			return false;
+		}
+		// Reading virtual scrollContentLines materializes every row, even when there is no query to search.
+		const lines = search.query.trim() ? box?.scrollContentLines : undefined;
+		if (!lines) {
 			search.matches = [];
 			search.selectedIndex = -1;
 			search.selectedKey = undefined;
 			search.selectionMode = "retain";
 			search.component.setResult(-1, 0);
 			return false;
+		}
+		if (this.pendingAnchor === search) {
+			search.anchorRow = scrollView.scrollTop;
+			this.pendingAnchor = undefined;
 		}
 
 		const shouldRevealSelection = search.selectionMode !== "retain";

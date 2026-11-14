@@ -1,4 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
+import { visibleWidth } from "@octocodeai/octocode-tui/text";
 import { afterEach, describe, expect, it } from "vitest";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
 import { startInteractive } from "./e2e-commands-harness.ts";
@@ -96,6 +97,8 @@ describe("turn summary line", () => {
 		const startWide = async () => {
 			const terminal = new VirtualTerminal(200, 40);
 			const wide = (await startInteractive({ terminal })) as UiHarness;
+			// Keep the same space for footer data regardless of the host's temporary-path length.
+			terminal.resize(200 + visibleWidth(wide.host.session.sessionManager.getCwd()), 40);
 			wide.text = async () => (await wide.grid()).join("\n").trimEnd();
 			wide.type = async (text) => {
 				for (const ch of text) wide.press(ch);

@@ -23,17 +23,15 @@ export function forkHint(file: string): string {
 /** Longest a write waits for another process's lock; the holder keeps it for a few milliseconds. */
 const LOCK_WAIT_MS = 3000;
 /**
- * The wait of an appended record, which is kept in memory when the lock is not free (`persistence.ts`,
- * `held-retry.ts`): long enough to outlast another process's own append, short enough that a run's records never
- * freeze the thread that also draws the screen.
+ * Appended records try once, then stay in memory for the asynchronous retry (`held-retry.ts`).
+ * Waiting even briefly here blocks input and rendering once per record.
  */
-export const HELD_LOCK_WAIT_MS = 100;
+export const HELD_LOCK_WAIT_MS = 0;
 
 /**
- * Longest a mirror read waits for a live holder: the read has a fallback (a rebuild, a later append or the next open
- * repairs the mirror), so it must not hold the screen for a writer's wait.
+ * Mirror reads have a fallback (a rebuild, a later append or the next open repairs the mirror), so they never wait.
  */
-export const READER_LOCK_WAIT_MS = 250;
+export const READER_LOCK_WAIT_MS = 0;
 
 function pause(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

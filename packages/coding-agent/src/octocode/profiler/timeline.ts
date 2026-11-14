@@ -2,6 +2,8 @@ import type { ProfileEvent, ProfileMessage, ProfileTimeline } from "@octocodeai/
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Traffic } from "@octocodeai/octocode-contracts/team";
 import { num, str, type Entry, type Prepared } from "./entries.ts";
+import { LaneWaits, requestPhases, stallEvent, toolTiming } from "./latency.ts";
+import { SUMMARY_METHOD_DETAILS, summaryMethodMs, summaryMethodOf } from "../shared/summary-method.ts";
 
 /** A gap between a lane's events longer than this is an `idle` span. */
 const IDLE_GAP_MS = 60_000;
@@ -30,20 +32,28 @@ const entryAt = (entry: Entry): number => {
 const sizeOf = (value: unknown): number =>
 	Math.ceil((typeof value === "string" ? value : JSON.stringify(value ?? "")).length / 4);
 
-/** Events a transcript holds: requests, tool calls (start to result), interrupts, steers, notices, compactions, permission asks. */
+/**
+ * Events a transcript holds: requests, tool calls (their execution), interrupts, steers, notices, compactions,
+ * permission asks, event-loop stalls, and the waits from a prompt to its first request and from a failure to its retry.
+ */
 function transcriptEvents(agentId: string, prepared: Prepared): ProfileEvent[] {
 	const events: ProfileEvent[] = [];
 	const requestIndex = new Map(prepared.requests.map((position, index) => [position, index]));
+	const waits = new LaneWaits(agentId);
 	prepared.entries.forEach((entry, position) => {
 		const id = (kind: string) => `${agentId}:${kind}:${entry.id}`;
 		const at = entryAt(entry);
 		const message = asRecord(entry.message);
+		const stall = stallEvent(agentId, entry, position);
 		if (entry.type === "message" && message.role === "assistant") {
+			const duration = num(message.durationMs);
+			const stop = str(message.stopReason, "");
+			events.push(...waits.requested(at - duration));
+			if (stop === "error") waits.failedAt(at, position);
 			const index = requestIndex.get(position);
 			if (index === undefined) return;
 			const usage = asRecord(message.usage);
-			const duration = num(message.durationMs);
-			const stop = str(message.stopReason, "");
+			const phases = requestPhases(message);
 			events.push({
 				id: id("request"),
 				agentId,
@@ -53,23 +63,28 @@ function transcriptEvents(agentId: string, prepared: Prepared): ProfileEvent[] {
 				label: str(message.model, "request"),
 				outcome: stop === "error" ? "error" : stop === "aborted" ? "aborted" : "ok",
 				tokens: num(usage.input) + num(usage.cacheRead) + num(usage.cacheWrite),
+				...(phases ? { phases } : {}),
 				ref: { request: index, entry: position },
 			});
 		} else if (entry.type === "message" && message.role === "toolResult") {
 			const duration = num(message.durationMs);
+			const timing = toolTiming(message, at);
 			events.push({
 				id: id("tool"),
 				agentId,
 				kind: "tool",
-				at: at - duration,
+				at: timing.at,
 				...(duration ? { durationMs: duration } : {}),
 				label: str(message.toolName, "tool").slice(0, 60),
 				outcome: message.isError === true ? "error" : "ok",
 				tokens: sizeOf(message.content),
+				...(timing.phases ? { phases: timing.phases } : {}),
+				...(timing.early ? { early: true } : {}),
 				ref: { entry: position },
 			});
 		} else if (entry.type === "message" && message.role === "user") {
 			const origin = str(entry.origin ?? message.origin, "typed");
+			if (origin !== "steer" && origin !== "follow-up") waits.prompted(num(message.timestamp) || at, position);
 			if (origin === "steer" || origin === "follow-up")
 				events.push({
 					id: id("steer"),
@@ -90,12 +105,17 @@ function transcriptEvents(agentId: string, prepared: Prepared): ProfileEvent[] {
 				ref: { entry: position },
 			});
 		} else if (entry.type === "compaction") {
+			// The entry is saved when the summary is done: with its recorded duration it becomes the span it held the turn.
+			const ms = summaryMethodMs(entry.details);
+			const method = summaryMethodOf(entry.details);
+			const early = asRecord(asRecord(entry.details)[SUMMARY_METHOD_DETAILS]).early !== undefined;
 			events.push({
 				id: id("compaction"),
 				agentId,
 				kind: "compaction",
-				at,
-				label: "compaction",
+				at: ms === undefined ? at : at - ms,
+				...(ms === undefined ? {} : { durationMs: ms }),
+				label: method ? `compaction (${method}${early ? ", early" : ""})` : "compaction",
 				tokens: sizeOf(entry.summary),
 				ref: { entry: position },
 			});
@@ -112,6 +132,8 @@ function transcriptEvents(agentId: string, prepared: Prepared): ProfileEvent[] {
 				outcome: "aborted",
 				ref: { entry: position },
 			});
+		} else if (stall) {
+			events.push(stall);
 		} else if (entry.type === "custom" && entry.customType === "octocode-permission") {
 			const data = asRecord(entry.data);
 			events.push({
@@ -144,7 +166,7 @@ function idleSpans(agentId: string, events: ProfileEvent[]): ProfileEvent[] {
 	const spans: ProfileEvent[] = [];
 	let reach = 0;
 	for (const event of [...events].sort((a, b) => a.at - b.at)) {
-		if (event.kind === "wait" || event.kind === "idle") continue;
+		if (event.kind === "wait" || event.kind === "idle" || event.kind === "stall") continue;
 		if (reach && event.at - reach > IDLE_GAP_MS)
 			spans.push({
 				id: `${agentId}:idle:${reach}`,

@@ -49,6 +49,24 @@ describe("MCP tool registry batching", () => {
 		expect(batches).toHaveLength(1);
 	});
 
+	it("rebuilds a tool whose schema changed and keeps the others' definitions", () => {
+		const { state, connection, batches } = setup(3);
+		registerTools(state, connection);
+		const before = state.definitions.get("mcp__srv__tool1");
+		// A re-listed catalog with equal content is new objects: nothing is rebuilt or registered.
+		const listed = connection as { tools: McpServerConnection["tools"] };
+		listed.tools = connection.tools.map((tool) => structuredClone(tool));
+		registerTools(state, connection);
+		expect(batches).toHaveLength(1);
+		// A changed listing: the catalog publishes a new object for the changed tool only.
+		const changed = structuredClone(connection.tools[0]);
+		(changed.inputSchema as { properties: Record<string, unknown> }).properties.path = { type: "string" };
+		listed.tools = [changed, ...connection.tools.slice(1)];
+		registerTools(state, connection);
+		expect(batches).toEqual([expect.any(Array), ["mcp__srv__tool0"]]);
+		expect(state.definitions.get("mcp__srv__tool1")).toBe(before);
+	});
+
 	it("withdraws a dropped tool and hides a disabled server's tools in one batch each", () => {
 		const { state, connection, batches } = setup(4);
 		registerTools(state, connection);

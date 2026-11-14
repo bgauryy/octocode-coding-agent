@@ -53,7 +53,7 @@ export class ReportQueue {
 	/** Reports whose notice was sent. */
 	private readonly noticed = new Set<string>();
 	/** Notices waiting for the parent's next step (`stepEnded`). */
-	private noticesWaiting: Report[] = [];
+	private noticesWaiting = new Set<string>();
 	private stopClock: (() => void) | undefined;
 	/** The pending folder of the Octocode session this queue serves: where a report that could not be sent is saved. */
 	pendingDir: string | undefined;
@@ -230,7 +230,7 @@ export class ReportQueue {
 			const id = report.reportId;
 			if (!id || !report.wake || this.noticed.has(id)) continue;
 			this.noticed.add(id);
-			this.noticesWaiting.push(report);
+			this.noticesWaiting.add(id);
 		}
 	}
 
@@ -257,11 +257,11 @@ export class ReportQueue {
 	/** A step of the parent's turn ran tools, so another request follows: the notices of reports it has not read join that request. */
 	stepEnded(): void {
 		const waiting = this.noticesWaiting;
-		this.noticesWaiting = [];
-		for (const report of waiting) {
-			const id = report.reportId;
+		this.noticesWaiting = new Set();
+		for (const id of waiting) {
+			const report = this.pending.get(id);
 			// The report itself arrived first: its notice has nothing to add. A resume made it out of date.
-			if (!id || !this.pending.has(id) || report.superseded) continue;
+			if (!report || report.superseded) continue;
 			try {
 				void Promise.resolve(
 					this.api.sendMessage(
@@ -340,6 +340,7 @@ export class ReportQueue {
 		this.stopClock = undefined;
 		const batch = [...this.pending.values()];
 		this.queued = [];
+		this.noticesWaiting.clear();
 		for (const report of batch) this.retain(report);
 	}
 
@@ -347,7 +348,10 @@ export class ReportQueue {
 	private settle(report: Report): void {
 		this.removeClaim(report);
 		this.clearRetry(report.reportId);
-		if (report.reportId) this.pending.delete(report.reportId);
+		if (report.reportId) {
+			this.pending.delete(report.reportId);
+			this.noticesWaiting.delete(report.reportId);
+		}
 	}
 
 	private removeClaim(report: Report): void {
@@ -359,7 +363,10 @@ export class ReportQueue {
 	/** The report did not reach Octocode: it goes back to the pending folder, and may be queued again when taken. */
 	private retain(report: Report): void {
 		this.clearRetry(report.reportId);
-		if (report.reportId !== undefined) this.pending.delete(report.reportId);
+		if (report.reportId !== undefined) {
+			this.pending.delete(report.reportId);
+			this.noticesWaiting.delete(report.reportId);
+		}
 		const claim = claims.get(report);
 		claims.delete(report);
 		if (claim) {

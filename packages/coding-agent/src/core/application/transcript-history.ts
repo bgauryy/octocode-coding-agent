@@ -1,6 +1,8 @@
 import type { ApplicationHistory, ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cloneDisplay } from "./normalize.ts";
+import { PersistentMap } from "./persistent-map.ts";
+import { historyMessagePage, historyTools } from "./history-index.ts";
 
 const WINDOW_MESSAGES = 50;
 const WINDOW_TOOLS = 50;
@@ -21,18 +23,21 @@ function belongsTo(messages: readonly ApplicationMessage[]): (tool: ApplicationT
  * older messages leave first; past the last message, the oldest tools do.
  */
 export function transcriptWindow(
-	messageValues: Iterable<ApplicationMessage>,
+	messageMap: ReadonlyMap<string, ApplicationMessage>,
 	toolValues: Iterable<ApplicationTool>,
 ): { messages: ApplicationMessage[]; tools: ApplicationTool[] } {
 	const sizes = new Map<object, number>();
 	const size = (value: object) => sizes.get(value) ?? sizes.set(value, JSON.stringify(value).length).get(value)!;
 	const total = (values: readonly object[]) => values.reduce((sum, value) => sum + size(value), 0);
-	const all = [...messageValues];
+	// Persistent storage can seek straight to the bounded tail; a reset may leave a plain Map.
+	const messages =
+		messageMap instanceof PersistentMap
+			? [...messageMap.valuesFrom(messageMap.size - WINDOW_MESSAGES)]
+			: [...messageMap.values()].slice(-WINDOW_MESSAGES);
 	const allTools = [...toolValues];
-	const messages = all.slice(-WINDOW_MESSAGES);
 	while (messages.length > 1 && total(messages) > MESSAGE_BYTES) messages.shift();
 	const select = () => {
-		if (messages.length === all.length) return [...allTools];
+		if (messages.length === messageMap.size) return [...allTools];
 		const cut = messages[0]?.order ?? Number.NEGATIVE_INFINITY;
 		const owned = belongsTo(messages);
 		return allTools.filter((tool) => (tool.order ?? Number.POSITIVE_INFINITY) >= cut || owned(tool));
@@ -56,22 +61,16 @@ export function transcriptHistory(
 	toolMap: ReadonlyMap<string, ApplicationTool>,
 	options: { before?: string; limit?: number } = {},
 ): ApplicationHistory {
-	const all = [...messageMap.values()];
-	const end = options.before === undefined ? all.length : all.findIndex((message) => message.id === options.before);
-	if (end < 0) throw new Error("History cursor is not in this session");
 	const limit = Math.max(1, Math.min(100, options.limit ?? 50));
-	const messages = all.slice(Math.max(0, end - limit), end);
-	const owned = belongsTo(messages);
+	const page = historyMessagePage(messageMap, options.before, limit);
+	const messages = page.values;
 	const firstOrder = messages[0]?.order ?? 0;
-	const endOrder = all[end]?.order ?? Number.POSITIVE_INFINITY;
-	const tools = [...toolMap.values()].filter(
-		(tool) => owned(tool) || ((tool.order ?? -1) >= firstOrder && (tool.order ?? -1) < endOrder),
-	);
+	const tools = historyTools(toolMap, messages, firstOrder, page.endOrder);
 	return cloneDisplay({
 		messages,
 		tools,
 		...(messages.length ? { before: messages[0].id } : {}),
-		hasMore: end > messages.length,
+		hasMore: page.hasMore,
 	});
 }
 

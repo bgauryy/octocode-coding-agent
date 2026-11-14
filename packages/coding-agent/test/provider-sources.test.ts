@@ -84,6 +84,45 @@ describe("provider source defaults", () => {
 });
 
 describe("Pi source", () => {
+	it("loads Octocode and Pi model files with default runtime paths and keeps Octocode on when Pi is disabled", async () => {
+		const roots = [
+			["octocode", join(home, ".octocode", "octocodecode")],
+			["legacy-agent", join(home, ".octocode", "agent")],
+			["legacy-root", join(home, ".octocode")],
+			["pi-agent", join(home, ".pi", "agent")],
+			["pi-root", join(home, ".pi")],
+		] as const;
+		for (const [id, dir] of roots) {
+			const definition = {
+				baseUrl: `https://${id}.invalid/v1`,
+				api: "openai-completions",
+				apiKey: "synthetic-key",
+				models: [{ id: `${id}-model` }],
+			};
+			write(
+				join(dir, "models.json"),
+				JSON.stringify({ providers: { [`default-${id}`]: definition, "default-shared": definition } }),
+			);
+		}
+		const runtime = await ModelRuntime.create({
+			modelsStore: new InMemoryModelsStore(),
+			allowModelNetwork: false,
+		});
+		const registry = new ModelRegistry(runtime);
+		for (const [id] of roots) expect(providers(registry)).toContain(`default-${id}`);
+		expect(
+			registry
+				.getAll()
+				.filter((model) => model.provider === "default-shared")
+				.map(({ id, baseUrl }) => ({ id, baseUrl })),
+		).toEqual([{ id: "octocode-model", baseUrl: "https://octocode.invalid/v1" }]);
+
+		await applyProviderSources(runtime, { pi: false });
+		expect(providers(registry)).toContain("default-octocode");
+		expect(providers(registry)).toContain("default-shared");
+		for (const [id] of roots.slice(1)) expect(providers(registry)).not.toContain(`default-${id}`);
+	});
+
 	it("hides Pi-only credentials and models.json providers when off, and restores them when on", async () => {
 		write(join(home, ".pi", "agent", "auth.json"), JSON.stringify({ cerebras: { type: "api_key", key: "pi-key" } }));
 		write(

@@ -12,7 +12,14 @@ import type { Component } from "../tui/component.ts";
 import { Container } from "../tui/container.ts";
 import { containerStructureVersion, paintedChildren, readChildren, signalledChildren } from "../tui/container-state.ts";
 import { bindRenderIsolation, renderFailed, renderIsolated } from "../tui/render-isolation.ts";
-import { CHILD_RENDER_CHANGED, isRenderStable, linkRenderChild, renderSerial } from "../tui/render-signal.ts";
+import {
+	CHILD_RENDER_CHANGED,
+	isRenderStable,
+	linkRenderChild,
+	unlinkRenderChild,
+	renderSerial,
+} from "../tui/render-signal.ts";
+import { RowHeights } from "./row-heights.ts";
 
 /** Time one measuring slice between frames may take before it yields. */
 const SLICE_MS = 8;
@@ -78,6 +85,9 @@ export class VirtualDocument {
 	private unstable: number[] = [];
 	/** Items to measure, the next one last. */
 	private pending: number[] = [];
+	private readonly rows = new RowHeights();
+	private nearby: number[] = [];
+	private previousFirst = 0;
 	private readonly known = new WeakMap<Component, Measure>();
 	/** Items that signalled since they were measured; heard through `listener`, a parent each item is linked to. */
 	private readonly dirty = new Set<Component>();
@@ -86,7 +96,7 @@ export class VirtualDocument {
 	/** Structure version and each container's child count when the items were listed. */
 	private listVersion = -1;
 	private listLengths: number[] = [];
-	private sliceScheduled = false;
+	private sliceScheduled: NodeJS.Immediate | undefined;
 
 	constructor(view: Component) {
 		this.view = view;
@@ -96,6 +106,13 @@ export class VirtualDocument {
 			invalidate() {},
 			[CHILD_RENDER_CHANGED]: (child: Component) => dirty.add(child),
 		} as Component;
+	}
+
+	/** Release subscriptions even when exact layout has taken over. A later mount gets a fresh document. */
+	dispose(): void {
+		this.cancelSlices();
+		for (const item of this.items) unlinkRenderChild(this.listener, item);
+		this.dirty.clear();
 	}
 
 	/**
@@ -169,6 +186,12 @@ export class VirtualDocument {
 		const previous = new Map<Component, number>();
 		if (this.tableCurrent)
 			for (let index = 0; index < this.items.length; index++) previous.set(this.items[index], this.heights[index]);
+		const retained = new Set(items);
+		for (const item of this.items) {
+			if (retained.has(item)) continue;
+			unlinkRenderChild(this.listener, item);
+			this.forget(item);
+		}
 		this.items = items;
 		this.width = width;
 		this.index = new Map();
@@ -177,6 +200,7 @@ export class VirtualDocument {
 		this.unstableFlags = new Uint8Array(items.length);
 		this.unstable = [];
 		this.pending = [];
+		this.nearby = [];
 		this.pendingCount = 0;
 		this.total = 0;
 		for (let index = 0; index < items.length; index++) {
@@ -200,6 +224,7 @@ export class VirtualDocument {
 			this.total += height;
 		}
 		this.duplicates = this.index.size !== items.length;
+		this.rows.reset(this.heights);
 	}
 
 	/** Render item `index` at the table's width: its rows, and how much taller it got than the table said. */
@@ -212,6 +237,7 @@ export class VirtualDocument {
 		const unstable = !isRenderStable(item, before) || renderFailed(item);
 		const delta = lines.length - this.heights[index];
 		this.heights[index] = lines.length;
+		this.rows.add(index, delta);
 		this.total += delta;
 		if (this.pendingFlags[index] === 1) {
 			this.pendingFlags[index] = 0;
@@ -247,12 +273,34 @@ export class VirtualDocument {
 		return shift;
 	}
 
-	/** Measure pending items, the last first, until `deadline`; returns the growth of those above `top`. */
+	/** Prefer one viewport ahead of the scroll direction, then half a viewport behind it, within the same time budget. */
+	prioritize(first: number, last: number, viewportRows: number): void {
+		const forward = first >= this.previousFirst;
+		this.previousFirst = first;
+		const nearby: number[] = [];
+		const collect = (start: number, step: number, rows: number) => {
+			let remaining = rows;
+			// Bound scanning too: hidden rows or a badly underestimated long item cannot inflate this work.
+			for (
+				let at = start, count = 0;
+				at >= 0 && at < this.items.length && remaining > 0 && count < 32;
+				count++, at += step
+			) {
+				if (this.pendingFlags[at] === 1) nearby.push(at);
+				remaining -= Math.max(1, this.heights[at]);
+			}
+		};
+		collect(forward ? last + 1 : first - 1, forward ? 1 : -1, viewportRows);
+		collect(forward ? first - 1 : last + 1, forward ? -1 : 1, Math.ceil(viewportRows / 2));
+		this.nearby = nearby.reverse();
+	}
+
+	/** Measure nearby pending items, then the remaining backlog, until `deadline`; return growth above `top`. */
 	measurePending(top: number, deadline: number, atLeast = 0): number {
 		let shift = 0;
 		let measured = 0;
 		while (this.pendingCount > 0 && (measured < atLeast || performance.now() < deadline)) {
-			const index = this.pending.pop();
+			const index = this.nearby.pop() ?? this.pending.pop();
 			if (index === undefined) break;
 			if (this.pendingFlags[index] === 0) continue;
 			const { delta } = this.measure(index);
@@ -264,13 +312,7 @@ export class VirtualDocument {
 
 	/** The item holding content row `row`, and the row within it; the end of the document past its last row. */
 	locate(row: number): { index: number; offset: number; top: number } {
-		let top = 0;
-		for (let index = 0; index < this.heights.length; index++) {
-			const height = this.heights[index];
-			if (row < top + height) return { index, offset: row - top, top };
-			top += height;
-		}
-		return { index: this.heights.length, offset: 0, top };
+		return this.rows.locate(row);
 	}
 
 	/** Whether the items are still the ones in the table. */
@@ -287,17 +329,25 @@ export class VirtualDocument {
 	 * the frames.
 	 */
 	scheduleSlices(root: Component, state: VirtualScrollState, requestRender: () => void): void {
+		if (this.pendingCount === 0) return;
 		this.slice = bindRenderIsolation(() => this.runSlice(root, state, requestRender));
-		if (this.sliceScheduled || this.pendingCount === 0) return;
-		this.sliceScheduled = true;
-		setImmediate(() => {
-			this.sliceScheduled = false;
+		if (this.sliceScheduled) return;
+		this.sliceScheduled = setImmediate(() => {
+			this.sliceScheduled = undefined;
+			const slice = this.slice;
+			this.slice = undefined;
 			try {
-				this.slice?.();
+				slice?.();
 			} catch {
 				// Frames measure what is left.
 			}
 		});
+	}
+
+	cancelSlices(): void {
+		if (this.sliceScheduled) clearImmediate(this.sliceScheduled);
+		this.sliceScheduled = undefined;
+		this.slice = undefined;
 	}
 
 	private runSlice(root: Component, state: VirtualScrollState, requestRender: () => void): void {

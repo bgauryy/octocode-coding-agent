@@ -23,11 +23,26 @@ const base: ConfigSnapshot = {
 };
 const repos = [{ id: "r1", name: "octo-repo" }];
 
-function editor(key: string) {
-	return within(screen.getByRole("form", { name: `Change ${key}` }));
+function editor(_key: string) {
+	return within(screen.getByRole("form", { name: "Change startup model" }));
 }
 
 describe("ConfigView settings editing", () => {
+	it("explains workspace precedence when a paired default is saved globally", async () => {
+		const snapshot = {
+			...base,
+			settings: base.settings.map((setting) => ({ ...setting, source: "workspace" as const })),
+			workspace: { repo: "octo-repo", trusted: true },
+		};
+		const save = vi.fn(async () => snapshot);
+		render(<ConfigView load={async () => snapshot} save={save} repos={repos} />);
+		await screen.findByRole("heading", { name: "Settings" });
+		const form = editor("defaultModel");
+		await userEvent.selectOptions(form.getByLabelText("File for defaultModel"), "global");
+		await userEvent.type(form.getByLabelText("Value for defaultModel"), "model");
+		await userEvent.click(form.getByRole("button", { name: "Save" }));
+		expect(await form.findByRole("status")).toHaveTextContent("Workspace defaults still take precedence here.");
+	});
 	it("has no editor when the host does not allow writes or no save is given", async () => {
 		const save = vi.fn();
 		const view = render(<ConfigView load={async () => ({ ...base, writable: false })} save={save} />);
@@ -44,18 +59,29 @@ describe("ConfigView settings editing", () => {
 	it("saves a global value, then shows the host's fresh snapshot and when the default applies", async () => {
 		const save = vi.fn(async (command: ConfigSettingCommand): Promise<ConfigSnapshot> => ({
 			...base,
-			settings: [{ key: command.key, value: command.value ?? undefined, source: "global" }, base.settings[1]],
+			settings:
+				command.key === "modelDefault" && command.value
+					? [
+							{ key: "defaultProvider", value: command.value.provider, source: "global" },
+							{ key: "defaultModel", value: command.value.model, source: "global" },
+						]
+					: base.settings,
 		}));
 		render(<ConfigView load={async () => base} save={save} />);
 		await screen.findByRole("heading", { name: "Settings" });
 
 		const form = editor("defaultProvider");
-		const input = form.getByLabelText("Value for defaultProvider");
+		const input = form.getByLabelText("Default provider");
 		await userEvent.clear(input);
 		await userEvent.type(input, "  anthropic ");
+		await userEvent.type(form.getByLabelText("Value for defaultModel"), "claude-example");
 		await userEvent.click(form.getByRole("button", { name: "Save" }));
 
-		expect(save).toHaveBeenCalledWith({ key: "defaultProvider", scope: "global", value: "anthropic" });
+		expect(save).toHaveBeenCalledWith({
+			key: "modelDefault",
+			scope: "global",
+			value: { provider: "anthropic", model: "claude-example" },
+		});
 		expect(await form.findByRole("status")).toHaveTextContent(
 			"Saved to global settings. Model defaults apply to new sessions; the current chat keeps its model.",
 		);
@@ -72,9 +98,9 @@ describe("ConfigView settings editing", () => {
 		await screen.findByRole("heading", { name: "Settings" });
 		const form = editor("defaultProvider");
 		await userEvent.click(form.getByRole("button", { name: "Clear" }));
-		expect(save).toHaveBeenCalledWith({ key: "defaultProvider", scope: "global", value: null });
+		expect(save).toHaveBeenCalledWith({ key: "modelDefault", scope: "global", value: null });
 		expect(await form.findByRole("status")).toHaveTextContent("Cleared in global settings");
-		expect(form.getByLabelText("Value for defaultProvider")).toHaveValue("");
+		expect(form.getByLabelText("Default provider")).toHaveValue("");
 	});
 
 	it("shows the host's refusal as an alert and keeps the typed value", async () => {
@@ -117,7 +143,12 @@ describe("ConfigView settings editing", () => {
 		await userEvent.selectOptions(form.getByLabelText("File for defaultModel"), "workspace");
 		await userEvent.type(form.getByLabelText("Value for defaultModel"), "gpt-5");
 		await userEvent.click(form.getByRole("button", { name: "Save" }));
-		expect(save).toHaveBeenCalledWith({ key: "defaultModel", scope: "workspace", value: "gpt-5", repoId: "r1" });
+		expect(save).toHaveBeenCalledWith({
+			key: "modelDefault",
+			scope: "workspace",
+			value: { provider: "openai", model: "gpt-5" },
+			repoId: "r1",
+		});
 	});
 });
 

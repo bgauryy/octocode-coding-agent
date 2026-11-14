@@ -8,7 +8,7 @@ import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { formatDuration } from "../../../../octocode/shared/format.ts";
-import { keyHint } from "../../../../theme/theme-tui-helpers.ts";
+import { foldHint, TOOL_PREVIEW_LINES } from "../../../../theme/theme-tui-helpers.ts";
 import { purposeRows, reasonRow, toolArgsForDisplay } from "../../../../octocode/ui/reason-row.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
@@ -55,7 +55,7 @@ export class GenericToolContent extends Container {
 		this.addChild(
 			new Text(
 				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), hasPurpose && display.expanded ? undefined : args, theme, display.expanded)}${
-					display.durationMs === undefined ? "" : theme.fg("muted", ` · ${formatDuration(display.durationMs)}`)
+					display.durationMs === undefined ? "" : theme.fg("muted", ` · ${formatDuration(display.durationMs, true)}`)
 				}`,
 				display.outputPad,
 				hasPurpose && display.expanded ? 0 : 1,
@@ -94,7 +94,7 @@ export class GenericToolContent extends Container {
 			imageWidthCells: display.imageWidthCells,
 			requestRender: this.requestRender,
 		};
-		let remaining = display.expanded ? Number.POSITIVE_INFINITY : 10;
+		let remaining = display.expanded ? Number.POSITIVE_INFINITY : TOOL_PREVIEW_LINES;
 		let omitted = 0;
 		const activeAttachments = new Set<string>();
 		for (const block of content) {
@@ -123,14 +123,6 @@ export class GenericToolContent extends Container {
 				);
 		}
 		for (const id of this.attachments.keys()) if (!activeAttachments.has(id)) this.attachments.delete(id);
-		if (omitted)
-			this.addChild(
-				new Text(
-					`${theme.fg("muted", `… (${omitted} more lines)`)} ${keyHint("app.tools.expand", "to expand")}`,
-					display.outputPad,
-					0,
-					display.background,
-				),
-			);
+		if (omitted) this.addChild(new Text(foldHint(omitted), display.outputPad, 0, display.background));
 	}
 }

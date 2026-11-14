@@ -44,6 +44,7 @@ export function parentGone(parentPid: number): boolean {
 }
 
 const startTimes = new Map<number, string | undefined>();
+const starting = new Map<number, Promise<string | undefined>>();
 
 export { PS_UTC_ENV, utcSeconds } from "./process-table.ts";
 
@@ -87,10 +88,18 @@ export function processStartTime(pid: number): string | undefined {
 export async function processStartTimeAsync(pid: number): Promise<string | undefined> {
 	if (!askable(pid)) return undefined;
 	if (startTimes.has(pid)) return startTimes.get(pid);
-	const lstart = await psAsync(["-o", "lstart=", "-p", String(pid)], PS_UTC_ENV());
-	const started = lstart?.trim() ? utcSeconds(lstart) : undefined;
-	if (pid === process.pid) startTimes.set(pid, started);
-	return started;
+	let pending = starting.get(pid);
+	if (!pending) {
+		pending = psAsync(["-o", "lstart=", "-p", String(pid)], PS_UTC_ENV())
+			.then((lstart) => {
+				const started = lstart?.trim() ? utcSeconds(lstart) : undefined;
+				if (pid === process.pid) startTimes.set(pid, started);
+				return started;
+			})
+			.finally(() => starting.delete(pid));
+		starting.set(pid, pending);
+	}
+	return pending;
 }
 
 /** How a table read after `started` judges `pid`: `same`, `other` (gone or reused), `unknown` (the table cannot tell). */
@@ -134,6 +143,10 @@ const verdicts = new Map<string, { at: number; match: "same" | "other" | "unknow
 
 /** A verdict the shared table or an earlier comparison gives without running `ps`; undefined when neither can tell. */
 function knownVerdict(pid: number, started: string, now: number): "same" | "other" | "unknown" | undefined {
+	// This process's identity cannot change during its lifetime; registration may already have captured it.
+	const self = pid === process.pid ? startTimes.get(pid) : undefined;
+	const seconds = self === undefined ? undefined : startSeconds(started);
+	if (seconds !== undefined) return Number(self) === seconds ? "same" : "other";
 	const table = memoTable();
 	const fromTable = judge(table, pid, started);
 	// A table cannot be wrong about `other`: a pid names one process at a time, so a later read cannot undo it.
@@ -168,6 +181,16 @@ export function sameProcess(pid: unknown, started: string | null | undefined, no
 	verdicts.set(key, verdict);
 	if (verdicts.size > VERDICT_LIMIT) verdicts.delete(verdicts.keys().next().value!);
 	return verdict.match !== "other";
+}
+
+/** Await a shared process-table refresh when needed, without blocking input. Unknown owners keep their resources. */
+export async function sameProcessAsync(pid: unknown, started: string | null | undefined): Promise<boolean> {
+	if (!processAlive(pid)) return false;
+	if (!started || process.platform === "win32") return true;
+	const known = knownVerdict(pid as number, started, Date.now());
+	if (known && known !== "unknown") return known !== "other";
+	const table = await refreshProcessTable();
+	return processAlive(pid) && judge(table, pid as number, started) !== "other";
 }
 
 /**

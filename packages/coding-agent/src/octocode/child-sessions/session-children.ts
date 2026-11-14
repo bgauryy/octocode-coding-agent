@@ -23,8 +23,8 @@ export interface ChildFiles {
 	report?: string;
 }
 
-/** The files a run's `session` details point at; the report only when it exists. */
-export function childFiles(session: unknown): ChildFiles {
+/** The paths a run's `session` details point at, without reading historical report files. */
+function sessionFiles(session: unknown): ChildFiles {
 	if (!isRecord(session)) return {};
 	const transcript = typeof session.file === "string" ? session.file : undefined;
 	const folder = typeof session.dir === "string" ? session.dir : transcript ? path.dirname(transcript) : undefined;
@@ -33,8 +33,15 @@ export function childFiles(session: unknown): ChildFiles {
 	return {
 		...(transcript ? { transcript } : {}),
 		...(typeof session.dir === "string" ? { folder: session.dir } : {}),
-		...(report && regularReportFile(report) ? { report } : {}),
+		...(report ? { report } : {}),
 	};
+}
+
+/** Public file descriptions check existence now; history reconstruction defers that read to the surviving version. */
+export function childFiles(session: unknown): ChildFiles {
+	const files = sessionFiles(session);
+	if (files.report && !regularReportFile(files.report)) delete files.report;
+	return files;
 }
 
 /** One subagent this session started, as its latest record says. */
@@ -137,7 +144,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		const outcome = text(details.outcome);
 		if (outcome) child.outcome = outcome;
 		if (isRecord(details.session) && typeof details.session.id === "string") child.sessionId = details.session.id;
-		const files = childFiles(details.session);
+		const files = sessionFiles(details.session);
 		if (files.transcript) {
 			child.transcript = files.transcript;
 			delete child.folder;
@@ -241,6 +248,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		recordStart(entry, message, details, inputs.get(String(message.toolCallId)) ?? {}, true);
 	}
 	for (const child of children.values()) {
+		if (child.report && !child.reportArtifact && !regularReportFile(child.report)) delete child.report;
 		const task = child.startupFailed ? tasks.get(child.id) : undefined;
 		if (task) child.task = task;
 	}

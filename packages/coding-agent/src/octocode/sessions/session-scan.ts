@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { cleanTitle } from "../../core/session-manager/title.ts";
 import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
 import type { SpendScan } from "../shared/spend.ts";
-import { addUsage, emptyUsage, type ModelLookup, unpricedModel } from "../shared/util.ts";
+import { addUsage, emptyUsage, memoizedModelLookup, type ModelLookup, unpricedModel } from "../shared/util.ts";
 
 export type Entry = {
 	type?: string;
@@ -30,13 +30,14 @@ export function totals(
 ): { usage: ReturnType<typeof emptyUsage>; unpriced: boolean } {
 	const forkedAt = header?.parentSession ? Date.parse(header.timestamp ?? "") : Number.NaN;
 	const usage = emptyUsage();
+	const lookup = memoizedModelLookup(find);
 	let unpriced = false;
 	for (const entry of entries) {
 		const spend = scan.entry(entry);
 		if (!spend) continue;
 		if (Number.isFinite(forkedAt) && Date.parse(entry.timestamp ?? "") < forkedAt) continue;
 		addUsage(usage, spend.usage);
-		unpriced ||= unpricedModel(spend, find) !== undefined;
+		unpriced ||= unpricedModel(spend, lookup) !== undefined;
 	}
 	return { usage, unpriced };
 }

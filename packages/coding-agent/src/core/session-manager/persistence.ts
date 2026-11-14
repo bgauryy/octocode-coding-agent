@@ -12,9 +12,10 @@ import {
 } from "./entries.ts";
 import { appendRecords } from "./append-records.ts";
 import { encodeSessionLines, SessionCodec } from "./codec.ts";
+import type { LoadedSessionFile } from "./file-reader.ts";
 import { mirrorOpened, mirrorReplaced, recordFork } from "./mirror.ts";
 import { repairSessionFile, type SessionRepair } from "./repair.ts";
-import { retryHeldEntries } from "./held-retry.ts";
+import { cancelHeldRetry, retryHeldEntries } from "./held-retry.ts";
 import {
 	HELD_LOCK_WAIT_MS,
 	isSessionLockTimeout,
@@ -24,7 +25,7 @@ import {
 } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
 import { adoptRecovery, endSessionTail } from "./session-tail.ts";
-import { loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
+import { loadSessionFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
 import type { FileEntry, NewSessionOptions, SessionEntry } from "./types.ts";
 import { blockWrites, liftWriteBlock } from "./write-recovery.ts";
@@ -35,6 +36,7 @@ export function initializeSession(
 	sessionFile: string | undefined,
 	newSessionOptions?: NewSessionOptions,
 	preloadedFileEntries?: FileEntry[],
+	loadedFile?: LoadedSessionFile,
 ): void {
 	// An existing file needs no folder yet: a session opened from the legacy folder must not create a missing cwd tree.
 	if (state.persist && state.sessionDir && !(sessionFile && existsSync(sessionFile)) && !existsSync(state.sessionDir)) {
@@ -42,7 +44,7 @@ export function initializeSession(
 	}
 
 	if (sessionFile) {
-		setSessionFile(state, sessionFile, preloadedFileEntries);
+		setSessionFile(state, sessionFile, preloadedFileEntries, loadedFile);
 	} else if (preloadedFileEntries?.length) {
 		loadEntries(state, preloadedFileEntries, newSessionOptions);
 	} else {
@@ -51,14 +53,19 @@ export function initializeSession(
 }
 
 /** Switch the state to a session file, loading it when it exists and starting a new session at that path otherwise. */
-export function setSessionFile(state: SessionState, sessionFile: string, preloadedFileEntries?: FileEntry[]): void {
+export function setSessionFile(
+	state: SessionState,
+	sessionFile: string,
+	preloadedFileEntries?: FileEntry[],
+	loadedFile?: LoadedSessionFile,
+): void {
 	writeHeldEntries(state);
 	const resolvedFile = resolvePath(sessionFile);
 	if (existsSync(resolvedFile)) {
 		// Take the size before reading: records another process appends after it are merged on the next write
 		// (records the read already saw are skipped there by id).
-		const sizeBeforeRead = preloadedFileEntries ? undefined : statSync(resolvedFile).size;
-		const entries = preloadedFileEntries ?? loadEntriesFromFile(resolvedFile);
+		const loaded = loadedFile ?? (preloadedFileEntries ? undefined : loadSessionFile(resolvedFile));
+		const entries = preloadedFileEntries ?? loaded!.entries;
 
 		// If file was empty, initialize it with a valid session header. If it was
 		// non-empty but did not parse as an Octocode session, fail without modifying it.
@@ -76,9 +83,10 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		}
 
 		state.sessionFile = resolvedFile;
-		state.fileSize = sizeBeforeRead ?? statSync(resolvedFile).size;
-		state.codec = observedCodec(entries);
-		loadEntries(state, entries);
+		state.fileSize = loaded?.fileSize ?? statSync(resolvedFile).size;
+		// The codec that decoded the file has observed every line; preloaded entries are observed here.
+		state.codec = loaded?.codec ?? observedCodec(entries);
+		loadEntries(state, entries, undefined, loaded);
 		state.flushed = true;
 		mirrorOpened(state, resolvedFile);
 	} else {
@@ -98,6 +106,7 @@ function observedCodec(entries: readonly FileEntry[]): SessionCodec {
 
 /** Forget what a failed or held write left: the session's file or transcript was just replaced. */
 function clearWriteState(state: SessionState): void {
+	cancelHeldRetry(state);
 	state.persistenceFailure = undefined;
 	state.failedWrite = undefined;
 	state.unwritten.length = 0;
@@ -147,7 +156,12 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	return state.sessionFile;
 }
 
-function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSessionOptions): void {
+function loadEntries(
+	state: SessionState,
+	entries: FileEntry[],
+	options?: NewSessionOptions,
+	loaded?: LoadedSessionFile,
+): void {
 	const header = entries.find((e) => e.type === "session");
 
 	if (header) {
@@ -160,7 +174,12 @@ function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSes
 		state.fileEntries = state.fileEntries.concat(entries);
 	}
 
-	rebuildIndex(state);
+	if (loaded) {
+		state.byId = loaded.byId;
+		state.labelsById = loaded.labelsById;
+		state.labelTimestampsById = loaded.labelTimestampsById;
+		state.leafId = loaded.leafId;
+	} else rebuildIndex(state);
 }
 
 function rebuildIndex(state: SessionState): void {
@@ -218,15 +237,19 @@ export function rewriteSessionFile(state: SessionState): void {
 }
 
 /** Create the session file with every entry held so far; fails when the file already exists. */
-function flushNewSessionFile(state: SessionState, file: string): void {
-	withSessionFileLock(file, () => {
-		const { lines, codec } = writeNewSessionFile(file, state.fileEntries);
-		state.fileSize = statSync(file).size;
-		state.codec = codec;
-		state.flushed = true;
-		state.unwritten.length = 0;
-		mirrorReplaced(state, file, getFileStamp(file), lines);
-	});
+function flushNewSessionFile(state: SessionState, file: string, lockWaitMs?: number): void {
+	withSessionFileLock(
+		file,
+		() => {
+			const { lines, codec } = writeNewSessionFile(file, state.fileEntries);
+			state.fileSize = statSync(file).size;
+			state.codec = codec;
+			state.flushed = true;
+			state.unwritten.length = 0;
+			mirrorReplaced(state, file, getFileStamp(file), lines);
+		},
+		lockWaitMs,
+	);
 }
 
 /** Explicitly persist an empty session for clients that expose reloadable IDs before the first prompt. */
@@ -241,6 +264,7 @@ export function materializeSession(state: SessionState): void {
 		if (isSessionLockTimeout(error)) throw error;
 		throw blockWrites(state, error);
 	}
+	if (state.unwritten.length === 0) cancelHeldRetry(state);
 }
 
 /**
@@ -262,7 +286,7 @@ export function persistEntry(state: SessionState, entry?: SessionEntry, lockWait
 
 	if (!state.flushed) {
 		if (!hasConversation(state)) return;
-		flushNewSessionFile(state, state.sessionFile);
+		flushNewSessionFile(state, state.sessionFile, lockWaitMs);
 	} else {
 		const file = state.sessionFile;
 		withSessionFileLock(
@@ -278,6 +302,7 @@ export function persistEntry(state: SessionState, entry?: SessionEntry, lockWait
 			lockWaitMs,
 		);
 	}
+	if (state.unwritten.length === 0) cancelHeldRetry(state);
 }
 
 /**

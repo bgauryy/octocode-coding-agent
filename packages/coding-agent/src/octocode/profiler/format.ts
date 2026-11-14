@@ -1,5 +1,6 @@
 import type {
 	ProfileAgents,
+	ProfileEvent,
 	ProfileFinding,
 	ProfileInsights,
 	ProfileRequest,
@@ -130,6 +131,15 @@ export function requestsTable({ agentId, requests }: ProfileRequests, layers: bo
 	return `${agentId}: ${requests.length} request${requests.length === 1 ? "" : "s"}\n${table(["#", "AT", "PROMPT", "HIT", "WRITTEN", "COST", "MISS"], rows, [0, 2, 3, 4, 5])}`;
 }
 
+/** `prepare 2.1s, held 0.4s`: an event's phases other than its own span, or empty. */
+function phasesText(event: ProfileEvent): string {
+	const parts = Object.entries(event.phases ?? {})
+		.filter(([phase, ms]) => phase !== "execute" && ms !== undefined && ms > 0)
+		.map(([phase, ms]) => `${phase === "firstToken" ? "first token" : phase} ${duration(ms)}`);
+	if (event.early) parts.push("started early");
+	return parts.length ? `  [${parts.join(", ")}]` : "";
+}
+
 export function timelineTable({ sessionId, events }: ProfileTimeline): string {
 	if (!events.length) return `Session ${sessionId}: no events.`;
 	const start = events[0].at;
@@ -138,7 +148,7 @@ export function timelineTable({ sessionId, events }: ProfileTimeline): string {
 		event.agentId,
 		event.kind,
 		event.durationMs === undefined ? "" : duration(event.durationMs),
-		event.outcome && event.outcome !== "ok" ? `${event.label} (${event.outcome})` : event.label,
+		`${event.outcome && event.outcome !== "ok" ? `${event.label} (${event.outcome})` : event.label}${phasesText(event)}`,
 	]);
 	return `Session ${sessionId}: ${events.length} events from ${time(start)}\n${table(["AT", "AGENT", "KIND", "TOOK", "WHAT"], rows, [0, 3])}`;
 }

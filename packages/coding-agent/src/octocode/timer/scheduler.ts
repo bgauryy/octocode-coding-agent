@@ -8,6 +8,7 @@ import { type CheckOutcome, type TimerCondition, decideFire, rowCondition, rowRe
 const POKE_DEBOUNCE_MS = 150;
 /** A watcher that failed (NFS, a missing directory, no inotify watches) is tried again after this long; polling covers the gap. */
 const WATCH_RETRY_MS = 5000;
+const MAX_CHECKS = 4;
 
 export interface SchedulerDeps {
 	db: () => AgentDb;
@@ -40,7 +41,6 @@ export class TimerScheduler {
 	private readonly now: () => number;
 	private next: number | undefined;
 	private unsubscribe: (() => void) | undefined;
-	private pass: Promise<void> | undefined;
 	private waiters: Array<() => void> = [];
 	/** Timers this process set during the session: only these hold a headless run's exit (`settle`). */
 	private readonly held = new Set<number>();
@@ -50,7 +50,7 @@ export class TimerScheduler {
 	private seen = new Set<number>();
 	private readonly pokes = new Map<number, ReturnType<typeof setTimeout>>();
 	/** Rows being checked now, by a tick or a poke: a second check of the same row waits for the next trigger. */
-	private readonly checking = new Set<number>();
+	private readonly checking = new Map<number, AbortController>();
 
 	constructor(deps: SchedulerDeps) {
 		this.deps = deps;
@@ -84,22 +84,20 @@ export class TimerScheduler {
 		this.deps.changed?.(timers.activeCount(db, this.deps.sessionId));
 	}
 
-	/** Fires what is due; a pass already running is joined, not repeated. */
+	/** Dispatch due rows independently; guarded rows cannot be checked twice while other timers advance. */
 	tick(): Promise<void> {
-		if (this.stopped || this.next === undefined || this.now() < this.next) return this.pass ?? Promise.resolve();
-		this.pass ??= this.fireDue()
-			.catch((error: unknown) => this.deps.failed?.(error))
+		if (this.stopped || this.next === undefined || this.now() < this.next) return Promise.resolve();
+		return this.fireDue()
+			.catch((error: unknown) => this.reportFailure(error))
 			.finally(() => {
-				this.pass = undefined;
 				if (!this.stopped) {
 					try {
 						this.refresh();
 					} catch (error) {
-						this.deps.failed?.(error);
+						this.reportFailure(error);
 					}
 				}
 			});
-		return this.pass;
 	}
 
 	/**
@@ -115,12 +113,21 @@ export class TimerScheduler {
 	/** Stops ticking and watching; the rows stay active for a resumed session. */
 	stop(): void {
 		this.stopped = true;
-		for (const id of this.watchers.keys()) this.unwatch(id);
+		for (const check of this.checking.values()) check.abort();
+		this.checking.clear();
+		for (const id of this.seen) this.unwatch(id);
 		for (const handle of this.pokes.values()) clearTimeout(handle);
 		this.pokes.clear();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
+		this.held.clear();
+		this.seen.clear();
+		this.next = undefined;
 		this.release();
+	}
+
+	private reportFailure(error: unknown): void {
+		if (!this.stopped) this.deps.failed?.(error);
 	}
 
 	private release(): void {
@@ -131,19 +138,33 @@ export class TimerScheduler {
 
 	private async fireDue(): Promise<void> {
 		const db = this.deps.db().db;
-		for (const due of timers.due(db, this.deps.sessionId, this.now())) {
+		const dueRows = timers.due(db, this.deps.sessionId, this.now());
+		// Plain wakeups finish before condition checks start, and still run on later ticks while checks are pending.
+		const checks: Promise<void>[] = [];
+		dueRows.sort((a, b) => Number(a.kind === "until") - Number(b.kind === "until"));
+		for (const due of dueRows) {
 			if (this.stopped) return;
 			if (this.checking.has(due.id)) continue;
+			if (due.kind === "until" && this.checking.size >= MAX_CHECKS) continue;
 			const claimed = timers.claim(db, due.id, this.deps.sessionId, this.now());
 			this.deps.wrote?.();
-			if (claimed) await this.guarded(claimed.id, () => this.fire(claimed));
+			if (!claimed) continue;
+			const fire = this.guarded(claimed.id, () => this.fire(claimed)).catch((error: unknown) =>
+				this.reportFailure(error),
+			);
+			if (due.kind === "until") checks.push(fire);
+			else await fire;
 		}
+		await Promise.all(checks);
 	}
 
 	private async guarded(id: number, run: () => Promise<void>): Promise<void> {
-		this.checking.add(id);
+		const controller = new AbortController();
+		this.checking.set(id, controller);
 		try {
 			await run();
+		} catch (error) {
+			if (!controller.signal.aborted) throw error;
 		} finally {
 			this.checking.delete(id);
 		}
@@ -184,19 +205,20 @@ export class TimerScheduler {
 					this.deps.wrote?.();
 					this.next = Math.min(this.next ?? due, due);
 				} catch (error) {
-					this.deps.failed?.(error);
+					this.reportFailure(error);
 				}
 			};
 			try {
 				entry.stop = watch(condition, row.cwd ?? process.cwd(), () => this.poke(row.id), failed);
 			} catch (error) {
 				failed();
-				this.deps.failed?.(error);
+				this.reportFailure(error);
 			}
 		}
 	}
 
 	private unwatch(id: number): void {
+		this.checking.get(id)?.abort();
 		this.watchers.get(id)?.stop();
 		this.watchers.delete(id);
 		const handle = this.pokes.get(id);
@@ -213,13 +235,13 @@ export class TimerScheduler {
 			setTimeout(() => {
 				this.pokes.delete(id);
 				void this.pokeNow(id)
-					.catch((error: unknown) => this.deps.failed?.(error))
+					.catch((error: unknown) => this.reportFailure(error))
 					.finally(() => {
 						if (this.stopped) return;
 						try {
 							this.refresh();
 						} catch (error) {
-							this.deps.failed?.(error);
+							this.reportFailure(error);
 						}
 					});
 			}, POKE_DEBOUNCE_MS),
@@ -231,7 +253,7 @@ export class TimerScheduler {
 	 * cheap); one that is met, refused or spent money claims the row and goes through the same `fire` a due tick does.
 	 */
 	private async pokeNow(id: number): Promise<void> {
-		if (this.stopped || this.checking.has(id)) return;
+		if (this.stopped || this.checking.has(id) || this.checking.size >= MAX_CHECKS) return;
 		const db = this.deps.db().db;
 		const row = timers.get(db, id);
 		const condition = row && rowCondition(row);
@@ -248,6 +270,7 @@ export class TimerScheduler {
 	private input(row: TimerRow): CheckInput {
 		return {
 			cwd: row.cwd ?? process.cwd(),
+			signal: this.checking.get(row.id)?.signal,
 			row: { id: row.id, checks: row.checks, spentUsd: row.spent_usd, sessionId: row.session_id },
 		};
 	}
@@ -259,6 +282,7 @@ export class TimerScheduler {
 		const condition = rowCondition(row);
 		if (row.kind === "until" && condition) {
 			check ??= await this.deps.check(condition, this.input(row));
+			if (this.stopped || this.checking.get(row.id)?.signal.aborted) return;
 			timers.recordResult(
 				db,
 				row.id,

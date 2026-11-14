@@ -60,6 +60,7 @@ export class SearchableSelectorComponent extends Container implements Focusable 
 	}
 
 	private filter(): void {
+		const selectedValue = this.list?.getSelectedItem()?.value;
 		const items = fuzzyFilter(
 			[...this.items],
 			this.input.getValue(),
@@ -70,7 +71,10 @@ export class SearchableSelectorComponent extends Container implements Focusable 
 			12,
 			getSelectListTheme(),
 			this.options.commandColumns ? { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 36 } : undefined,
+			{ emptyText: this.options.commandColumns ? "No matching commands" : "No matching items" },
 		);
+		const selectedIndex = items.findIndex((item) => item.value === selectedValue);
+		if (selectedIndex >= 0) this.list.setSelectedIndex(selectedIndex);
 		this.list.onSelect = (item) => this.onSelect(item.value);
 		this.list.onCancel = this.onCancel;
 		this.listContainer.clear();
@@ -80,14 +84,22 @@ export class SearchableSelectorComponent extends Container implements Focusable 
 	handleInput(data: string): void {
 		const keys = getKeybindings();
 		if (
-			(["tui.select.up", "tui.select.down", "tui.select.confirm", "tui.select.cancel"] as const).some((key) =>
-				keys.matches(data, key),
-			)
+			(
+				[
+					"tui.select.up",
+					"tui.select.down",
+					"tui.select.pageUp",
+					"tui.select.pageDown",
+					"tui.select.confirm",
+					"tui.select.cancel",
+				] as const
+			).some((key) => keys.matches(data, key))
 		) {
 			this.list.handleInput(data);
 			return;
 		}
+		const query = this.input.getValue();
 		this.input.handleInput(data);
-		this.filter();
+		if (this.input.getValue() !== query) this.filter();
 	}
 }

@@ -86,13 +86,13 @@ describe("scoped model ordering", () => {
 
 		await vi.waitFor(() => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));
-			expect(rendered).toContain(`[${modelOne.provider} · local]`);
+			expect(rendered).toContain(`${modelOne.provider} · local`);
 			expect(rendered).toContain("Model catalogs refreshed.");
 		});
 
 		const renderedLines = stripAnsi(selector.render(120).join("\n"))
 			.split("\n")
-			.filter((line) => line.includes(`[${modelOne.provider} · local]`));
+			.filter((line) => /^(?:› | {2})(?:✓ | {2})faux-/.test(line));
 		const orderedIds = renderedLines.slice(0, 3).map((line) => {
 			const [modelId] = line
 				.trim()

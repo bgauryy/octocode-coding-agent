@@ -232,8 +232,10 @@ export class ModelConfig {
 		const providers = new Map<string, ModelsJsonProvider>();
 		const errors: string[] = [];
 		const warnings: string[] = [];
-		for (const file of paths) {
-			const config = await ModelConfig.loadFile(file);
+		// Files load concurrently; merging walks them in precedence order, so the first definition still wins and
+		// errors and warnings keep file order.
+		const configs = await Promise.all(paths.map((file) => ModelConfig.loadFile(file)));
+		for (const config of configs) {
 			if (config.error) errors.push(config.error);
 			warnings.push(...config.warnings);
 			for (const [id, provider] of config.providers) {

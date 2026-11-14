@@ -31,21 +31,22 @@ export async function customModelsFiles(
 			: []),
 		...locations.piDirs.map((dir) => ({ origin: "Pi" as const, path: join(dir, "models.json"), load: piEnabled })),
 	];
-	const files: CustomModelsFile[] = [];
-	for (const { origin, path, load } of lists) {
-		const exists = existsSync(path);
-		let defines: string[] = [];
-		let keyed: string[] = [];
-		let unreadable = false;
-		if (exists && load) {
-			const config = await ModelConfig.loadFile(path);
-			if (config.getError()) unreadable = true;
-			else {
-				defines = [...config.getProviderIds()];
-				keyed = defines.filter((id) => !!config.getProvider(id)?.apiKey);
+	// Independent reads, loaded concurrently; `Promise.all` keeps the precedence order of `lists`.
+	return Promise.all(
+		lists.map(async ({ origin, path, load }): Promise<CustomModelsFile> => {
+			const exists = existsSync(path);
+			let defines: string[] = [];
+			let keyed: string[] = [];
+			let unreadable = false;
+			if (exists && load) {
+				const config = await ModelConfig.loadFile(path);
+				if (config.getError()) unreadable = true;
+				else {
+					defines = [...config.getProviderIds()];
+					keyed = defines.filter((id) => !!config.getProvider(id)?.apiKey);
+				}
 			}
-		}
-		files.push({ origin, path, exists, defines, keyed, ...(unreadable ? { unreadable } : {}) });
-	}
-	return files;
+			return { origin, path, exists, defines, keyed, ...(unreadable ? { unreadable } : {}) };
+		}),
+	);
 }

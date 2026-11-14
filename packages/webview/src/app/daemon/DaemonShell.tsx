@@ -90,10 +90,15 @@ function SessionRow({ session, now }: { session: DaemonSession; now: number }) {
 				{session.needsYou ? <div className="daemon-needs-you">{session.needsYou}</div> : null}
 				<div className="muted daemon-path">{session.cwd}</div>
 				<div className="muted">
-					Started <RelativeTime at={session.startedAt} now={now} />
+					Session <code title={session.id}>{session.id.slice(-12)}</code> · Started{" "}
+					<RelativeTime at={session.startedAt} now={now} />
 				</div>
 			</div>
-			<a className="btn" href={`/?s=${encodeURIComponent(session.id)}#activity`}>
+			<a
+				className="btn"
+				href={`/?s=${encodeURIComponent(session.id)}#activity`}
+				aria-label={`Open ${session.repoName} session ${session.id}`}
+			>
 				Open session
 			</a>
 		</li>
@@ -175,6 +180,9 @@ export function DaemonShell({ access }: { access: string }) {
 								{value.sessions.map((session) => (
 									<SessionRow key={session.id} session={session} now={now} />
 								))}
+								{value.truncated ? (
+									<li className="daemon-row muted">Showing the first {value.sessions.length} live sessions.</li>
+								) : null}
 								{(value.unavailable ?? []).map((session) => (
 									<li key={session.id} className="daemon-row">
 										<div className="daemon-row-main">

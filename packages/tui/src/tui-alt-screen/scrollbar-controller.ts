@@ -78,8 +78,12 @@ export class AltScreenScrollbar {
 		this.setScrollbarHover(target.scrollView);
 		const onThumb =
 			event.y >= target.geometry.thumbTop && event.y < target.geometry.thumbTop + target.geometry.thumbHeight;
-		const grabOffset = onThumb ? event.y - target.geometry.thumbTop : Math.floor(target.geometry.thumbHeight / 2);
-		if (!onThumb) scrollScrollbarToPointer(target.scrollView, target.geometry, event.y, grabOffset);
+		if (!onThumb) {
+			const direction = event.y < target.geometry.thumbTop ? -1 : 1;
+			target.scrollView.scrollBy(direction * target.scrollView.viewportHeight);
+			return true;
+		}
+		const grabOffset = event.y - target.geometry.thumbTop;
 		this.scrollbarDrag = {
 			scrollView: target.scrollView,
 			grabOffset,

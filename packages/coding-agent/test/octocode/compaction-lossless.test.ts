@@ -311,3 +311,50 @@ describe("lossless compaction references", () => {
 		}
 	});
 });
+
+describe("user messages through many compactions", () => {
+	it("keeps every user message recoverable, the newest inline and the section bounded, with storage linear in the input", () => {
+		const files = new Map<string, string>();
+		const save = (text: string) => {
+			const file = `/session.checkpoint-${files.size}.md`;
+			files.set(file, text);
+			return file;
+		};
+		const budget = { total: 20_000, perMessage: 5_000 };
+		const revocation = "REVOKED: the push approval no longer applies; never push to main.";
+		const sent: string[] = [];
+		let summary = "";
+		const bytesAt: number[] = [];
+		for (let round = 1; round <= 60; round++) {
+			// The model's own text keeps nothing: only what code appends can carry the user's words.
+			const previous = summary ? splitSummary(summary) : { messages: [], omitted: 0 };
+			const added = Array.from(
+				{ length: 3 },
+				(_, i) => `R${round}.${i} ${round === 2 && i === 0 ? revocation : ""} ${"detail ".repeat(430)}`,
+			);
+			sent.push(...added);
+			const section = userMessagesSection(previous.messages, previous.omitted, added, budget, round, save);
+			expect(section.length).toBeLessThanOrEqual(budget.total);
+			summary = `## Goal\n(omitted by the model)${section}`;
+			expect(splitSummary(summary).messages.at(-1)).toBe(added.at(-1));
+			bytesAt.push([...files.values()].reduce((sum, text) => sum + text.length, 0));
+		}
+		// Everything reachable from the last checkpoint through its saved references.
+		const reach = (text: string, seen = new Set<string>()): string => {
+			let out = text;
+			for (const [, file] of text.matchAll(/saved at (\S+?);/g))
+				if (!seen.has(file)) {
+					seen.add(file);
+					out += reach(files.get(file)!, seen);
+				}
+			return out;
+		};
+		const recoverable = reach(summary);
+		for (const message of sent) expect(recoverable).toContain(message);
+		expect(recoverable).toContain(revocation);
+		// Each round saves a bounded amount: the second half of the run adds no more per round than the first (not quadratic).
+		const firstHalf = bytesAt[29] - bytesAt[0];
+		const secondHalf = bytesAt[59] - bytesAt[30];
+		expect(secondHalf).toBeLessThan(firstHalf * 1.25);
+	});
+});

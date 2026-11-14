@@ -134,3 +134,32 @@ it("keeps per-frame serialization proportional to the streamed message on a 2 MB
 	expect(after.filter((row, index) => row !== before[index]).map((row) => row.text)).toEqual(["token"]);
 	expect(serialized).toBeLessThan(10_000);
 });
+
+it("keeps one visible root when tool parents form a cycle, so the group never vanishes", () => {
+	const tool = (toolCallId: string, parentToolCallId?: string, order = 0): ApplicationTool => ({
+		toolCallId,
+		toolName: "bash",
+		text: "ok",
+		status: "completed",
+		order,
+		...(parentToolCallId ? { parentToolCallId } : {}),
+	});
+	const snapshot = {
+		sessionId: "s",
+		messages: [],
+		// `a` and `b` are each other's parent, `s` is its own, `c` hangs off the cycle, and `k` under the ordinary root `r`.
+		tools: [
+			tool("b", "a", 1),
+			tool("a", "b", 2),
+			tool("s", "s", 3),
+			tool("c", "a", 4),
+			tool("r", undefined, 5),
+			tool("k", "r", 6),
+		],
+	} as unknown as ApplicationSnapshot;
+	const events = new ApplicationProjection().update(snapshot, 1);
+	const roots = events.filter((item) => item.tool && !item.embedded).map((item) => item.tool!.toolCallId);
+	const nested = events.filter((item) => item.tool && item.embedded).map((item) => item.tool!.toolCallId);
+	expect(roots.sort()).toEqual(["a", "r", "s"]);
+	expect(nested.sort()).toEqual(["b", "c", "k"]);
+});

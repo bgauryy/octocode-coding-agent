@@ -13,10 +13,12 @@ import {
 import { decodeBody } from "./charset.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
 import { untilAborted } from "../../../../common/src/abort.ts";
+import { type Deadline, deadline } from "../../../../common/src/deadline.ts";
 
 export const USER_AGENT =
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
-const TIMEOUT_MS = 30_000;
+/** The time limit of one request with its body, and of a whole search. */
+export const TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const MAX_BODY_MB = MAX_BODY_BYTES / 1024 / 1024;
 /** Transient statuses a fetch retries, how often, the first backoff, and the longest Retry-After worth waiting for. */
@@ -201,17 +203,22 @@ async function fetchWithRetry(
 	url: string,
 	init: PublicFetchInit,
 	options: { private?: boolean },
-	signal?: AbortSignal,
+	signal: AbortSignal | undefined,
+	/** Each attempt's limit, so the caller clears the last once it has read the body. */
+	limits: Deadline[],
 ): Promise<Response> {
 	for (let attempt = 0; ; attempt += 1) {
 		let response: Response;
+		const limit = deadline(TIMEOUT_MS, signal);
+		limits.push(limit);
 		try {
 			response = await publicFetch(
 				url,
-				{ ...init, signal: combineSignals(signal) },
+				{ ...init, signal: limit.signal },
 				{ sameHost: true, firstHopPrivate: options.private === true },
 			);
 		} catch (error) {
+			limit.clear();
 			// Only passing network failures are worth another try: not a refusal, a redirect, a timeout, the user's abort,
 			// a refused connection or an untrusted certificate.
 			if (signal?.aborted || !(error instanceof NetworkError) || lastingCause(error) || attempt >= RETRIES)
@@ -223,6 +230,7 @@ async function fetchWithRetry(
 		const wait = retryAfterMs(response.headers.get("retry-after"));
 		if (wait !== undefined && wait > RETRY_AFTER_MAX_MS) return response;
 		await discardBody(response);
+		limit.clear();
 		await sleep(wait ?? backoff(attempt), undefined, { signal });
 	}
 }
@@ -269,6 +277,20 @@ async function fetchResource(
 	signal: AbortSignal | undefined,
 	options: { private?: boolean },
 ): Promise<Fetched> {
+	const limits: Deadline[] = [];
+	try {
+		return await fetchResourceWithin(url, signal, options, limits);
+	} finally {
+		for (const limit of limits) limit.clear();
+	}
+}
+
+async function fetchResourceWithin(
+	url: string,
+	signal: AbortSignal | undefined,
+	options: { private?: boolean },
+	limits: Deadline[],
+): Promise<Fetched> {
 	const response = await fetchWithRetry(
 		url,
 		{
@@ -280,6 +302,7 @@ async function fetchResource(
 		},
 		options,
 		signal,
+		limits,
 	);
 	const type = response.headers.get("content-type") ?? "";
 	if (INLINE_IMAGE_HEADERS.has(mediaType(type))) {
@@ -372,9 +395,4 @@ async function readBytesCapped(response: Response): Promise<{ bytes: Buffer; tru
 	}
 	await reader.cancel().catch(() => undefined);
 	return { bytes: Buffer.concat(chunks).subarray(0, MAX_BODY_BYTES), truncated, cut };
-}
-
-export function combineSignals(signal?: AbortSignal): AbortSignal {
-	const timeout = AbortSignal.timeout(TIMEOUT_MS);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }

@@ -1,3 +1,4 @@
+import type { SessionRenderOptions } from "./session-render-options.ts";
 /**
  * The members of InteractiveMode that its collaborator modules use. InteractiveMode builds one host per instance
  * (see create-host.ts): the host holds the mode's state and every method, so the collaborators share one state.
@@ -177,11 +178,8 @@ export interface InteractiveModeMethods {
 	registerSignalHandlers(): void;
 	renderCurrentSessionState(): void;
 	renderInitialMessages(): void;
-	renderSessionEntries(entries: SessionEntry[], options?: { updateFooter?: boolean; populateHistory?: boolean }): void;
-	renderSessionItems(
-		items: readonly RenderSessionItem[],
-		options?: { updateFooter?: boolean; populateHistory?: boolean },
-	): void;
+	renderSessionEntries(entries: SessionEntry[], options?: SessionRenderOptions): void;
+	renderSessionItems(items: readonly RenderSessionItem[], options?: SessionRenderOptions): void;
 	renderWidgets(): void;
 	sendCarriedMessages(): Promise<void>;
 	resetExtensionUI(): void;

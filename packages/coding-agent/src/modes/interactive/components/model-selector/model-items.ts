@@ -16,6 +16,11 @@ export interface DefaultModelReference {
 	id: string;
 }
 
+export interface DefaultModelContext {
+	source: "global" | "workspace" | "run";
+	global?: DefaultModelReference;
+}
+
 export type ModelScope = "all" | "scoped";
 
 export function isDefaultModel(defaultModel: DefaultModelReference | undefined, model: Model<any>): boolean {

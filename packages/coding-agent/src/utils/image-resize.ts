@@ -11,6 +11,24 @@ import {
 
 export type { ImageResizeOptions, ResizedImage } from "./image-resize-core.ts";
 
+/** How image resizes ran in this process: in a worker, or on the calling thread after a worker could not start. */
+export interface ImageResizeStats {
+	worker: number;
+	inProcess: number;
+	/** Total and longest time of the resizes run on the calling thread, in milliseconds. */
+	inProcessMs: number;
+	inProcessMaxMs: number;
+	/** Why the latest worker attempt failed. */
+	lastWorkerError?: string;
+}
+
+const stats: ImageResizeStats = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0 };
+
+/** A copy of this process's resize counts, for status and diagnostics. */
+export function imageResizeStats(): ImageResizeStats {
+	return { ...stats, inProcessMs: Math.round(stats.inProcessMs), inProcessMaxMs: Math.round(stats.inProcessMaxMs) };
+}
+
 function toTransferableBytes(input: Uint8Array): Uint8Array<ArrayBuffer> {
 	// Transfer detaches the buffer, so transfer a worker-owned copy and leave the
 	// caller's bytes intact.
@@ -99,16 +117,30 @@ export async function resizeImage(
 	// release binary uses the embedded worker instead of falling back in-process.
 	if (typeof process.versions.bun === "string") {
 		try {
-			return await resizeImageInWorker("./src/utils/image-resize-worker.ts", inputBytes, mimeType, options);
+			const result = await resizeImageInWorker("./src/utils/image-resize-worker.ts", inputBytes, mimeType, options);
+			stats.worker += 1;
+			return result;
 		} catch {
 			// Not a compiled executable with an embedded worker: try the URL worker below.
 		}
 	}
 
 	try {
-		return await resizeImageInWorker(workerUrl, inputBytes, mimeType, options);
-	} catch {
-		return resizeImageInProcess(inputBytes, mimeType, options);
+		const result = await resizeImageInWorker(workerUrl, inputBytes, mimeType, options);
+		stats.worker += 1;
+		return result;
+	} catch (error) {
+		stats.lastWorkerError = error instanceof Error ? error.message : String(error);
+		// The fallback blocks the calling thread for the whole decode and encode: counted and timed so it shows.
+		const started = performance.now();
+		try {
+			return await resizeImageInProcess(inputBytes, mimeType, options);
+		} finally {
+			const took = performance.now() - started;
+			stats.inProcess += 1;
+			stats.inProcessMs += took;
+			stats.inProcessMaxMs = Math.max(stats.inProcessMaxMs, took);
+		}
 	}
 }
 

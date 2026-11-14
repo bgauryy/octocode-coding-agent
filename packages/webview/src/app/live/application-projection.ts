@@ -51,6 +51,7 @@ export class ApplicationProjection {
 		}
 		const availableTools = snapshot?.tools ?? [];
 		const toolIds = new Set(availableTools.map((tool) => tool.toolCallId));
+		const toolsById = new Map(availableTools.map((tool) => [tool.toolCallId, tool]));
 		const linked = new Set<string>();
 		const messages = new Map<string, FeedEvent>();
 		for (const message of snapshot?.messages ?? []) {
@@ -102,8 +103,7 @@ export class ApplicationProjection {
 			const nested = relatedTools(availableTools, new Set([tool.toolCallId])).filter(
 				(item) => item.toolCallId !== tool.toolCallId,
 			);
-			const embedded =
-				linked.has(tool.toolCallId) || (tool.parentToolCallId !== undefined && toolIds.has(tool.parentToolCallId));
+			const embedded = linked.has(tool.toolCallId) || hasToolParent(tool, toolsById);
 			const sources = [snapshot?.sessionId, tool, embedded, ...nested];
 			if (previous && sameSources(this.sources.get(previous), sources)) {
 				tools.set(tool.toolCallId, previous);
@@ -196,6 +196,24 @@ function isInterrupted(status: ApplicationMessage["status"]): boolean {
 }
 
 /** Follow parent ids without recursion so malformed cycles cannot hang a consumer. */
+/**
+ * Whether a tool hangs under another tool of the snapshot. Malformed parents can form a cycle (a tool its own parent,
+ * or two tools each other's): every member would be embedded and the whole group would vanish, so the member with the
+ * smallest id stays a root.
+ */
+function hasToolParent(tool: ApplicationTool, byId: ReadonlyMap<string, ApplicationTool>): boolean {
+	const seen = new Set<string>();
+	let current = tool;
+	for (;;) {
+		const parent = current.parentToolCallId === undefined ? undefined : byId.get(current.parentToolCallId);
+		if (!parent) return current !== tool;
+		seen.add(current.toolCallId);
+		// The walk closed a cycle: `tool` is in it only when the walk came back to it.
+		if (seen.has(parent.toolCallId)) return parent !== tool || [...seen].some((id) => id < tool.toolCallId);
+		current = parent;
+	}
+}
+
 function relatedTools(tools: readonly ApplicationTool[], ids: Set<string>): ApplicationTool[] {
 	let changed = true;
 	while (changed) {

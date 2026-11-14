@@ -12,6 +12,7 @@
 				"scripts/browser-smoke-entry.ts",
 				"scripts/generate-thinking-capabilities.mjs",
 				"scripts/profile-render-backpressure.mjs",
+				"scripts/replay-session.mjs",
 				"scripts/stage-registry-release.mjs",
 				"scripts/use-local-packages.mjs",
 				// `node --test --test-global-setup` (root and tui test scripts).
@@ -29,11 +30,7 @@
 			// used only when this repository imports it, so an export nothing consumes is reported instead of hidden.
 			// `providers/compat-schema.ts` is imported by name from coding-agent's `scripts/generate-references.ts`, which
 			// Knip does not resolve to ai sources.
-			"entry": [
-				"src/index.ts",
-				"src/{models,compat,bedrock-provider,bun-oauth}.ts",
-				"src/providers/compat-schema.ts",
-			],
+			"entry": ["src/index.ts", "src/{models,compat,bedrock-provider,bun-oauth}.ts", "src/providers/compat-schema.ts"],
 		},
 		"packages/coding-agent": {
 			// Resolved by name or path at runtime: the native MCP launcher and the sibling `octocode` CLI from package.json,

@@ -1,9 +1,7 @@
 import { type Component, Container, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { keyHint } from "../../../../theme/theme-tui-helpers.ts";
-
-const FALLBACK_PREVIEW_LINES = 10;
+import { foldHint, TOOL_PREVIEW_LINES } from "../../../../theme/theme-tui-helpers.ts";
 
 /** One line naming a renderer failure. Extension renderers are untrusted: the text is sanitized and kept to its first line. */
 function rendererError(error: unknown): string {
@@ -38,11 +36,11 @@ export function createResultFallback(output: string, expanded: boolean): Compone
 	}
 
 	const lines = sanitizeTerminalText(output).split("\n");
-	const displayLines = expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
+	const displayLines = expanded ? lines : lines.slice(0, TOOL_PREVIEW_LINES);
 	const remaining = lines.length - displayLines.length;
 	let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
 	if (remaining > 0) {
-		text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+		text += `\n${foldHint(remaining)}`;
 	}
 	return new Text(text, 0, 0);
 }
@@ -67,10 +65,8 @@ function formatToolExecution(toolName: string, args: unknown, output: string, ex
 	}
 	if (output) {
 		const lines = sanitizeTerminalText(output).split("\n");
-		text += `\n${(expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES)).join("\n")}`;
-		if (!expanded && lines.length > FALLBACK_PREVIEW_LINES) {
-			text += `\n${theme.fg("muted", `... (${lines.length - FALLBACK_PREVIEW_LINES} more lines)`)} ${keyHint("app.tools.expand", "to expand")}`;
-		}
+		text += `\n${(expanded ? lines : lines.slice(0, TOOL_PREVIEW_LINES)).join("\n")}`;
+		if (!expanded && lines.length > TOOL_PREVIEW_LINES) text += `\n${foldHint(lines.length - TOOL_PREVIEW_LINES)}`;
 	}
 	return text;
 }

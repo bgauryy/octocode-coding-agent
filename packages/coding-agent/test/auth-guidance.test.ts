@@ -12,7 +12,7 @@ describe("auth guidance", () => {
 		const message = formatNoModelsAvailableMessage();
 		expect(message).toMatch(/^No AI provider connected yet\. Type \/providers to connect one/);
 		expect(message).toMatch(/\nDocs: providers\.md · models\.md in /);
-		expect(formatNoApiKeyFoundMessage("openai")).toMatch(/^No API key found for openai\. Type \/providers/);
+		expect(formatNoApiKeyFoundMessage("openai")).toMatch(/^No usable credentials for openai\. Type \/providers/);
 		expect(formatNoModelSelectedMessage()).toContain("Then /model to pick a model.");
 	});
 

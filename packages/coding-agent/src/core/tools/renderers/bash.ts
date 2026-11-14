@@ -7,7 +7,7 @@
  */
 
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
-import { keyHint } from "../../../theme/theme-tui-helpers.ts";
+import { foldHint, TOOL_PREVIEW_LINES } from "../../../theme/theme-tui-helpers.ts";
 import { stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { formatDuration } from "../../../utils/duration.ts";
@@ -17,7 +17,6 @@ import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } fro
 import { reuseText } from "./output.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
 
-const BASH_PREVIEW_LINES = 5;
 export const BASH_UPDATE_THROTTLE_MS = 100;
 function formatShellCall(args: { command?: string; timeout?: number } | undefined, prompt: string): string {
 	const command = str(args?.command);
@@ -79,6 +78,12 @@ function rebuildBashResultRenderComponent(
 	finish: { isError: boolean; durationMs: number | undefined },
 ): void {
 	component.clear();
+	// One blank row separates the result from the command; its parts follow each other without more.
+	let lead = "\n";
+	const addLine = (text: string) => {
+		component.addChild(new Text(`${lead}${text}`, 0, 0));
+		lead = "";
+	};
 
 	let output = getTextOutput(result, showImages).trim();
 	// The result's first line (`[exit 0 · 4.2s · 312 lines · 18 KB]`) is the status; it stays visible above the collapsed output.
@@ -89,7 +94,7 @@ function rebuildBashResultRenderComponent(
 	const state = options.isPartial ? undefined : endState(result.details, header, finish.isError);
 	if (state) {
 		const line = outcomeLine(state, header?.trim(), result.details, finish.durationMs);
-		if (line) component.addChild(new Text(`\n${line}`, 0, 0));
+		if (line) addLine(line);
 	}
 	const truncation = result.details?.truncation;
 	const fullOutputPath = result.details?.fullOutputPath;
@@ -107,17 +112,16 @@ function rebuildBashResultRenderComponent(
 			.join("\n");
 
 		if (options.expanded) {
-			component.addChild(new Text(`\n${styledOutput}`, 0, 0));
+			addLine(styledOutput);
 		} else {
-			component.addChild(new Spacer(1));
+			if (lead) component.addChild(new Spacer(1));
+			lead = "";
 			component.addChild(
 				new VisualLinePreview({
 					text: styledOutput,
-					maxVisualLines: BASH_PREVIEW_LINES,
+					maxVisualLines: TOOL_PREVIEW_LINES,
 					keep: "end",
-					formatHint: (hidden) =>
-						theme.fg("muted", `... (${hidden} earlier lines,`) +
-						` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+					formatHint: (hidden) => foldHint(hidden, true),
 				}),
 			);
 		}
@@ -137,10 +141,13 @@ function rebuildBashResultRenderComponent(
 				);
 			}
 		}
-		component.addChild(new Text(`\n${theme.fg("warning", `[${warnings.join(". ")}]`)}`, 0, 0));
+		addLine(theme.fg("warning", `[${warnings.join(". ")}]`));
 	}
 
-	if (timerText) component.addChild(new Text(`\n${theme.fg("muted", timerText)}`, 0, 0));
+	// The outcome line already carries a finished run's duration: the clock shows only while it runs, or when no
+	// duration reached the outcome.
+	const durationShown = state !== undefined && (header !== undefined || finish.durationMs !== undefined);
+	if (timerText && !durationShown) addLine(theme.fg("muted", timerText));
 }
 
 /** Shell renderers are shared by bash and powershell, which differ only in the prompt they display. */

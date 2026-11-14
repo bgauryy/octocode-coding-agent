@@ -13,7 +13,16 @@ function Fact({ name, value }: { name: string; value: string }) {
 	);
 }
 
-/** A trace event in the drawer: what, when, how long, with how it ended and a way to its request. */
+const PHASE_NAMES: Record<string, string> = {
+	firstToken: "First token",
+	stream: "Streaming",
+	prepare: "Preparation",
+	queued: "Queued",
+	finalize: "Finalization",
+	held: "Result held",
+};
+
+/** A trace event in the drawer: what, when, how long and where the time went, with how it ended and a way to its request. */
 export function EventDetail({
 	event,
 	onSelect,
@@ -32,6 +41,12 @@ export function EventDetail({
 				{event.durationMs !== undefined && <Fact name="Duration" value={span(event.durationMs)} />}
 				{event.peer && <Fact name={event.direction === "received" ? "From" : "With"} value={event.peer} />}
 				{event.tokens !== undefined && <Fact name="Tokens" value={formatTokens(event.tokens)} />}
+				{Object.entries(event.phases ?? {}).map(([phase, ms]) =>
+					phase === "execute" || ms === undefined ? null : (
+						<Fact key={phase} name={PHASE_NAMES[phase] ?? phase} value={span(ms)} />
+					),
+				)}
+				{event.early && <Fact name="Started" value="while the model streamed" />}
 			</dl>
 			{event.outcome && <Badge tone={event.outcome === "ok" ? "success" : "danger"}>{event.outcome}</Badge>}
 			{request !== undefined && (

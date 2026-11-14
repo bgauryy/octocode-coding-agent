@@ -44,6 +44,31 @@ const base: ConfigSnapshot = {
 };
 
 describe("ConfigView provider sources and switches", () => {
+	it("shows cloud credential names and plan terms without claiming verified access", async () => {
+		render(
+			<ConfigView
+				load={async () => ({
+					...base,
+					providers: [
+						{
+							provider: "cloud",
+							configured: true,
+							sources: [],
+							auth: {
+								keyAuth: { name: "AWS credentials or bearer token" },
+								plan: { billing: "plan", terms: "https://example.test/terms", disabled: "Temporarily paused" },
+							},
+						},
+					],
+				})}
+			/>,
+		);
+		expect(await screen.findByText(/AWS credentials or bearer token/)).toBeInTheDocument();
+		expect(screen.getByText(/access has not been verified/)).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Plan terms" })).toHaveAttribute("href", "https://example.test/terms");
+		expect(screen.getByText(/Billed by plan/)).toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveTextContent("Paused: Temporarily paused");
+	});
 	it("shows the sources and where each provider is configured", async () => {
 		render(<ConfigView load={async () => base} saveProvider={vi.fn()} />);
 		const sources = await screen.findByRole("list", { name: "Provider sources" });

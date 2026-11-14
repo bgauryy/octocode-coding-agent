@@ -132,6 +132,16 @@ function authMethods(auth: ProviderAuth | undefined): ProviderAuthMethods | unde
 	const { oauth, apiKey } = auth;
 	const keyPage = apiKey?.keyPage && /^https:\/\/\S+$/.test(apiKey.keyPage) ? apiKey.keyPage : undefined;
 	const methods: ProviderAuthMethods = {
+		...(auth.plan
+			? {
+					plan: {
+						billing: auth.plan.billing,
+						terms: auth.plan.terms,
+						...(auth.plan.deprecated ? { deprecated: auth.plan.deprecated } : {}),
+						...(auth.plan.disabled ? { disabled: auth.plan.disabled } : {}),
+					},
+				}
+			: {}),
 		...(oauth
 			? {
 					oauth: {
@@ -143,7 +153,7 @@ function authMethods(auth: ProviderAuth | undefined): ProviderAuthMethods | unde
 			: {}),
 		...(apiKey ? { keyAuth: { name: apiKey.name, ...(keyPage ? { keyPage } : {}) } } : {}),
 	};
-	return methods.oauth || methods.keyAuth ? methods : undefined;
+	return methods.oauth || methods.keyAuth || methods.plan ? methods : undefined;
 }
 
 function providerRows(

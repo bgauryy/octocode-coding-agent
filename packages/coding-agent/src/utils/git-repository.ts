@@ -21,9 +21,20 @@ interface Discovery {
 	repo: RepoKey;
 	git: WorkspaceGit | null | undefined;
 	expiresAt: number;
+	/** Git lookups in a row that failed for this start directory and marker: each failure doubles the wait. */
+	failures: number;
 }
 
 const cache = new Map<string, Discovery>();
+/** Most start directories remembered (worktrees, subagent folders); the oldest is discovered again when asked. */
+const CACHE_MAX = 256;
+/**
+ * How long a failed Git lookup is remembered: 1 s, doubling per failure in a row, at most a minute. Callers sit on
+ * synchronous paths (every session append, permission checks), so a Git that fails or runs into its 2 s timeout must
+ * not run again on each of them. A changed marker (the checkout repaired or replaced) is looked up at once.
+ */
+const FAILED_LOOKUP_MS = 1000;
+const FAILED_LOOKUP_MAX_MS = 60_000;
 
 /** A linked checkout's pointer can be rewritten; a normal .git directory also changes mtime on ordinary commits. */
 function revision(marker: string | undefined): string {
@@ -83,15 +94,23 @@ function discover(cwd: string): Discovery {
 		key = start;
 		git = null;
 	}
+	const failures =
+		git === undefined ? (cached && cached.marker === marker && cached.revision === stamp ? cached.failures : 0) + 1 : 0;
 	const result = {
 		marker,
 		revision: stamp,
 		home,
 		repo: { key, root, name: path.basename(root) },
 		git,
-		expiresAt: git === undefined ? Date.now() + 1000 : Infinity,
+		expiresAt:
+			git === undefined
+				? Date.now() + Math.min(FAILED_LOOKUP_MAX_MS, FAILED_LOOKUP_MS * 2 ** (failures - 1))
+				: Infinity,
+		failures,
 	};
+	cache.delete(start);
 	cache.set(start, result);
+	if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
 	return result;
 }
 

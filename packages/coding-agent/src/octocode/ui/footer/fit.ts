@@ -29,7 +29,7 @@ export function fitFooterLine(left: FooterPart[], right: FooterPart[], theme: Fo
 			.filter((part) => parts.includes(part))
 			.map((part) => part.text)
 			.join(dot);
-		return r ? `${l}${" ".repeat(Math.max(2, width - visibleWidth(l) - visibleWidth(r)))}${r}` : l;
+		return r ? `${l}${" ".repeat(Math.max(l ? 2 : 0, width - visibleWidth(l) - visibleWidth(r)))}${r}` : l;
 	};
 	while (visibleWidth(render()) > width) {
 		const next = parts

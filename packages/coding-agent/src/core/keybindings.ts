@@ -141,6 +141,10 @@ const APP_KEYBINDINGS = {
 		defaultKeys: "ctrl+s",
 		description: "Save model selection",
 	},
+	"app.models.details": {
+		defaultKeys: "ctrl+d",
+		description: "Show or hide model pricing and cache details",
+	},
 	"app.models.enableAll": {
 		defaultKeys: "ctrl+a",
 		description: "Enable all models",

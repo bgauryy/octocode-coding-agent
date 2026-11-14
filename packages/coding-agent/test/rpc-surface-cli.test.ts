@@ -136,7 +136,7 @@ describe("RPC startup records", () => {
 		expect(response(rpc.records, "p")).toMatchObject({
 			success: false,
 			authRequired: true,
-			error: expect.stringContaining("No API key found"),
+			error: expect.stringContaining("No usable credentials"),
 		});
 		rpc.child.stdin.end();
 		await rpc.closed();

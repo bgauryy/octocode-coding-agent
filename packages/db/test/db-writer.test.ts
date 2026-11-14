@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	closeSharedAgentDb,
 	DB_WRITER_QUEUE_LIMIT,
@@ -110,6 +110,40 @@ const rows = (id: string) => {
 	}
 };
 
+it("reads a consistent file snapshot on the worker and keeps raw stored lines", async () => {
+	const target = sessionFile("snapshot", 2500);
+	fs.appendFileSync(target.file, "\nnull\n{broken\n");
+	const dbWriter = writer();
+	await expect(
+		dbWriter.submit({
+			kind: "save-file",
+			sessionId: "snapshot",
+			file: target.file,
+			binding: target.stamp.binding,
+			workspace,
+		}),
+	).resolves.toBe("saved");
+	expect(rows("snapshot")).toEqual([expect.objectContaining({ id: "snapshot", type: "session" }), ...target.records]);
+});
+
+it("refuses a replaced or mismatched file before rebuilding its mirror", async () => {
+	const target = sessionFile("snapshot", 1);
+	const dbWriter = writer();
+	const command = {
+		kind: "save-file" as const,
+		sessionId: "snapshot",
+		file: target.file,
+		binding: target.stamp.binding,
+		workspace,
+	};
+	await expect(dbWriter.submit({ ...command, sessionId: "wrong" })).rejects.toThrow("identity changed");
+	const replacement = path.join(dir, "replacement");
+	fs.writeFileSync(replacement, JSON.stringify(header("snapshot")) + "\n");
+	fs.renameSync(replacement, target.file);
+	await expect(dbWriter.submit(command)).resolves.toBe("skipped");
+	expect(rows("snapshot")).toEqual([]);
+});
+
 describe("database writer worker", () => {
 	it("acknowledges after commit, applies deltas in order, and a read after the acknowledgement agrees", async () => {
 		const db = writer();
@@ -167,6 +201,17 @@ describe("database writer worker", () => {
 		fs.rmSync(file);
 		expect(await db.submit(save("s-stale", file, stamp, records))).toBe("skipped");
 		expect(rows("s-stale")).toEqual([]);
+	});
+
+	it("runs its worker without piping into this process's stdout and stderr, so writers add no listeners there", async () => {
+		const count = () => [process.stdout.listenerCount("error"), process.stderr.listenerCount("error")];
+		const before = count();
+		const db = writer();
+		const { file, stamp, records } = sessionFile("s-quiet", 1);
+		expect(await db.submit(save("s-quiet", file, stamp, records))).toBe("saved");
+		expect(db.mode).toBe("worker");
+		// A piped worker adds one `error` listener to each stream for as long as it lives (one per writer in a process).
+		expect(count()).toEqual(before);
 	});
 
 	it("rejects a failed command with its error and commits nothing", async () => {
@@ -310,6 +355,25 @@ await import(${JSON.stringify(workerEntry)});
 		expect(results).toEqual(["saved", "current"]);
 		expect(db.mode).toBe("inline");
 		expect(rows("s-inline")).toHaveLength(3);
+		// The fallback is visible: why, and what ran on this thread.
+		const stats = db.stats();
+		expect(stats).toMatchObject({ mode: "inline", fallback: "load-failed", pending: 0, inlineRuns: 2 });
+		expect(stats.inlineMaxMs).toBeLessThanOrEqual(stats.inlineMs);
+	});
+
+	it("reports a serving worker without a fallback", async () => {
+		const db = writer();
+		const { file, stamp, records } = sessionFile("s-stats", 1);
+		expect(await db.submit(save("s-stats", file, stamp, records))).toBe("saved");
+		expect(db.stats()).toEqual({
+			role: "coordination",
+			mode: "worker",
+			pending: 0,
+			restarts: 0,
+			inlineRuns: 0,
+			inlineMs: 0,
+			inlineMaxMs: 0,
+		});
 	});
 
 	it("on this thread, waits as briefly for another process's lock on the transcript mirror as on the coordination file", async () => {
@@ -351,6 +415,7 @@ await import(${JSON.stringify(workerEntry)});
 		const { file, stamp, records } = sessionFile("s-silent", 1);
 		expect(await db.submit(save("s-silent", file, stamp, records))).toBe("saved");
 		expect(db.mode).toBe("inline");
+		expect(db.stats()).toMatchObject({ fallback: "load-failed", inlineRuns: 1 });
 		expect(rows("s-silent")).toHaveLength(2);
 	});
 
@@ -390,4 +455,23 @@ for (let n = 0; n < 3; n++) sharedDbWriter(locations).submit(command).catch(() =
 		expect(code).toBe(0);
 		expect(took).toBeLessThan(4_000);
 	}, 20_000);
+});
+
+it("releases startup deadlines across repeated writer closes before readiness", async () => {
+	vi.useFakeTimers();
+	try {
+		const baseline = vi.getTimerCount();
+		const fixture = sessionFile("closing", 0);
+		for (let cycle = 0; cycle < 10; cycle++) {
+			const instance = writer(new URL("data:text/javascript,setInterval(() => {}, 1000)"));
+			const result = instance.submit(save("closing", fixture.file, fixture.stamp, [])).catch((error: unknown) => error);
+			expect(vi.getTimerCount()).toBe(baseline + 1);
+			instance.close();
+			instance.close();
+			expect(vi.getTimerCount()).toBe(baseline);
+			expect(await result).toBeInstanceOf(DbWriterUnavailableError);
+		}
+	} finally {
+		vi.useRealTimers();
+	}
 });

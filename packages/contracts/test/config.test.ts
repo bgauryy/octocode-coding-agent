@@ -33,6 +33,19 @@ const snapshot: ConfigSnapshot = {
 };
 
 describe("config schemas", () => {
+	it("validates a complete default selection and refuses half-pairs or control characters", () => {
+		const command = { key: "modelDefault", scope: "global", value: { provider: "local", model: "qwen:latest" } };
+		expect(Value.Check(ConfigSettingCommandSchema, command)).toBe(true);
+		expect(Value.Check(ConfigSettingCommandSchema, { ...command, value: null })).toBe(true);
+		for (const value of [
+			{ provider: "local" },
+			{ model: "qwen" },
+			{ provider: "local", model: "" },
+			{ provider: "local", model: "bad\nmodel" },
+			{ provider: "local", model: "qwen", apiKey: "secret" },
+		])
+			expect(Value.Check(ConfigSettingCommandSchema, { ...command, value })).toBe(false);
+	});
 	it("accepts a snapshot with every source kind, an unset setting and a workspace", () => {
 		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);
 		for (const kind of CREDENTIAL_SOURCES) expect(Value.Check(CredentialSourceSchema, kind)).toBe(true);

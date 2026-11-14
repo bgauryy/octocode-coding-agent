@@ -4,7 +4,7 @@ import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
-import { runningPid } from "../shared/session-liveness.ts";
+import { liveProcess, sameProcessAsync } from "../shared/process.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
 import { currentSessionWorkspace, sessionDir, sessionDirName, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
@@ -42,7 +42,7 @@ interface ListedSession {
 }
 
 /** Whether a session's process is running now (this one included). */
-const live = ({ extra }: ListedSession): boolean => runningPid(extra?.pid, extra?.pid_started) !== undefined;
+const live = ({ extra }: ListedSession): boolean => liveProcess(extra?.pid, extra?.pid_started);
 
 function title({ info, parentPrompt }: ListedSession): string {
 	// A fork has no prompt of its own until its first new one: show what it was forked from.
@@ -77,7 +77,7 @@ function details(row: ListedSession, current: string | undefined): string {
 		`started: ${at(info.created)} UTC · last active: ${at(info.modified)} UTC`,
 		...(info.parentSessionPath ? [`forked from: ${info.parentSessionPath}`] : []),
 		...(info.firstMessage && info.name ? [`first prompt: ${shownLine(info.firstMessage, 300)}`] : []),
-		`tokens: ${extra?.tokens ?? 0} · live: ${live(row) ? `yes (pid ${runningPid(extra?.pid, extra?.pid_started)})` : "no"}`,
+		`tokens: ${extra?.tokens ?? 0} · live: ${live(row) ? `yes (pid ${extra?.pid})` : "no"}`,
 		`octocode data: ${sessionDir(info.id, undefined, currentSessionWorkspace() ? info.cwd : undefined)}`,
 	].join("\n");
 }
@@ -153,7 +153,7 @@ function pickerExtras(extra: SessionExtra | undefined, links: SessionLinks | und
 	return {
 		...(extra
 			? {
-					live: runningPid(extra.pid, extra.pid_started) !== undefined,
+					live: liveProcess(extra.pid, extra.pid_started),
 					...(extra.branch ? { branch: shownLine(extra.branch, 40) } : {}),
 					...(extra.cost > 0 || extra.unpriced === 1
 						? { cost: formatCost({ cost: extra.cost, unpriced: extra.unpriced === 1 }) }
@@ -261,10 +261,10 @@ export function registerSessionsCommand(
 async function resume(ctx: ExtensionCommandContext, row: ListedSession, current: string | undefined): Promise<void> {
 	if (row.info.id === current) return notify(ctx.ui, "That is the current session.", "info");
 	if (
-		live(row) &&
+		(await sameProcessAsync(row.extra?.pid, row.extra?.pid_started)) &&
 		!(await ctx.ui.confirm(
 			"Session is running",
-			`Another Octocode process (pid ${runningPid(row.extra?.pid, row.extra?.pid_started)}) has this session open. Resume it here as well?`,
+			`Another Octocode process (pid ${row.extra?.pid}) has this session open. Resume it here as well?`,
 		))
 	)
 		return;
@@ -302,7 +302,7 @@ async function forget(
 	if (row.info.id === current)
 		return notify(ctx.ui, "The current session cannot be forgotten while it runs.", "warning");
 	// Its process would keep writing output, logs and checkpoints into the folder, and its extras would come back.
-	if (live(row) && row.extra?.pid !== process.pid)
+	if (row.extra?.pid !== process.pid && (await sameProcessAsync(row.extra?.pid, row.extra?.pid_started)))
 		return notify(
 			ctx.ui,
 			`That session is open in another Octocode process (pid ${row.extra?.pid}); close it there first.`,

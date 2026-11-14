@@ -76,7 +76,8 @@ describe("models.json hot reload", () => {
 
 		await renderedAfterRefresh;
 		const rendered = stripAnsi(selector.render(120).join("\n"));
-		expect(rendered).toContain("new-model [new-provider · API key]");
-		expect(rendered).not.toContain("old-model [old-provider");
+		expect(rendered).toContain("new-provider · API key");
+		expect(rendered).toContain("new-model");
+		expect(rendered).not.toContain("old-model");
 	});
 });

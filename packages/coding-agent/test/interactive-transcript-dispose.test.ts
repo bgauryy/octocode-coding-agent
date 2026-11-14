@@ -52,6 +52,24 @@ describe("transcript rows are disposed when dropped", () => {
 		expect(ui.requestRender).not.toHaveBeenCalled();
 	}
 
+	it("retains a nested live tool while disposing its old parent and siblings", () => {
+		const chat = new Container();
+		const parent = Object.assign(new Container(), { dispose: vi.fn() });
+		const kept = { render: () => [], invalidate() {}, dispose: vi.fn() };
+		const dropped = { render: () => [], invalidate() {}, dispose: vi.fn() };
+		parent.addChild(kept);
+		parent.addChild(dropped);
+		chat.addChild(parent);
+		disposeTranscript(chat, [kept]);
+		expect(parent.dispose).toHaveBeenCalledOnce();
+		expect(dropped.dispose).toHaveBeenCalledOnce();
+		expect(kept.dispose).not.toHaveBeenCalled();
+		chat.clear();
+		chat.addChild(kept);
+		disposeTranscript(chat);
+		expect(kept.dispose).toHaveBeenCalledOnce();
+	});
+
 	it("the rows keep the clock running while mounted", async () => {
 		const ui = fakeUi();
 		const chat = new Container();

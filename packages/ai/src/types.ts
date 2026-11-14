@@ -67,6 +67,7 @@ export type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	ToolCallPhases,
 	ToolReference,
 	ToolResultMessage,
 	TranscriptContext,

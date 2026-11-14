@@ -262,3 +262,42 @@ it("pages older activities independently and discards them when the branch reset
 	expect(screen.queryByRole("heading", { name: "Earlier usage" })).toBeNull();
 	expect(screen.queryByRole("button", { name: "Load earlier session updates" })).toBeNull();
 });
+
+it("bounds mounted history across pages without changing activity cursors or jumping on duplicate pages", async () => {
+	const page = (index: number) => ({
+		messages: [],
+		tools: [],
+		hasMore: false,
+		activities: Array.from({ length: 50 }, (_, item) =>
+			activity(`page-${index}-${item}`, { text: `page-${index}-row-${item}` }),
+		),
+		activityBefore: `page-${index}-0`,
+		hasMoreActivities: true,
+	});
+	responses = [page(0), page(1), page(2), page(2), { ...page(2), activities: [], hasMoreActivities: false }];
+	render(<HistoryPanel />, { wrapper: Wrapper });
+	announce({ ...snapshot, activities: [activity("recent")], activityBefore: "recent", hasMoreActivities: true });
+	for (let index = 0; index < 3; index++)
+		await userEvent.click(screen.getByRole("button", { name: "Load earlier session updates" }));
+	const list = () => screen.getByRole("list", { name: "Loaded session updates" });
+	expect(list().children).toHaveLength(100);
+	expect(list().children[0]).toHaveTextContent("page-2-row-0");
+	await userEvent.click(screen.getByRole("button", { name: "Newer loaded" }));
+	expect(list().children).toHaveLength(50);
+	const anchor = list().children[0].textContent;
+	await userEvent.click(screen.getByRole("button", { name: "Load earlier session updates" }));
+	expect(list().children[0].textContent).toBe(anchor);
+	await userEvent.click(screen.getByRole("button", { name: "Load earlier session updates" }));
+	expect(list().children[0].textContent).toBe(anchor);
+	expect(
+		requests.map((request) => new URL(request.url, "http://localhost").searchParams.get("activityBefore")),
+	).toEqual(["recent", "page-0-0", "page-1-0", "page-2-0", "page-2-0"]);
+	act(() =>
+		FakeSocket.instances[0].receive(
+			"application",
+			frame(1, { type: "event", event: { type: "session.reset", messages: [], tools: [], activities: [] } }),
+		),
+	);
+	expect(screen.queryByRole("list", { name: "Loaded session updates" })).toBeNull();
+	expect(screen.queryByRole("searchbox")).toBeNull();
+});

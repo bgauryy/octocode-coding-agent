@@ -375,7 +375,7 @@ export class ApplicationTranscript {
 	}
 
 	window(): { messages: ApplicationMessage[]; tools: ApplicationTool[] } {
-		return transcriptWindow(this.messages.values(), this.tools.values());
+		return transcriptWindow(this.messages, this.tools.values());
 	}
 	clear(): void {
 		this.assets.clear();

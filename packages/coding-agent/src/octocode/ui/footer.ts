@@ -5,7 +5,16 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { chipStore } from "../permission/chip-store.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
-import { addReply, emptyTotals, modelLookup, type Spend, spendOf, unpricedModel } from "../shared/util.ts";
+import {
+	addReply,
+	emptyTotals,
+	memoizedModelLookup,
+	modelLookup,
+	type ModelLookup,
+	type Spend,
+	spendOf,
+	unpricedModel,
+} from "../shared/util.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { registerFallbackNotice, registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
 import { type FooterState, footerLines } from "./footer/rows.ts";
@@ -44,7 +53,7 @@ export function registerFooter(api: ExtensionAPI): void {
 	const scan = new SpendScan();
 	/** Compaction entries among those the scan has read (`appended`), so counting them never reads the session again. */
 	let compactions = 0;
-	const addEntry = (entry: unknown, ctx: ExtensionContext) => add(scan.entry(entry), ctx);
+	const addEntry = (entry: unknown, ctx: ExtensionContext, find?: ModelLookup) => add(scan.entry(entry), ctx, find);
 	/**
 	 * Spend recorded outside a reply (a compaction summary, a cache refresh, a side question) since the last look, by the
 	 * rule of `SpendScan.recorded`: only `usage` entries, each once.
@@ -60,17 +69,25 @@ export function registerFooter(api: ExtensionAPI): void {
 	const countCompactions = () => {
 		set({ compactions });
 	};
-	const add = (spend: Spend | undefined, ctx: ExtensionContext) => {
+	const add = (spend: Spend | undefined, ctx: ExtensionContext, find?: ModelLookup) => {
 		if (!spend) return;
 		// A new object: the store's subscribers compare totals by identity.
 		const usage = { ...(pending.usage ?? store.getState().usage) };
-		addReply(usage, spend.usage, unpricedModel(spend, modelLookup(ctx)) !== undefined);
+		addReply(usage, spend.usage, unpricedModel(spend, find ?? modelLookup(ctx)) !== undefined);
 		set({ usage });
 	};
 	const sample = (ctx: ExtensionContext) => {
 		const model = ctx.model;
 		const usage = ctx.getContextUsage();
-		const limit = model ? autoCompactAt(model, compactionThinking(api)) : usage?.contextWindow;
+		// Usage carries the effective window (including overrides and the latest physical route).
+		const limit =
+			usage?.compactionThreshold ??
+			(model
+				? autoCompactAt(
+						{ ...model, contextWindow: usage?.contextWindow ?? model.contextWindow },
+						compactionThinking(api),
+					)
+				: usage?.contextWindow);
 		set({
 			model: model?.id,
 			provider: model?.provider,
@@ -96,9 +113,10 @@ export function registerFooter(api: ExtensionAPI): void {
 		set({ running: false, usage: emptyTotals() });
 		scan.reset();
 		compactions = 0;
+		const find = memoizedModelLookup(modelLookup(ctx));
 		for (const entry of scan.appended(ctx.sessionManager).entries) {
 			if (isCompaction(entry)) compactions++;
-			addEntry(entry, ctx);
+			addEntry(entry, ctx, find);
 		}
 		countCompactions();
 		sample(ctx);

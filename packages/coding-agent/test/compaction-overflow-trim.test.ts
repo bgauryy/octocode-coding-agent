@@ -3,6 +3,7 @@ import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { generateSummaryWithUsage, generateTurnPrefixSummary } from "../src/core/compaction/index.ts";
 import { SUMMARY_MAX_OUTPUT_TOKENS } from "../src/core/compaction/settings.ts";
+import { instructionSource } from "../src/core/prompt-template.ts";
 
 const model = {
 	id: "m",
@@ -97,7 +98,8 @@ describe("summarization retries on context overflow", () => {
 		expect(prompts[2]).toContain("NEWEST");
 		expect(prompts[2]).not.toContain("OLDEST");
 		expect(prompts[2]).toContain("<previous-summary>\\nOLDER-SUMMARY\\n</previous-summary>");
-		expect(prompts[2]).toContain("NEW messages to incorporate into the existing summary");
+		// The update prompt, not the first-summary one: its opening line, read from its template.
+		expect(prompts[2]).toContain(instructionSource("workflows/compaction/summarize-update.md").split("\n")[0]);
 		expect(prompts[2]).not.toContain("PREVIOUS-SUMMARY");
 		// Every message reached the summarizer in one of the two parts, and nothing was left out.
 		for (const text of ["OLDEST", "second", "third", "fourth", "NEWEST"])

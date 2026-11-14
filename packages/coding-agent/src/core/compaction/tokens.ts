@@ -84,7 +84,7 @@ function estimateWithBranch(
 /**
  * Estimate token count for a message. Standard roles use ai's shared estimator; the roles only the coding agent
  * defines (custom, bash execution, summaries) are sized here by the same `CHARS_PER_TOKEN` ratio.
- * This is conservative (overestimates tokens).
+ * This heuristic can under- or overestimate provider token counts.
  */
 export function estimateTokens(message: AgentMessage): number {
 	switch (message.role) {

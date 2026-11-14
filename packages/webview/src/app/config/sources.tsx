@@ -78,16 +78,16 @@ function SourceItem({ source, now, editable }: { source: CredentialSourceStatus;
 
 /** Names the sign-ins a provider offers, and links the page that issues its keys. */
 function Methods({ row }: { row: ProviderCredentialStatus }) {
-	const { oauth, keyAuth: apiKey } = row.auth ?? {};
+	const { oauth, keyAuth: apiKey, plan } = row.auth ?? {};
 	const names = [
 		oauth ? (oauth.isSubscription ? "Subscription sign-in" : "Account sign-in") : undefined,
-		apiKey ? "API key" : undefined,
+		apiKey?.name,
 	].filter((name): name is string => !!name);
-	if (names.length === 0) return null;
+	if (names.length === 0 && !plan) return null;
 	const keyPage = apiKey?.keyPage ? safeWebLink(apiKey.keyPage) : null;
 	return (
-		<p className="config-methods muted">
-			Sign in with: {names.join(" · ")}
+		<div className="config-methods muted">
+			{names.length ? `Sign in with: ${names.join(" · ")}` : "Plan access"}
 			{keyPage && (
 				<>
 					{" "}
@@ -101,7 +101,21 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 					</a>
 				</>
 			)}
-		</p>
+			{plan && (
+				<p>
+					{plan.billing === "plan" ? "Billed by plan" : "Billed per token"}.{" "}
+					{safeWebLink(plan.terms) ? (
+						<a href={safeWebLink(plan.terms)!} target="_blank" rel="noopener noreferrer">
+							Plan terms
+						</a>
+					) : (
+						plan.terms
+					)}
+					{plan.deprecated && <span> · Deprecated: {plan.deprecated}</span>}
+					{plan.disabled && <output> · Paused: {plan.disabled}</output>}
+				</p>
+			)}
+		</div>
 	);
 }
 
@@ -132,10 +146,7 @@ export function ProviderRow({
 			<div className="config-row-head">
 				<span className="config-name">{title}</span>
 				{row.name && row.name !== row.provider && <code className="muted">{row.provider}</code>}
-				<Badge
-					tone={row.configured ? "success" : "neutral"}
-					icon={<StateMark state={row.configured ? "done" : "pending"} size={12} />}
-				>
+				<Badge tone="neutral" icon={<StateMark state={row.configured ? "waiting" : "pending"} size={12} />}>
 					{row.configured ? "Configured" : "Not configured"}
 				</Badge>
 			</div>

@@ -6,11 +6,14 @@ import { isImageLine } from "../terminal-image.ts";
 import { compositeTuiLine } from "../tui/composite.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
+import { stripTerminalSequences } from "../utils/ansi-codes.ts";
+import { sliceByColumn } from "../utils/columns.ts";
 import type { ScrollToEndIndicatorRect } from "./types.ts";
 
 /**
  * Center the jump-to-end label on the last row of a follow-end scroll view that is scrolled away
- * from its end. Returns the clickable rectangle when the label was drawn.
+ * from its end. Returns the clickable rectangle when the label was drawn. Text that ends at least one cell before
+ * the label stays beside it; text the label would cut mid-word is blanked across the view, so no fragment shows.
  */
 export function compositeScrollToEndIndicator(
 	screen: string[],
@@ -33,16 +36,22 @@ export function compositeScrollToEndIndicator(
 			scrollView.scrollTop -
 			scrollView.viewportHeight,
 	);
-	const label = truncateToWidth(scrollToEndIndicator(rowsBelow), clip.width, "");
+	const label = truncateToWidth(scrollToEndIndicator(rowsBelow), clip.width, "…");
 	const labelWidth = visibleWidth(label);
 	const column = clip.x + Math.floor((clip.width - labelWidth) / 2);
 	const rightEdge = scrollbarColumn ?? clip.x + clip.width;
 	const availableWidth = Math.max(0, rightEdge - column);
-	const text = truncateToWidth(label, availableWidth, "");
+	const text = truncateToWidth(label, availableWidth, "…");
 	const textWidth = visibleWidth(text);
 	if (textWidth === 0) return { screen };
 	const result = [...screen];
-	result[row] = compositeTuiLine(result[row] ?? "", text, column, textWidth, width);
+	let base = result[row] ?? "";
+	const covered = stripTerminalSequences(sliceByColumn(base, clip.x, column + textWidth - clip.x)).trimEnd();
+	if (visibleWidth(covered) > column - clip.x - 1) {
+		const blankWidth = rightEdge - clip.x;
+		base = compositeTuiLine(base, " ".repeat(blankWidth), clip.x, blankWidth, width);
+	}
+	result[row] = compositeTuiLine(base, text, column, textWidth, width);
 	return { screen: result, rect: { row, column, width: textWidth } };
 }
 

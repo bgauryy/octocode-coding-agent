@@ -22,6 +22,8 @@ export interface ContextUsage {
 	/** Estimated context tokens, or null if unknown (e.g. right after compaction, before next LLM response). */
 	tokens: number | null;
 	contextWindow: number;
+	/** Effective window less the output reserve, using the latest physical route and thinking level. */
+	compactionThreshold?: number;
 	/** Context usage as percentage of context window, or null if tokens is unknown. */
 	percent: number | null;
 }

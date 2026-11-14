@@ -46,7 +46,7 @@ describe("set_auto_retry", () => {
 
 describe("switch_session", () => {
 	it("refuses a session another process has open and names the pid, without switching", async () => {
-		vi.mocked(sessionFileRunningPid).mockReturnValue(process.pid + 1);
+		vi.mocked(sessionFileRunningPid).mockResolvedValue(process.pid + 1);
 		const { rpc, switchSession } = host();
 		const response = await handleCommand(rpc, { type: "switch_session", id: "1", sessionPath: "/s/other.jsonl" });
 		expect(response).toMatchObject({ id: "1", command: "switch_session", success: false });
@@ -59,7 +59,7 @@ describe("switch_session", () => {
 		["no process has it", undefined],
 		["this process has it", process.pid],
 	])("switches when %s", async (_name, pid) => {
-		vi.mocked(sessionFileRunningPid).mockReturnValue(pid);
+		vi.mocked(sessionFileRunningPid).mockResolvedValue(pid);
 		const { rpc, switchSession } = host();
 		const response = await handleCommand(rpc, { type: "switch_session", sessionPath: "/s/other.jsonl" });
 		expect(response).toMatchObject({ success: true, data: { cancelled: false } });

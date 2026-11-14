@@ -28,7 +28,7 @@ export function formatNoModelSelectedMessage(): string {
 
 export function formatNoApiKeyFoundMessage(provider: string): string {
 	const providerDisplay = provider === UNKNOWN_PROVIDER ? "the selected model" : provider;
-	return `No API key found for ${providerDisplay}. Type /providers to sign in or add a key, then /model to pick a model.\n${getDocsLine()}`;
+	return `No usable credentials for ${providerDisplay}. Type /providers to sign in or configure credentials, then /model to pick a model.\n${getDocsLine()}`;
 }
 
 /** The provider uses OAuth and its sign-in no longer works: expired credentials, or the network is down. */

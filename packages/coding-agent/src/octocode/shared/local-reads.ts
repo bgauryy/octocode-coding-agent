@@ -248,7 +248,7 @@ export async function completedLocalReads(
 	collect(data, only, cwd, 0, shown, only === undefined ? batchRequests(input, cwd) : []);
 	const reads: LocalRead[] = [];
 	for (const file of new Set([...shown.lines.keys(), ...shown.texts.keys()])) {
-		const source = unchangedSource(file, snapshots);
+		const source = await unchangedSource(file, snapshots);
 		if (!source) continue;
 		const base = { file, sha256: source.sha256, size: source.size };
 		const texts = (shown.texts.get(file) ?? []).filter((text) => Buffer.byteLength(text) === source.size);
@@ -272,11 +272,15 @@ export async function completedLocalReads(
 	return reads;
 }
 
-/** The file's lines when it is unchanged since its snapshot (or, in a searched directory, since before the search began). */
-function unchangedSource(
+/**
+ * The file's lines when it is unchanged since its snapshot (or, in a searched directory, since before the search began).
+ * Reads through libuv: a search can show dozens of files of up to `CREDIT_MAX_BYTES` each, too much to read on the
+ * main thread after every call.
+ */
+async function unchangedSource(
 	file: string,
 	snapshots: Map<string, Snapshot>,
-): { sha256: string; size: number; lines: string[] } | undefined {
+): Promise<{ sha256: string; size: number; lines: string[] } | undefined> {
 	const before = snapshots.get(file);
 	let searchedAt: number | undefined;
 	if (!before?.sha256)
@@ -285,16 +289,16 @@ function unchangedSource(
 				searchedAt = snapshot.searchedAt;
 	if (!before?.sha256 && searchedAt === undefined) return undefined;
 	try {
-		const stat = fs.statSync(file);
+		const stat = await fs.promises.stat(file);
 		if (!stat.isFile() || stat.size > CREDIT_MAX_BYTES) return undefined;
-		const data = fs.readFileSync(file);
+		const data = await fs.promises.readFile(file);
 		const digest = sha256(data);
 		if (before?.sha256) {
 			if (stat.size !== before.size || stat.mtimeMs !== before.mtimeMs || stat.ctimeMs !== before.ctimeMs)
 				return undefined;
 			if (digest !== before.sha256) return undefined;
 		} else if (searchedAt !== undefined && Math.max(stat.mtimeMs, stat.ctimeMs) >= searchedAt) return undefined;
-		const after = fs.statSync(file);
+		const after = await fs.promises.stat(file);
 		if (after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || after.size !== data.length)
 			return undefined;
 		return { sha256: digest, size: data.length, lines: data.toString("utf8").split("\n") };

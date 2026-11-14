@@ -1,5 +1,6 @@
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
 import type { AgentEvent, AgentToolCall, AgentToolCallOutcome, AgentToolResult } from "../types.ts";
+import { sinceMs, toolCallPhases } from "./tool-timing.ts";
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
@@ -16,7 +17,11 @@ export function emitToolExecutionUpdate(toolCall: AgentToolCall, emit: AgentEven
 		});
 }
 
+/** When each call ended (`performance.now()`), so its result message can say how long the result was held. */
+const endedAt = new WeakMap<AgentToolCallOutcome, number>();
+
 export async function emitToolExecutionEnd(finalized: AgentToolCallOutcome, emit: AgentEventSink): Promise<void> {
+	endedAt.set(finalized, performance.now());
 	await emit({
 		type: "tool_execution_end",
 		toolCallId: finalized.toolCall.id,
@@ -28,6 +33,8 @@ export async function emitToolExecutionEnd(finalized: AgentToolCallOutcome, emit
 }
 
 export function createToolResultMessage(finalized: AgentToolCallOutcome): ToolResultMessage {
+	const ended = endedAt.get(finalized);
+	const phases = toolCallPhases({ ...finalized.phases, ...(ended === undefined ? {} : { heldMs: sinceMs(ended) }) });
 	return {
 		role: "toolResult",
 		toolCallId: finalized.toolCall.id,
@@ -42,6 +49,7 @@ export function createToolResultMessage(finalized: AgentToolCallOutcome): ToolRe
 		usage: finalized.result.usage,
 		isError: finalized.isError,
 		...(finalized.durationMs === undefined ? {} : { durationMs: finalized.durationMs }),
+		...(phases ? { phases } : {}),
 		timestamp: Date.now(),
 	};
 }

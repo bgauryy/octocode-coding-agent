@@ -32,6 +32,8 @@ export function conflictingLease(
 	now: number,
 	retireOwner: (owner: string, now: number) => boolean,
 ): Lease | undefined {
+	// Every check below looks for another owner's live lease: with none anywhere, no path or checkout needs resolving.
+	if (!leases.anyLiveOfOthers(db, self, now)) return undefined;
 	const key = pathKey(workspace, file);
 	const checks: NestedCheck[] = [{ workspace, key, kind }, ...nestedChecks(db, team, workspace, key, kind, now)];
 	for (const check of checks) {

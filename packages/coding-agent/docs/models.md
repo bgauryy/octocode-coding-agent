@@ -36,15 +36,15 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 | Thinking level   | `/effort` (`Ctrl+S` saves the startup level); only levels the model supports are offered                                                                                |
 | Context budget   | `/context` shows usage; `/context size` or `/context 32k` sets a budget; `/context reset` restores catalog capacity                                                     |
 
-- Each model row's badge names its provider and the provider's kind, such as `[openai · subscription]`, `[my-gateway · API key]` or `[ollama · local]`; the selected model's details name it too ([provider kinds](providers.md#subscriptions-and-billing)).
+- Provider headings name the access method, such as `openai · subscription` or `ollama · local`. A check marks the current model; **default** marks the startup preference. The header identifies whether that preference comes from global, workspace or run settings.
 - A model switch keeps your last chosen level (from `/effort` or `--thinking`), lowered to what the new model supports; switching back restores it. A level in `modelThinkingLevels` or the `--models` pattern wins; before you choose one, `defaultThinkingLevel` applies.
 - Context budgets apply to the selected physical model in this session, cannot exceed its catalog capacity, have a minimum of 8,192 tokens (or the full capacity of smaller models), need an idle session and are not saved.
-- Model details show catalog context, maximum output, thinking support, input/output/cache prices and known cache lifetimes. A time-limited price (`cost.until` with `cost.after`) shows today's rates. Prices are provider-specific estimates; reasoning output, cache-write retention, long-context tiers, service tiers, subscription billing, credits and regional premiums can change totals.
+- The compact picker shows context, output limits, image/reasoning support and billing. **Ctrl+D** toggles full identifiers, names, catalog prices and cache lifetimes; **PgUp/PgDn** scroll those details. A time-limited price (`cost.until` with `cost.after`) shows today's rates. For subscription routes, catalog API prices are reference estimates. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
 ### Save a startup default
 
-Open `/model`, highlight the model, then press **Ctrl+S** (or your configured **set as default** key). This selects it for the current chat and saves its provider, model ID and any required shortcut-list addition together. Success is shown after the write finishes. If saving fails, the chat keeps the selected model and a warning explains that the default was not saved.
+Open `/model`, highlight the model, then press **Ctrl+S** (the **global default** action). This selects it for the current chat and saves its provider, model ID and any required shortcut-list addition together. Success is shown after the write finishes. If saving fails, the chat keeps the selected model and a warning explains that the default was not saved. Model shortcut saves also wait for storage; failed saves retain the unsaved state and can be retried.
 
 The saved global default applies to new sessions. Trusted workspace or run settings can override it; the picker says when they do. Resuming an existing session restores its prior available model. Disabled or unavailable providers are skipped rather than reactivated by a saved selection.
 

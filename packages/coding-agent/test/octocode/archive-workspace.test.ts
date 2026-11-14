@@ -44,7 +44,7 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-it("shares explicit project notes and isolates default workspace notes", () => {
+it("shares explicit project notes and isolates default workspace notes", async () => {
 	const db = sharedAgentDb();
 	const project = new MemoryStore(db, root);
 	const old = project.set({ title: "shared project decision", author: "user" }).memory;
@@ -58,7 +58,7 @@ it("shares explicit project notes and isolates default workspace notes", () => {
 	const sibling = memoryStore(other);
 	expect(sibling.get(note.id)).toBeUndefined();
 	expect(sibling.updatedAt([note.id])).toEqual(new Map());
-	sibling.markUsed([note.id]);
+	await sibling.markUsed([note.id]);
 	expect(workspace.get(note.id)?.useCount).toBe(0);
 	expect(project.get(note.id)).toBeUndefined();
 	expect(() => project.delete(note.id)).toThrow("No memory");

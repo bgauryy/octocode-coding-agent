@@ -2,6 +2,7 @@ import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { rewritePrompt } from "./rewrite.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 
 /** How long the helper may take before the user is offered the original. */
 const REWRITE_TIMEOUT_MS = 30_000;
@@ -18,7 +19,8 @@ async function requestRewrite(
 	prompt: string,
 ): Promise<{ text: string; model: string } | { error: string }> {
 	const skip = new AbortController();
-	const timeout = AbortSignal.timeout(REWRITE_TIMEOUT_MS);
+	const limit = deadline(REWRITE_TIMEOUT_MS);
+	const timeout = limit.signal;
 	ctx.ui.setStatus(STATUS_KEY, "✦ Optimizing prompt… (Esc skips)", "accent");
 	const stopListening = ctx.ui.onTerminalInput((data) => {
 		if (data !== "\x1b") return undefined;
@@ -32,6 +34,7 @@ async function requestRewrite(
 		if (timeout.aborted) return { error: `the helper did not answer within ${REWRITE_TIMEOUT_MS / 1000} s` };
 		return result;
 	} finally {
+		limit.clear();
 		stopListening();
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 	}

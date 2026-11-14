@@ -79,7 +79,7 @@ export async function pickSession(
 						if (!next) return;
 						// The open session is live in this process: rename through it. Another file has no live manager here.
 						if (!file || file === manager.getSessionFile()) host.session.setSessionName(next);
-						else SessionManager.open(file).appendSessionInfo(next);
+						else (await SessionManager.openAsync(file)).appendSessionInfo(next);
 					},
 				},
 				manager.getSessionFile(),

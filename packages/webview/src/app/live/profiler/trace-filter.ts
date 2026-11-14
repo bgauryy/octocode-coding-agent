@@ -8,7 +8,7 @@ import { overlapsRange } from "./trace-view.ts";
 export const KIND_CHIPS = [
 	{ id: "requests", label: "Requests", kinds: ["request"] },
 	{ id: "tools", label: "Tools", kinds: ["tool"] },
-	{ id: "waits", label: "Waits", kinds: ["wait", "permission", "idle"] },
+	{ id: "waits", label: "Waits", kinds: ["wait", "permission", "idle", "stall"] },
 	{ id: "messages", label: "Messages", kinds: ["message"] },
 ] as const;
 export type KindChip = (typeof KIND_CHIPS)[number]["id"];
@@ -23,7 +23,8 @@ export interface TraceFilter {
 
 /** An error or aborted call, an interrupt, or a request that broke the cached prefix. */
 export function isProblem(event: ProfileEvent, lookup?: RequestLookup): boolean {
-	if (event.outcome === "error" || event.outcome === "aborted" || event.kind === "interrupt") return true;
+	if (event.outcome === "error" || event.outcome === "aborted" || event.kind === "interrupt" || event.kind === "stall")
+		return true;
 	if (event.kind !== "request" || event.ref?.request === undefined) return false;
 	return lookup?.(event.agentId, event.ref.request)?.firstBreak !== undefined;
 }

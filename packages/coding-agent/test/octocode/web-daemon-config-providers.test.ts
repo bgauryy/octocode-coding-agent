@@ -54,6 +54,16 @@ afterEach(async () => {
 });
 
 describe("providers from configuration", () => {
+	it("serializes public plan terms and billing beside credential methods", async () => {
+		const snapshot = await snapshotOf();
+		expect(row(snapshot, "opencode-go")?.auth?.plan).toMatchObject({
+			billing: "plan",
+			terms: expect.stringMatching(/^https:\/\//),
+		});
+		expect(row(snapshot, "amazon-bedrock")?.auth?.keyAuth?.name).toBe("AWS credentials or bearer token");
+		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);
+		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
+	});
 	it("lists Pi's models.json and auth.json providers with their origin and never a value", async () => {
 		const snapshot = await snapshotOf();
 		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);

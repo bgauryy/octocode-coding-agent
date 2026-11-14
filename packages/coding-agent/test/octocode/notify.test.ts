@@ -101,15 +101,22 @@ describe("notify settings", () => {
 	it("finds the terminal of a client that attaches after the session started detached", () => {
 		const env = { ...TMUX, TERM_PROGRAM: "tmux" };
 		fakeTmux = installFakeTmux({ clientTermtype: "", clientTermname: "", allowPassthrough: "on" });
+		const start = Date.now();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(start);
 		expect(notifyMethod(env)).toBe("bel");
 		fakeTmux.restore();
-		// No cache reset between the two answers: the empty one must not be remembered.
+		// No cache reset between the two answers. "No client" is believed for 30 s, so a detached session does not run
+		// the synchronous tmux query for every notification; after that a client that attached since is found.
 		fakeTmux = installFakeTmux({
 			clientTermtype: "ghostty 1.3.1",
 			clientTermname: "xterm-ghostty",
 			allowPassthrough: "on",
 		});
+		clock.mockReturnValue(start + 29_000);
+		expect(notifyMethod(env)).toBe("bel");
+		clock.mockReturnValue(start + 31_000);
 		expect(notifyMethod(env)).toBe("osc777");
+		clock.mockRestore();
 		expect(notificationSequence(notifyMethod(env), "Octocode", "b", env).startsWith("\x1bPtmux;")).toBe(true);
 	});
 

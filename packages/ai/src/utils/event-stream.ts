@@ -96,11 +96,16 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
  * Event stream of one assistant response. It also times the response: the final message (`done` or `error` event, or
  * the result passed to `end()`) gets `durationMs`, measured with a monotonic clock from the stream's creation, unless
  * the message already has one or its `timestamp` predates the stream. A stream that forwards a response which started
- * elsewhere, such as a deferred result fetched later, therefore leaves it untimed.
+ * elsewhere, such as a deferred result fetched later, therefore leaves it untimed. The first content event (any event
+ * but `start`, `done` and `error`) sets `firstTokenMs` on the same message, and the longest wait between two events
+ * (from the stream's creation to its end) sets `longestGapMs`.
  */
 export class AssistantMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	readonly #startedAt = Date.now();
 	readonly #startedAtMonotonic = performance.now();
+	#firstContentAt: number | undefined;
+	#lastEventAt = this.#startedAtMonotonic;
+	#longestGap = 0;
 
 	constructor() {
 		super(
@@ -117,19 +122,33 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 	}
 
 	override push(event: AssistantMessageEvent): void {
+		this.#markEvent();
+		if (this.#firstContentAt === undefined && event.type !== "start" && event.type !== "done" && event.type !== "error")
+			this.#firstContentAt = performance.now();
 		if (event.type === "done") this.#time(event.message);
 		else if (event.type === "error") this.#time(event.error);
 		super.push(event);
 	}
 
 	override end(result?: AssistantMessage): void {
+		this.#markEvent();
 		if (result !== undefined) this.#time(result);
 		super.end(result);
+	}
+
+	#markEvent(): void {
+		if (this.done) return;
+		const now = performance.now();
+		this.#longestGap = Math.max(this.#longestGap, now - this.#lastEventAt);
+		this.#lastEventAt = now;
 	}
 
 	#time(message: AssistantMessage): void {
 		if (this.done || message.durationMs !== undefined || message.timestamp < this.#startedAt) return;
 		message.durationMs = Math.max(0, Math.round(performance.now() - this.#startedAtMonotonic));
+		if (this.#firstContentAt !== undefined && message.firstTokenMs === undefined)
+			message.firstTokenMs = Math.max(0, Math.round(this.#firstContentAt - this.#startedAtMonotonic));
+		message.longestGapMs ??= Math.round(this.#longestGap);
 	}
 }
 

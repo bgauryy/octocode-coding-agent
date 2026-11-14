@@ -59,6 +59,24 @@ export function writerErrorKind(error: unknown): DbWriterErrorKind | undefined {
 	return undefined;
 }
 
+/** Why a writer runs commands on the calling thread. */
+export type DbWriterFallback = "bun" | "start-failed" | "load-failed" | "crashed" | "closed";
+
+/** What a writer did on the calling thread instead of its worker, for status and diagnostics. */
+export interface DbWriterStats {
+	role: DbWriterRole;
+	mode: "worker" | "inline";
+	/** Why it runs inline; absent while its worker serves. */
+	fallback?: DbWriterFallback;
+	/** Commands sent and not yet acknowledged. */
+	pending: number;
+	restarts: number;
+	/** Commands run on the calling thread, their total and longest duration in milliseconds. */
+	inlineRuns: number;
+	inlineMs: number;
+	inlineMaxMs: number;
+}
+
 interface Waiting {
 	request: DbWriterRequest;
 	resolve: (result: DbWriterResult) => void;
@@ -80,6 +98,10 @@ export class DbWriter {
 	private readonly waiting = new Map<number, Waiting>();
 	private idle = new Set<() => void>();
 	private loading: NodeJS.Timeout | undefined;
+	private fallback: DbWriterFallback | undefined;
+	private inlineRuns = 0;
+	private inlineMs = 0;
+	private inlineMaxMs = 0;
 
 	private readonly locations: DbWriterLocations;
 	private readonly role: DbWriterRole;
@@ -97,7 +119,27 @@ export class DbWriter {
 		// A Bun executable embeds only the entries its build names, and this writer's file is not one: there the commands
 		// run on the calling thread, as they did before the writer existed.
 		this.inline = options.entry === undefined && typeof process.versions.bun === "string";
+		if (this.inline) this.fallback = "bun";
 		live.add(this);
+	}
+
+	/** Its mode, why it runs inline, and the work it ran on the calling thread. */
+	stats(): DbWriterStats {
+		return {
+			role: this.role,
+			mode: this.mode,
+			...(this.inline && this.fallback ? { fallback: this.fallback } : {}),
+			pending: this.waiting.size,
+			restarts: this.restarts,
+			inlineRuns: this.inlineRuns,
+			inlineMs: Math.round(this.inlineMs),
+			inlineMaxMs: Math.round(this.inlineMaxMs),
+		};
+	}
+
+	private goInline(reason: DbWriterFallback): void {
+		this.inline = true;
+		this.fallback ??= reason;
 	}
 
 	/** Commands sent and not yet acknowledged. */
@@ -171,21 +213,31 @@ export class DbWriter {
 
 	/** Stop the worker now; unacknowledged commands reject as unavailable. Later commands run on the calling thread. */
 	close(): void {
+		clearTimeout(this.loading);
+		this.loading = undefined;
 		const worker = this.worker;
 		this.worker = undefined;
-		this.inline = true;
+		this.goInline("closed");
 		live.delete(this);
 		this.fail(new DbWriterUnavailableError("Database writer closed"));
 		void worker?.terminate().catch(() => undefined);
 	}
 
 	private runInline(command: DbWriterCommand): Promise<DbWriterResult> {
+		if (command.kind === "save-file")
+			return Promise.reject(new DbWriterUnavailableError("Large transcript rebuild requires the database worker"));
+		const started = performance.now();
 		try {
 			const agent = sharedDatabase(this.locations);
 			return Promise.resolve(runWriterCommandWithin(agent, command, INLINE_BUSY_MS));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return Promise.reject(new DbWriterCommandError(message, isBusy(error)));
+		} finally {
+			const took = performance.now() - started;
+			this.inlineRuns += 1;
+			this.inlineMs += took;
+			this.inlineMaxMs = Math.max(this.inlineMaxMs, took);
 		}
 	}
 
@@ -194,9 +246,11 @@ export class DbWriter {
 		let worker: Worker;
 		try {
 			const workerData: DbWriterWorkerData = { worker: DB_WRITER_WORKER, locations: this.locations, role: this.role };
-			worker = new Worker(this.entry, { workerData });
+			// Its own output streams: the writer prints nothing, and a piped worker adds `error` listeners to this
+			// process's stdout and stderr for as long as it lives.
+			worker = new Worker(this.entry, { workerData, stdout: true, stderr: true });
 		} catch {
-			this.inline = true;
+			this.goInline("start-failed");
 			return undefined;
 		}
 		this.worker = worker;
@@ -220,6 +274,7 @@ export class DbWriter {
 		if (message.type === "ready") {
 			this.ready = true;
 			clearTimeout(this.loading);
+			this.loading = undefined;
 			return;
 		}
 		const waiting = this.waiting.get(message.id);
@@ -234,10 +289,11 @@ export class DbWriter {
 		if (this.worker !== worker) return;
 		this.worker = undefined;
 		clearTimeout(this.loading);
+		this.loading = undefined;
 		void worker.terminate().catch(() => undefined);
 		if (!this.ready) {
 			// The worker's code never loaded (a layout without its file): nothing ran, so run what was sent here, in order.
-			this.inline = true;
+			this.goInline("load-failed");
 			const sent = [...this.waiting.values()];
 			this.waiting.clear();
 			for (const each of sent) this.runInline(each.request.command).then(each.resolve, each.reject);
@@ -245,7 +301,7 @@ export class DbWriter {
 			return;
 		}
 		this.restarts += 1;
-		if (this.restarts > MAX_RESTARTS) this.inline = true;
+		if (this.restarts > MAX_RESTARTS) this.goInline("crashed");
 		this.fail(new DbWriterUnavailableError("Database writer stopped before acknowledging"));
 	}
 
@@ -323,6 +379,11 @@ function shared(locations: DbWriterLocations, role: DbWriterRole, file: string):
 		writers.set(key, writer);
 	}
 	return writer;
+}
+
+/** The stats of this process's shared writers, in the order they started. */
+export function dbWriterStats(): DbWriterStats[] {
+	return [...writers.values()].map((writer) => writer.stats());
 }
 
 /** Closes all process-owned agent databases and their writers (tests, process exit); the next access opens fresh ones. */

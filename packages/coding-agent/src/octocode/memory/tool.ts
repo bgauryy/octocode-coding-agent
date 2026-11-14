@@ -143,7 +143,7 @@ export function createMemoryTool(
 				}
 				case "get": {
 					if (!params.id) throw new Error("get needs id.");
-					return textResult<MemoryDetails>(getMemory(store, params.id), { mode: "get", hits: 1 });
+					return textResult<MemoryDetails>(await getMemory(store, params.id), { mode: "get", hits: 1 });
 				}
 				case "search":
 				case "list": {

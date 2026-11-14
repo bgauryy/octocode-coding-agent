@@ -318,14 +318,8 @@ export class MemoryStore {
 		});
 	}
 
-	/** Records that `ids` were handed to the model. */
-	markUsed(ids: readonly number[], now = Date.now()): void {
-		if (ids.length === 0) return;
-		this.agentDb.transaction(() => memories.markUsed(this.db, this.context, ids, now));
-	}
-
-	/** `markUsed` through the database writer: this thread never waits for another process's write lock. */
-	async markUsedLater(ids: readonly number[], now = Date.now()): Promise<void> {
+	/** Records that `ids` were handed to the model through the database writer; resolves after commit. */
+	async markUsed(ids: readonly number[], now = Date.now()): Promise<void> {
 		if (ids.length === 0) return;
 		await this.writer().post({ kind: "memory-used", context: this.context, ids: [...ids], now });
 	}
@@ -391,7 +385,7 @@ export function describeMemory(memory: Memory, now = Date.now()): string {
 	return [
 		memoryLine(memory, 0),
 		...(memory.keywords ? [`keywords: ${memory.keywords}`] : []),
-		`author: ${memory.author} · updated ${days(memory.updatedAt)} · used ${memory.useCount}×${memory.lastUsed ? ` (last ${days(memory.lastUsed)})` : ""}`,
+		`author: ${memory.author}${memory.sourceSession ? ` · source session ${memory.sourceSession}` : ""} · updated ${days(memory.updatedAt)} · used ${memory.useCount}×${memory.lastUsed ? ` (last ${days(memory.lastUsed)})` : ""}`,
 		"",
 		memory.body || "(no body)",
 	].join("\n");

@@ -7,6 +7,7 @@ import type {
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cacheFindings } from "./cache-findings.ts";
 import { num } from "./entries.ts";
+import { latencyFindings } from "./latency-findings.ts";
 import { PERMISSION_WAIT_LABEL, type Lane } from "./timeline.ts";
 
 /** Thresholds of the analysis; each finding below says which one it used. */
@@ -174,7 +175,11 @@ function deadLetter(message: ProfileMessage): ProfileFinding {
 
 /** Findings over the whole session, most costly first (severity, then the tokens, time or dollars involved). */
 export function deriveInsights(input: InsightInput): ProfileInsights {
-	const findings = [...cacheFindings(input.lanes), ...eventFindings(input.events)];
+	const findings = [
+		...cacheFindings(input.lanes),
+		...eventFindings(input.events),
+		...latencyFindings(input.events, input.lanes),
+	];
 	for (const message of input.messages) if (message.state === "dead-lettered") findings.push(deadLetter(message));
 	const costs = input.lanes.map((lane) => {
 		const split = laneCost(lane);

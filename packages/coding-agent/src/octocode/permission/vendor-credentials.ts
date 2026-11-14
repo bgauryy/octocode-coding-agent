@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPaths } from "../../../../common/src/canonical-path-set.ts";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import type { SourceGrant } from "./request.ts";
 
@@ -61,12 +62,15 @@ function storeLocations(): Array<[VendorStore, string[], string[]]> {
 	];
 }
 
-/** A lookup of the vendor store a file (an absolute path) is, or a folder of; built once per check, since each path is canonicalized. */
-export function vendorStores(): (file: string) => VendorStore | undefined {
+/** A lookup of the vendor store a file (an absolute path; `canonical`, its `key` when the caller has it) is, or a folder of; built once per check, its fixed paths canonicalized together and reused while the folders they resolve through stay unchanged. */
+export function vendorStores(): (file: string, canonical?: string) => VendorStore | undefined {
+	const spelled = storeLocations().flatMap(([store, files, folders]) =>
+		[...files, ...folders].map((each): [VendorStore, string] => [store, each]),
+	);
+	const canonical = canonicalPaths(spelled.map(([, each]) => each));
 	const at = new Map<string, VendorStore>();
-	for (const [store, files, folders] of storeLocations())
-		for (const each of [...files, ...folders]) at.set(key(each), store);
-	return (file) => at.get(key(file));
+	spelled.forEach(([store], index) => at.set(canonical[index].toLowerCase(), store));
+	return (file, canonical = key(file)) => at.get(canonical);
 }
 
 /** `$CODEX_HOME/auth.json`, `${XDG_DATA_HOME}/opencode/auth.json`: the word with its leading vendor variable expanded, as the shell would. */

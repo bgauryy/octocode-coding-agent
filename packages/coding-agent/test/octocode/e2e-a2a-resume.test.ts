@@ -1,6 +1,16 @@
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { close, message, prompt, requestsOf, resultsOf, script, session } from "./e2e-a2a-helpers.ts";
+import {
+	close,
+	message,
+	prompt,
+	records,
+	requestsOf,
+	resultsOf,
+	script,
+	session,
+	sessionIdle,
+} from "./e2e-a2a-helpers.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -51,6 +61,7 @@ describe("a finished child", () => {
 		prompt(parent.run, "start", start);
 		// The child's report reached the parent: the child is finished and now only lingers.
 		await until(() => heard(start).includes("worker finished its first run"), "the child's report");
+		await sessionIdle(parent);
 		const before = requestsOf(endpoint, worker).length;
 
 		const steps = script([
@@ -58,6 +69,9 @@ describe("a finished child", () => {
 			{ text: "asked" },
 		]);
 		prompt(parent.run, "go", steps);
+		const response = () => records(parent.run).find((row) => row.type === "response" && row.id === "go");
+		await until(() => response() !== undefined, "the follow-up prompt response");
+		expect(response()).toMatchObject({ success: true });
 		await until(() => requestsOf(endpoint, steps).some((request) => request.step >= 1), "the message sent");
 		expect(resultsOf(endpoint, steps)).not.toContain("takes no more messages");
 

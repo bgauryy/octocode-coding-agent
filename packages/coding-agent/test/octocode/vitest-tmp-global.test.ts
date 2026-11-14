@@ -4,7 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GUARD_FILE_ENV, isolateHome, PROTECTED_HOMES_ENV, runProcesses } from "../../../../test-isolation.ts";
+import {
+	GUARD_FILE_ENV,
+	isolateHome,
+	PROTECTED_HOMES_ENV,
+	runProcesses,
+	staleRunOrphans,
+} from "../../../../test-isolation.ts";
 import setup from "../../../../vitest.tmp.global.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
 
@@ -155,5 +161,43 @@ describe("the run's teardown", () => {
 			for (const pid of [daemon, helper]) if (processAlive(pid)) process.kill(pid, "SIGKILL");
 		}
 		await vi.waitFor(() => expect([daemon, helper].filter(processAlive)).toEqual([]));
+	});
+});
+
+describe("orphans of a run killed before its teardown", () => {
+	it("names orphaned processes of dead or deleted runs, leaving live runs and processes with a living parent", () => {
+		const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sweep-")));
+		try {
+			const dead = path.join(parent, "vt-dead01");
+			const live = path.join(parent, "vt-live01");
+			fs.mkdirSync(dead);
+			fs.mkdirSync(live);
+			// A pid past the system's range never runs; this process owns the live run.
+			fs.writeFileSync(path.join(dead, ".owner-pid"), "999999999");
+			fs.writeFileSync(path.join(live, ".owner-pid"), String(process.pid));
+			const listing = [
+				// tmux started with `env -i`: only its command line names the dead run.
+				`  101     1   101 tmux -L octo-e2e-1-0 new-session -c ${dead}/project`,
+				// A child of the dead run whose folder the sweep already removed.
+				`  102     1   102 node ${parent}/vt-gone01/worker.mjs --mode rpc`,
+				// Its marker in the environment only.
+				`  103     1    90 node -e x OCTOCODE_TEST_GUARD_FILE=${dead}/real-home-opens.log`,
+				// Still parented: something alive owns it.
+				`  104   555   104 node ${dead}/child.mts`,
+				// The live run's orphan, such as a web daemon it started.
+				`  105     1   105 node ${live}/daemon.mjs`,
+				// Names both: it belongs to the live run as well.
+				`  106     1   106 node ${dead}/a ${live}/b`,
+				// Not a test run's folder.
+				"  107     1   107 tmux new-session -d -s octoux",
+			].join("\n");
+			expect(staleRunOrphans(parent, listing)).toEqual([
+				[101, 101],
+				[102, 102],
+				[103, 90],
+			]);
+		} finally {
+			fs.rmSync(parent, { recursive: true, force: true });
+		}
 	});
 });

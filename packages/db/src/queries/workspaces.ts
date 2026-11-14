@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { bindingKeySql, bindingKey, sameBinding } from "../binding.ts";
 import { allRows } from "../rows.ts";
+import { keptStatement } from "../statements.ts";
 
 export interface WorkspaceIdentity {
 	id: string;
@@ -74,7 +75,7 @@ export function byName(db: DatabaseSync, name: string): Workspace[] {
 }
 
 export function byId(db: DatabaseSync, id: string): Workspace | undefined {
-	const row = db.prepare(`SELECT ${COLUMNS} FROM workspaces WHERE id=?`).get(id) as WorkspaceRow | undefined;
+	const row = keptStatement(db, `SELECT ${COLUMNS} FROM workspaces WHERE id=?`).get(id) as WorkspaceRow | undefined;
 	return row && decode(row);
 }
 

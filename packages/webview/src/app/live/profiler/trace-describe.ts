@@ -31,6 +31,9 @@ export function tooltipLines(item: LaneItem): string[] {
 	const lines = [event.label];
 	const facts: string[] = [event.kind];
 	if (event.durationMs) facts.push(formatDuration(event.durationMs));
+	for (const [phase, ms] of Object.entries(event.phases ?? {}))
+		if (phase !== "execute" && phase !== "stream" && ms)
+			facts.push(`${phase === "firstToken" ? "first token" : phase} ${formatDuration(ms)}`);
 	if (item.open) facts.push("running");
 	if (event.outcome && event.outcome !== "ok") facts.push(event.outcome);
 	lines.push(facts.join(" \u00B7 "));

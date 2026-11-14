@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
@@ -29,12 +29,72 @@ function ownerIsAlive(dir: string): boolean {
 	}
 }
 
-/** Removes the run folders under `parent` whose owning process is gone (a run killed before its teardown). */
+/**
+ * Removes what a run killed before its teardown left under `parent`: first the processes it left running, then its
+ * folders. Its teardown never ran, so nothing else stops them, and some cannot carry the run's marker (tmux started
+ * with `env -i`, a grandchild that only shares the process group).
+ */
 export function sweepStaleRunDirs(parent: string): void {
+	stopStaleRunOrphans(parent);
 	for (const name of readdirSync(parent)) {
 		if (!name.startsWith(PREFIX)) continue;
 		const dir = join(parent, name);
 		if (!ownerIsAlive(dir)) rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+/** Whether run folder `name` under `parent` belongs to no live run: its owner is gone, or the folder already is. */
+const staleRun = (parent: string, name: string): boolean =>
+	!existsSync(join(parent, name)) || !ownerIsAlive(join(parent, name));
+
+/**
+ * Orphaned processes (re-parented to pid 1) whose command line or environment names a folder of a run that is no longer
+ * alive under `parent`, as `[pid, process group]`. A process whose parent lives is left alone: it belongs to something
+ * still running. Exported for its test.
+ */
+export function staleRunOrphans(parent: string, listing?: string): Array<[number, number]> {
+	if (process.platform === "win32") return [];
+	const roots = [...new Set([parent, realpathOr(parent)])].map((each) => each.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+	const folder = new RegExp(`(?:${roots.join("|")})/(${PREFIX}[A-Za-z0-9]+)`, "g");
+	const text =
+		listing ??
+		spawnSync("ps", ["axeww", "-o", "pid=,ppid=,pgid=,command="], { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 })
+			.stdout ??
+		"";
+	const found: Array<[number, number]> = [];
+	for (const line of text.split("\n")) {
+		const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s(.*)$/.exec(line);
+		if (!match || match[2] !== "1" || Number(match[1]) === process.pid) continue;
+		const names = new Set([...match[4].matchAll(folder)].map((each) => each[1]));
+		if (names.size > 0 && [...names].every((name) => staleRun(parent, name)))
+			found.push([Number(match[1]), Number(match[3])]);
+	}
+	return found;
+}
+
+function realpathOr(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
+}
+
+/** Stops `staleRunOrphans`: their whole process group when they lead it, TERM first, then KILL; again for new orphans. */
+function stopStaleRunOrphans(parent: string): void {
+	for (let pass = 0; pass < 3; pass++) {
+		const orphans = staleRunOrphans(parent);
+		if (orphans.length === 0) return;
+		for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+			for (const [pid, group] of orphans) {
+				try {
+					process.kill(group === pid ? -group : pid, signal);
+				} catch {
+					// Already gone.
+				}
+			}
+			if (signal === "SIGTERM") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+		}
 	}
 }
 

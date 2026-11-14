@@ -10,6 +10,7 @@ import { createSessionManager } from "../../src/main/session-manager.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 
 const tempDirs: string[] = [];
+const managers = new Set<SessionManager>();
 let mainDir: string;
 let worktreeDir: string;
 let sessionDir: string;
@@ -21,12 +22,16 @@ const args = (overrides: Partial<Args>): Args => ({
 	diagnostics: [],
 	...overrides,
 });
-const open = (parsed: Partial<Args>, cwd = mainDir) =>
-	createSessionManager(args(parsed), cwd, sessionDir, SettingsManager.inMemory());
+const open = async (parsed: Partial<Args>, cwd = mainDir) => {
+	const manager = await createSessionManager(args(parsed), cwd, sessionDir, SettingsManager.inMemory());
+	managers.add(manager);
+	return manager;
+};
 
 /** A saved session (a file exists only once a reply is recorded) in `cwd`. */
 function savedSession(id: string, cwd: string): string {
 	const session = SessionManager.create(cwd, sessionDir, { id });
+	managers.add(session);
 	session.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
 	session.appendMessage({
 		role: "assistant",
@@ -65,7 +70,11 @@ beforeEach(() => {
 	vi.spyOn(console, "log").mockImplementation(() => {});
 });
 
-afterEach(() => {
+afterEach(async () => {
+	for (const manager of managers) manager.retire();
+	managers.clear();
+	// Finish the writes this fixture started before stopping the worker and deleting its directory.
+	if (!(await sessionMirrorSettled())) throw new Error("Fixture mirror writes did not settle before cleanup");
 	closeSharedAgentDb();
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();

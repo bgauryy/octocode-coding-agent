@@ -63,8 +63,36 @@ it("uses the latest physical route's capacity and reserve in a virtual context r
 		await session.setModel(session.modelRuntime.getModel("router", "auto")!);
 		const report = session.getContextReport();
 		expect(report).toMatchObject({ capacity: 64_000, catalogCapacity: null, reserve: 10_666, threshold: 53_334 });
+		expect(session.getContextUsage()?.compactionThreshold).toBe(report.threshold);
+		expect(JSON.parse(JSON.stringify(session.getSessionStats())).contextUsage.compactionThreshold).toBe(
+			report.threshold,
+		);
 		expect(renderContextReport(report)).toContain("Select a physical model with /model");
 		expect(() => session.setContextWindow(32_000)).toThrow("Select a physical model");
+	} finally {
+		harness.cleanup();
+	}
+});
+
+it("exports the physical route's thinking reserve without using the selected model's budget", async () => {
+	const harness = await createHarness({ models: [{ id: "physical", contextWindow: 120_000, reasoning: true }] });
+	try {
+		const { session, getModel } = harness;
+		session.setThinkingLevel("high");
+		const reply = fauxAssistantMessage("answer");
+		harness.setResponses([reply]);
+		await session.prompt("hello");
+		session.modelRuntime.registerVirtualModel({
+			provider: "router",
+			id: "auto",
+			name: "Auto",
+			contextWindow: 120_000,
+			route: () => ({ model: getModel(), thinkingLevel: "high" }),
+		});
+		await session.setModel(session.modelRuntime.getModel("router", "auto")!);
+		session.setThinkingLevel("off");
+		expect(session.getContextReport()).toMatchObject({ reserve: 20_000, threshold: 100_000 });
+		expect(session.getContextUsage()).toMatchObject({ contextWindow: 120_000, compactionThreshold: 100_000 });
 	} finally {
 		harness.cleanup();
 	}

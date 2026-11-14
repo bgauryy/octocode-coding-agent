@@ -3,7 +3,7 @@ import { isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
 import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
-import { fitHorizontalPadding, frameContentLines } from "../utils.ts";
+import { fitHorizontalPadding, frameBlankRow, frameContentRows } from "../utils.ts";
 import { renderToken } from "./markdown/blocks.ts";
 import { type LexedMarkdown, lexMarkdown } from "./markdown/incremental.ts";
 import type {
@@ -15,6 +15,14 @@ import type {
 } from "./markdown/types.ts";
 
 let nextMarkdownId = 0;
+
+/** One top-level block's rendered rows at a content width, and the same rows framed to the component's width. */
+interface BlockRows {
+	width: number;
+	nextType: string | undefined;
+	rows: string[];
+	framed?: { width: number; bg: ((text: string) => string) | undefined; rows: string[] };
+}
 
 export class Markdown implements Component {
 	private text: string;
@@ -34,7 +42,9 @@ export class Markdown implements Component {
 	private cachedTokens?: WeakRef<LexedMarkdown>;
 	// Rendered and wrapped rows of each top-level token, so a streamed update re-renders only the blocks it changed.
 	// Rows depend on the theme, the default style and the width: `invalidate` clears them, a new width replaces them.
-	private blockRows = new WeakMap<Token, { width: number; nextType: string | undefined; rows: string[] }>();
+	// `framed` holds the same rows padded to the full width, so an update pads only the rows of blocks it changed: padding
+	// every row of a long reply after each delta made the reply cost more with every token.
+	private blockRows = new WeakMap<Token, BlockRows>();
 	private blockRowsWidth = 0;
 	private readonly linkPrefix = `oc${++nextMarkdownId}`;
 
@@ -104,7 +114,8 @@ export class Markdown implements Component {
 			this.blockRows = new WeakMap();
 			this.blockRowsWidth = contentWidth;
 		}
-		const wrappedLines: string[] = [];
+		const bg = this.defaultTextStyle?.bgColor;
+		const contentLines: string[] = [];
 		for (let i = 0; i < tokens.length; i++) {
 			const token = tokens[i];
 			const nextType = tokens[i + 1]?.type;
@@ -119,17 +130,14 @@ export class Markdown implements Component {
 				entry = { width: contentWidth, nextType, rows };
 				this.blockRows.set(token, entry);
 			}
-			for (const row of entry.rows) wrappedLines.push(row);
+			if (!entry.framed || entry.framed.width !== width || entry.framed.bg !== bg)
+				entry.framed = { width, bg, rows: frameContentRows(entry.rows, width, paddingX, bg, isImageLine) };
+			for (const row of entry.framed.rows) contentLines.push(row);
 		}
 
-		const result = frameContentLines(
-			wrappedLines,
-			width,
-			paddingX,
-			this.paddingY,
-			this.defaultTextStyle?.bgColor,
-			isImageLine,
-		);
+		const blank: string[] = [];
+		for (let i = 0; i < this.paddingY; i++) blank.push(frameBlankRow(width, bg));
+		const result = blank.length === 0 ? contentLines : [...blank, ...contentLines, ...blank];
 
 		this.cachedText = this.text;
 		this.cachedWidth = width;

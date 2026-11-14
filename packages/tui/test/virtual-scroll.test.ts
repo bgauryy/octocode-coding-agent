@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { ScrollView } from "../src/components/scroll-view.ts";
+import { getScrollbarGeometry } from "../src/layout/scrollbar.ts";
 import { VStack } from "../src/components/v-stack.ts";
 import type { LayoutBox, LayoutFrame } from "../src/layout/types.ts";
 import { VirtualDocument } from "../src/layout/virtual-document.ts";
@@ -8,9 +9,9 @@ import { getLayoutBoxesAt, getScrollViewBox, renderLayoutFrame } from "../src/la
 import { registerKittyImageMetadata } from "../src/terminal-image/kitty-metadata.ts";
 import type { Component } from "../src/tui/component.ts";
 import { Container } from "../src/tui/container.ts";
-import { renderChanged, trackRenderChanges } from "../src/tui/render-signal.ts";
+import { renderChanged, renderTrack, trackRenderChanges } from "../src/tui/render-signal.ts";
 import { AltScreenSearchController } from "../src/tui-alt-screen/search-controller.ts";
-import { applySelectionToScreen, getSelectionText } from "../src/tui-alt-screen/selection.ts";
+import { applySelectionToScreen, getSelectionText, scrollScrollbarToPointer } from "../src/tui-alt-screen/selection.ts";
 
 const OSC133 = "\x1b]133;A\x07";
 
@@ -172,7 +173,7 @@ function runDifferential(
 			const count = views.exact.chat.children.length;
 			// A width change above the end keeps the item at the top of the view, at the same row within it.
 			const kept =
-				op <= 2 && !views.virtual.scroll.isFollowingEnd && !views.virtual.scroll.isScrollbarVisible
+				op <= 2 && !views.virtual.scroll.isFollowingEnd
 					? itemAtRow(views.exact.items(), shownBefore, width)
 					: undefined;
 			const at = next(count);
@@ -216,7 +217,8 @@ function runDifferential(
 				views.exact.scroll.scrollToEnd();
 				exact = renderLayoutFrame(views.exact.root, width, height, () => {});
 			}
-			assert.deepStrictEqual(virtual.lines, exact.lines, `seed ${seed}, step ${step}`);
+			// Unmeasured history changes thumb geometry, never the visible transcript.
+			assert.deepStrictEqual(transcriptRows(virtual.lines), transcriptRows(exact.lines), `seed ${seed}, step ${step}`);
 			shownBefore = views.virtual.scroll.isFollowingEnd ? -1 : views.exact.scroll.scrollTop;
 			if (shownTop !== undefined && op !== 11 && next(3) === 0) {
 				// Measuring the rest keeps the rows in view: the position becomes the exact row the frame showed.
@@ -253,6 +255,10 @@ function itemAtRow(items: Component[], row: number, width: number): { index: num
 	return undefined;
 }
 
+function transcriptRows(lines: readonly string[]): string[] {
+	return lines.map((line) => line.replace(/\x1b\[0m(?:\x1b\[2m│\x1b\[22m|┃)$/, ""));
+}
+
 function exactMaxScrollTop(items: Component[], width: number, height: number): number {
 	let total = 0;
 	for (const item of items) total += item.render(width).length;
@@ -272,8 +278,140 @@ function anchoredTop(box: LayoutBox, items: Component[], twinItems: Component[],
 }
 
 describe("virtualized scroll view", () => {
+	it("releases measured row subscriptions when rows leave and measures them again if they return", () => {
+		const root = new Container();
+		const row = new TrackedItem("one");
+		root.addChild(row);
+		const document = new VirtualDocument(root);
+		document.prepare(root, 5);
+		document.measure(0);
+		const withDocument = renderTrack(row).parents!.length;
+		root.removeChild(row);
+		document.prepare(root, 5);
+		assert.strictEqual(renderTrack(row).parents?.length, withDocument - 2);
+		row.text = "a much longer replacement";
+		root.addChild(row);
+		document.prepare(root, 5);
+		assert.ok(document.isPending(0));
+		assert.deepStrictEqual(document.measure(0).lines, row.render(5));
+		document.dispose();
+	});
+
+	it("keeps row subscription counts flat across repeated mount, exact layout, and detach", () => {
+		const content = new Container();
+		const items = Array.from({ length: 100 }, (_, index) => new TrackedItem(`row ${index}`));
+		for (const row of items) content.addChild(row);
+		const scroll = new ScrollView(content, { virtualize: true, follow: "end" });
+		// One warm layout establishes the container's own subscriptions.
+		renderLayoutFrame(scroll, 40, 10, () => {});
+		scroll.settleContent();
+		renderLayoutFrame(scroll, 40, 10, () => {});
+		scroll.detach();
+		const baseline = items.map((row) => renderTrack(row).parents?.length ?? 0);
+		assert.ok(baseline.every((count) => count === 1));
+		for (let cycle = 0; cycle < 20; cycle++) {
+			renderLayoutFrame(scroll, 40, 10, () => {});
+			if (cycle % 2 === 0) {
+				scroll.settleContent();
+				renderLayoutFrame(scroll, 40, 10, () => {});
+			}
+			scroll.detach();
+			scroll.detach();
+			assert.deepStrictEqual(
+				items.map((row) => renderTrack(row).parents?.length ?? 0),
+				baseline,
+			);
+		}
+	});
+
+	it("spends the existing measurement budget on nearby rows in the scroll direction first", () => {
+		const measured: number[] = [];
+		const content = new Container();
+		for (let index = 0; index < 500; index++) {
+			content.addChild({
+				render: () => {
+					measured.push(index);
+					return [`item ${index}`];
+				},
+				invalidate() {},
+			});
+		}
+		const doc = new VirtualDocument(content);
+		doc.prepare(content, 80);
+		doc.prioritize(200, 219, 20);
+		doc.measurePending(200, Number.NEGATIVE_INFINITY, 1);
+		assert.deepEqual(measured, [220]);
+		doc.prioritize(180, 199, 20);
+		doc.measurePending(180, Number.NEGATIVE_INFINITY, 1);
+		assert.deepEqual(measured, [220, 179]);
+		assert.strictEqual(doc.pendingCount, 498);
+		// Nearby work cannot starve the rest or leave a duplicate entry pending forever.
+		doc.measurePending(180, Number.POSITIVE_INFINITY);
+		assert.strictEqual(doc.pendingCount, 0);
+		assert.strictEqual(new Set(measured).size, 500);
+		assert.strictEqual(measured.length, 500);
+	});
+
+	for (const scrollbar of ["auto", "always"] as const) {
+		it(`keeps ${scrollbar} scrollbar scrolling, resizing and dragging within the measurement budget`, () => {
+			Item.costMs = 0.1;
+			const content = new Container();
+			const items = Array.from(
+				{ length: 2000 },
+				(_, index) => new TrackedItem(`entry ${index} ${"filler ".repeat(15)}`),
+			);
+			for (const item of items) content.addChild(item);
+			const scroll = new ScrollView(content, { scrollbar, virtualize: true, follow: "end" });
+			try {
+				let frame = renderLayoutFrame(scroll, 50, 20, () => {});
+				for (const action of ["scroll", "resize", "drag", "start"] as const) {
+					for (const item of items) item.renders = 0;
+					if (action === "scroll") scroll.scrollBy(-10);
+					if (action === "drag") {
+						const geometry = getScrollbarGeometry(getScrollViewBox(frame, scroll)!)!;
+						scrollScrollbarToPointer(scroll, geometry, 8, 0);
+					}
+					if (action === "start") scroll.scrollToStart();
+					frame = renderLayoutFrame(scroll, action === "scroll" ? 50 : 61, 20, () => {});
+					assert.equal(scroll.isScrollbarVisible, true);
+					const rendered = items.filter((item) => item.renders > 0).length;
+					assert.ok(rendered < 200, `${action} rendered ${rendered} items`);
+					const before = transcriptRows(frame.lines);
+					// Settling must keep the message and row the estimated position selected.
+					scroll.settleContent();
+					assert.deepStrictEqual(
+						transcriptRows(renderLayoutFrame(scroll, action === "scroll" ? 50 : 61, 20, () => {}).lines),
+						before,
+					);
+					// Invalidate the width so the next action has unmeasured history again.
+					frame = renderLayoutFrame(scroll, action === "scroll" ? 50 : 62, 20, () => {});
+				}
+			} finally {
+				scroll.detach();
+				Item.costMs = 0;
+			}
+		});
+	}
+
+	it("cancels detached history measurement and resumes it on the next layout", async () => {
+		const content = new Container();
+		const items = Array.from({ length: 2000 }, (_, index) => new TrackedItem(`entry ${index}`));
+		for (const item of items) content.addChild(item);
+		const scroll = new ScrollView(content, { virtualize: true, follow: "end" });
+		renderLayoutFrame(scroll, 40, 10, () => {});
+		scroll.detach();
+		const renders = () => items.reduce((sum, item) => sum + item.renders, 0);
+		const before = renders();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(renders(), before);
+		renderLayoutFrame(scroll, 40, 10, () => {});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.ok(renders() > before);
+		scroll.detach();
+	});
+
 	it("paints the viewport exactly as the full layout through resizes, appends, streaming and scrolling", () => {
-		// "auto" shows the scrollbar after a scroll (its hide timer does not run here): those frames take the exact path.
+		// Auto scrollbars remain visible after scrolling throughout this synchronous differential run.
 		const runs = [
 			[3, "hidden", 0, false],
 			[17, "hidden", 0, false],
@@ -287,8 +425,8 @@ describe("virtualized scroll view", () => {
 		] as const;
 		for (const [seed, scrollbar, costMs, tracked] of runs) {
 			const { virtualFrames, anchoredFrames } = runDifferential(seed, scrollbar, costMs, tracked);
-			assert.ok(virtualFrames > (scrollbar === "auto" ? 0 : 20), `seed ${seed}: ${virtualFrames} virtualized frames`);
-			if (scrollbar === "hidden") assert.ok(anchoredFrames > 0, `seed ${seed}: no frame anchored above the end`);
+			assert.ok(virtualFrames > 20, `seed ${seed}: ${virtualFrames} virtualized frames`);
+			assert.ok(anchoredFrames > 0, `seed ${seed}: no frame anchored above the end`);
 		}
 	});
 
@@ -439,7 +577,7 @@ describe("virtualized scroll view", () => {
 		assert.strictEqual(views.virtual.scroll.scrollTop, views.exact.scroll.scrollTop);
 	});
 
-	it("search finds and reveals a match in an item the virtualized frame never rendered", () => {
+	it("search finds and reveals a match in an item the virtualized frame never rendered", async () => {
 		const items = Array.from({ length: 300 }, (_, index) => new Item(`entry ${index} ${"filler ".repeat(10)}`));
 		items[7].text = "the needle is far above the viewport";
 		const views = pair(items);
@@ -469,6 +607,12 @@ describe("virtualized scroll view", () => {
 		const active = search.activeSearch;
 		assert.ok(active);
 		active.query = "needle";
+		assert.strictEqual(search.refreshSearch(layout), false);
+		for (let attempt = 0; !scroll.isContentSettled && attempt < 1000; attempt++) {
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+		assert.strictEqual(scroll.isContentSettled, true);
+		layout = renderLayoutFrame(views.virtual.root, 70, 20, () => {});
 		assert.strictEqual(search.refreshSearch(layout), true);
 		assert.strictEqual(active.matches.length, 1);
 		layout = renderLayoutFrame(views.virtual.root, 70, 20, () => {});

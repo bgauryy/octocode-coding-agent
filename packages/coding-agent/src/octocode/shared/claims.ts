@@ -1,6 +1,6 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { processStartTime, sameProcess } from "./process.ts";
+import { processStartTime, sameProcessAsync } from "./process.ts";
 
 /**
  * Rename claims: a process takes a file by renaming it to `<file><marker><pid>-<start time>`, so two processes never
@@ -15,13 +15,13 @@ export function claimSuffix(marker: string): string {
 	return `${marker}${process.pid}${started ? `-${started}` : ""}`;
 }
 
-/** The claim in `name`: the unclaimed name and whether the claimer may still be running; undefined when `name` is not a claim by `marker`. */
-function parseClaim(name: string, marker: string): { original: string; running: boolean } | undefined {
+/** The claim in `name`: the unclaimed name and its owner's identity; undefined when `name` is not a claim by `marker`. */
+function parseClaim(name: string, marker: string): { original: string; pid: number; started?: string } | undefined {
 	const at = name.lastIndexOf(marker);
 	if (at <= 0) return undefined;
 	const match = /^(\d+)(?:-(\d+))?$/.exec(name.slice(at + marker.length));
 	if (!match) return undefined;
-	return { original: name.slice(0, at), running: sameProcess(Number(match[1]), match[2]) };
+	return { original: name.slice(0, at), pid: Number(match[1]), started: match[2] };
 }
 
 /**
@@ -37,7 +37,7 @@ export async function releaseDeadClaims(
 ): Promise<void> {
 	for (const name of names) {
 		const claim = parseClaim(name, marker);
-		if (!claim || claim.running || !isOriginal(claim.original)) continue;
+		if (!claim || !isOriginal(claim.original) || (await sameProcessAsync(claim.pid, claim.started))) continue;
 		try {
 			await fsp.rename(path.join(dir, name), path.join(dir, claim.original));
 		} catch {

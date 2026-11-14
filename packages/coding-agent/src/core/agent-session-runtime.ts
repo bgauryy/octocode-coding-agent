@@ -14,14 +14,10 @@ import type {
 	CreateAgentSessionRuntimeResult,
 } from "./agent-session-runtime/types.ts";
 import type { ReplacedSessionContext, SessionShutdownEvent, SessionStartEvent } from "./features/index.ts";
-import { emitSessionShutdownEvent } from "./features/runner.ts";
+import { shutdownSession } from "./agent-session-runtime/shutdown.ts";
 import { FolderAdmission } from "./folder-trust.ts";
 import { assertSessionCwdExists, resolveSessionCwd } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
-import { sessionMirrorSettled } from "./session-manager/mirror.ts";
-
-/** Longest a disposing runtime waits for queued database mirror writes before the process may exit. */
-const MIRROR_EXIT_WAIT_MS = 1_500;
 
 export {
 	SessionImportFileNotFoundError,
@@ -46,6 +42,7 @@ export class AgentSessionRuntime {
 	private readonly createRuntime: CreateAgentSessionRuntimeFactory;
 	private _diagnostics: AgentSessionRuntimeDiagnostic[];
 	private _modelFallbackMessage?: string;
+	private disposal: Promise<void> | undefined;
 
 	constructor(
 		_session: AgentSession,
@@ -132,17 +129,11 @@ export class AgentSessionRuntime {
 	}
 
 	private async teardownCurrent(reason: SessionShutdownEvent["reason"], targetSessionFile?: string): Promise<void> {
-		// Settle any active response first so the aborted turn (including tool
-		// results) is persisted to the outgoing session before it is replaced.
-		await this.session.abort(reason === "quit" ? "shutdown" : "replacement");
-		await emitSessionShutdownEvent(this.session.extensionRunner, {
-			type: "session_shutdown",
-			reason,
-			targetSessionFile,
-		});
-		this.beforeSessionInvalidate?.();
-		this.session.sessionManager.retire();
-		this.session.dispose();
+		await shutdownSession(
+			this.session,
+			{ type: "session_shutdown", reason, targetSessionFile },
+			this.beforeSessionInvalidate,
+		);
 	}
 
 	/**
@@ -198,7 +189,7 @@ export class AgentSessionRuntime {
 		}
 
 		const previousSessionFile = this.session.sessionFile;
-		const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
+		const sessionManager = await SessionManager.openAsync(sessionPath, undefined, options?.cwdOverride);
 		assertSessionCwdExists(sessionManager, this.cwd);
 		await this.folderAdmission.check(sessionManager.getCwd());
 		await this.teardownCurrent("resume", sessionManager.getSessionFile());
@@ -245,7 +236,7 @@ export class AgentSessionRuntime {
 		if (previousName) {
 			const origin =
 				previousSessionFile && existsSync(previousSessionFile)
-					? SessionManager.open(previousSessionFile, sessionDir, previousManager.getCwd())
+					? await SessionManager.openAsync(previousSessionFile, sessionDir, previousManager.getCwd())
 					: previousManager;
 			origin.appendSessionInfo(previousName);
 		}
@@ -282,7 +273,11 @@ export class AgentSessionRuntime {
 			}
 
 			// Keep the cwd this session runs in, which a resume may have moved away from the one in its file header.
-			const sessionManager = SessionManager.open(currentSessionFile, sessionDir, this.session.sessionManager.getCwd());
+			const sessionManager = await SessionManager.openAsync(
+				currentSessionFile,
+				sessionDir,
+				this.session.sessionManager.getCwd(),
+			);
 			const forkedSessionPath = sessionManager.createBranchedSession(targetLeafId);
 			if (!forkedSessionPath) {
 				throw new Error("Failed to create forked session");
@@ -326,7 +321,7 @@ export class AgentSessionRuntime {
 		}
 
 		const previousSessionFile = this.session.sessionFile;
-		const sessionManager = openImportedSession(resolvedPath, destination, {
+		const sessionManager = await openImportedSession(resolvedPath, destination, {
 			sessionDir,
 			cwdOverride,
 			cwd: this.cwd,
@@ -343,13 +338,13 @@ export class AgentSessionRuntime {
 	 * RPC shutdown, print mode) disposes before `process.exit`, which would drop the database mirror writes still queued:
 	 * wait for them, bounded. A write still out after that is repaired at the next open.
 	 */
-	async dispose(): Promise<void> {
-		try {
-			await this.teardownCurrent("quit");
-		} finally {
-			this._services?.dispose?.();
-			await sessionMirrorSettled(MIRROR_EXIT_WAIT_MS);
-		}
+	dispose(): Promise<void> {
+		return (this.disposal ??= shutdownSession(
+			this.session,
+			{ type: "session_shutdown", reason: "quit" },
+			this.beforeSessionInvalidate,
+			this._services,
+		));
 	}
 }
 

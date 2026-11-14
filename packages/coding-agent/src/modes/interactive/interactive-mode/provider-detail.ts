@@ -27,6 +27,7 @@ export async function showProviderDetail(
 	const { host } = ctx;
 	const runtime = host.session.modelRuntime;
 	const name = runtime.getProvider(id)?.name ?? id;
+	const defined = runtime.getProvider(id) !== undefined;
 	const disabled = isProviderDisabled(host, id);
 	const sessionOverride = runtime.getProviderAuthStatus(id).source === "runtime";
 	const savedEntry = saved.find((entry) => entry.providerId === id);
@@ -110,12 +111,17 @@ export async function showProviderDetail(
 		title: `${name} — ${disabled ? "disabled" : runtime.getProviderAuthStatus(id).configured ? "configured" : "not configured"}`,
 		facts: [
 			{ label: "Status", value: disabled ? `disabled · ${status}` : status },
+			{ label: "Access", value: "Not verified; Test credential sends a small request." },
 			{ label: "Provider", value: disabled ? "disabled (hidden from /model)" : "enabled" },
 			{ label: "Models", value: `${available} available · ${catalog} in catalog` },
 			...planFacts,
 			{
 				label: "Definition",
-				value: definition ? `${definition.origin} models.json · ${definition.path}` : "built-in (no models.json entry)",
+				value: definition
+					? `${definition.origin} models.json · ${definition.path}`
+					: defined
+						? "built-in (no models.json entry)"
+						: "missing; only a saved credential remains",
 			},
 			...(piSignIn ? [{ label: "Pi sign-in", value: piSignIn }] : []),
 			...definitionWarnings.map((value) => ({ label: "Warning", value })),

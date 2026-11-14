@@ -6,7 +6,7 @@ import type { ProviderKind } from "../../../core/model-runtime/catalog.ts";
 import { paintStatus } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { CHIPS, type ChipParts, chipLabel, chipShortLabel, PERMISSION_ID } from "../../permission/mode.ts";
-import { formatCost, formatTokens, formatTokenUsage, newPromptTokens } from "../../shared/format.ts";
+import { cachedPercent, formatCost, formatTokens, formatTokenUsage, newPromptTokens } from "../../shared/format.ts";
 import { STATUS } from "../../shared/status.ts";
 import type { UsageTotals } from "../../shared/util.ts";
 import { shortThinking } from "./spend.ts";
@@ -15,8 +15,9 @@ import { fitFooterLine, type FooterPaint, type FooterPart } from "./fit.ts";
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing
- * (model, permission mode, thinking, context, running agents, bash jobs, queued messages and a running hook; run time,
- * speed and cost on the right). Line 2 shows cwd, branch, session name, total tokens, compactions and other statuses.
+ * (model, permission mode, thinking, context, running agents, bash jobs, queued messages, a pending retry and a running
+ * hook; speed, timer judging spend and cost on the right). Line 2 shows cwd, branch, session name, total tokens, the
+ * prompt-cache hit rate, compactions and other statuses.
  * Alerts that do not fit use up to three extra rows; /status retains the complete data.
  * Rendering is pure in (state, statuses, width); the activity indicator owns the live run clock.
  */
@@ -62,6 +63,8 @@ const OWN = {
 	hooks: STATUS.hooks,
 	backlog: STATUS.backlog,
 	steps: STATUS.steps,
+	wakeRetry: STATUS.wakeRetry,
+	timers: STATUS.timers,
 } as const;
 const BAR_CELLS = 8;
 
@@ -154,12 +157,16 @@ export function footerLines(
 			{ text: status(OWN.running), priority: 90, keep: true, details: true },
 			// Messages waiting for the run to end: the user should see theirs did not get lost.
 			{ text: status(OWN.queued), priority: 85, keep: true, details: true },
+			// A turn that a provider error ended, waiting to try again: work the user would otherwise think had stopped.
+			{ text: status(OWN.wakeRetry), priority: 86, keep: true, details: true },
 			// Last of the left parts: its clock grows, so nothing else on the row moves with it.
 			{ text: status(OWN.hooks), priority: 80, keep: true, details: true },
 		],
 		[
 			// The speed of the last run: hidden while the next one works.
 			{ text: text(OWN.speed) && !state.running ? theme.fg("dim", text(OWN.speed)) : "", priority: 10 },
+			// What judging timer conditions spent: money beside the cost, dropped before it.
+			{ text: status(OWN.timers), priority: 35, details: true },
 			{ text: cost ? theme.fg("muted", cost) : "", priority: 40, details: true },
 		],
 		theme,
@@ -178,6 +185,9 @@ export function footerLines(
 	const spent = newPromptTokens(state.usage) + state.usage.output;
 	// Nothing spent yet (a fresh session): no `0 tokens` placeholder.
 	const tokens = spent > 0 || usage ? theme.fg("muted", `${formatTokens(spent)} tokens`) : "";
+	// The share of prompt tokens read from cache: a falling rate means the prompt prefix changed and replies cost more.
+	// Hidden until a provider reports a cache read, so models without prompt caching show no permanent `0%`.
+	const hitRate = state.usage.cacheRead > 0 ? cachedPercent(state.usage.cacheRead, state.usage.input) : undefined;
 	const others = [...statuses]
 		.filter(([key]) => !(Object.values(OWN) as string[]).includes(key))
 		.sort(([a], [b]) => a.localeCompare(b));
@@ -191,6 +201,7 @@ export function footerLines(
 			priority: 80,
 			details: true,
 		},
+		{ text: hitRate === undefined ? "" : theme.fg("muted", `cache ${hitRate}%`), priority: 77, details: true },
 		{
 			// Shown once there is one: zero compactions is the normal state, not news.
 			text: state.compactions

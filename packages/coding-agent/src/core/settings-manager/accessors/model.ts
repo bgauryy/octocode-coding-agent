@@ -4,12 +4,15 @@ import type { Settings, ThinkingBudgetsSettings, TransportSetting } from "../../
 import { normalizeProviderSources, SOURCE_DEFAULTS } from "../../provider-sources/gate.ts";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
-import { type DefaultModelSelectionOptions, saveDefaultModelSelection } from "../model-default.ts";
+import { type DefaultModelSelectionOptions, saveDefaultModelSelection, saveEnabledModels } from "../model-default.ts";
 import { DEFAULT_TOOL_NAMES, resolveDefaultTools } from "../tool-list.ts";
 import { SettingsAccessorBase } from "./base.ts";
 
 /** Default model and provider, thinking levels, message delivery modes, transport and the model and tool selections. */
 export abstract class ModelSettingsAccessors extends SettingsAccessorBase implements ModelSettingsApi {
+	saveEnabledModels(patterns: readonly string[] | undefined): Promise<void> {
+		return saveEnabledModels(this.state, this.persistence, patterns);
+	}
 	getDefaultProvider(): string | undefined {
 		return this.settings.defaultProvider;
 	}
@@ -59,6 +62,26 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 		if (scope === "project") return this.updateProjectSettings(field, update);
 		update(this.globalSettings);
 		this.markModified(field);
+		this.save();
+	}
+
+	setDefaultSelectionPair(
+		scope: "global" | "project",
+		selection: { provider: string; model: string } | undefined,
+	): void {
+		const update = (settings: Settings) => {
+			if (selection) {
+				settings.defaultProvider = selection.provider;
+				settings.defaultModel = selection.model;
+			} else {
+				delete settings.defaultProvider;
+				delete settings.defaultModel;
+			}
+		};
+		if (scope === "project") return this.updateProjectSettings(["defaultProvider", "defaultModel"], update);
+		update(this.globalSettings);
+		this.markModified("defaultProvider");
+		this.markModified("defaultModel");
 		this.save();
 	}
 

@@ -46,6 +46,27 @@ const footerLines = (
 ) => paintFooter(s, branch, new Map([...texts].map(([key, text]) => [key, { text }])), paint, width);
 
 describe("footer", () => {
+	it("shows the prompt-cache hit rate on line 2 once a cache read is reported, and drops it before the tokens", () => {
+		const cached = { ...state, usage: { ...state.usage, input: 40_000, cacheRead: 30_000 } };
+		const [, bottom] = footerLines(cached, "main", new Map(), theme, 200);
+		expect(bottom).toContain("cache 75%");
+		// No cache reads (a model without prompt caching): no permanent `cache 0%`.
+		expect(footerLines(state, "main", new Map(), theme, 200)[1]).not.toContain("cache");
+		const [, narrow] = footerLines(cached, "main", new Map(), theme, 60);
+		if (narrow.includes("cache")) expect(narrow).toContain("tokens");
+	});
+
+	it("places a pending retry on line 1 and timer judging spend beside the cost, neither as an other status", () => {
+		const own = new Map([
+			[STATUS.wakeRetry, "retrying in 8s"],
+			[STATUS.timers, "timer judging $0.004"],
+		]);
+		const [top, bottom] = footerLines(state, "main", own, theme, 220);
+		expect(top).toContain("retrying in 8s");
+		expect(top.indexOf("timer judging $0.004")).toBeLessThan(top.indexOf("≈$0.84"));
+		expect(bottom).not.toMatch(/retrying|timer judging/);
+	});
+
 	it("shows the model, context, mode and running work first, and where you are second", () => {
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 170);
 		expect(top).toMatch(
@@ -279,6 +300,50 @@ describe("footer under a busy status row", () => {
 });
 
 describe("footer wiring", () => {
+	it.each([
+		["session context-window override", 60_000, 25_000, "50k"],
+		["physical route with a different window", 120_000, 52_500, "105k"],
+	] as const)("uses the effective window for a %s", async (_reason, window, tokens, limit) => {
+		const fake = importedModule1.fakeHost();
+		importedModule2.registerFooter(fake.api);
+		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
+		ctx.model = { provider: "test", id: "selected", reasoning: false, contextWindow: 100_000 };
+		ctx.getContextUsage = () => ({ tokens, contextWindow: window, percent: (tokens / window) * 100 });
+		await fake.emit("session_start", {}, ctx);
+		const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+			getGitBranch: () => null,
+			getExtensionStatuses: () => new Map(),
+		});
+		try {
+			expect(component.render(160)[0]).toContain(`ctx ▰▰▰▰▱▱▱▱ 50% of ${limit}`);
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("prefers the core threshold to the selected model's thinking reserve", async () => {
+		const fake = importedModule1.fakeHost();
+		importedModule2.registerFooter(fake.api);
+		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
+		ctx.model = { provider: "router", id: "auto", reasoning: false, contextWindow: 120_000 };
+		ctx.getContextUsage = () => ({
+			tokens: 50_000,
+			contextWindow: 120_000,
+			percent: 41.67,
+			compactionThreshold: 100_000,
+		});
+		await fake.emit("session_start", {}, ctx);
+		const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+			getGitBranch: () => null,
+			getExtensionStatuses: () => new Map(),
+		});
+		try {
+			expect(component.render(160)[0]).toContain("ctx ▰▰▰▰▱▱▱▱ 50% of 100k");
+		} finally {
+			component.dispose();
+		}
+	});
+
 	it("replaces Octocode's footer, sums the session usage and samples context on events", async () => {
 		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
@@ -322,7 +387,8 @@ describe("footer wiring", () => {
 		const [initialTop, bottom] = component.render(120) as string[];
 		expect(initialTop).toMatch(/^model-x · API key · thinking medium · ctx ▰▱{7} 12% of 83\.3k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
-		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · mcp 1/1");
+		// The cache hit rate is cache reads over the whole prompt: 3k of 4.5k.
+		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · cache 67% · mcp 1/1");
 		percent = 64;
 		await fake.emit(
 			"message_end",

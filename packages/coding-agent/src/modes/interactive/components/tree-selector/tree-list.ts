@@ -2,7 +2,7 @@ import { type Component, getKeybindings, truncateToWidth, visibleWidth } from "@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText, plainText } from "./entry-text.ts";
-import { matchesTreeFilter } from "./filter.ts";
+import { matchesTreeFilter, removeLastSearchGrapheme } from "./filter.ts";
 import {
 	buildActivePath,
 	findBranchSegmentStart,
@@ -272,9 +272,15 @@ export class TreeList implements Component {
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.select.up")) {
-			this.selectedIndex = this.selectedIndex === 0 ? this.filteredNodes.length - 1 : this.selectedIndex - 1;
+			this.selectedIndex = Math.max(
+				0,
+				this.selectedIndex === 0 ? this.filteredNodes.length - 1 : this.selectedIndex - 1,
+			);
 		} else if (kb.matches(keyData, "tui.select.down")) {
-			this.selectedIndex = this.selectedIndex === this.filteredNodes.length - 1 ? 0 : this.selectedIndex + 1;
+			this.selectedIndex =
+				this.filteredNodes.length === 0 || this.selectedIndex === this.filteredNodes.length - 1
+					? 0
+					: this.selectedIndex + 1;
 		} else if (kb.matches(keyData, "app.tree.foldOrUp")) {
 			const currentId = this.filteredNodes[this.selectedIndex]?.node.entry.id;
 			if (currentId && this.isFoldable(currentId) && !this.foldedNodes.has(currentId)) {
@@ -294,7 +300,10 @@ export class TreeList implements Component {
 		} else if (kb.matches(keyData, "tui.editor.cursorLeft") || kb.matches(keyData, "tui.select.pageUp")) {
 			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisibleLines);
 		} else if (kb.matches(keyData, "tui.editor.cursorRight") || kb.matches(keyData, "tui.select.pageDown")) {
-			this.selectedIndex = Math.min(this.filteredNodes.length - 1, this.selectedIndex + this.maxVisibleLines);
+			this.selectedIndex = Math.max(
+				0,
+				Math.min(this.filteredNodes.length - 1, this.selectedIndex + this.maxVisibleLines),
+			);
 		} else if (kb.matches(keyData, "tui.select.confirm")) {
 			const selected = this.filteredNodes[this.selectedIndex];
 			if (selected && this.onSelect) {
@@ -350,7 +359,7 @@ export class TreeList implements Component {
 			this.applyFilter();
 		} else if (kb.matches(keyData, "tui.editor.deleteCharBackward")) {
 			if (this.searchQuery.length > 0) {
-				this.searchQuery = this.searchQuery.slice(0, -1);
+				this.searchQuery = removeLastSearchGrapheme(this.searchQuery);
 				this.foldedNodes.clear();
 				this.applyFilter();
 			}

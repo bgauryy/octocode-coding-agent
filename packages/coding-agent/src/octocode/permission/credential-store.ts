@@ -3,6 +3,7 @@ import path from "node:path";
 import { getAgentDir, getLegacyProviderDirs, getOctocodeHome } from "../../config.ts";
 import { shellPath, homeSpelling } from "./file-access.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPaths } from "../../../../common/src/canonical-path-set.ts";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
 import { readerLocations } from "../shared/local-reads.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
@@ -60,18 +61,20 @@ const key = (file: string): string => canonicalPath(file).toLowerCase();
 /** The `auth.json` paths a session reads, and the folders whose read can reach one: each store's folder, and its parent when that is an Octocode or Pi root folder. */
 function credentialPaths(): { files: Set<string>; models: Set<string>; folders: Set<string> } {
 	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyProviderDirs()]);
-	const files = new Set<string>();
-	const models = new Set<string>();
-	const folders = new Set<string>();
+	const spelled: Array<["files" | "models" | "folders", string]> = [];
 	for (const home of homes) {
-		for (const name of STORE_FILES) files.add(key(path.join(home, name)));
-		models.add(key(path.join(home, MODELS_FILE)));
-		folders.add(key(home));
+		for (const name of STORE_FILES) spelled.push(["files", path.join(home, name)]);
+		spelled.push(["models", path.join(home, MODELS_FILE)], ["folders", home]);
 		const parent = path.dirname(home);
-		if (CREDENTIAL_ROOTS.has(path.basename(parent).toLowerCase()) && parent !== os.homedir()) folders.add(key(parent));
+		if (CREDENTIAL_ROOTS.has(path.basename(parent).toLowerCase()) && parent !== os.homedir())
+			spelled.push(["folders", parent]);
 	}
-	for (const name of CLI_CREDENTIAL_FILES) files.add(key(path.join(os.homedir(), name)));
-	return { files, models, folders };
+	for (const name of CLI_CREDENTIAL_FILES) spelled.push(["files", path.join(os.homedir(), name)]);
+	// Canonicalized together, and reused while none of the folders they resolve through changes.
+	const canonical = canonicalPaths(spelled.map(([, file]) => file));
+	const found = { files: new Set<string>(), models: new Set<string>(), folders: new Set<string>() };
+	spelled.forEach(([kind], index) => found[kind].add(canonical[index].toLowerCase()));
+	return found;
 }
 
 /** What a read of a credential store found: the path or command that reads it, and the vendor store when it is another tool's. */
@@ -85,9 +88,9 @@ function storeLookup(): (file: string) => { store?: VendorStore } | undefined {
 	const { files, models, folders } = credentialPaths();
 	const vendor = vendorStores();
 	return (file) => {
-		const store = vendor(file);
-		if (store) return { store };
 		const at = key(file);
+		const store = vendor(file, at);
+		if (store) return { store };
 		return files.has(at) || folders.has(at) || (models.has(at) && modelsFileHoldsLiteralKey(canonicalPath(file)))
 			? {}
 			: undefined;

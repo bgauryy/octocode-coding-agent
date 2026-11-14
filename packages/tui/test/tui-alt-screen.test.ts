@@ -212,11 +212,35 @@ describe("TuiAltScreen", () => {
 		assert.strictEqual(transcript.isFollowingEnd, false);
 
 		// The indicator must not intercept a press on the scrollbar's last column.
-		assert.strictEqual(terminal.getViewport()[3], `${"↓".repeat(29)}┃`);
+		// A label cut to fit ends in an ellipsis, so the cut shows.
+		assert.strictEqual(terminal.getViewport()[3], `${"↓".repeat(28)}…┃`);
 		terminal.sendInput("\x1b[<0;30;4M");
 		terminal.sendInput("\x1b[<0;30;4m");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, false);
+		tui.stop();
+	});
+
+	it("blanks the row under the jump-to-end indicator when the label would cut a word", async () => {
+		const terminal = new VirtualTerminal(30, 6);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { scrollToEndIndicator: () => " ↓ Jump to end " });
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 8 }, (_, index) => `paragraph ${index + 1} long words here`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(
+			new VStack([
+				{ component: transcript, basis: 0, grow: 1, minSize: 1 },
+				{ component: new Text("editor\nfooter", 0, 0), basis: "auto", minSize: 1 },
+			]),
+		);
+		tui.start();
+		await terminal.waitForRender();
+		terminal.sendInput("\x1b[<64;1;1M");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.isFollowingEnd, false);
+		// No fragment of the covered line (`paragraph 7 lo`) is left beside the label.
+		assert.strictEqual(terminal.getViewport()[3]?.trim(), "↓ Jump to end");
 		tui.stop();
 	});
 
@@ -488,7 +512,7 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
-	it("jumps to a scrollbar track position and continues dragging from there", async () => {
+	it("pages on repeated scrollbar track clicks and drags only after grabbing the thumb", async () => {
 		const terminal = new RecordingTerminal(10, 10);
 		const tui = new TuiAltScreen(terminal);
 		const scrollView = new ScrollView(
@@ -502,8 +526,17 @@ describe("TuiAltScreen", () => {
 
 		terminal.sendInput("\x1b[<0;10;6M");
 		await terminal.waitForRender();
+		assert.strictEqual(scrollView.scrollTop, 10);
+		terminal.sendInput("\x1b[<0;10;6m");
+		terminal.sendInput("\x1b[<0;10;6M");
+		await terminal.waitForRender();
 		assert.strictEqual(scrollView.scrollTop, 20);
+		terminal.sendInput("\x1b[<0;10;6m");
 
+		// The thumb is now on rows five and six; grabbing it must not jump.
+		terminal.sendInput("\x1b[<0;10;5M");
+		await terminal.waitForRender();
+		assert.strictEqual(scrollView.scrollTop, 20);
 		terminal.sendInput("\x1b[<32;10;10M");
 		await terminal.waitForRender();
 		assert.strictEqual(scrollView.scrollTop, 40);

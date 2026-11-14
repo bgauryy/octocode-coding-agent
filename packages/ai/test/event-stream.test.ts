@@ -175,6 +175,37 @@ describe("AssistantMessageEventStream timing", () => {
 		expect(fetched.durationMs).toBeUndefined();
 	});
 
+	it("sets firstTokenMs at the first content event, not at start", async () => {
+		const stream = new AssistantMessageEventStream();
+		const answer = message(Date.now());
+		stream.push({ type: "start", partial: answer });
+		await sleep(20);
+		stream.push({ type: "text_start", contentIndex: 0, partial: answer });
+		await sleep(20);
+		stream.push({ type: "done", reason: "stop", message: answer });
+		expect(answer.firstTokenMs).toBeGreaterThanOrEqual(15);
+		expect(answer.durationMs! - answer.firstTokenMs!).toBeGreaterThanOrEqual(15);
+
+		const empty = message(Date.now());
+		new AssistantMessageEventStream().push({ type: "done", reason: "stop", message: empty });
+		expect(empty.firstTokenMs).toBeUndefined();
+	});
+
+	it("sets longestGapMs to the longest silence between events, including one after the first token", async () => {
+		const stream = new AssistantMessageEventStream();
+		const answer = message(Date.now());
+		stream.push({ type: "start", partial: answer });
+		stream.push({ type: "text_start", contentIndex: 0, partial: answer });
+		// The provider goes quiet mid-response: the first token came at once, so only the gap shows the silence.
+		await sleep(60);
+		stream.push({ type: "text_delta", contentIndex: 0, delta: "x", partial: answer });
+		await sleep(10);
+		stream.push({ type: "done", reason: "stop", message: answer });
+		expect(answer.firstTokenMs).toBeLessThan(30);
+		expect(answer.longestGapMs).toBeGreaterThanOrEqual(55);
+		expect(answer.longestGapMs!).toBeLessThan(answer.durationMs!);
+	});
+
 	it("does not time a message pushed after the stream completed", () => {
 		const stream = new AssistantMessageEventStream();
 		stream.push({ type: "done", reason: "stop", message: message(Date.now()) });

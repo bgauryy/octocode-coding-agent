@@ -142,7 +142,7 @@ const CASES: Record<string, Case> = {
 	// Terminal commands that open a picker or menu.
 	help: { check: asks(/\/btw\s+Ask a side question without tools/) },
 	configuration: { check: asks(/Interface and session/) },
-	model: { check: asks(/Models from configured providers/) },
+	model: { check: asks(/Choose a model for this chat/) },
 	effort: { check: asks(/Thinking Level/) },
 	modelsettings: { check: asks(/Model settings/) },
 	// The one /trust: a menu in the terminal, and `list` prints where this folder stands and the stored decisions.
@@ -154,7 +154,7 @@ const CASES: Record<string, Case> = {
 			expect(list.text).toMatch(/no\s+trust\s+decision\s+yet[\s\S]*No\s+trust\s+decisions\s+are\s+stored/);
 		},
 	},
-	providers: { check: asks(/Configured means credentials are present/) },
+	providers: { check: asks(/Configured, not verified/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},

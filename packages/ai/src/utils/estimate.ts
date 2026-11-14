@@ -15,7 +15,8 @@ export interface ContextUsageEstimate {
 /**
  * Characters per token for every estimate that has no tokenizer: the context, what compaction adds back and the fixed
  * request. Prose runs near four, but code, paths and JSON (most of a tool result, a restored file or a tool schema)
- * tokenize nearer three, so three keeps estimates on the safe side. Every estimator in the workspace shares this ratio.
+ * tokenize nearer three, so three biases common prose estimates upward. This is not an upper bound for every tokenizer
+ * or content type. Every estimator in the workspace shares this ratio.
  */
 export const CHARS_PER_TOKEN = 3;
 

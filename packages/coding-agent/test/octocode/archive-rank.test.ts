@@ -294,3 +294,57 @@ describe("the next page of a ranked search", () => {
 		opened.mockRestore();
 	});
 });
+
+describe("ranked search memory and cancellation", () => {
+	const write = (dir: string, name: string, body: string) => {
+		const file = path.join(dir, `${name}.md`);
+		fs.writeFileSync(file, body);
+		return { file, session: { id: name, relation: "same repository" as const }, label: name };
+	};
+
+	it("reads again only the files holding a shown passage, not every file it scanned", async () => {
+		const dir = tmp();
+		const files = [
+			write(dir, "hit", "### assistant\nthe zebra migration finished"),
+			...["a", "b", "c", "d"].map((name) => write(dir, name, `### assistant\nnothing relevant in ${name}`)),
+		];
+		const opened = vi.spyOn(fsPromises, "open");
+		const found = await rankHistory(files, "zebra migration", 1);
+		const paths = opened.mock.calls.map(([file]) => String(file));
+		opened.mockRestore();
+		expect(found.hits).toBe(1);
+		expect(found.text).toContain("the zebra migration finished");
+		// Every file once in the first pass; only the matching one again to show its lines.
+		expect(paths.filter((file) => file === files[0].file)).toHaveLength(2);
+		for (const other of files.slice(1)) expect(paths.filter((file) => file === other.file)).toHaveLength(1);
+	});
+
+	it("says when a ranked file changed before its lines were shown", async () => {
+		const dir = tmp();
+		const files = [write(dir, "moving", "### assistant\nthe walrus deploy failed")];
+		const real = fsPromises.open;
+		let calls = 0;
+		const opened = vi.spyOn(fsPromises, "open").mockImplementation(async (...args: Parameters<typeof real>) => {
+			// Between the two passes, the file grows.
+			if (++calls === 2) fs.appendFileSync(files[0].file, "\nmore lines written later");
+			return real(...args);
+		});
+		const found = await rankHistory(files, "walrus deploy", 1);
+		opened.mockRestore();
+		expect(found.text).toContain("the walrus deploy failed");
+		expect(found.text).toContain("the file changed after it was ranked");
+	});
+
+	it("checks for cancellation inside one long file, not only between files", async () => {
+		const dir = tmp();
+		const long = Array.from({ length: 1_000 }, (_, i) => `### assistant\nthe okapi step ${i}`).join("\n");
+		const files = [write(dir, "long", long)];
+		let checks = 0;
+		const signal = {
+			throwIfAborted: () => {
+				if (++checks > 2) throw new Error("cancelled");
+			},
+		} as unknown as AbortSignal;
+		await expect(rankHistory(files, "okapi step", 1, undefined, signal)).rejects.toThrow("cancelled");
+	});
+});

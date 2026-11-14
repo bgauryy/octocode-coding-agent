@@ -142,7 +142,7 @@ describe("ConfigView sign-in", () => {
 
 	it("names the sign-ins, links the key page and offers no Claude subscription token", async () => {
 		render(<ConfigView load={async () => withAuth} saveCredential={vi.fn()} signIn={vi.fn()} />);
-		expect(await screen.findByText(/Subscription sign-in · API key/)).toBeInTheDocument();
+		expect(await screen.findByText(/Subscription sign-in · OpenAI API key/)).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Get key for OpenAI" })).toHaveAttribute(
 			"href",
 			"https://platform.openai.com/api-keys",
@@ -220,7 +220,7 @@ describe("ConfigView sign-in", () => {
 			],
 		};
 		const view = render(<ConfigView load={async () => unsafe} saveCredential={vi.fn()} signIn={vi.fn()} />);
-		expect(await screen.findByText(/Sign in with: API key/)).toBeInTheDocument();
+		expect(await screen.findByText(/Sign in with: OpenAI API key/)).toBeInTheDocument();
 		expect(screen.queryByRole("link", { name: "Get key for OpenAI" })).toBeNull();
 		view.unmount();
 		const signIn = vi.fn(async () =>

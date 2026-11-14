@@ -1,5 +1,6 @@
 import { stringOrEmpty } from "../shared/util.ts";
-import { combineSignals, language, readCapped, USER_AGENT } from "./fetch.ts";
+import { language, readCapped, TIMEOUT_MS, USER_AGENT } from "./fetch.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 import { isHttpUrl, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
 import { decodeEntities, htmlToText } from "./html.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -119,9 +120,24 @@ export async function search(
 	env: NodeJS.ProcessEnv,
 	signal?: AbortSignal,
 ): Promise<SearchOutcome> {
+	const limit = deadline(TIMEOUT_MS, signal);
+	try {
+		return await searchWithin(query, max, env, limit.signal, signal);
+	} finally {
+		limit.clear();
+	}
+}
+
+async function searchWithin(
+	query: string,
+	max: number,
+	env: NodeJS.ProcessEnv,
+	deadline: AbortSignal,
+	/** The caller's own signal: its abort ends the search instead of passing to the next provider. */
+	signal: AbortSignal | undefined,
+): Promise<SearchOutcome> {
 	// Every provider call goes through the guarded request: public addresses only, pinned connection, no redirect for a
 	// keyed API (it carries a secret), and a body read to at most the shared cap.
-	const deadline = combineSignals(signal);
 	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: deadline });
 	const read = async (response: Response): Promise<BodyText> =>
 		readCapped(response, response.headers.get("content-type") ?? "");

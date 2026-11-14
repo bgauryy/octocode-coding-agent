@@ -52,6 +52,19 @@ function flakyHost() {
 }
 
 describe("pending reports", () => {
+	it.each([false, true])("lists once when no files are claimed (report waiting=%s)", async (waiting) => {
+		const dir = tmp();
+		if (waiting) savePendingReport(dir, "general-a", report("general-a"));
+		const listing = vi.spyOn(fs.promises, "readdir");
+		try {
+			const taken = await takePendingReports(dir);
+			expect(taken.map((entry) => entry.details.id)).toEqual(waiting ? ["general-a"] : []);
+			expect(listing.mock.calls.filter(([folder]) => folder === dir)).toHaveLength(1);
+		} finally {
+			listing.mockRestore();
+		}
+	});
+
 	it.each([false, true])("preserves the batch wake after its last send fails (restart=%s)", async (restart) => {
 		vi.useFakeTimers();
 		const f = fakeHost();

@@ -9,6 +9,8 @@ import {
 	createAgentSessionServices,
 	createSessionFromServices,
 } from "../../src/core/agent-session-runtime.ts";
+import { ModelRuntime } from "../../src/core/model-runtime.ts";
+import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { ModelAvailability } from "../../src/core/model-runtime/availability.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -47,6 +49,38 @@ describe("session switches", () => {
 		});
 		return counter;
 	}
+
+	it("releases credential watchers after repeated resource-loading failures", async () => {
+		const { cwd, agentDir } = folders();
+		const watchers = countWatchers();
+		vi.spyOn(DefaultResourceLoader.prototype, "reload").mockRejectedValue(new Error("failed resources"));
+		for (let cycle = 0; cycle < 10; cycle++) {
+			await expect(createAgentSessionServices({ cwd, agentDir })).rejects.toThrow("failed resources");
+			expect(watchers.live).toBe(0);
+		}
+	});
+
+	it("leaves a borrowed model runtime alive after resource loading fails", async () => {
+		const { cwd, agentDir } = folders();
+		const watchers = countWatchers();
+		const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json") });
+		try {
+			vi.spyOn(DefaultResourceLoader.prototype, "reload").mockRejectedValue(new Error("failed resources"));
+			await expect(createAgentSessionServices({ cwd, agentDir, modelRuntime })).rejects.toThrow("failed resources");
+			expect(watchers.live).toBe(1);
+		} finally {
+			modelRuntime.dispose();
+		}
+		expect(watchers.live).toBe(0);
+	});
+
+	it("releases the watcher when the initial model refresh fails", async () => {
+		const { agentDir } = folders();
+		const watchers = countWatchers();
+		vi.spyOn(ModelRuntime.prototype, "refresh").mockRejectedValue(new Error("failed refresh"));
+		await expect(ModelRuntime.create({ authPath: path.join(agentDir, "auth.json") })).rejects.toThrow("failed refresh");
+		expect(watchers.live).toBe(0);
+	});
 
 	it("leave one credential watcher and one live availability after 10 switches", async () => {
 		const { cwd, agentDir } = folders();

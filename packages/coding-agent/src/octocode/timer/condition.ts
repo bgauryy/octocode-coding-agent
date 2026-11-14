@@ -6,6 +6,7 @@ export type { ConditionDeps };
 /** What one check needs besides the condition: where it runs and what the row recorded. */
 export interface CheckInput {
 	cwd: string;
+	signal?: AbortSignal;
 	row?: { id: number; checks: number; spentUsd: number; sessionId: string };
 }
 

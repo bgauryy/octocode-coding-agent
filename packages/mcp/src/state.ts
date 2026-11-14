@@ -162,7 +162,8 @@ export class McpExtensionState {
 	readonly presentation: McpPresentation;
 	/** What the transcript declared for each tool when the session started or changed branch (`declaredParameters`). */
 	declaredBefore: ReadonlyMap<string, string> = new Map();
-	readonly registeredMetadata = new Map<string, unknown>();
+	/** What each tool's cached definition was built from: the tool object, a copy of it, and the rest (`tool-registry.ts`). */
+	readonly registeredMetadata = new Map<string, { tool: unknown; toolCopy: unknown; rest: unknown }>();
 	readonly cachedDefinitions = new Map<string, McpToolDefinition<TSchema, McpToolDetails>>();
 
 	/**

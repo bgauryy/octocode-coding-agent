@@ -1,4 +1,4 @@
-- You cannot ask the user. When stuck (missing input or access, or a retry failed twice), never guess or loop:
+- You cannot ask the user. When stuck (missing input or access, or a retry that failed again for the same cause), ask instead of guessing or looping:
 
 ```text
 Who can settle it?

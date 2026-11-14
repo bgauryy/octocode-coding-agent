@@ -1,5 +1,5 @@
 import path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync, sha256 } from "../../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { fence, fieldOf, headerField, oneLine, readHeader } from "./text.ts";
@@ -143,7 +143,10 @@ export function writeSessionRecord(record: SessionRecord, env: NodeJS.ProcessEnv
 	return file;
 }
 
-/** Per record file: the text on disk, the text being written, and the newest text still to write. */
+/**
+ * Per record file: a hash of the text on disk (the text itself would keep every finished session's record in memory for
+ * the life of the process), the text being written, and the newest text still to write.
+ */
 interface RecordWrites {
 	written?: string;
 	writing?: string;
@@ -163,7 +166,9 @@ export function scheduleSessionRecord(record: SessionRecord, env: NodeJS.Process
 	const text = renderRecord(record);
 	const state = recordWrites.get(file) ?? {};
 	recordWrites.set(file, state);
-	if ((state.queued ?? state.writing ?? state.written) === text) return state.flight ?? Promise.resolve();
+	const pending = state.queued ?? state.writing;
+	if (pending === undefined ? state.written === sha256(text) : pending === text)
+		return state.flight ?? Promise.resolve();
 	state.queued = text;
 	state.flight ??= drainRecord(file, state);
 	return state.flight;
@@ -176,7 +181,7 @@ async function drainRecord(file: string, state: RecordWrites): Promise<void> {
 			state.queued = undefined;
 			state.writing = text;
 			await atomicWriteFile(file, text, undefined, { mode: PRIVATE_FILE_MODE, durability: "none" });
-			state.written = text;
+			state.written = sha256(text);
 			state.writing = undefined;
 		}
 	} catch (error) {

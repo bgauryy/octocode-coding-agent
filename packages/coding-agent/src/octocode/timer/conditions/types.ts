@@ -2,7 +2,7 @@ import type { TimerResult } from "../../../../../db/src/api.ts";
 import type { ExtensionContext } from "../../../core/features/index.ts";
 
 /** Characters of a check's output kept on the row and shown on wake. */
-const OUTPUT_CAP = 2000;
+export const OUTPUT_CAP = 2000;
 
 /** A condition code decides: the closed list. A new kind is one `ConditionSpec` in `conditions/` and one entry in `index.ts`. */
 export type BaseCondition =
@@ -40,6 +40,7 @@ export interface ConditionDeps {
 /** One check's surroundings: where it runs, and the host. */
 export interface RunEnv {
 	cwd: string;
+	signal?: AbortSignal;
 	deps: ConditionDeps;
 	/** The timer row, for a `check`'s budget. */
 	row?: { id: number; checks: number; spentUsd: number; sessionId: string };
@@ -81,6 +82,7 @@ export function text(value: unknown, name: string): string {
 }
 
 export interface JudgeRequest {
+	signal?: AbortSignal;
 	id: number;
 	sessionId: string;
 	question: string;

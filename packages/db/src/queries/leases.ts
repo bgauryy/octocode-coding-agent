@@ -1,13 +1,20 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
+import { keptStatement } from "../statements.ts";
 
 /** The unexpired leases of `workspace`, oldest first. */
 export function live(db: DatabaseSync, workspace: string, now: number): Row[] {
-	return db
-		.prepare(
-			"SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND expires_at > ? ORDER BY id",
-		)
-		.all(workspace, now);
+	return keptStatement(
+		db,
+		"SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND expires_at > ? ORDER BY id",
+	).all(workspace, now);
+}
+
+/** Whether an owner other than `self` holds any unexpired lease, in any checkout: without one, nothing can conflict. */
+export function anyLiveOfOthers(db: DatabaseSync, self: string, now: number): boolean {
+	return (
+		keptStatement(db, "SELECT 1 FROM leases WHERE owner <> ? AND expires_at > ? LIMIT 1").get(self, now) !== undefined
+	);
 }
 
 /**
@@ -24,10 +31,10 @@ export function liveInTeam(db: DatabaseSync, team: string, now: number): Row[] {
 
 /** The checkouts other than `workspace` where agents of `team` hold an unexpired lease. */
 export function checkoutsInTeam(db: DatabaseSync, team: string, workspace: string, now: number): string[] {
-	return db
-		.prepare(
-			"SELECT DISTINCT w.root FROM leases l JOIN workspaces w ON w.id = l.workspace_id JOIN agents a ON a.id = l.owner WHERE a.team = ? AND w.root <> ? AND l.expires_at > ?",
-		)
+	return keptStatement(
+		db,
+		"SELECT DISTINCT w.root FROM leases l JOIN workspaces w ON w.id = l.workspace_id JOIN agents a ON a.id = l.owner WHERE a.team = ? AND w.root <> ? AND l.expires_at > ?",
+	)
 		.all(team, workspace, now)
 		.map((row) => String(row.root));
 }
@@ -46,12 +53,12 @@ export function conflicting(
 	kind: "file" | "tree",
 ): Row | undefined {
 	const marks = ancestors.map(() => "?").join(",");
-	return db
-		.prepare(
-			`SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND owner <> ? AND expires_at > ? AND
+	// One SQL text per number of ancestors (the path's depth): a few kept statements.
+	return keptStatement(
+		db,
+		`SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND owner <> ? AND expires_at > ? AND
          (path_key = ? OR (kind = 'tree' AND path_key IN (${marks})) OR (? = 'tree' AND path_key > ? AND path_key < ?)) ORDER BY id LIMIT 1`,
-		)
-		.get(workspace, self, now, key, ...ancestors, kind, `${key}/`, `${key}0`);
+	).get(workspace, self, now, key, ...ancestors, kind, `${key}/`, `${key}0`);
 }
 
 /** The id of the live lease `owner` holds on `key` of this kind. */

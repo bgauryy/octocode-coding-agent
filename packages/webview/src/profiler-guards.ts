@@ -139,6 +139,7 @@ export function isProfileEvent(value: unknown): value is ProfileEvent {
 		typeof value.label === "string" &&
 		optional(value.peer, isString) &&
 		optional(value.tokens, finite) &&
+		optional(value.phases, isRecord) &&
 		optional(value.ref, isRecord)
 	);
 }

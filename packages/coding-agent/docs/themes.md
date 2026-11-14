@@ -1,6 +1,6 @@
 # Customize Octocode with themes
 
-Themes control the colors Octocode uses in interactive mode and HTML exports. Octocode includes `system` (default), `dark` and `light`. Pick one, follow your terminal's light or dark appearance, or write your own.
+Themes control the colors Octocode uses in interactive mode and HTML exports. By default, Octocode follows your terminal's appearance with `octocode-light` and `octocode-dark`. You can also choose `system` to use your terminal's colors, the legacy `light` and `dark` palettes, or a custom theme.
 
 ```mermaid
 flowchart TD
@@ -9,18 +9,18 @@ flowchart TD
     B -- no --> C{"theme setting"}
     C -- "name" --> N[that theme]
     C -- "light/dark" --> D["terminal appearance picks one"]
-    C -- unset --> S["system: built from your terminal colors"]
+    C -- unset --> S["octocode-light/octocode-dark: follows terminal appearance"]
 ```
 
-| Way to choose | Example                                                            |
-| ------------- | ------------------------------------------------------------------ |
-| Picker        | `/configuration` → **Interface and session** → **Theme**           |
-| Setting       | `{ "theme": "dark" }` or `{ "theme": "light/dark" }` (light first) |
-| One run       | `octocode --use-theme light` (`--no-themes` skips theme discovery) |
+| Way to choose | Example                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| Picker        | `/configuration` → **Interface and session** → **Theme**                                      |
+| Setting       | `{ "theme": "octocode-dark" }` or `{ "theme": "octocode-light/octocode-dark" }` (light first) |
+| One run       | `octocode --use-theme octocode-light` (`--no-themes` skips theme discovery)                   |
 
 ## Use your terminal's colors
 
-The `system` theme is the default. It builds Octocode's colors from your terminal's theme, so Octocode matches the terminal instead of bringing its own palette:
+The optional `system` theme builds Octocode's colors from your terminal's theme, so Octocode matches the terminal instead of bringing its own palette:
 
 - Octocode queries the terminal's default foreground and background colors and its 16 ANSI colors.
 - Each Octocode color takes its hue from one ANSI color, for example errors from red and links from blue.
@@ -47,17 +47,17 @@ The selection is saved as the `theme` setting:
 
 ```json
 {
-	"theme": "dark"
+	"theme": "octocode-dark"
 }
 ```
 
-Without a `theme` setting, Octocode uses `system`.
+Without a `theme` setting, Octocode uses `octocode-light/octocode-dark`.
 
 Automatic mode stores the light theme first and the dark theme second:
 
 ```json
 {
-	"theme": "light/dark"
+	"theme": "octocode-light/octocode-dark"
 }
 ```
 
@@ -66,13 +66,13 @@ Octocode decides whether the terminal is light or dark from its reported backgro
 Use `--use-theme` to choose the initial theme for one invocation without changing the saved setting:
 
 ```bash
-octocode --use-theme light
-octocode --use-theme light/dark
+octocode --use-theme octocode-light
+octocode --use-theme octocode-light/octocode-dark
 ```
 
 ## Create a custom theme
 
-Create a new JSON file conforming to `schemas/theme.schema.json` in the installed package (or start from a built-in theme's values). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
+Create a new JSON file conforming to `schemas/theme.schema.json` in the installed package (or start from a built-in theme's values). The built-in themes share colors through variables. The Octocode palettes use RGB hexadecimal values; the legacy palettes use OKHSL values so you can adjust a hue, saturation, or lightness directly.
 
 1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration](configuration.md#agent-directory).
 2. Set its `name` to `my-theme`.

@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, DbWriterUnavailableError, forks, sessions, transcripts } from "../../../db/src/api.ts";
 import { AgentSessionRuntime } from "../../src/core/agent-session-runtime.ts";
+import type { AgentSession } from "../../src/core/agent-session.ts";
+import type { AgentSessionServices } from "../../src/core/agent-session-services.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sessionMirrorSettled, setMirrorNoticeHandler } from "../../src/core/session-manager/mirror.ts";
 import { rebuild, transcriptOf } from "../../src/core/session-manager/mirror-writes.ts";
@@ -186,8 +188,18 @@ describe("database mirror delivery", () => {
 		session.appendMessage(message("first"));
 		expect(await sessionMirrorSettled()).toBe(true);
 		for (let n = 0; n < 50; n++) session.appendMessage(message(`queued ${n}`));
-		const runtime = Object.create(AgentSessionRuntime.prototype) as AgentSessionRuntime;
-		Object.assign(runtime, { teardownCurrent: async () => undefined });
+		const runtime = new AgentSessionRuntime(
+			{
+				abort: async () => undefined,
+				extensionRunner: { hasHandlers: () => false },
+				sessionManager: session,
+				dispose: () => undefined,
+			} as unknown as AgentSession,
+			{ dispose: () => undefined } as unknown as AgentSessionServices,
+			() => {
+				throw new Error("Disposal must not create another session");
+			},
+		);
 		await runtime.dispose();
 		// What `process.exit` would leave: no further waiting.
 		expect(rows(session.getSessionId())).toEqual(lines(session.getSessionFile()!));

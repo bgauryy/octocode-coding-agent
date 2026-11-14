@@ -284,6 +284,19 @@ export function keyHint(keybinding: Keybinding, description: string): string {
 	return theme.fg("dim", keyText(keybinding)) + theme.fg("muted", ` ${description}`);
 }
 
+/** Result lines a collapsed tool row shows before its fold hint. */
+export const TOOL_PREVIEW_LINES = 5;
+
+/**
+ * The one fold hint under a collapsed preview: `… +12 lines (ctrl+o to expand)`. `earlier` names the hidden head of a
+ * preview that keeps the last lines: `… +12 earlier lines (ctrl+o to expand)`. Without a bound key, only the count.
+ */
+export function foldHint(hidden: number, earlier = false): string {
+	const lines = `${hidden} ${earlier ? "earlier " : ""}${hidden === 1 ? "line" : "lines"}`;
+	const key = keyText("app.tools.expand");
+	return theme.fg("dim", `… +${lines}${key ? ` (${key} to expand)` : ""}`);
+}
+
 export function rawKeyHint(key: string, description: string): string {
 	return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
 }

@@ -35,6 +35,8 @@ export interface SettingsListTheme {
 
 export interface SettingsListOptions {
 	enableSearch?: boolean;
+	/** Starting query for a rebuilt searchable list. */
+	initialQuery?: string;
 }
 
 export class SettingsList implements Component {
@@ -70,7 +72,19 @@ export class SettingsList implements Component {
 		this.searchEnabled = options.enableSearch ?? false;
 		if (this.searchEnabled) {
 			this.searchInput = new Input();
+			if (options.initialQuery) {
+				this.searchInput.setValue(options.initialQuery);
+				this.applyFilter(options.initialQuery);
+			}
 		}
+	}
+
+	getSearchQuery(): string {
+		return this.searchInput?.getValue() ?? "";
+	}
+
+	getSelectedId(): string | undefined {
+		return this.getDisplayItems()[this.selectedIndex]?.id;
 	}
 
 	updateValue(id: string, newValue: string): void {
@@ -235,8 +249,9 @@ export class SettingsList implements Component {
 		} else if (kb.matches(data, "tui.select.cancel")) {
 			this.onCancel();
 		} else if (this.searchEnabled && this.searchInput) {
+			const query = this.searchInput.getValue();
 			this.searchInput.handleInput(data);
-			this.applyFilter(this.searchInput.getValue());
+			if (this.searchInput.getValue() !== query) this.applyFilter(this.searchInput.getValue());
 		}
 	}
 

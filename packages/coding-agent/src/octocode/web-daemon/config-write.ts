@@ -52,7 +52,14 @@ export async function writeConfigSetting(command: ConfigSettingCommand, options:
 			409,
 			`The ${command.scope} settings file is invalid, so it was not changed. Fix it in a terminal first.`,
 		);
-	manager.setDefaultSelection(scope, command.key, command.value ?? undefined);
+	if (command.key === "modelDefault") {
+		if (command.value && (!command.value.provider.trim() || !command.value.model.trim()))
+			throw new ConfigWriteError(400, "Choose both a provider and a model.");
+		manager.setDefaultSelectionPair(
+			scope,
+			command.value ? { provider: command.value.provider.trim(), model: command.value.model.trim() } : undefined,
+		);
+	} else manager.setDefaultSelection(scope, command.key, command.value ?? undefined);
 	await manager.flush();
 	if (manager.drainErrors().length > 0)
 		throw new ConfigWriteError(500, `The ${command.scope} settings file could not be written.`);

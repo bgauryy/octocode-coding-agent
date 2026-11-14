@@ -93,6 +93,15 @@ export function findProjectedCutPoint(
 		if (accumulatedTokens >= keepRecentTokens) {
 			exceededBudget = true;
 			cutIndex = cutPoints.find((candidate) => candidate >= i) ?? cutPoints[cutPoints.length - 1];
+			// The budget ran out inside the newest tool exchange (a result larger than the tail), and only session notices
+			// follow it: cutting there would summarize away the call and the result the model is about to read. Keep
+			// from the call instead; a later user or assistant message still moves the cut past an older exchange.
+			const spoken = (entry: ProjectedSessionEntry) =>
+				entry.messages.some((message) => message.role === "user" || message.role === "assistant");
+			if (cutIndex > i && !entries.slice(cutIndex, endIndex).some(spoken)) {
+				const call = cutPoints.findLast((candidate) => candidate <= i);
+				if (call !== undefined) cutIndex = call;
+			}
 			break;
 		}
 	}

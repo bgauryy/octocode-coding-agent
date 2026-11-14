@@ -16,6 +16,7 @@ import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { claudeSubscriptionRefusal } from "./provider-actions.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { providerAccessLabel } from "../../../core/provider-label.ts";
 
 /** Interactive-mode members used by the model and thinking controls. */
 type ModelControlsHost = Pick<
@@ -237,6 +238,15 @@ export function showModelSelector(host: ModelControlsHost, initialSearchInput?: 
 		};
 		const defaultProvider = settingsManager.getDefaultProvider();
 		const defaultModel = settingsManager.getDefaultModel();
+		const global = settingsManager.getGlobalSettings();
+		const project = settingsManager.getProjectSettings();
+		const configured = { ...global, ...project };
+		const source =
+			defaultProvider !== configured.defaultProvider || defaultModel !== configured.defaultModel
+				? "run"
+				: project.defaultProvider !== undefined || project.defaultModel !== undefined
+					? "workspace"
+					: "global";
 		const selector = new ModelSelectorComponent(
 			host.ui,
 			session.model,
@@ -250,6 +260,7 @@ export function showModelSelector(host: ModelControlsHost, initialSearchInput?: 
 			initialSearchInput,
 			(model) => void selectModel(model, true),
 			defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
+			{ source },
 		);
 		return { component: selector, focus: selector, dispose: () => selector.dispose() };
 	});
@@ -310,22 +321,28 @@ export function showModelsSelector(host: ModelControlsHost): void {
 				allModels: availableModels,
 				enabledModelIds: currentEnabledIds,
 				refreshStatus: "Refreshing model catalogs…",
-				providerKind: (provider) => host.session.modelRuntime.getProviderKind(provider),
+				providerKind: (provider) => providerAccessLabel(host.session.modelRuntime, provider),
 			},
 			{
 				onChange: (enabledIds) => {
 					selectionChanged = true;
 					updateSessionModels(enabledIds);
 				},
-				onPersist: (enabledIds) => {
+				onPersist: async (enabledIds) => {
 					const allEnabled =
 						enabledIds !== null &&
 						enabledIds.length === availableModels.length &&
 						enabledIds.every((id) => availableModelIds.has(id));
 					const newPatterns = enabledIds === null || allEnabled ? undefined : enabledIds;
-					host.settingsManager.setEnabledModels(newPatterns ? [...newPatterns] : undefined);
-					host.showStatus("Model selection saved to settings");
+					await host.settingsManager.saveEnabledModels(newPatterns);
+					const overridden =
+						JSON.stringify(host.settingsManager.getEnabledModels()) !==
+						JSON.stringify(host.settingsManager.getGlobalSettings().enabledModels);
+					host.showStatus(
+						`Model shortcuts saved to global settings${overridden ? ". Workspace or run settings take precedence here." : ""}`,
+					);
 				},
+				requestRender: () => host.ui.requestRender(),
 				onCancel: () => {
 					done();
 					host.ui.requestRender();

@@ -1,10 +1,11 @@
 import type { Component, Container } from "@octocodeai/octocode-tui";
 
 /** Disposes one component and, recursively, its children. */
-export function disposeComponent(component: Component): void {
+export function disposeComponent(component: Component, keep?: ReadonlySet<Component>): void {
+	if (keep?.has(component)) return;
 	(component as { dispose?(): void }).dispose?.();
 	const children = (component as { children?: Component[] }).children;
-	if (Array.isArray(children)) for (const child of children) disposeComponent(child);
+	if (Array.isArray(children)) for (const child of children) disposeComponent(child, keep);
 }
 
 /**
@@ -14,5 +15,5 @@ export function disposeComponent(component: Component): void {
  */
 export function disposeTranscript(container: Container, keep: Iterable<Component> = []): void {
 	const kept = new Set<Component>(keep);
-	for (const child of container.children) if (!kept.has(child)) disposeComponent(child);
+	for (const child of container.children) disposeComponent(child, kept);
 }

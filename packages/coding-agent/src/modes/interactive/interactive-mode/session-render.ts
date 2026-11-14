@@ -5,7 +5,8 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { disposeTranscript } from "./transcript-dispose.ts";
-import { renderWindowedEntries } from "./session-window.ts";
+import type { SessionRenderOptions } from "./session-render-options.ts";
+import { retainLiveTools, renderWindowedEntries } from "./session-window.ts";
 import {
 	type CacheMiss,
 	cacheMissLabel,
@@ -95,10 +96,10 @@ export function addToolExecution(
 export function renderSessionItems(
 	host: SessionRenderHost,
 	items: readonly RenderSessionItem[],
-	options: { updateFooter?: boolean; populateHistory?: boolean } = {},
+	options: SessionRenderOptions = {},
 ): void {
 	host.pendingTools.clear();
-	const renderedPendingTools = new Map<string, ToolExecutionComponent>();
+	const renderedPendingTools = options.toolState ?? new Map<string, ToolExecutionComponent>();
 	// Cache misses are not persisted, unlike successful cache-warming usage.
 	// Re-derive them and inject them after the assistant messages that paid for them. Only the current branch's requests
 	// are compared: entries of other branches interleave in the file but were never part of this prefix.
@@ -132,7 +133,12 @@ export function renderSessionItems(
 			const parent = last instanceof AssistantMessageComponent ? last : undefined;
 			for (const content of message.content) {
 				if (content.type === "toolCall") {
-					const component = addToolExecution(host, content.name, content.id, content.arguments, parent);
+					const retained = options.liveTools?.get(content.id);
+					const component = retained ?? addToolExecution(host, content.name, content.id, content.arguments, parent);
+					if (retained) {
+						if (parent) parent.attachTool(content.id, retained);
+						else host.chatContainer.addChild(retained);
+					}
 
 					const toolText = stoppedToolText(message.stopReason, host.session.retryAttempt);
 					if (toolText !== undefined) {
@@ -177,7 +183,7 @@ export function renderSessionItems(
 export function renderSessionEntries(
 	host: SessionRenderHost,
 	entries: SessionEntry[],
-	options: { updateFooter?: boolean; populateHistory?: boolean } = {},
+	options: SessionRenderOptions = {},
 ): void {
 	// Selection coordinates point into the transcript being replaced.
 	if (host.renderer instanceof TuiAltScreen) host.renderer.resetTextSelection();
@@ -337,12 +343,17 @@ export function renderInitialMessages(host: SessionRenderHost): void {
 
 export function rebuildChatFromMessages(host: SessionRenderHost): void {
 	// The reply being streamed is not saved yet, so the rebuild cannot redraw it: keep it, and its tool rows, below.
+	const entries = host.sessionManager.buildContextEntries();
+	const retained = retainLiveTools(entries, host.pendingTools);
 	const live = host.streamingComponent;
 	const liveTools = live ? [...host.pendingTools] : [];
 	// The live reply and its tool rows are re-added below, so they stay subscribed.
-	disposeTranscript(host.chatContainer, live ? [live, ...liveTools.map(([, component]) => component)] : []);
+	disposeTranscript(host.chatContainer, [
+		...retained.values(),
+		...(live ? [live, ...liveTools.map(([, component]) => component)] : []),
+	]);
 	host.chatContainer.clear();
-	renderWindowedEntries(host, host.sessionManager.buildContextEntries());
+	renderWindowedEntries(host, entries, { liveTools: retained });
 	if (!live) return;
 	host.chatContainer.addChild(live);
 	for (const [toolCallId, component] of liveTools) {

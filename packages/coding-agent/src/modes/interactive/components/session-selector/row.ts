@@ -37,10 +37,14 @@ export function rowTitle(session: SessionInfo, parentTitle?: string, max = TITLE
 	return sessionTitle(session, max) || (parentTitle ? `${GLYPH.reason} ${parentTitle}` : "(no prompt yet)");
 }
 
-function treePrefix(node: FlatSessionNode): string {
+function treePrefix(node: FlatSessionNode, width: number): string {
 	if (node.depth === 0) return "";
-	const parts = node.ancestorContinues.map((continues) => (continues ? "│  " : "   "));
-	return parts.join("") + (node.isLast ? "└─ " : "├─ ");
+	// Keep room for the title and status even after repeated forks.
+	const maxLevels = Math.max(0, Math.floor((width - 24) / 3));
+	const ancestors = maxLevels === 0 ? [] : node.ancestorContinues.slice(-maxLevels);
+	const hidden = node.ancestorContinues.length > ancestors.length;
+	const parts = ancestors.map((continues) => (continues ? "│  " : "   "));
+	return (hidden ? "… " : "") + parts.join("") + (node.isLast ? "└─ " : "├─ ");
 }
 
 interface Part {
@@ -98,7 +102,7 @@ function fill(line: string, width: number, selected: boolean): string {
 export function renderSessionRow(view: RowView): string[] {
 	const { node, width, selected, current, confirmingDelete } = view;
 	const session = node.session;
-	const prefix = treePrefix(node);
+	const prefix = treePrefix(node, width);
 	const cursor = selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 	const mark = view.marked
 		? theme.fg("error", GLYPH.failed)
@@ -110,9 +114,9 @@ export function renderSessionRow(view: RowView): string[] {
 	const indent = 2 + visibleWidth(prefix) + 2;
 
 	const title = truncateToWidth(rowTitle(session, view.parentTitle), Math.max(1, width - indent), "…");
-	const color = confirmingDelete ? "error" : current ? "accent" : hasSessionName(session) ? "warning" : undefined;
+	const color = confirmingDelete ? "error" : current ? "accent" : undefined;
 	let styled = color ? theme.fg(color, title) : title;
-	if (selected) styled = theme.bold(styled);
+	if (selected || hasSessionName(session)) styled = theme.bold(styled);
 
 	const line1 = `${cursor}${theme.fg("dim", prefix)}${mark} ${styled}`;
 	const line2 = `${" ".repeat(indent)}${theme.fg(confirmingDelete ? "error" : "dim", detailLine(view, width - indent))}`;

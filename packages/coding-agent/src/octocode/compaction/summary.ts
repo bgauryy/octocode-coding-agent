@@ -26,7 +26,7 @@ import {
 } from "./checkpoint-text.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carriedUserMessages, type FallbackContinuity, persistenceFailure } from "./continuity.ts";
-import { takeEarlySummary } from "./early-summary.ts";
+import { discardEarlySummary, skipReason, takeEarlySummary } from "./early-summary.ts";
 import { keptWordsOf } from "./kept-words.ts";
 import { carriedLoadedSkills, LOADED_SKILLS_DETAILS, loadedSkills, loadedSkillsLines } from "./loaded-skills.ts";
 import { recordCompactionNote } from "./record.ts";
@@ -201,6 +201,8 @@ export async function writeSummary(
 		recordCompactionNote(api, "default-summary", "no model is selected for the summary");
 		return undefined;
 	}
+	// How long the summary held the compaction: recorded in its method details for the profiler.
+	const startedAt = Date.now();
 	// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
 	const segment = nextSegment();
 	// An in-memory session has no file to save to: long texts stay inline, cut with a marker.
@@ -240,6 +242,7 @@ export async function writeSummary(
 		const key = paidSummaryKey(model, event.preparation, event.customInstructions, api.getThinkingLevel(), forced);
 		let paidSummary = paid.get(ctx.sessionManager);
 		// The summary requested ahead of the threshold (`early-summary.ts`): ready, or waited for what is left of it.
+		const earlyNote = (text: string) => recordCompactionNote(api, "early-summary", text);
 		if (paidSummary?.key !== key && !summaryModel && event.reason === "threshold" && !event.customInstructions) {
 			const thinking = api.getThinkingLevel();
 			const taken = await takeEarlySummary(
@@ -249,13 +252,15 @@ export async function writeSummary(
 				thinking,
 				event.signal,
 				forced,
+				earlyNote,
 			);
 			if (event.signal.aborted) return undefined;
 			if (taken) {
 				paidSummary = { key, result: taken.result, method: { method: "cache-shared", early: taken.early } };
 				paid.set(ctx.sessionManager, paidSummary);
 			}
-		}
+		} else
+			discardEarlySummary(ctx.sessionManager, skipReason(paidSummary?.key === key, !!summaryModel, event), earlyNote);
 		if (paidSummary?.key !== key) {
 			// An automatic compaction whose appended sections alone (unsaved) are as large as what the summary replaces cannot
 			// free anything, so the model is not paid to write it.
@@ -341,7 +346,7 @@ export async function writeSummary(
 			...asRecord(result.details),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
 			...(skills.length > 0 ? { [LOADED_SKILLS_DETAILS]: skills } : {}),
-			[SUMMARY_METHOD_DETAILS]: method,
+			[SUMMARY_METHOD_DETAILS]: { ...method, ms: Date.now() - startedAt },
 		};
 		return {
 			compaction: {

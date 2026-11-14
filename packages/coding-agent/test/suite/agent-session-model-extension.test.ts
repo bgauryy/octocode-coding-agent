@@ -237,7 +237,7 @@ describe("AgentSession model and extension characterization", () => {
 		harnesses.push(harness);
 
 		await expect(harness.session.setModel(harness.getModel("faux-2")!)).rejects.toThrow(
-			`No API key for ${harness.getModel().provider}/faux-2`,
+			`No usable credentials for ${harness.getModel().provider}/faux-2. Connect it in /providers.`,
 		);
 	});
 

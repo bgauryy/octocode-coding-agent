@@ -161,6 +161,16 @@ export function rebuild(t: Transcript, origin: Origin): void {
 	let snapshot: { stamp: FileStamp; records: readonly unknown[]; lines?: readonly string[] };
 	try {
 		const stamp = getFileStamp(t.file);
+		if (stamp.size > 1024 * 1024) {
+			send(t, origin, {
+				kind: "save-file",
+				sessionId: t.sessionId,
+				file: t.file,
+				binding: stamp.binding,
+				workspace: mirrorWorkspace(t.cwd, origin !== "open"),
+			});
+			return;
+		}
 		const state = t.state;
 		// Unchanged since this state's last write, with nothing held back: the entries in memory are the file. An open
 		// (whose entries may have been read before its size was taken), another writer's records, or a state that moved
@@ -306,7 +316,7 @@ export function send(
 ): void {
 	if (origin !== "append") flushAll();
 	const seq = ++sequence;
-	const full = command.kind === "save" || repair;
+	const full = command.kind === "save" || command.kind === "save-file" || repair;
 	if (full) t.saved = seq;
 	t.pending += 1;
 	track(

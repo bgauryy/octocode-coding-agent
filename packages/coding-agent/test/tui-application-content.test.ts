@@ -4,6 +4,11 @@ import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { Container, Image, Text, resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
+import type { SessionEntry } from "../src/core/session-manager.ts";
+import {
+	loadEarlierMessages,
+	renderWindowedEntries,
+} from "../src/modes/interactive/interactive-mode/session-window.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
 import { ApplicationAssets } from "../src/core/application/assets.ts";
 import {
@@ -12,6 +17,7 @@ import {
 } from "../src/modes/interactive/components/application-content.ts";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { SkillInvocationMessageComponent } from "../src/modes/interactive/components/skill-invocation-message.ts";
+import { rebuildChatFromMessages } from "../src/modes/interactive/interactive-mode/session-render.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import { getMarkdownTheme, initTheme } from "../src/theme/theme.ts";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
@@ -75,7 +81,7 @@ function fixture(messages: AgentMessage[] = []) {
 		settingsManager: { getShowImages: () => true, getImageWidthCells: () => 20, getShowCacheMissNotices: () => false },
 		sessionManager: {
 			getCwd: () => "/tmp",
-			buildContextEntries: () =>
+			buildContextEntries: (): SessionEntry[] =>
 				messages.map((message, index) => ({
 					type: "message",
 					id: String(index),
@@ -107,6 +113,75 @@ describe("shared application data in the TUI", () => {
 		for (const session of sessions.splice(0)) getApplicationPort(session).dispose();
 		resetCapabilitiesCache();
 	});
+
+	it.each([
+		["single", false],
+		["multiple", false],
+		["overlapping", false],
+		["single", true],
+		["multiple", true],
+		["overlapping", true],
+	] as const)(
+		"keeps interleaved %s tool results intact across history windows (earlier page: %s)",
+		(kind, earlierPage) => {
+			const call = (...ids: string[]) =>
+				assistant(
+					ids.map((id) => ({ type: "toolCall" as const, id, name: "inspect", arguments: { path: `${id}.ts` } })),
+				);
+			const result = (id: string): AgentMessage => ({
+				role: "toolResult",
+				toolCallId: id,
+				toolName: "inspect",
+				content: [{ type: "text", text: `RESULT-${id}` }],
+				isError: false,
+				timestamp: 2,
+			});
+			const notice: AgentMessage = {
+				role: "custom",
+				customType: "child-report",
+				content: "CHILD REPORT",
+				display: true,
+				timestamp: 3,
+			};
+			const block =
+				kind === "single"
+					? [call("A"), notice, result("A")]
+					: kind === "multiple"
+						? [call("A", "B"), notice, result("B"), notice, result("A")]
+						: [call("A"), notice, call("B"), result("A"), notice, result("B")];
+			const messages: AgentMessage[] = [
+				...Array.from({ length: 450 }, (_, i): AgentMessage => ({
+					role: "user",
+					content: `earlier ${i}`,
+					timestamp: i,
+				})),
+				...block,
+				...Array.from({ length: earlierPage ? 200 : 0 }, (_, i): AgentMessage => ({
+					role: "user",
+					content: `later ${i}`,
+					timestamp: 1000 + i,
+				})),
+			];
+			const entries = messages.map((message, i) => ({
+				type: "message",
+				id: `e${i}`,
+				parentId: null,
+				timestamp: new Date(0).toISOString(),
+				message,
+			})) as SessionEntry[];
+			const full = fixture();
+			full.host.renderSessionEntries(entries);
+			const windowed = fixture();
+			renderWindowedEntries(windowed.host, entries, {}, 1);
+			if (earlierPage) expect(loadEarlierMessages(windowed.host)).toBe(true);
+			expect(windowed.text()).toContain("RESULT-A");
+			if (kind !== "single") expect(windowed.text()).toContain("RESULT-B");
+			expect(windowed.host.pendingTools.size).toBe(0);
+			while (loadEarlierMessages(windowed.host));
+			expect(windowed.text()).toBe(full.text());
+			expect(windowed.host.pendingTools.size).toBe(0);
+		},
+	);
 
 	it("renders a user image in Kitty and provides an explicit fallback without graphics", () => {
 		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
@@ -404,6 +479,308 @@ describe("shared application data in the TUI", () => {
 			errorMessage: "provider failure",
 			model: "source-model",
 		});
+	});
+
+	it.each([false, true])("keeps an old live tool across reset (failed=%s)", (failed) => {
+		const messages: AgentMessage[] = [
+			assistant([{ type: "toolCall", id: "old-live", name: "bash", arguments: { command: "slow" } }]),
+		];
+		const { host, text } = fixture(messages);
+		host.renderSessionItems(messages);
+		expect(host.pendingTools.has("old-live")).toBe(true);
+		const live = host.pendingTools.get("old-live");
+		const disposed = vi.spyOn(live, "dispose");
+		for (let index = 0; index < 450; index++)
+			messages.push({ role: "user", content: `report ${index}`, timestamp: index });
+		subscribeToAgent(host);
+		const port = getApplicationPort(host.session);
+		port.publishDomain({
+			type: "tool.progress",
+			toolCallId: "old-live",
+			toolName: "bash",
+			text: "PARTIAL LIVE RESULT",
+		});
+		port.publishDomain({
+			type: "session.reset",
+			messages: messages.map((message) => port.normalizeMessage(message)),
+			tools: [],
+		});
+		expect(host.pendingTools.get("old-live")).toBe(live);
+		expect(disposed).not.toHaveBeenCalled();
+		expect(text()).toContain("PARTIAL LIVE RESULT");
+		expect(host.chatContainer.children.length).toBeLessThan(410);
+		port.publishDomain({
+			type: "tool.completed",
+			toolCallId: "old-live",
+			toolName: "bash",
+			text: "FINAL LIVE RESULT",
+			failed,
+		});
+		expect(text()).toContain("FINAL LIVE RESULT");
+		expect(host.pendingTools.has("old-live")).toBe(false);
+		messages.push({
+			role: "toolResult",
+			toolCallId: "old-live",
+			toolName: "bash",
+			content: [{ type: "text", text: "FINAL LIVE RESULT" }],
+			isError: failed,
+			timestamp: 1000,
+		});
+		while (loadEarlierMessages(host));
+		const full = fixture(messages);
+		full.host.renderSessionEntries(full.host.sessionManager.buildContextEntries());
+		expect(text()).toBe(full.text());
+		expect(host.pendingTools.size).toBe(0);
+	});
+
+	it("keeps an old live tool across a direct transcript rebuild", () => {
+		const messages: AgentMessage[] = [assistant([{ type: "toolCall", id: "old-live", name: "bash", arguments: {} }])];
+		const { host } = fixture(messages);
+		host.renderSessionItems(messages);
+		for (let index = 0; index < 450; index++)
+			messages.push({ role: "user", content: `report ${index}`, timestamp: index });
+		rebuildChatFromMessages(host);
+		expect(host.pendingTools.has("old-live")).toBe(true);
+	});
+
+	it.each(["cold", "error", "aborted", "completed"] as const)("keeps %s old calls bounded", (state) => {
+		const call = assistant([{ type: "toolCall", id: "old", name: "bash", arguments: {} }]);
+		if (state === "error" || state === "aborted") call.stopReason = state;
+		const messages: AgentMessage[] = [call];
+		if (state === "completed")
+			messages.push({
+				role: "toolResult",
+				toolCallId: "old",
+				toolName: "bash",
+				content: [{ type: "text", text: "done" }],
+				isError: false,
+				timestamp: 0,
+			});
+		for (let index = 0; index < 450; index++)
+			messages.push({ role: "user", content: `report ${index}`, timestamp: index });
+		const { host, text } = fixture(messages);
+		renderWindowedEntries(host, host.sessionManager.buildContextEntries(), {
+			liveToolIds: state === "cold" ? undefined : new Set(["old"]),
+		});
+		expect(host.pendingTools.has("old")).toBe(false);
+		expect(text()).toContain("earlier entries not shown");
+		expect(text()).not.toContain("report 0");
+	});
+
+	it.each([false, true])("fills sparse live-tool gaps newest first (compaction=%s)", (compaction) => {
+		const call = (id: string) => assistant([{ type: "toolCall", id, name: "inspect", arguments: {} }]);
+		const messages: AgentMessage[] = [];
+		for (let index = 0; index < 1000; index++)
+			messages.push(
+				index === 100
+					? call("A")
+					: index === 500
+						? call("B")
+						: { role: "user", content: `row-${index}-end`, timestamp: index },
+			);
+		const windowed = fixture(messages);
+		const entries = windowed.host.sessionManager.buildContextEntries();
+		if (compaction)
+			entries.unshift({
+				type: "compaction",
+				id: "summary",
+				parentId: null,
+				timestamp: new Date(0).toISOString(),
+				summary: "Earlier work",
+				firstKeptEntryId: "0",
+				tokensBefore: 1000,
+			});
+		windowed.host.sessionManager.buildContextEntries = () => entries;
+		windowed.host.renderSessionItems([messages[100], messages[500]]);
+		const original = new Map(windowed.host.pendingTools);
+		const keepRowsInView = vi.fn();
+		windowed.host.transcriptScrollView = { keepRowsInView } as unknown as InteractiveModeHost["transcriptScrollView"];
+		rebuildChatFromMessages(windowed.host);
+		expect(windowed.host.chatContainer.children.length).toBeLessThan(410);
+		expect(windowed.host.pendingTools.get("A")).toBe(original.get("A"));
+		expect(windowed.host.pendingTools.get("B")).toBe(original.get("B"));
+		expect(loadEarlierMessages(windowed.host)).toBe(true);
+		expect(windowed.text()).toContain("row-700-end");
+		expect(windowed.text()).not.toContain("row-300-end");
+		expect(keepRowsInView).toHaveBeenCalledOnce();
+		while (loadEarlierMessages(windowed.host));
+		const full = fixture(messages);
+		full.host.renderSessionEntries(entries);
+		expect(windowed.text()).toBe(full.text());
+		expect(windowed.host.pendingTools.get("A")).toBe(original.get("A"));
+		expect(windowed.host.pendingTools.get("B")).toBe(original.get("B"));
+	});
+
+	it("keeps old saved tools beside the streaming reply without duplicate subscriptions or rows", () => {
+		const call = (id: string) => assistant([{ type: "toolCall", id, name: "inspect", arguments: {} }]);
+		const messages: AgentMessage[] = [call("old")];
+		const { host } = fixture(messages);
+		host.renderSessionItems([messages[0], call("streaming")]);
+		const parents = host.chatContainer.children.filter((child) => child instanceof AssistantMessageComponent);
+		const oldParent = parents[0];
+		const liveParent = parents[1];
+		host.streamingComponent = liveParent;
+		const oldDisposed = vi.spyOn(oldParent, "dispose");
+		const liveDisposed = vi.spyOn(liveParent, "dispose");
+		const tools = new Map(host.pendingTools);
+		for (let index = 0; index < 450; index++)
+			messages.push({ role: "user", content: `report ${index}`, timestamp: index });
+		rebuildChatFromMessages(host);
+		expect(oldDisposed).toHaveBeenCalledOnce();
+		expect(liveDisposed).not.toHaveBeenCalled();
+		expect(host.chatContainer.children.filter((child) => child === liveParent)).toHaveLength(1);
+		const count = (component: unknown, target: unknown): number => {
+			const children = (component as { children?: unknown[] }).children ?? [];
+			return Number(component === target) + children.reduce<number>((total, child) => total + count(child, target), 0);
+		};
+		for (const [id, tool] of tools) {
+			expect(host.pendingTools.get(id)).toBe(tool);
+			expect(count(host.chatContainer, tool)).toBe(1);
+		}
+		expect(host.pendingTools.size).toBe(2);
+	});
+
+	it.each([null, undefined])("rebuilds old histories with missing assistant content (%s)", (content) => {
+		const messages: AgentMessage[] = [assistant([{ type: "toolCall", id: "live", name: "inspect", arguments: {} }])];
+		const { host } = fixture(messages);
+		host.renderSessionItems(messages);
+		const live = host.pendingTools.get("live");
+		messages.push({ ...assistant([]), content } as unknown as AssistantMessage);
+		for (let index = 0; index < 450; index++)
+			messages.push({ role: "user", content: `report ${index}`, timestamp: index });
+		expect(() => rebuildChatFromMessages(host)).not.toThrow();
+		expect(host.pendingTools.get("live")).toBe(live);
+	});
+
+	it("keeps completed tools sparse across thousands of reports", () => {
+		const messages: AgentMessage[] = [assistant([{ type: "toolCall", id: "old", name: "inspect", arguments: {} }])];
+		for (let index = 0; index < 5000; index++)
+			messages.push({
+				role: "custom",
+				customType: "child-report",
+				content: `report ${index}`,
+				display: true,
+				timestamp: index,
+			});
+		messages.push({
+			role: "toolResult",
+			toolCallId: "old",
+			toolName: "inspect",
+			content: [{ type: "text", text: "FIRST RESULT" }],
+			isError: false,
+			timestamp: 5001,
+		});
+		messages.push({
+			role: "toolResult",
+			toolCallId: "old",
+			toolName: "inspect",
+			content: [{ type: "text", text: "IGNORED REPEAT" }],
+			isError: false,
+			timestamp: 5002,
+		});
+		const windowed = fixture(messages);
+		const entries = windowed.host.sessionManager.buildContextEntries();
+		let reads = 0;
+		const counted = new Proxy(entries, {
+			get(target, key, receiver) {
+				if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+				return Reflect.get(target, key, receiver);
+			},
+		});
+		renderWindowedEntries(windowed.host, counted);
+		expect(windowed.host.chatContainer.children.length).toBeLessThan(410);
+		expect(windowed.text()).toContain("FIRST RESULT");
+		expect(windowed.text()).not.toContain("IGNORED REPEAT");
+		expect(windowed.host.pendingTools.size).toBe(0);
+		while (loadEarlierMessages(windowed.host));
+		expect(reads).toBeLessThan(entries.length * 4);
+		const full = fixture(messages);
+		full.host.renderSessionEntries(entries);
+		expect(windowed.text()).toBe(full.text());
+	});
+
+	it.each([1, 7, 23, 101, 997, 4093])(
+		"matches full rendering with deterministic crossed/reused/orphan history (seed=%s)",
+		(seed) => {
+			let state = seed;
+			const random = (limit: number) => {
+				state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+				return state % limit;
+			};
+			const messages: AgentMessage[] = [];
+			for (let index = 0; index < 650; index++) {
+				const kind = random(5);
+				if (kind === 0) {
+					const message = assistant(
+						Array.from({ length: 1 + random(2) }, () => ({
+							type: "toolCall" as const,
+							id: `id-${random(31)}`,
+							name: "inspect",
+							arguments: { at: index },
+						})),
+					);
+					if (random(9) === 0) message.stopReason = "error";
+					messages.push(message);
+				} else if (kind === 1)
+					messages.push({
+						role: "toolResult",
+						toolCallId: `id-${random(35)}`,
+						toolName: "inspect",
+						content: [{ type: "text", text: `result-${index}` }],
+						isError: Boolean(random(2)),
+						timestamp: index,
+					});
+				else
+					messages.push({
+						role: "custom",
+						customType: "child-report",
+						content: `report-${index}`,
+						display: true,
+						timestamp: index,
+					});
+			}
+			const windowed = fixture(messages);
+			const entries = windowed.host.sessionManager.buildContextEntries();
+			renderWindowedEntries(windowed.host, entries, {}, 7);
+			let pages = 0;
+			while (loadEarlierMessages(windowed.host)) expect(++pages).toBeLessThan(20);
+			const full = fixture(messages);
+			full.host.renderSessionEntries(entries);
+			expect(windowed.text()).toBe(full.text());
+		},
+	);
+
+	it("does not link completed pairs merely because a provider reused the call ID", () => {
+		const messages: AgentMessage[] = [];
+		for (let index = 0; index < 1000; index++) {
+			messages.push(assistant([{ type: "toolCall", id: "reused", name: "inspect", arguments: { index } }]));
+			messages.push({
+				role: "toolResult",
+				toolCallId: "reused",
+				toolName: "inspect",
+				content: [{ type: "text", text: `result-${index}` }],
+				isError: false,
+				timestamp: index,
+			});
+			messages.push({
+				role: "custom",
+				customType: "child-report",
+				content: `report-${index}`,
+				display: true,
+				timestamp: index,
+			});
+		}
+		const windowed = fixture(messages);
+		const entries = windowed.host.sessionManager.buildContextEntries();
+		renderWindowedEntries(windowed.host, entries);
+		expect(windowed.host.chatContainer.children.length).toBeLessThan(410);
+		expect(windowed.text()).toContain("result-999");
+		expect(windowed.text()).not.toContain("result-0");
+		expect(windowed.host.pendingTools.size).toBe(0);
+		while (loadEarlierMessages(windowed.host));
+		const full = fixture(messages);
+		full.host.renderSessionEntries(entries);
+		expect(windowed.text()).toBe(full.text());
 	});
 
 	it("replaces the transcript on a same-session context reset", () => {

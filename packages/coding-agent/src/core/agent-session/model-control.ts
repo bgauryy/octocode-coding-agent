@@ -13,6 +13,7 @@ import { findLatestResponse, getBranchSelection, isVirtualModel } from "../virtu
 import type { SessionInternals } from "./host.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
 import { persistDefaultModel } from "./model-default.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 
 export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
@@ -205,9 +206,11 @@ export class SessionModelControl {
 
 	/** `fallback`: `retry.fallbackModels` replaces a model that hit a usage limit, at `level` when the entry names one. */
 	async setModel(model: Model<any>, options: SetModelOptions): Promise<void> {
-		if (!(await this.host.session.modelRuntime.checkAuth(model.provider, { signal: AbortSignal.timeout(15_000) }))) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
-		}
+		const limit = deadline(15_000);
+		const authed = await this.host.session.modelRuntime
+			.checkAuth(model.provider, { signal: limit.signal })
+			.finally(limit.clear);
+		if (!authed) throw new Error(`No usable credentials for ${model.provider}/${model.id}. Connect it in /providers.`);
 		await this._switchTo(model, options, options.source ?? "set", options.level);
 	}
 

@@ -375,6 +375,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Save model selection"
     },
+    "app.models.details": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Show or hide model pricing and cache details"
+    },
     "app.models.enableAll": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Enable all models"

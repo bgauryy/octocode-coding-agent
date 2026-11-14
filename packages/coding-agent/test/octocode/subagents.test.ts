@@ -224,7 +224,7 @@ describe("subagents", () => {
 		// Parent/child and teammate communication share one policy: a child messages its parent for a decision, and its
 		// parent relays anything outside its session tree.
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user\. When stuck \(missing input or access, or a retry failed twice\), never guess or loop:\n\n```text\nWho can settle it\?\n├─ a teammate's file or fact → message the teammate/,
+			/You cannot ask the user\. When stuck \(missing input or access, or a retry that failed again for the same cause\), ask instead of guessing or looping:\n\n```text\nWho can settle it\?\n├─ a teammate's file or fact → message the teammate/,
 		);
 	});
 

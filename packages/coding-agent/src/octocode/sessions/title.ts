@@ -4,6 +4,7 @@ import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 
 /** How long the title call may take before it is given up. */
 // The call runs in the background and its write is guarded, so a slow model costs nothing; 5 s dropped 13 of 30 titles
@@ -113,8 +114,8 @@ export function createAutoTitler(
 		const mine = epoch;
 		const controller = new AbortController();
 		running = controller;
-		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(options.timeoutMs ?? TITLE_TIMEOUT_MS)]);
-		const result = await requestTitle(ctx, request, signal, options.complete);
+		const limit = deadline(options.timeoutMs ?? TITLE_TIMEOUT_MS, controller.signal);
+		const result = await requestTitle(ctx, request, limit.signal, options.complete).finally(limit.clear);
 		if (running === controller) running = undefined;
 		if (result === "none") return "none";
 		// A newer start or shutdown, another session or a name given meanwhile (by the user, always first) wins.

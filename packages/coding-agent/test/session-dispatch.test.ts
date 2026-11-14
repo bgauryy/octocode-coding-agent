@@ -168,7 +168,7 @@ it("reports a nested send's preflight rejection even when the extension API cons
 			responses.push(value),
 		);
 		await vi.waitFor(() => expect(responses).toHaveLength(1));
-		expect(responses[0]).toMatchObject({ success: false, error: expect.stringContaining("No API key") });
+		expect(responses[0]).toMatchObject({ success: false, error: expect.stringContaining("No usable credentials") });
 		expect(hasSessionDispatch(h.session)).toBe(false);
 	} finally {
 		h.cleanup();

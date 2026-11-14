@@ -115,11 +115,6 @@ describe("web and cloud metadata addresses", () => {
 describe("web request boundaries", () => {
 	it("bounds the whole provider chain even when the current provider ignores cancellation", async () => {
 		vi.useFakeTimers();
-		const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
-			const controller = new AbortController();
-			setTimeout(() => controller.abort(new DOMException("Search timed out", "TimeoutError")), ms);
-			return controller.signal;
-		});
 		try {
 			const calls: string[] = [];
 			guard.stub = async (url) => {
@@ -136,13 +131,13 @@ describe("web request boundaries", () => {
 			await vi.advanceTimersByTimeAsync(30_000);
 			expect(await result).toMatchObject({
 				message: expect.stringMatching(
-					/Search deadline reached.*tavily: first provider unavailable.*serper: Search timed out/,
+					/Search deadline reached.*tavily: first provider unavailable.*serper: The operation was aborted due to timeout/,
 				),
 			});
 			expect(calls).toHaveLength(2);
-			expect(timeout).toHaveBeenCalledExactlyOnceWith(30_000);
+			// One shared limit for the chain, cleared with the search: no timer outlives it.
+			expect(vi.getTimerCount()).toBe(0);
 		} finally {
-			timeout.mockRestore();
 			vi.useRealTimers();
 		}
 	});

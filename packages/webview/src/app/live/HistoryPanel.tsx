@@ -6,7 +6,7 @@ import { Button } from "../ui/primitives.tsx";
 import { ApplicationProjection } from "./application-projection.ts";
 import { ActivityHistory } from "./ActivityHistory.tsx";
 import { addHistoryPage, type LoadedHistory, requestHistory, retainEvicted } from "./history-window.ts";
-import { ResultCard } from "./ResultCard.tsx";
+import { LoadedHistoryList } from "./LoadedHistoryList.tsx";
 import { useLive } from "./session.tsx";
 
 const NO_MESSAGES: readonly ApplicationMessage[] = [];
@@ -33,6 +33,11 @@ function HistoryPages({ sessionId }: { sessionId: string }) {
 	const tools = useStore(session, (state) => state.application?.tools);
 	const [history, setHistory] = useState<LoadedHistory>();
 	const [loading, setLoading] = useState(false);
+	const [loadRevision, setLoadRevision] = useState(0);
+	const historyRef = useRef(history);
+	useLayoutEffect(() => {
+		historyRef.current = history;
+	}, [history]);
 	const [error, setError] = useState("");
 	// The projection is an incremental row cache; one instance lives as long as this history.
 	const [projection] = useState(() => new ApplicationProjection());
@@ -74,7 +79,15 @@ function HistoryPages({ sessionId }: { sessionId: string }) {
 		try {
 			const page = await api.history(sessionId, cursor);
 			if (session.getState().application?.sessionId !== sessionId) return;
+			if (historyRef.current && historyRef.current.before !== cursor) return;
 			setHistory((current) => current && addHistoryPage(current, page, cursor));
+			const knownMessages = new Set((historyRef.current?.messages ?? []).map((message) => message.id));
+			const knownTools = new Set((historyRef.current?.tools ?? []).map((tool) => tool.toolCallId));
+			if (
+				page.messages.some((message) => !knownMessages.has(message.id)) ||
+				page.tools.some((tool) => !knownTools.has(tool.toolCallId))
+			)
+				setLoadRevision((revision) => revision + 1);
 		} catch (cause) {
 			setError(errorMessage(cause));
 		} finally {
@@ -93,13 +106,7 @@ function HistoryPages({ sessionId }: { sessionId: string }) {
 			{events.length > 0 && (
 				<details open>
 					<summary>{history?.messages.length} earlier messages</summary>
-					<ol className="activity-feed">
-						{events.map((event) => (
-							<li key={event.id}>
-								<ResultCard event={event} />
-							</li>
-						))}
-					</ol>
+					<LoadedHistoryList events={events} loadRevision={loadRevision} label="Loaded conversation" />
 				</details>
 			)}
 		</section>

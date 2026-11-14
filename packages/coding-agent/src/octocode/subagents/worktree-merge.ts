@@ -16,12 +16,13 @@ async function savedRef(repo: string, agentId: string): Promise<string | undefin
 export async function mergeAgent(
 	cwd: string,
 	agentId: string,
+	signal?: AbortSignal,
 ): Promise<{ ok: boolean; text: string; ref?: string; into?: string }> {
 	if (!ID_PATTERN.test(agentId)) return { ok: false, text: `Invalid agent id "${agentId}"` };
 	const repo = repoRoot(cwd);
 	const ref = await savedRef(repo, agentId);
 	if (!ref) return { ok: false, text: `No isolated changes for ${agentId} (${REF_PREFIX}${agentId} does not exist).` };
-	const merged = await mergeRef(repo, ref);
+	const merged = await mergeRef(repo, ref, signal);
 	if (!merged.ok) return merged;
 	await gitQuiet(repo, ["update-ref", "-d", ref]);
 	return { ok: true, ref, into: merged.into, text: `Merged ${ref} into ${merged.into}.` };

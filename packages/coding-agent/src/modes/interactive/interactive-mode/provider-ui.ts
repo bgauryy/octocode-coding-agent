@@ -14,6 +14,7 @@ export function showPage(
 				resolve(choice);
 			};
 			const page = new ManagePageComponent({
+				responsive: true,
 				...options,
 				onSelect: (id) => finish({ id }),
 				onKey: (key, id) => finish({ id, key }),

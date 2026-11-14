@@ -4,7 +4,14 @@
  * a detail page passes `facts` and a single "Actions" section.
  */
 
-import { type Component, getKeybindings, GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	getKeybindings,
+	GLYPH,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@octocodeai/octocode-tui";
 import { theme } from "./theme.ts";
 import { type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
 
@@ -32,6 +39,8 @@ interface PageFact {
 
 export interface ManagePageOptions {
 	title: string;
+	/** Wrap facts and the highlighted row's detail inside a bounded, scrollable body. */
+	responsive?: boolean;
 	/** Muted lines under the list, above the key hints. */
 	notes?: readonly string[];
 	/** Problems to show under the list in the error colour, above the notes. */
@@ -63,6 +72,10 @@ export class ManagePageComponent implements Component {
 	private readonly selectable: PageRow[];
 	private selected = 0;
 	private readonly options: ManagePageOptions;
+	private scroll = 0;
+	private bodyRows = MAX_LINES;
+	private manualScroll = false;
+	private selectionVisible = true;
 
 	constructor(options: ManagePageOptions) {
 		this.options = options;
@@ -85,6 +98,7 @@ export class ManagePageComponent implements Component {
 
 	render(width: number): string[] {
 		if (width <= 0) return [];
+		if (this.options.responsive) return this.renderResponsive(width);
 		const { title, notes = [], alerts = [], facts = [], hints } = this.options;
 		const border = theme.fg("border", "─".repeat(Math.max(1, width)));
 		const out = [border, truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…")];
@@ -116,6 +130,74 @@ export class ManagePageComponent implements Component {
 		return out;
 	}
 
+	private renderResponsive(width: number): string[] {
+		const { title, facts = [], notes = [], alerts = [], hints } = this.options;
+		const border = theme.fg("border", "─".repeat(width));
+		const selected = this.selectable[this.selected];
+		const body: { text: string; id?: string }[] = [];
+		const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width));
+		for (const fact of facts)
+			for (const text of wrap(` ${theme.fg("muted", fact.label)}  ${fact.value}`)) body.push({ text });
+		if (facts.length) body.push({ text: "" });
+		const nameWidth = Math.min(MAX_NAME_WIDTH, Math.max(1, ...this.selectable.map((row) => visibleWidth(row.name))));
+		for (const line of this.lines()) {
+			const row = line.row;
+			const narrow = width < 72;
+			const shown = row && narrow ? { ...row, detail: undefined } : row;
+			body.push({
+				text: this.renderLine(shown ? { row: shown } : line, width, nameWidth, row === selected ? shown : undefined),
+				id: row?.id,
+			});
+			if (
+				row &&
+				row === selected &&
+				row.detail &&
+				(narrow || visibleWidth(`   ${row.name}  ${row.detail}  ${row.badge ?? ""}`) > width)
+			) {
+				for (const text of wrap(`   ${theme.fg("muted", row.detail)}`)) body.push({ text });
+			}
+		}
+		const tail = [
+			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
+			...notes.flatMap((note) => wrap(` ${theme.fg("muted", note)}`)),
+		];
+		this.bodyRows = Math.max(3, Math.min(MAX_LINES, (process.stdout.rows ?? 24) - tail.length - 7));
+		const at = Math.max(
+			0,
+			body.findIndex((line) => line.id === selected?.id),
+		);
+		if (!this.manualScroll) {
+			if (at < this.scroll) this.scroll = Math.max(0, at - 1);
+			else if (at >= this.scroll + this.bodyRows) this.scroll = at - this.bodyRows + 1;
+		}
+		this.scroll = Math.max(0, Math.min(this.scroll, body.length - this.bodyRows));
+		this.selectionVisible = body
+			.slice(this.scroll, this.scroll + this.bodyRows)
+			.some((line) => line.id === selected?.id);
+		const scrolling = body.length > this.bodyRows;
+		return [
+			border,
+			truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…"),
+			"",
+			...body.slice(this.scroll, this.scroll + this.bodyRows).map((line) => line.text),
+			...(scrolling
+				? [
+						truncateToWidth(
+							theme.fg(
+								"muted",
+								` ${this.scroll + 1}–${Math.min(body.length, this.scroll + this.bodyRows)}/${body.length} · PgUp/PgDn scroll`,
+							),
+							width,
+							"…",
+						),
+					]
+				: []),
+			...tail,
+			renderHintLine(hints, width),
+			border,
+		];
+	}
+
 	private renderLine(line: Line, width: number, nameWidth: number, selectedRow: PageRow | undefined): string {
 		if (line.heading !== undefined)
 			return truncateToWidth(` ${theme.fg("muted", theme.bold(line.heading))}`, width, "…");
@@ -138,14 +220,20 @@ export class ManagePageComponent implements Component {
 	handleInput(data: string): void {
 		const kb = getKeybindings();
 		const row = this.selectable[this.selected];
-		if (kb.matches(data, "tui.select.up") || kb.matches(data, "tui.select.down")) {
+		if (this.options.responsive && (kb.matches(data, "tui.select.pageUp") || kb.matches(data, "tui.select.pageDown"))) {
+			this.scroll += kb.matches(data, "tui.select.pageUp") ? -this.bodyRows : this.bodyRows;
+			this.manualScroll = true;
+		} else if (kb.matches(data, "tui.select.up") || kb.matches(data, "tui.select.down")) {
+			this.manualScroll = false;
 			const step = kb.matches(data, "tui.select.up") ? -1 : 1;
 			this.selected = Math.max(0, Math.min(this.selectable.length - 1, this.selected + step));
 			const moved = this.selectable[this.selected];
 			if (moved) this.options.onHighlight?.(moved.id);
 		} else if (kb.matches(data, "tui.select.confirm")) {
+			if (this.options.responsive && !this.selectionVisible) return;
 			if (row) this.options.onSelect(row.id);
 		} else if (kb.matches(data, "tui.select.cancel")) this.options.onCancel();
-		else if (row && this.options.keys?.includes(data)) this.options.onKey?.(data, row.id);
+		else if (row && this.options.keys?.includes(data) && (!this.options.responsive || this.selectionVisible))
+			this.options.onKey?.(data, row.id);
 	}
 }

@@ -107,6 +107,7 @@ export function layoutVirtual(
 	const state = node.state;
 	const firstAtWidth = doc.width !== contentWidth || !doc.tableCurrent;
 	const newWidth = doc.width !== contentWidth;
+	if (newWidth) doc.exactWidth = undefined;
 	if (!doc.prepare(node.component, contentWidth)) return undefined;
 	// This frame draws the items one by one: the containers' rows at another width are not read again.
 	if (newWidth) for (const container of doc.containers) container.releaseRenderCache();
@@ -134,6 +135,7 @@ export function layoutVirtual(
 	} else doc.measureUnstable(0);
 	let window: ViewWindow = anchored ?? endWindow(doc, viewportHeight);
 	const top = anchored ? anchor!.index : window.first;
+	doc.prioritize(window.first, window.first + window.parts.length - 1, viewportHeight);
 	const deadline = Math.max(start + FRAME_BUDGET_MS, performance.now() + MIN_MEASURE_MS);
 	shift += doc.measurePending(top, firstAtWidth ? start : deadline, firstAtWidth ? 0 : 1);
 	// The row the view starts on: the anchor's new place, or the end.
@@ -256,6 +258,8 @@ function buildLayout(
 			},
 		},
 		settle: {
+			isSettled: () => doc.pendingCount === 0,
+			cancel: () => doc.cancelSlices(),
 			all: () => void materialize(),
 			rows: (rows) => {
 				rowsFromEnd = rows;

@@ -12,20 +12,26 @@ const UNRESPONSIVE_MS = 15_000;
  */
 export function descendants(members: Member[], selfId: string | undefined): Member[] {
 	if (!selfId) return [];
+	const children = new Map<string, { member: Member; index: number }[]>();
+	members.forEach((member, index) => {
+		if (!member.parentId) return;
+		const siblings = children.get(member.parentId) ?? [];
+		siblings.push({ member, index });
+		children.set(member.parentId, siblings);
+	});
 	const mine = new Set([selfId]);
-	const result: Member[] = [];
-	let grew = true;
-	while (grew) {
-		grew = false;
-		for (const member of members) {
-			if (member.parentId && mine.has(member.parentId) && !mine.has(member.id)) {
-				mine.add(member.id);
-				result.push(member);
-				grew = true;
-			}
-		}
+	const result: { member: Member; index: number; pass: number }[] = [];
+	const pending = (children.get(selfId) ?? []).map((entry) => ({ ...entry, pass: 0 }));
+	for (let i = 0; i < pending.length; i++) {
+		const entry = pending[i];
+		if (mine.has(entry.member.id)) continue;
+		mine.add(entry.member.id);
+		result.push(entry);
+		for (const child of children.get(entry.member.id) ?? [])
+			pending.push({ ...child, pass: entry.pass + Number(child.index < entry.index) });
 	}
-	return result;
+	// Match the old source-order passes even when a child precedes its parent in the team snapshot.
+	return result.sort((a, b) => a.pass - b.pass || a.index - b.index).map((entry) => entry.member);
 }
 
 /** Lower sorts first: what waits for the user, then failures, then working, idle, and the rest that finished. */
@@ -56,29 +62,43 @@ function treeOrder(
 	now: number,
 	extras: (member: Member) => Omit<PanelEntry, "member" | "depth">,
 ): PanelEntry[] {
-	const entry = (member: Member, depth: number): PanelEntry => ({ member, depth, ...extras(member) });
-	const urgency = new Map<string, number>();
-	const branch = (member: Member): number => {
-		const known = urgency.get(member.id);
-		if (known !== undefined) return known;
-		const best = Math.min(
-			rank(entry(member, 0), now),
-			...members.filter((child) => child.parentId === member.id).map(branch),
-		);
-		urgency.set(member.id, best);
-		return best;
-	};
+	const children = new Map<string, Member[]>();
+	for (const member of members) {
+		if (!member.parentId) continue;
+		const siblings = children.get(member.parentId) ?? [];
+		siblings.push(member);
+		children.set(member.parentId, siblings);
+	}
+	const entries = new Map<string, PanelEntry>();
+	const pending = (children.get(selfId) ?? []).map((member) => ({ member, depth: 0 })).reverse();
+	while (pending.length > 0) {
+		const { member, depth } = pending.pop()!;
+		if (member.id === selfId || entries.has(member.id)) continue;
+		entries.set(member.id, { member, depth, ...extras(member) });
+		for (const child of [...(children.get(member.id) ?? [])].reverse())
+			pending.push({ member: child, depth: depth + 1 });
+	}
+	const urgency = new Map([...entries].map(([id, entry]) => [id, rank(entry, now)]));
+	// Children were discovered after parents. Folding backwards gives each branch its most urgent descendant.
+	for (const entry of [...entries.values()].reverse()) {
+		const parent = entry.member.parentId;
+		if (parent && parent !== selfId && urgency.has(parent))
+			urgency.set(parent, Math.min(urgency.get(parent)!, urgency.get(entry.member.id)!));
+	}
+	const ordered = (parent: string): Member[] =>
+		(children.get(parent) ?? [])
+			.filter((member) => entries.get(member.id)?.member === member)
+			.sort((a, b) => urgency.get(a.id)! - urgency.get(b.id)! || a.joinedAt - b.joinedAt);
 	const out: PanelEntry[] = [];
-	const visit = (parent: string, depth: number) => {
-		const children = members
-			.filter((member) => member.parentId === parent)
-			.sort((a, b) => branch(a) - branch(b) || a.joinedAt - b.joinedAt);
-		for (const member of children) {
-			out.push(entry(member, depth));
-			visit(member.id, depth + 1);
-		}
-	};
-	visit(selfId, 0);
+	const visited = new Set([selfId]);
+	const stack = ordered(selfId).reverse();
+	while (stack.length > 0) {
+		const member = stack.pop()!;
+		if (visited.has(member.id)) continue;
+		visited.add(member.id);
+		out.push(entries.get(member.id)!);
+		for (const child of ordered(member.id).reverse()) stack.push(child);
+	}
 	return out;
 }
 
@@ -100,7 +120,8 @@ export function roster(
 		finished.filter((entry) => now - entry.at <= FINISHED_MS).map((entry) => [entry.member.id, entry.at]),
 	);
 	const live = liveMembers(members, now);
-	const gone = finished.filter((entry) => doneAt.has(entry.member.id) && !live.some((m) => m.id === entry.member.id));
+	const liveIds = new Set(live.map((member) => member.id));
+	const gone = finished.filter((entry) => doneAt.has(entry.member.id) && !liveIds.has(entry.member.id));
 	const others = descendants([...live, ...gone.map((entry) => entry.member)], selfId);
 	const ends = new Map(finished.flatMap((entry) => (entry.end ? [[entry.member.id, entry.end] as const] : [])));
 	const home = members.find((member) => member.id === selfId)?.checkout;

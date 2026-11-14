@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { runningPid } from "../shared/session-liveness.ts";
+import { liveProcess } from "../shared/process.ts";
 
 /**
  * The agents-communication package lists the non-default databases its live processes use (a session started with
@@ -51,12 +51,7 @@ function parse(file: string): Entry | undefined {
 	}
 }
 
-/** How long a process check (a `ps` call) is reused: the folder is listed on every edit check, the processes are not. */
-const PROCESS_CHECK_MS = 5_000;
-
 export class PeerRegistry {
-	private readonly checks = new Map<string, { at: number; running: boolean }>();
-
 	private readonly dir: string;
 	constructor(dir: string) {
 		this.dir = dir;
@@ -64,8 +59,8 @@ export class PeerRegistry {
 
 	/**
 	 * The databases of live entries, sorted and without repeats: an entry is live while it was written within the lease
-	 * grace, or its process still runs as the one that wrote it (`runningPid`). A missing folder, an unreadable file or an
-	 * unknown format lists nothing: the registry is advisory.
+	 * grace, or its process may still be the one that wrote it. A cold identity check shares the asynchronous process-table
+	 * refresh and conservatively keeps the entry until it completes. An unreadable or unknown registry lists nothing.
 	 */
 	databases(now: number): string[] {
 		let names: string[];
@@ -75,24 +70,12 @@ export class PeerRegistry {
 			return [];
 		}
 		const databases = new Set<string>();
-		const seen = new Set<string>();
 		for (const name of names) {
 			const entry = parse(path.join(this.dir, name));
 			if (!entry) continue;
-			const key = `${entry.pid}:${entry.started ?? ""}`;
-			seen.add(key);
-			if (now - entry.updatedAt <= PEER_REGISTRY_GRACE_MS || this.running(key, entry, now))
+			if (now - entry.updatedAt <= PEER_REGISTRY_GRACE_MS || liveProcess(entry.pid, entry.started, now))
 				databases.add(entry.database);
 		}
-		for (const key of this.checks.keys()) if (!seen.has(key)) this.checks.delete(key);
 		return [...databases].sort();
-	}
-
-	private running(key: string, entry: Entry, now: number): boolean {
-		const known = this.checks.get(key);
-		if (known && now - known.at < PROCESS_CHECK_MS) return known.running;
-		const running = runningPid(entry.pid, entry.started) !== undefined;
-		this.checks.set(key, { at: now, running });
-		return running;
 	}
 }

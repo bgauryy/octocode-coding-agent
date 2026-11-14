@@ -14,7 +14,7 @@ import {
 } from "../components/application-content.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { addToolExecution } from "./session-render.ts";
-import { renderWindowedEntries } from "./session-window.ts";
+import { retainLiveTools, renderWindowedEntries } from "./session-window.ts";
 import { TOOL_NOT_RUN } from "../../../core/application/interrupted-tools.ts";
 import { addApplicationUserMessage } from "./user-message-render.ts";
 
@@ -42,9 +42,12 @@ type Host = Pick<
  * Draws the branch's entries into the cleared transcript, the last window of them as a resume does (earlier ones wait
  * behind the "load earlier" row), and remembers them all: their announcements can still follow.
  */
-function renderRebuild(host: Host): void {
-	const entries = host.sessionManager.buildContextEntries();
-	renderWindowedEntries(host, entries);
+function renderRebuild(
+	host: Host,
+	entries: ReturnType<Host["sessionManager"]["buildContextEntries"]>,
+	liveTools: Host["pendingTools"],
+): void {
+	renderWindowedEntries(host, entries, { liveTools });
 	host.entriesRenderedByRebuild.clear();
 	for (const entry of entries) host.entriesRenderedByRebuild.add(entry.id);
 }
@@ -153,17 +156,20 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 			case "application.error":
 				showError(event.message);
 				break;
-			case "session.reset":
+			case "session.reset": {
+				const entries = host.sessionManager.buildContextEntries();
+				const liveTools = retainLiveTools(entries, host.pendingTools);
 				messages.clear();
 				assistants.clear();
 				sweepAt = SWEEP_MIN;
 				host.pendingTools.clear();
 				host.streamingComponent = undefined;
-				disposeTranscript(host.chatContainer);
+				disposeTranscript(host.chatContainer, liveTools.values());
 				host.chatContainer.clear();
-				renderRebuild(host);
+				renderRebuild(host, entries, liveTools);
 				for (const error of event.errors ?? []) showError(error.message);
 				break;
+			}
 			case "message.started":
 			case "message.completed":
 				if (event.message.role === "user" || event.message.role === "assistant") showMessage(event.message);

@@ -127,12 +127,33 @@ describe("windowed resume", () => {
 });
 
 describe("windowed live rebuild", () => {
+	it("indexes tool boundaries once instead of rescanning hidden message content on every page", () => {
+		let reads = 0;
+		const entries = Array.from({ length: 2000 }, (_, i) => message(i));
+		const counted = entries.map(
+			(entry) =>
+				new Proxy(entry, {
+					get(target, key, receiver) {
+						if (key === "message") reads++;
+						return Reflect.get(target, key, receiver);
+					},
+				}),
+		);
+		const host = fakeHost(counted);
+		renderInitialMessages(host as never);
+		reads = 0;
+		while (loadEarlierMessages(host as never));
+		expect(reads).toBe(0);
+		expect(labels(host)).toEqual(entries.map((entry) => entry.id));
+	});
+
 	it("a transcript reset during a session renders the same bounded window", () => {
 		const entries = Array.from({ length: 2000 }, (_, i) => message(i));
 		const host = { ...fakeHost(entries), entriesRenderedByRebuild: new Set<string>() };
 		host.renderSessionEntries.mockImplementation((batch: SessionEntry[]) => {
 			for (const entry of batch) host.chatContainer.addChild(new Row(entry.id));
 		});
+
 		const render = applicationRenderer(host as never, { readAsset: () => undefined } as never);
 		render({ type: "session.reset", messages: [], tools: [] } as never);
 		expect(host.chatContainer.children).toHaveLength(RESUME_WINDOW_ENTRIES + 1);

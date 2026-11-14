@@ -4,7 +4,7 @@ import path from "node:path";
 import { workspaceStateDir } from "../../../storage/workspace.ts";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
 import { readPaths, workspaceScratchDir } from "../../shared/home.ts";
-import { processStartTime, sameProcess } from "../../shared/process.ts";
+import { processStartTime, sameProcessAsync } from "../../shared/process.ts";
 import { resolveRetention } from "../../../storage/retention.ts";
 import { DAY_MS } from "../../shared/util.ts";
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
@@ -54,10 +54,10 @@ export function agentScratch(cwd: string, id: string): string | undefined {
 }
 
 /** Whether the process that owns a scratch folder still runs. An owner file with only a pid (start time unknown) is judged by the pid. */
-function ownerRunning(dir: string): boolean {
+async function ownerRunning(dir: string): Promise<boolean> {
 	try {
-		const [pid, ...started] = fs.readFileSync(path.join(dir, OWNER_FILE), "utf8").trim().split(" ");
-		return sameProcess(Number(pid), started.join(" "));
+		const [pid, ...started] = (await fs.promises.readFile(path.join(dir, OWNER_FILE), "utf8")).trim().split(" ");
+		return await sameProcessAsync(Number(pid), started.join(" "));
 	} catch {
 		return false;
 	}
@@ -101,7 +101,7 @@ export async function sweepScratch(
 	}
 	for (const name of names) {
 		const dir = path.join(root, name);
-		if (!(await fs.promises.lstat(dir).catch(() => undefined))?.isDirectory() || ownerRunning(dir)) continue;
+		if (!(await fs.promises.lstat(dir).catch(() => undefined))?.isDirectory() || (await ownerRunning(dir))) continue;
 		try {
 			if (now - (await lastWrite(dir)) > days * DAY_MS) await fs.promises.rm(dir, { recursive: true, force: true });
 		} catch {

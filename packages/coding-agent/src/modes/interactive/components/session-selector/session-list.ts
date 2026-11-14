@@ -70,6 +70,7 @@ export class SessionList implements Component, Focusable {
 	private groupLabels = new Map<number, string>();
 	private groupMode: GroupMode = "none";
 	private selectedIndex: number = 0;
+	private lastSelectedPath?: string;
 	private selectionTouched = false;
 	private top = 0;
 	private lastListLines = 0;
@@ -160,7 +161,6 @@ export class SessionList implements Component, Focusable {
 	}
 
 	setSessions(sessions: SessionInfo[], showCwd: boolean): void {
-		const selectedPath = this.selectionTouched ? this.getSelectedSessionPath() : undefined;
 		this.allSessions = sessions;
 		this.showCwd = showCwd;
 		this.byPath = new Map(sessions.map((session) => [canonicalizePath(session.path), session]));
@@ -169,13 +169,12 @@ export class SessionList implements Component, Focusable {
 		this.filterSessions(this.searchInput.getValue());
 		if (!this.selectionTouched) {
 			this.selectedIndex = 0;
-		} else if (selectedPath) {
-			const selectedIndex = this.filteredSessions.findIndex((node) => node.session.path === selectedPath);
-			if (selectedIndex >= 0) this.selectedIndex = selectedIndex;
 		}
 	}
 
 	private filterSessions(query: string): void {
+		const selectedPath = this.getSelectedSessionPath() ?? this.lastSelectedPath;
+		this.lastSelectedPath = selectedPath;
 		const trimmed = query.trim();
 		const nameFiltered =
 			this.nameFilter === "all" ? this.allSessions : this.allSessions.filter((session) => hasSessionName(session));
@@ -194,7 +193,9 @@ export class SessionList implements Component, Focusable {
 		const grouped = groupNodes(nodes, this.groupMode);
 		this.filteredSessions = grouped.nodes;
 		this.groupLabels = grouped.labels;
-		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
+		const retained = this.filteredSessions.findIndex((node) => node.session.path === selectedPath);
+		this.selectedIndex =
+			retained >= 0 ? retained : Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
 		this.top = 0;
 	}
 

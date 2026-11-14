@@ -33,7 +33,10 @@ afterEach(async () => {
 const globalFile = () => path.join(agentDir, "settings.json");
 const workspaceFile = () => path.join(cwd, ".octocode", "settings.json");
 const readJson = (file: string): unknown => JSON.parse(fs.readFileSync(file, "utf8"));
-const set = (partial: Partial<ConfigSettingCommand>, withCwd = false) =>
+const set = (
+	partial: Partial<Extract<ConfigSettingCommand, { key: "defaultProvider" | "defaultModel" }>>,
+	withCwd = false,
+) =>
 	writeConfigSetting(
 		{ key: "defaultProvider", scope: "global", value: "openai", ...partial },
 		{ agentDir, cwd: withCwd ? cwd : undefined },
@@ -42,6 +45,45 @@ const snapshotOf = (withCwd = true) =>
 	buildConfigSnapshot({ agentDir, cwd: withCwd ? cwd : undefined, keychain: null });
 
 describe("writeConfigSetting", () => {
+	it("writes and clears both startup fields together, preserving unrelated settings", async () => {
+		fs.writeFileSync(
+			globalFile(),
+			JSON.stringify({ theme: "dark", defaultProvider: "old", defaultModel: "old-model" }),
+		);
+		await writeConfigSetting(
+			{ key: "modelDefault", scope: "global", value: { provider: "local", model: "qwen" } },
+			{ agentDir },
+		);
+		expect(readJson(globalFile())).toEqual({ theme: "dark", defaultProvider: "local", defaultModel: "qwen" });
+		await writeConfigSetting({ key: "modelDefault", scope: "global", value: null }, { agentDir });
+		expect(readJson(globalFile())).toEqual({ theme: "dark" });
+	});
+
+	it("refuses untrusted or empty paired selections without changing either field", async () => {
+		const command = { key: "modelDefault", scope: "workspace", value: { provider: "local", model: "qwen" } } as const;
+		await expect(writeConfigSetting(command, { agentDir, cwd })).rejects.toMatchObject({ status: 403 });
+		expect(fs.existsSync(workspaceFile())).toBe(false);
+		await expect(
+			writeConfigSetting({ ...command, scope: "global", value: { provider: " ", model: "qwen" } }, { agentDir }),
+		).rejects.toMatchObject({ status: 400 });
+		expect(fs.existsSync(globalFile())).toBe(false);
+	});
+
+	it("sets both workspace defaults in one trusted operation and restores global inheritance when cleared", async () => {
+		trustFolder(cwd);
+		await writeConfigSetting(
+			{ key: "modelDefault", scope: "global", value: { provider: "global", model: "first" } },
+			{ agentDir },
+		);
+		await writeConfigSetting(
+			{ key: "modelDefault", scope: "workspace", value: { provider: "workspace", model: "second" } },
+			{ agentDir, cwd },
+		);
+		expect(readJson(workspaceFile())).toEqual({ defaultProvider: "workspace", defaultModel: "second" });
+		expect((await snapshotOf()).settings.map((setting) => setting.value)).toEqual(["workspace", "second"]);
+		await writeConfigSetting({ key: "modelDefault", scope: "workspace", value: null }, { agentDir, cwd });
+		expect((await snapshotOf()).settings.map((setting) => setting.value)).toEqual(["global", "first"]);
+	});
 	it("sets and clears a global setting and keeps the keys it does not own", async () => {
 		fs.writeFileSync(globalFile(), JSON.stringify({ theme: "dark", defaultModel: "gpt-a" }));
 		await set({ key: "defaultProvider", value: "openai" });

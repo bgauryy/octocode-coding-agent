@@ -128,6 +128,18 @@ export const holdUntil = (flag: string): Step => ({
 	args: { command: `until [ -e '${flag}' ]; do sleep 0.1; done` },
 });
 
+/** Resolves once `each` has ended its turn: idle, with nothing pending. A step's request can come before its run settles. */
+export async function sessionIdle(each: Session): Promise<void> {
+	const api = new ApiClient(each.instance);
+	const deadline = Date.now() + 120_000;
+	for (;;) {
+		const { state, pending } = await api.call<{ state?: string; pending?: boolean }>("status");
+		if (state === "idle" && !pending) return;
+		if (Date.now() > deadline) throw new Error("Timed out waiting for the session to end its turn");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+}
+
 /**
  * Creates `flag` once `worktree`, which already sent its request, has ended its turn and the team shows every session in
  * `folder` idle. A merge refuses while a session still works in the worktree, and the session that asked is still
@@ -141,14 +153,7 @@ export async function releaseWhenIdle(
 	folder: string,
 	flag: string,
 ): Promise<void> {
-	const api = new ApiClient(worktree.instance);
-	const deadline = Date.now() + 120_000;
-	for (;;) {
-		const { state, pending } = await api.call<{ state?: string; pending?: boolean }>("status");
-		if (state === "idle" && !pending) break;
-		if (Date.now() > deadline) throw new Error("Timed out waiting for the worktree session to end its turn");
-		await new Promise((resolve) => setTimeout(resolve, 50));
-	}
+	await sessionIdle(worktree);
 	const idle = () => {
 		const store = open();
 		try {

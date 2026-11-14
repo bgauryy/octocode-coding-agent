@@ -106,6 +106,16 @@ describe("loadEntriesFromFile", () => {
 		expect(scanned).toBeLessThanOrEqual(content.length * 3);
 	});
 
+	it("still refuses a file that starts with a byte-order mark", () => {
+		const file = join(tempDir, "bom.jsonl");
+		writeFileSync(
+			file,
+			'\uFEFF{"type":"session","id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n' +
+				'{"type":"message","id":"1","parentId":null,"timestamp":"2025-01-01T00:00:01Z","message":{"role":"user","content":"hi","timestamp":1}}\n',
+		);
+		expect(loadEntriesFromFile(file)).toEqual([]);
+	});
+
 	it("skips malformed lines but keeps valid ones", () => {
 		const file = join(tempDir, "mixed.jsonl");
 		writeFileSync(

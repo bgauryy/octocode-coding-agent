@@ -1,4 +1,5 @@
 import type { BashCommand, BashSyntax } from "./bash-types.ts";
+import { rememberedSyntax } from "./bash-syntax-memo.ts";
 import { RELATIVE_AFTER_CD, directoriesAt, directoryCommand, directoryStates } from "./bash-cwd.ts";
 import { bashCandidates } from "./bash-wrappers.ts";
 import { herestringError, misreadHerestring, onlyMisreadHerestrings } from "./bash-herestring.ts";
@@ -149,14 +150,11 @@ export function parseBash<T>(source: string, read: (root: Node) => T): T | undef
 	}
 }
 
-/** Parse syntax only; raw command spelling is retained for source permission matching. */
-export function bashSyntax(source: string): BashSyntax {
-	const result: BashSyntax = {
-		wholeAllow: true,
-		commands: [],
-		incomplete: false,
-		targets: [],
-	};
+/** Parse syntax only, shared by the checks of one line (`bash-syntax-memo.ts`); raw command spelling is retained for source permission matching. */
+export const bashSyntax = (source: string): BashSyntax => rememberedSyntax(source, parseSyntax);
+
+function parseSyntax(source: string): BashSyntax {
+	const result: BashSyntax = { wholeAllow: true, commands: [], incomplete: false, targets: [] };
 	const unresolved = (reason: string): BashSyntax => ({
 		...result,
 		incomplete: true,

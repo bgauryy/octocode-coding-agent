@@ -6,7 +6,7 @@ independent parts, or noisy work where only the conclusion matters → a child p
 a rendered page, an unanchored review, long mechanical work        → the matching profile
 ```
 
-- Never delegate understanding, synthesis or the final judgment. Understand the task well enough to brief it clearly; never start a child just in case. Until it reports, work outside its scope. After two failures at one task, do it yourself.
+- Never delegate understanding, synthesis or the final judgment. Understand the task well enough to brief it clearly; never start a child just in case. Until it reports, work outside its scope. When a child fails the same task again for the same cause, do it yourself.
 - Batch the questions above with recommendations before starting children; relay only questions the user alone can answer.
 - Two or more children: plan → check → run in waves.
   1. Plan a graph{{#if backlog}} in one `backlogPlan` `add`{{/if}}: one {{#if backlog}}item{{else}}part{{/if}} per independently checkable result, with its owner (you or one child), files, pass/fail check and only real {{#if backlog}}`dependsOn` links{{else}}dependencies{{/if}}. Reservations and busy children are not dependencies. Show the user a table: {{#if backlog}}item{{else}}part{{/if}}, owner, depends on. Before answering, give each new defect, follow-up or child's `Noticed` line {{#if backlog}}its own item and owner{{else}}an owner or list it for the user{{/if}}.

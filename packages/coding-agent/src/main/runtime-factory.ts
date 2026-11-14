@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { deadline } from "../../../common/src/deadline.ts";
 import type { Args } from "../cli/args.ts";
 import type {
 	CreateAgentSessionRuntimeFactory,
@@ -68,11 +69,12 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
 		// The run's own configuration goes onto this manager before tools and resources load from it.
 		await applyRunConfiguration(parsed, { cwd, agentDir, settings: runtimeSettingsManager, projectTrusted });
+		const loading = deadline(15_000);
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
 			settingsManager: runtimeSettingsManager,
-			modelRuntimeSignal: AbortSignal.timeout(15_000),
+			modelRuntimeSignal: loading.signal,
 			resourceLoaderOptions: {
 				skillResourceSnapshot,
 				additionalSkillPaths: resolvedSkillPaths,
@@ -88,7 +90,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
 			},
-		});
+		}).finally(loading.clear);
 		try {
 			return await createCliRuntime(services, sessionManager, sessionStartEvent);
 		} catch (error) {
@@ -131,10 +133,12 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		];
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
-		const scopedModels =
+		const scopeLimit = deadline(15_000);
+		const scopedModels = await (
 			modelPatterns && modelPatterns.length > 0
-				? await resolveModelScope(modelPatterns, modelRuntime, { signal: AbortSignal.timeout(15_000) })
-				: [];
+				? resolveModelScope(modelPatterns, modelRuntime, { signal: scopeLimit.signal })
+				: Promise.resolve([])
+		).finally(scopeLimit.clear);
 		const { options: sessionOptions, diagnostics: sessionOptionDiagnostics } = buildSessionOptions(
 			parsed,
 			scopedModels,

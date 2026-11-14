@@ -167,6 +167,7 @@ export function messagePolicy({
 			let bypassed = false;
 			const result = await mergeWorktreeBranch(ctx.cwd, branch, {
 				...readiness(ctx),
+				signal,
 				approve: async (what) => {
 					const verdict = await permission.check(ctx, {
 						action: "worktree.merge",

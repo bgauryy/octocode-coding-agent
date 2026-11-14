@@ -18,6 +18,11 @@ export interface ModelSettingsApi {
 		field: "defaultProvider" | "defaultModel",
 		value: string | undefined,
 	): void;
+	/** Replace or clear a provider/model pair in one settings-file write. */
+	setDefaultSelectionPair(
+		scope: "global" | "project",
+		selection: { provider: string; model: string } | undefined,
+	): void;
 	/** The user's default model id per provider. */
 	getProviderModels(): Record<string, string>;
 	getSteeringMode(): "all" | "one-at-a-time";
@@ -46,4 +51,5 @@ export interface ModelSettingsApi {
 	/** The resolved `defaultTools` selection, or undefined when no settings layer sets it. */
 	getDefaultTools(defaults?: readonly string[]): string[] | undefined;
 	setEnabledModels(patterns: string[] | undefined): void;
+	saveEnabledModels(patterns: readonly string[] | undefined): Promise<void>;
 }

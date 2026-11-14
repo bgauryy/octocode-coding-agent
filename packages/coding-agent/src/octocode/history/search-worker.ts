@@ -9,7 +9,9 @@
  */
 export const SCAN_WORKER = String.raw`
 const fs = require("node:fs");
-const { parentPort, workerData } = require("node:worker_threads");
+const { parentPort } = require("node:worker_threads");
+parentPort.on("message", (workerData) => {
+try {
 const { files, texts, pattern, flags, start, context, maxMatches, softMs, maxLineBytes, longContext } = workerData;
 const test = new RegExp(pattern, flags);
 const CHUNK = 1024 * 1024;
@@ -115,9 +117,9 @@ function scanFiles() {
 	return { type: "octocode-history-matches", results, scanned, next, unreadable, skippedLines };
 }
 
-try {
 	parentPort.postMessage(texts ? scanTexts() : scanFiles());
 } catch (error) {
 	parentPort.postMessage({ type: "octocode-history-matches", error: error.message });
 }
+});
 `;

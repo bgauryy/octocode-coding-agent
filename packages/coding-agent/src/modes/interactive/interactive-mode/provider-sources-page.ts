@@ -21,13 +21,13 @@ import { type PageContext, signInToProvider } from "./provider-signin.ts";
 import { showPage, successNotice } from "./provider-ui.ts";
 
 /** Everything the sources, detected-tool and custom-models sections show. Paths and names only, never a credential. */
-export interface SourcesView {
+interface SourcesView {
 	sources: ProviderSource[];
 	tools: DetectedTool[];
 	files: CustomModelsFile[];
 }
 
-export async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnvironment): Promise<SourcesView> {
+async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnvironment): Promise<SourcesView> {
 	const { settingsManager } = ctx.host.session;
 	const sources = describeProviderSources(settingsManager.getProviderSources(), environment);
 	const piOn = sources.find((source) => source.id === "pi")?.state.enabled ?? true;
@@ -46,9 +46,9 @@ export async function loadSourcesView(ctx: PageContext, environment?: ProviderSo
 
 const sourceRowId = (id: string): string => `source:${id}`;
 const toolRowId = (id: string): string => `tool:${id}`;
-export const fileRowId = (index: number): string => `models:${index}`;
+const fileRowId = (index: number): string => `models:${index}`;
 
-export function sourceRow(source: ProviderSource): PageRow {
+function sourceRow(source: ProviderSource): PageRow {
 	const shown = source.paths.slice(0, 2).join(", ");
 	return {
 		id: sourceRowId(source.id),
@@ -65,7 +65,7 @@ function toolActionText(ctx: PageContext, tool: DetectedTool): string {
 	return tool.action.kind === "sign-in" ? `sign in with ${name}` : `add an API key for ${name}`;
 }
 
-export function toolRow(ctx: PageContext, tool: DetectedTool): PageRow {
+function toolRow(ctx: PageContext, tool: DetectedTool): PageRow {
 	return {
 		id: toolRowId(tool.id),
 		name: tool.label,
@@ -73,7 +73,7 @@ export function toolRow(ctx: PageContext, tool: DetectedTool): PageRow {
 	};
 }
 
-export function fileRow(file: CustomModelsFile, index: number): PageRow {
+function fileRow(file: CustomModelsFile, index: number): PageRow {
 	const defines = file.defines.length ? ` · defines ${file.defines.join(", ")}` : "";
 	return {
 		id: fileRowId(index),
@@ -87,8 +87,58 @@ export function fileRow(file: CustomModelsFile, index: number): PageRow {
 	};
 }
 
+/** File-level diagnostics are separate from everyday provider access. */
+export async function showSourcesPage(
+	ctx: PageContext,
+	saved: readonly CredentialInfo[],
+	environment?: ProviderSourceEnvironment,
+): Promise<PageResult> {
+	let initialId: string | undefined;
+	for (;;) {
+		const view = await loadSourcesView(ctx, environment);
+		const choice = await showPage(ctx.host, {
+			title: "Provider sources and custom models",
+			initialId,
+			keys: ["e"],
+			sections: [
+				{ heading: "Sources", rows: view.sources.map(sourceRow) },
+				{
+					heading: "Detected tools",
+					rows: view.tools.map((tool) => toolRow(ctx, tool)),
+					empty: "no other tools found",
+				},
+				{ heading: "Custom models", rows: view.files.map(fileRow) },
+			],
+			hints: [
+				[keyText("tui.select.confirm"), "open", 0],
+				["e", "toggle source", 2],
+				[keyText("tui.select.cancel"), "back", 0],
+			],
+		});
+		if (!choice) return "again";
+		initialId = choice.id;
+		const [kind, ...parts] = choice.id.split(":");
+		const key = parts.join(":");
+		if (kind === "source") {
+			const source = view.sources.find((entry) => entry.id === key);
+			if (source && choice.key) {
+				if (source.toggleable) await toggleSource(ctx, source, !source.state.enabled);
+			} else if (source && (await showSourceDetail(ctx, source, view.files)) === "stop") return "stop";
+		} else if (kind === "tool" && !choice.key) {
+			const tool = view.tools.find((entry) => entry.id === key);
+			if (tool && (await runToolAction(ctx, tool, saved)) === "stop") return "stop";
+		} else if (kind === "models" && !choice.key) {
+			const file = view.files[Number(key)];
+			if (file && choice.id === fileRowId(Number(key)))
+				ctx.host.showStatus(
+					`${file.origin} models.json: ${file.path}${file.exists ? "" : " (not found; create it to define providers)"}. Edit it, then open /model to refresh models. See docs/models.md.`,
+				);
+		}
+	}
+}
+
 /** Turn a toggleable source on or off, recompute what the runtime offers and say so. No file is touched. */
-export async function toggleSource(ctx: PageContext, source: ProviderSource, enabled: boolean): Promise<void> {
+async function toggleSource(ctx: PageContext, source: ProviderSource, enabled: boolean): Promise<void> {
 	const { host } = ctx;
 	const { settingsManager, modelRuntime } = host.session;
 	try {
@@ -102,7 +152,7 @@ export async function toggleSource(ctx: PageContext, source: ProviderSource, ena
 }
 
 /** A detected tool's action: Octocode's own sign-in for its account, or API-key entry. Nothing is read from the tool. */
-export async function runToolAction(
+async function runToolAction(
 	ctx: PageContext,
 	tool: DetectedTool,
 	saved: readonly CredentialInfo[],
@@ -120,7 +170,7 @@ export async function runToolAction(
 const IMPORT_LABEL = "Import a sign-in into Octocode";
 
 /** One source's page: its state and files, then turn it on or off and, for Pi, import a saved sign-in. */
-export async function showSourceDetail(
+async function showSourceDetail(
 	ctx: PageContext,
 	source: ProviderSource,
 	files: readonly CustomModelsFile[],

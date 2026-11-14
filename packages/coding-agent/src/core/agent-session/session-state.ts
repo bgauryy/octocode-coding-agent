@@ -197,6 +197,13 @@ export abstract class AgentSessionState {
 		return this._c.models.setContextWindow(tokens);
 	}
 	getContextUsage(): ContextUsage | undefined {
-		return computeContextUsage(this.sessionManager, this._c.models.limitsModel());
+		const model = this._c.models.limitsModel();
+		const usage = computeContextUsage(this.sessionManager, model);
+		if (!usage) return undefined;
+		const settings = this.settingsManager.getCompactionSettings(
+			model,
+			this.routedModel?.thinkingLevel ?? this.thinkingLevel,
+		);
+		return { ...usage, compactionThreshold: Math.max(0, usage.contextWindow - settings.reserveTokens) };
 	}
 }

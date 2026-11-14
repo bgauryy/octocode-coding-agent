@@ -7,10 +7,12 @@ import { bypassMergeLine } from "./permission/ask/text.ts";
 import type { PermissionMode } from "./permission/mode.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 import { formatSessionReport } from "./shared/session-report.ts";
+import { workersLine } from "./status-workers.ts";
 
 /**
  * `/status`: one message with the session summary, what bypass mode does with merges (in `permission`'s bypass mode), the loaded
- * skills, each MCP server's connection status and the session's token, cache and cost totals.
+ * skills, where background work runs (`status-workers.ts`), each MCP server's connection status and the session's token,
+ * cache and cost totals.
  */
 export function statusCommand(
 	api: ExtensionAPI,
@@ -47,6 +49,7 @@ export function statusCommand(
 					"",
 					`Skills (${skills.length})`,
 					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
+					workersLine(),
 					`MCPs (${servers.length})`,
 					...(servers.length
 						? servers.map(

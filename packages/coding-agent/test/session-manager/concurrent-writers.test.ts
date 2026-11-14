@@ -17,6 +17,7 @@ vi.mock("crypto", async (importOriginal) => {
 
 const sourceResolverUrl = pathToFileURL(resolve(__dirname, "../../scripts/source-resolver.ts")).href;
 const sessionManagerUrl = pathToFileURL(resolve(__dirname, "../../src/core/session-manager.ts")).href;
+const sharedFileUrl = pathToFileURL(resolve(__dirname, "../../src/core/session-manager/shared-file.ts")).href;
 
 let dir: string;
 let file: string;
@@ -187,6 +188,28 @@ describe("locked session appends", () => {
 		expect(memory.getEntries()).toHaveLength(1);
 	});
 
+	it("flushes a short-lived process's held last entry before natural exit", async () => {
+		const script = join(dir, "held-writer.mts");
+		writeFileSync(
+			script,
+			`import { SessionManager } from ${JSON.stringify(sessionManagerUrl)};
+import { lockSessionFile } from ${JSON.stringify(sharedFileUrl)};
+const [file, dir] = process.argv.slice(2);
+const session = SessionManager.open(file, dir, dir);
+const release = lockSessionFile(file);
+session.appendCustomEntry("last-held", 1);
+setTimeout(release, 300).unref();
+`,
+		);
+		const child = spawn(process.execPath, ["--import", sourceResolverUrl, script, file, dir], {
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let stderr = "";
+		child.stderr.on("data", (chunk) => (stderr += String(chunk)));
+		expect(await new Promise((done) => child.once("close", done)), stderr).toBe(0);
+		expect(customs().filter((entry) => entry.customType === "last-held")).toHaveLength(1);
+	}, 30_000);
+
 	it("keeps two processes' concurrent appends parseable and unlost", async () => {
 		const script = join(dir, "child-writer.mts");
 		writeFileSync(
@@ -219,6 +242,7 @@ for (let n = 0; n < Number(count); n++) {
 			await new Promise((r) => setTimeout(r, 2));
 		}
 		expect(await exited, stderr).toBe(0);
+		parent.retire(); // A nonblocking last append may still be held; hosts flush before finishing a session.
 
 		const all = records();
 		expect(new Set(all.map((e) => e.id)).size).toBe(all.length);

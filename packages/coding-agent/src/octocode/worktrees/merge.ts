@@ -1,6 +1,7 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { withFileWriteLock } from "../../../../common/src/file-write-lock.ts";
 import { git, GitError, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../../utils/git-run.ts";
 import { plural } from "../shared/text.ts";
 import { dirtyCounts } from "./status.ts";
@@ -20,8 +21,23 @@ export async function heldChanges(
 		.flatMap((file) => reservation(path.join(repo, file), file) ?? []);
 }
 
-/** Merges `ref` into the tree at `repo` with hooks disabled; on conflict aborts and lists the paths, leaving the tree and `ref` as they were. */
-export async function mergeRef(repo: string, ref: string): Promise<{ ok: boolean; text: string; into?: string }> {
+type MergeRefResult = { ok: false; text: string } | { ok: true; text: string; into: string; head: string };
+
+/** Serialize cooperating merges by checkout, including their checks and conflict cleanup. A queued merge can be cancelled. */
+export async function mergeRef(repo: string, ref: string, signal?: AbortSignal): Promise<MergeRefResult> {
+	const headPath = await git(repo, ["rev-parse", "--git-path", "HEAD"], { signal });
+	return withFileWriteLock(
+		path.resolve(repo, headPath),
+		async (_target, assertHeld) => {
+			assertHeld();
+			return mergeHeldRef(repo, ref, assertHeld);
+		},
+		signal,
+	);
+}
+
+/** On conflict aborts our merge and lists the paths, leaving the tree and ref as they were. */
+async function mergeHeldRef(repo: string, ref: string, assertHeld: () => void): Promise<MergeRefResult> {
 	if (await gitQuiet(repo, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]))
 		return {
 			ok: false,
@@ -29,6 +45,11 @@ export async function mergeRef(repo: string, ref: string): Promise<{ ok: boolean
 		};
 	try {
 		await rejectTrackedWorkspaceState(repo, ref);
+	} catch (error) {
+		return { ok: false, text: `Merging ${ref} failed: ${errorMessage(error)}` };
+	}
+	assertHeld();
+	try {
 		await git(repo, [...NO_HOOKS, "merge", "--no-ff", "--no-edit", ref]);
 	} catch (error) {
 		const conflicts = (await gitQuiet(repo, ["diff", "--name-only", "--diff-filter=U"])) ?? "";
@@ -46,7 +67,12 @@ export async function mergeRef(repo: string, ref: string): Promise<{ ok: boolean
 			};
 		return { ok: false, text: `Merging ${ref} failed: ${errorMessage(error)}` };
 	}
-	return { ok: true, into: (await gitQuiet(repo, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "HEAD", text: "" };
+	return {
+		ok: true,
+		into: (await gitQuiet(repo, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "HEAD",
+		head: await git(repo, ["rev-parse", "--short", "HEAD"]),
+		text: "",
+	};
 }
 
 /** The paths merging `branch` into HEAD would conflict in, without touching the tree; empty when git cannot say (before 2.38) and the merge itself decides. */
@@ -61,6 +87,8 @@ async function predictedConflicts(repo: string, branch: string): Promise<string[
 }
 
 interface BranchMergePorts {
+	/** Cancels while waiting for another merge; an entered git merge finishes or rolls back before release. */
+	signal?: AbortSignal;
 	/** Another agent's reservation of a path, as the file tool checks it. */
 	reservation: (absolute: string, display: string) => string | undefined;
 	/** The user's approval of exactly what the checks found; its refusal text, or undefined to go on. Unset when the user asked for this merge by typing it. */
@@ -149,10 +177,9 @@ export async function mergeWorktreeBranch(
 	// The dialog can wait: what changed while it did is checked again before anything lands.
 	const changedMeanwhile = stillWorking() ?? (await dirtyWork());
 	if (changedMeanwhile) return refuse(changedMeanwhile);
-	const merged = await mergeRef(main, branch);
+	const merged = await mergeRef(main, branch, ports.signal);
 	if (!merged.ok) return merged;
-	const head = await git(main, ["rev-parse", "--short", "HEAD"]);
-	const into = merged.into ?? "HEAD";
+	const { head, into } = merged;
 	return {
 		ok: true,
 		text: `Merged ${branch} (${plural(count, "commit")}) into ${into} at ${head}. The worktree ${linked.path} and its branch stay; its owner removes them with /worktree remove.`,

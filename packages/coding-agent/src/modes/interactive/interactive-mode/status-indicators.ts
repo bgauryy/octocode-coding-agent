@@ -122,7 +122,8 @@ export function setWorkingVisible(host: StatusIndicatorsHost, visible: boolean):
 		host.ui.requestRender();
 		return;
 	}
-	if (host.session.isStreaming && host.activeStatusIndicator?.kind !== "working") {
+	// Visibility controls ordinary working activity; retry and compaction own their cancellation and progress.
+	if (host.session.isStreaming && !host.activeStatusIndicator) {
 		host.showWorkingStatusIndicator();
 	}
 	host.ui.requestRender();

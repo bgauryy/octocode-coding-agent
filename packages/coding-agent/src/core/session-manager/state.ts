@@ -27,9 +27,9 @@ export interface SessionState {
 	fileEntries: FileEntry[];
 	/** What the session file holds so far, for storing the next line against it (`codec.ts`). */
 	codec: SessionCodec;
-	readonly byId: Map<string, SessionEntry>;
-	readonly labelsById: Map<string, string>;
-	readonly labelTimestampsById: Map<string, string>;
+	byId: Map<string, SessionEntry>;
+	labelsById: Map<string, string>;
+	labelTimestampsById: Map<string, string>;
 	leafId: string | null;
 }
 

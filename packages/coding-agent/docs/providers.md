@@ -38,7 +38,7 @@ Without a saved or explicit model choice, startup prefers an available subscript
 | Claude Pro/Max, and Codex CLI, OpenCode or Gemini CLI on their own logins | CLI account | As external agents: the vendor's own tool does the work (`/providers` → **External agents**); its sign-in determines billing. Known plans show `(sub)`; an unclassified sign-in shows **billing unknown**. Claude Code can also be the session's model (`claude-code/*`) |
 | OpenCode Zen, API keys                                                    | Per token | Directly                                                                                                                                                                                                                                                  |
 
-Every view that names a provider also names its kind: the `/model` and model-shortcut rows (`[openai · subscription]`), the footer beside the model, the **Signed in** rows of `/providers` and the `models` tool's provider rows. The first rule that applies decides it.
+Provider sections in `/model`, model shortcuts, the footer, `/providers` and the `models` tool name the provider's kind. Credential actions use the provider's method name: AWS profiles and bearer tokens, for example, appear as **AWS credentials or bearer token**, and Vertex as **Google Cloud credentials**. The first rule that applies decides the kind.
 
 | Kind           | Meaning                                                                                           | Billing                    |
 | -------------- | ------------------------------------------------------------------------------------------------- | -------------------------- |
@@ -80,14 +80,14 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 `/providers` separates managing providers from signing in. Its sections, in order:
 
-- **Signed in**: each provider that has credentials, with the credential kind (**account**, **subscription** or **key**) and source (a label or variable name, never a value), its model count and whether it is enabled. “Configured” means credentials are present; it does not verify that the provider will accept a request; **Test credential** on the provider's page does. A key that the provider recognizes as a subscription token is listed as **subscription**, whether it is stored, read from a keychain or command reference, or set in the environment; the key is inspected for this and never shown or kept.
+- **Needs attention**: missing provider definitions, unavailable credentials, paused plans and providers with no available models. A saved credential alone never means signed in or verified.
+- **Configured**: providers with credentials and available models, showing access method and credential source (a label or variable name, never a value). **Test credential** on the provider's page sends a small request to check access. Subscription plan keys are labeled **subscription**, including keys read from a keychain, command reference or environment; their values are never shown.
 - **Disabled**: providers you turned off, hidden from `/model`.
-- **Sign in**: one row, **+ Add a provider**, opens the sign-in flow: pick a provider (those with a subscription or account sign-in are listed first), then its browser/device sign-in, **Add API key** or **Replace API key**. Only supported methods appear. A pasted key is checked before it is saved: a Claude subscription token is refused, and a key whose prefix belongs to another provider (`ghu_` is GitHub Copilot's, `sk-ant-api` Anthropic's) asks first, naming that provider. Successful sign-in opens the model picker; Esc keeps the current model and Ctrl+S explicitly changes the default.
-- **Sources**: where providers, models and credentials come from: Octocode (always on), Pi, and the `COPILOT_GITHUB_TOKEN` variable. See [Sources](#sources).
-- **Detected**: other coding tools found on this machine (Claude Code, Codex CLI, Grok CLI and others), each with the action Octocode offers for the same account.
-- **Custom models**: the Octocode and Pi `models.json` files with their paths and the providers each defines; a missing file is marked `not found`.
+- **Connect**: **+ Add a provider** opens supported subscription, account or credential setup methods; **+ Add from a template** adds a compatible endpoint. A pasted key is checked before saving: Claude subscription tokens are refused, and a key whose prefix belongs to another provider asks first, naming that provider. Successful sign-in opens `/model`; Enter changes this chat and Ctrl+S saves the global startup default.
+- **External agents**: vendor CLIs with their own sign-in and tools.
+- **Advanced** → **Sources and custom models**: Octocode, Pi and environment sources, detected tools and their setup actions, and model definition files with paths and provider IDs. Missing files are marked `not found`. See [Sources](#sources).
 
-Keys: Enter opens a row, `e` enables or disables the selected provider or source, Esc closes (on a provider's page, Esc goes back to the list).
+Keys: Enter opens a row, `e` enables or disables the selected provider or source, Esc goes back, and PgUp/PgDn scroll long details. Narrow screens wrap the selected row's details and complete facts, including plan terms.
 
 A provider's page shows its status (account, subscription or API key), credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test credential** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, edit definition (the file path), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
@@ -123,7 +123,7 @@ The **Custom models** section of `/providers` lists the Octocode `models.json` a
 
 ## Use Pi configuration
 
-Pi is a source: open **Pi** under **Sources** in `/providers` (or run `/providers pi`) to see its saved sign-ins and the providers its `models.json` defines. **Import a sign-in into Octocode** lists providers found in Pi’s `models.json` and saved sign-ins from `auth.json`. Model definitions follow the existing [Pi fallback precedence](configuration.md#pi-configuration-fallback); models retain their real provider IDs and use those providers’ APIs, authentication and pricing. Pi is a setup source, not a network model service. While Pi is off, `/providers pi` only says so.
+Pi is a source: choose **Advanced** → **Sources and custom models** → **Pi** in `/providers` (or run `/providers pi`) to see its saved sign-ins and the providers its `models.json` defines. **Import a sign-in into Octocode** lists providers found in Pi’s `models.json` and saved sign-ins from `auth.json`. Model definitions follow the existing [Pi fallback precedence](configuration.md#pi-configuration-fallback); models retain their real provider IDs and use those providers’ APIs, authentication and pricing. Pi is a setup source, not a network model service. While Pi is off, `/providers pi` only says so.
 
 Octocode reads Pi's `auth.json` without changing it, and skips what it cannot use:
 

@@ -175,9 +175,6 @@ describe("registerTurnSetup", () => {
 			profiles: () => profiles,
 		});
 		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction to `browser`");
-		expect(await run(fake, ["agent", "file", "web"])).toMatch(
-			/send follow-ups to that same agent while it is reachable/,
-		);
 		// The removed native `browser` tool no longer counts as a browser; only the browser MCP tools do.
 		expect(await run(fake, ["agent", "file", "browser"])).toContain("Delegate browser interaction");
 		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");

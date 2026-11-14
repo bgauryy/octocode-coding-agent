@@ -1,10 +1,18 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+
+// Color assertions exercise a color-capable terminal, independent of the invoking shell.
+beforeEach(() => {
+	vi.stubEnv("NO_COLOR", "");
+	vi.stubEnv("TERM", "xterm-256color");
+	vi.stubEnv("COLORTERM", "truecolor");
+});
+afterEach(() => vi.unstubAllEnvs());
 
 type AssistantUsage = {
 	input: number;
@@ -163,7 +171,7 @@ describe("formatCwdForFooter", () => {
 });
 
 describe("FooterComponent width handling", () => {
-	beforeAll(() => {
+	beforeEach(() => {
 		initTheme(undefined, false);
 	});
 

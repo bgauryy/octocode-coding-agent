@@ -113,9 +113,14 @@ export class ModelRuntime extends ModelCatalog implements Models {
 
 	static async create(options: CreateModelRuntimeOptions = {}): Promise<ModelRuntime> {
 		const runtime = new ModelRuntime(await loadModelRuntimeParts(options));
-		runtime.rebuildProviders();
-		await refreshOnCreate((refreshOptions) => runtime.refresh(refreshOptions), runtime.modelNetworkEnabled, options);
-		return runtime;
+		try {
+			runtime.rebuildProviders();
+			await refreshOnCreate((refreshOptions) => runtime.refresh(refreshOptions), runtime.modelNetworkEnabled, options);
+			return runtime;
+		} catch (error) {
+			runtime.dispose();
+			throw error;
+		}
 	}
 
 	/**

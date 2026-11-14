@@ -6,6 +6,7 @@ import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { currentPrice, type ModelRef } from "./model.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
 
 /**
  * The account cannot pay for the request (402, "Insufficient account funds", no credit or quota left): the key is
@@ -250,26 +251,30 @@ export async function checkProviders(
 			const candidates: readonly Model<Api>[] = Array.isArray(entry) ? entry : [entry as Model<Api>];
 			const model = candidates[0];
 			if (!model) return;
-			const timeout = AbortSignal.timeout(CHECK_TIMEOUT_MS);
-			const bounded = signal ? AbortSignal.any([signal, timeout]) : timeout;
-			const accepted = await listAccepted(registry, model.provider, bounded).catch(() => false);
-			if (signal?.aborted) return;
-			if (accepted) {
-				const known = health.get(model.provider);
-				// A listed key may still lack credit: keep a run's billing refusal until a run succeeds.
-				if (!(known && !known.ok && known.via === "run" && known.detail && BILLING_REFUSED.test(known.detail)))
-					health.noteCheck(model.provider, undefined, "list");
-				return;
+			const limit = deadline(CHECK_TIMEOUT_MS, signal);
+			const bounded = limit.signal;
+			try {
+				const accepted = await listAccepted(registry, model.provider, bounded).catch(() => false);
+				if (signal?.aborted) return;
+				if (accepted) {
+					const known = health.get(model.provider);
+					// A listed key may still lack credit: keep a run's billing refusal until a run succeeds.
+					if (!(known && !known.ok && known.via === "run" && known.detail && BILLING_REFUSED.test(known.detail)))
+						health.noteCheck(model.provider, undefined, "list");
+					return;
+				}
+				let error: string | undefined;
+				for (const candidate of candidates) {
+					const refused = await tinyRequest(registry, candidate, bounded);
+					error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
+					if (!refused || credentialRefused(refused) || bounded.aborted) break;
+				}
+				if (signal?.aborted) return;
+				if (error && bounded.aborted) error = `no answer within ${CHECK_TIMEOUT_MS / 1000} s (${error})`;
+				health.noteCheck(model.provider, error);
+			} finally {
+				limit.clear();
 			}
-			let error: string | undefined;
-			for (const candidate of candidates) {
-				const refused = await tinyRequest(registry, candidate, bounded);
-				error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
-				if (!refused || credentialRefused(refused) || bounded.aborted) break;
-			}
-			if (signal?.aborted) return;
-			if (error && timeout.aborted) error = `no answer within ${CHECK_TIMEOUT_MS / 1000} s (${error})`;
-			health.noteCheck(model.provider, error);
 		}),
 	);
 	signal?.throwIfAborted();

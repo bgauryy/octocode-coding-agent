@@ -145,16 +145,33 @@ describe("openAgentDb", () => {
 		}
 	});
 
-	it.each([0, 11, 99])("refuses unsupported version %i before changing the file", (version) => {
+	const versioned = (version: number) => {
 		const { DatabaseSync } = loadSqlite();
 		const file = path.join(tmp(), "other.db");
 		const old = new DatabaseSync(file);
 		old.exec(`PRAGMA application_id=${AGENT_APPLICATION_ID}; PRAGMA user_version=${version};
 			CREATE TABLE sample(x); INSERT INTO sample VALUES ('preserve');`);
 		old.close();
-		const bytes = fs.readFileSync(file);
-		expect(() => openAgentDb(file)).toThrow(/unsupported Octocode schema/);
+		return { file, bytes: fs.readFileSync(file) };
+	};
+
+	it.each([11, 99])("refuses newer version %i before changing the file", (version) => {
+		const { file, bytes } = versioned(version);
+		expect(() => openAgentDb(file)).toThrow(
+			new RegExp(`schema version ${version}, newer than this Octocode's .*Nothing in the file changed`),
+		);
 		expect(fs.readFileSync(file)).toEqual(bytes);
+	});
+
+	it("sets an older version aside unchanged and opens a new file in its place", () => {
+		const { file, bytes } = versioned(0);
+		const fresh = openAgentDb(file);
+		try {
+			expect(workspaces.list(fresh.db)).toEqual([]);
+		} finally {
+			fresh.close();
+		}
+		expect(fs.readFileSync(`${file}.v0.retired`)).toEqual(bytes);
 	});
 
 	it("keeps workspaces with colliding names and roots in history, and refuses a copied identity", () => {

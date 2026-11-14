@@ -43,11 +43,11 @@ describe("insight model", () => {
 
 	it("summarises issues, avoidable cost, waiting and the checks that passed", () => {
 		const summary = summarizeFindings(mixed);
-		expect(summary).toMatchObject({ issues: 4, waitedMs: 252_000, checks: 11 });
+		expect(summary).toMatchObject({ issues: 4, waitedMs: 252_000, checks: 16 });
 		expect(summary.cost).toBeCloseTo(0.81);
 		expect(summary.passed).not.toContain("slow-tool");
-		expect(summary.passed).toHaveLength(7);
-		expect(summarizeFindings([]).passed).toHaveLength(11);
+		expect(summary.passed).toHaveLength(12);
+		expect(summarizeFindings([]).passed).toHaveLength(16);
 	});
 
 	it("folds a kind with more than five findings into one group at its first place", () => {
@@ -62,7 +62,7 @@ describe("insight model", () => {
 describe("InsightsPanel", () => {
 	it("leads with the summary line and the worst finding, and folds the passed checks", () => {
 		render(createElement(InsightsPanel, { findings: mixed, onSelect: vi.fn() }));
-		expect(screen.getByText("4 issues \u00B7 $0.81 avoidable \u00B7 4m waited \u00B7 7 checks passed")).toBeTruthy();
+		expect(screen.getByText("4 issues \u00B7 $0.81 avoidable \u00B7 4m waited \u00B7 12 checks passed")).toBeTruthy();
 		const items = within(screen.getByRole("list", { name: "Findings, most costly first" })).getAllByRole("listitem");
 		expect(items[0]?.textContent).toContain("Finding b");
 		expect(items[0]?.textContent).toContain("$0.31");
@@ -90,8 +90,8 @@ describe("InsightsPanel", () => {
 
 	it("says no issues were found and lists every check that ran", () => {
 		render(createElement(InsightsPanel, { findings: [], onSelect: vi.fn() }));
-		expect(screen.getByText(/No issues found/).textContent).toContain("11 checks passed");
-		expect(within(screen.getByRole("list", { name: "Checks that passed" })).getAllByRole("listitem")).toHaveLength(11);
+		expect(screen.getByText(/No issues found/).textContent).toContain("16 checks passed");
+		expect(within(screen.getByRole("list", { name: "Checks that passed" })).getAllByRole("listitem")).toHaveLength(16);
 		expect(screen.queryByRole("list", { name: "Findings, most costly first" })).toBeNull();
 	});
 

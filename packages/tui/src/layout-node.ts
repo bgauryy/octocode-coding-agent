@@ -26,8 +26,11 @@ export interface StackLayoutNode {
 
 /** What a virtualized frame left unmeasured, measured on demand. */
 export interface ContentSettler {
+	/** Whether background measurement has finished; omitted settlers retain synchronous behavior. */
+	isSettled?(): boolean;
 	all(): void;
 	rows(rowsFromEnd: number): void;
+	cancel?(): void;
 }
 
 interface ScrollLayoutState {
@@ -48,7 +51,7 @@ interface ScrollLayoutState {
 	 * Called each frame: scrolling first measures what a virtualized frame left unmeasured, all of it (`all`) or the
 	 * items the last rows reach (`rows`).
 	 */
-	setContentSettler?(settle: ContentSettler | undefined): void;
+	setContentSettler?(settle: ContentSettler | undefined, release?: () => void): void;
 }
 
 export interface ScrollLayoutNode {

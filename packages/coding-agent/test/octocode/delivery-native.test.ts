@@ -4,6 +4,7 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptCont
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
+import { emitSessionShutdownEvent } from "../../src/core/features/runner.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -176,6 +177,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				release();
 				await session.abort();
 				await running;
+				await emitSessionShutdownEvent(session.extensionRunner, { type: "session_shutdown", reason: "quit" });
 				session.dispose();
 			}
 		},

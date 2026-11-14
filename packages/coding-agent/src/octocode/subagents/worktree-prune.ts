@@ -5,7 +5,7 @@ import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
 import { gitQuiet } from "../../utils/git-run.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
-import { sameProcess } from "../shared/process.ts";
+import { sameProcessAsync } from "../shared/process.ts";
 import { ID_PATTERN, legacyWorktreesDir, ownersOf, repoRoot, worktreesDir } from "./worktree-base.ts";
 import { finishWorktree } from "./worktree-finish.ts";
 
@@ -86,7 +86,11 @@ async function pruneDir(repo: string, key: string, dir: string, report: PruneRep
 			)
 				continue;
 		}
-		if (ownersOf(record).some((each) => sameProcess(each.pid, each.started)) || !ID_PATTERN.test(agentId)) continue;
+		if (
+			(await Promise.all(ownersOf(record).map((each) => sameProcessAsync(each.pid, each.started)))).some(Boolean) ||
+			!ID_PATTERN.test(agentId)
+		)
+			continue;
 		// Two sessions starting together both see the orphan: only the one whose rename wins saves and removes it.
 		const claimed = path.join(dir, `${entry}${claimSuffix(CLAIM_MARKER)}`);
 		try {

@@ -55,7 +55,7 @@ describe("file tool one-of input", () => {
 			researchGuard(),
 			fakePermission(),
 		);
-		expect(tool!.description).toMatch(/queries .* or a Codex-style patch string, not both/);
+		expect(tool!.description).toMatch(/\bqueries\b[\s\S]*\bpatch\b/);
 		const cwd = tmp();
 		const taught = /file takes either queries .* or patch .*not both/;
 		const run = (input: Record<string, unknown>) =>

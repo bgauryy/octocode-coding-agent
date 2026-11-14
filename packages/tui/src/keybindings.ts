@@ -169,11 +169,11 @@ export const TUI_KEYBINDINGS = {
 		description: "Scroll viewport down one page",
 	},
 	"tui.altScreen.halfPageUp": {
-		defaultKeys: [],
+		defaultKeys: "shift+pageUp",
 		description: "Scroll viewport up half a page",
 	},
 	"tui.altScreen.halfPageDown": {
-		defaultKeys: [],
+		defaultKeys: "shift+pageDown",
 		description: "Scroll viewport down half a page",
 	},
 	"tui.altScreen.lineUp": {

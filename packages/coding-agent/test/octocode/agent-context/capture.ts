@@ -324,6 +324,11 @@ export async function captureMain(settings?: Record<string, unknown>): Promise<A
 	}
 }
 
+/** A parent hands this same catalog to each sibling; scoped to one fixture pair, never cached globally. */
+export interface ParentSkillCatalog {
+	snapshot?: SkillResourceSnapshot;
+}
+
 /**
  * A child as `subagents/tool.ts` starts it: the identity and role prompt reach it through its environment
  * (`subagentProcessEnv`), the tools, extensions and skills through its command line (`buildAgentArgs`), the skills
@@ -334,7 +339,11 @@ export async function captureChild(
 	name: string,
 	roleName: string | undefined,
 	parent: { task: string; goal: string } = { task: CHILD_TASK, goal: CHILD_GOAL },
-	{ isolated = false, settings }: { isolated?: boolean; settings?: Record<string, unknown> } = {},
+	{
+		isolated = false,
+		settings,
+		parentSkills,
+	}: { isolated?: boolean; settings?: Record<string, unknown>; parentSkills?: ParentSkillCatalog } = {},
 ): Promise<AgentContext> {
 	const fx = fixture();
 	try {
@@ -349,27 +358,30 @@ export async function captureChild(
 		if (roleName && !profile) throw new Error(`Bundled role ${roleName} not found`);
 		const skillPlan = taskSkillPlan(profile, undefined);
 		// What the parent hands over: its skill catalog (a lean child gets none, and reads them inlined in its task).
-		const snapshot = await withEnv(baseEnv(fx), async () => {
-			const parent = new DefaultResourceLoader({
-				cwd: fx.cwd,
-				agentDir: fx.agentDir,
-				settingsManager: SettingsManager.inMemory({}),
-				disabledFeatures: ["mcp", "llama.cpp"],
-				// The core skills a real parent gets from the Octocode extension (`registerSkills`), so a role can name one.
-				additionalSkillPaths: bundledSkillDirs(),
-				noPromptTemplates: true,
-				noThemes: true,
-			});
-			await parent.reload();
-			// Named skills resolve through the parent's skill commands, as `extension-bindings.ts` supplies them at runtime.
-			const commands: SlashCommandInfo[] = getSkillCommands(parent.getSkills().skills).map(({ skill, name }) => ({
-				name,
-				description: skill.description,
-				source: "skill",
-				sourceInfo: skill.sourceInfo,
+		const snapshot =
+			parentSkills?.snapshot ??
+			(await withEnv(baseEnv(fx), async () => {
+				const parent = new DefaultResourceLoader({
+					cwd: fx.cwd,
+					agentDir: fx.agentDir,
+					settingsManager: SettingsManager.inMemory({}),
+					disabledFeatures: ["mcp", "llama.cpp"],
+					// The core skills a real parent gets from the Octocode extension (`registerSkills`), so a role can name one.
+					additionalSkillPaths: bundledSkillDirs(),
+					noPromptTemplates: true,
+					noThemes: true,
+				});
+				await parent.reload();
+				// Named skills resolve through the parent's skill commands, as `extension-bindings.ts` supplies them at runtime.
+				const commands: SlashCommandInfo[] = getSkillCommands(parent.getSkills().skills).map(({ skill, name }) => ({
+					name,
+					description: skill.description,
+					source: "skill",
+					sourceInfo: skill.sourceInfo,
+				}));
+				return captureSkillResourceSnapshot(parent.getSkills(), skillPlan.names, commands);
 			}));
-			return captureSkillResourceSnapshot(parent.getSkills(), skillPlan.names, commands);
-		});
+		if (parentSkills) parentSkills.snapshot = snapshot;
 		const snapshotFile = path.join(fx.octocodeHome, "skills-snapshot.json");
 		fs.writeFileSync(snapshotFile, JSON.stringify(snapshot), { mode: 0o600 });
 		const identity: Identity = {

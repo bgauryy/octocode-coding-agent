@@ -293,7 +293,7 @@ describe("/memory review", () => {
 		const old = store.set({ title: "Old used note", author: "agent" }, now - 40 * DAY_MS).memory;
 		const unused = store.set({ title: "Fresh unused note", author: "agent" }, now - DAY_MS).memory;
 		const fresh = store.set({ title: "Recent popular entry", author: "agent" }, now - DAY_MS).memory;
-		store.markUsed([old.id, fresh.id]);
+		await store.markUsed([old.id, fresh.id]);
 		const ctx = ctxFor({ hasUI: false });
 		await command.handler("review", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toBe(
@@ -359,7 +359,7 @@ describe("reference kind", () => {
 		expect(parseTemplate("kind: reference\n---\n").kind).toBe("reference");
 	});
 
-	it("ranks a memory nobody used for long below an equal one in use, and keeps a pinned one up", () => {
+	it("ranks a memory nobody used for long below an equal one in use, and keeps a pinned one up", async () => {
 		const store = memoryStore(cwd);
 		const old = Date.now() - 100 * DAY_MS;
 		const add = (title: string, body: string, pinned = false) =>
@@ -367,7 +367,7 @@ describe("reference kind", () => {
 		const unused = add("first entry", "tokens split on commas before lookup");
 		const used = add("second thing", "errors recover at statement ends always");
 		const pinned = add("third item", "grammar tables generated during builds nightly", true);
-		store.markUsed([used.id]);
+		await store.markUsed([used.id]);
 		const ids = store.search("parser").map((hit) => hit.id);
 		expect(ids).toHaveLength(3);
 		expect(ids.indexOf(used.id)).toBeLessThan(ids.indexOf(unused.id));

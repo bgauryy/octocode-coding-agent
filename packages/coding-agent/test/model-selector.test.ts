@@ -1,6 +1,7 @@
-import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
+import { setKeybindings, visibleWidth, type TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { modelListLines } from "../src/modes/interactive/components/model-selector/rows.ts";
 import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -46,18 +47,83 @@ describe("model selector", () => {
 		const getModelRow = (id: string): string | undefined =>
 			stripAnsi(selector.render(120).join("\n"))
 				.split("\n")
-				.find((line) => line.includes(`${id} [`))
+				.find((line) => /^(?:› | {2})(?:✓ | {2})/.test(line) && line.includes(id))
 				?.trimEnd();
 
 		// The badge names the provider's kind: the faux provider serves from localhost.
-		expect(getModelRow("current-model")).toBe(`› ✓ current-model [${currentModel.provider} · local]`);
+		expect(getModelRow("current-model")).toBe("› ✓ current-model");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain(`${currentModel.provider} · local`);
 		selector.handleInput("\x1b[B");
-		expect(getModelRow("current-model")).toBe(`  ✓ current-model [${currentModel.provider} · local]`);
-		expect(getModelRow("browsed-model")).toBe(`›   browsed-model [${currentModel.provider} · local]`);
+		expect(getModelRow("current-model")).toBe("  ✓ current-model");
+		expect(getModelRow("browsed-model")).toBe("›   browsed-model");
+		selector.handleInput("\x04");
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain(
 			`Model Name: Browsed Model · Provider: ${currentModel.provider} (local)`,
 		);
 		selector.dispose();
+	});
+
+	it("keeps the browsed model when catalog refresh completes during a search", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "first-model", name: "First" },
+				{ id: "second-model", name: "Second" },
+			],
+		});
+		let finish!: (result: { aborted: boolean; errors: Map<string, Error> }) => void;
+		vi.spyOn(harness.session.modelRuntime, "refresh").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const select = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			harness.getModel("first-model"),
+			harness.session.modelRuntime,
+			[],
+			select,
+			vi.fn(),
+		);
+		for (const key of "model") selector.handleInput(key);
+		selector.handleInput("\x1b[B");
+		finish({ aborted: false, errors: new Map() });
+		await vi.waitFor(() => expect(stripAnsi(selector.render(120).join("\n"))).toContain("Model catalogs refreshed."));
+		// An ignored input key must not reset the filtered selection either.
+		selector.handleInput("\x1b[H");
+		selector.handleInput("\r");
+		expect(select).toHaveBeenCalledWith(harness.getModel("second-model"));
+	});
+
+	it("pages the model rows without changing the search query", async () => {
+		harness = await createHarness({
+			models: Array.from({ length: 9 }, (_, index) => ({ id: `model-${index}`, name: `Model ${index}` })),
+		});
+		vi.spyOn(harness.session.modelRuntime, "refresh").mockResolvedValue({ aborted: false, errors: new Map() });
+		const select = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			harness.getModel("model-0"),
+			harness.session.modelRuntime,
+			[],
+			select,
+			vi.fn(),
+		);
+		selector.handleInput("\x1b[6~");
+		expect(selector.getSearchInput().getValue()).toBe("");
+		selector.handleInput("\r");
+		expect(select).toHaveBeenCalledWith(harness.getModel("model-3"));
+	});
+
+	it("clips the model position counter along with Unicode rows", async () => {
+		harness = await createHarness({ models: [{ id: "命令👩‍💻", name: "Unicode" }] });
+		const model = harness.getModel("命令👩‍💻")!;
+		const items = Array.from({ length: 100 }, () => ({ id: model.id, provider: model.provider, model }));
+		for (const width of [1, 5, 12, 80, 160]) {
+			const lines = modelListLines(items, 99, () => ({ current: false, isDefault: false }), 3, width);
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+		}
 	});
 
 	it("switches the shown provider with left and right, then back to all", async () => {
@@ -75,7 +141,10 @@ describe("model selector", () => {
 			() => {},
 		);
 		const screen = () => stripAnsi(selector.render(120).join("\n"));
-		const shows = (id: string) => screen().includes(`${id} [`);
+		const shows = (id: string) =>
+			screen()
+				.split("\n")
+				.some((line) => line.trimEnd().endsWith(id));
 
 		expect(screen()).toContain("Provider: all");
 		expect([shows("first-model"), shows("other-model")]).toEqual([true, true]);
@@ -108,7 +177,7 @@ describe("model selector", () => {
 			saveDefault,
 		);
 
-		expect(stripAnsi(selector.render(120).join("\n"))).toContain("ctrl+r set as default");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("ctrl+r global default");
 		selector.handleInput("\x13");
 		expect(saveDefault).not.toHaveBeenCalled();
 		selector.handleInput("\x12");

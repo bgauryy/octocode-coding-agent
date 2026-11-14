@@ -36,6 +36,8 @@ export function continueOpenedMirror(t: Transcript, stamp: FileStamp): boolean {
 	const lastLine = Buffer.from(`${last.json}\n`);
 	const start = saved.byte_size - lastLine.length;
 	if (start < 0) return false;
+	// Large gaps are read and parsed by the database worker's snapshot command.
+	if (stamp.size - start > 1024 * 1024) return false;
 	let read: { stamp: FileStamp; bytes: Buffer } | undefined;
 	try {
 		read = withSessionFileLock(t.file, () => readFrom(t.file, start), READER_LOCK_WAIT_MS);

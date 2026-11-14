@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
+import { keptStatement } from "../statements.ts";
 
 /** The `messages` and `deliveries` tables: a message is immutable, a delivery is one recipient's copy and state of it. */
 
@@ -360,15 +361,14 @@ export function markRelay(db: DatabaseSync, message: number, parent: string, tar
 
 /** The relay requests waiting for `parent`, oldest first; `relay_to` names the agent each is for. */
 export function relayRequests(db: DatabaseSync, team: string, parent: string, limit: number, now: number): Row[] {
-	return db
-		.prepare(
-			`SELECT ${DELIVERED_COLUMNS}, d.relay_to
+	return keptStatement(
+		db,
+		`SELECT ${DELIVERED_COLUMNS}, d.relay_to
          FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
          WHERE d.recipient = ? AND m.team = ? AND d.relay_to IS NOT NULL AND d.dead_at IS NULL AND
          (d.delivered_at IS NULL OR (d.completed_at IS NULL AND d.delivered_at < ?))
          ORDER BY m.id LIMIT ?`,
-		)
-		.all(parent, team, now - RELAY_LEASE_MS, limit);
+	).all(parent, team, now - RELAY_LEASE_MS, limit);
 }
 
 /**

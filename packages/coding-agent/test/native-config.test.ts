@@ -76,6 +76,18 @@ describe("Octocode home and Pi configuration fallback", () => {
 		expect((await ModelConfig.load(getModelsPath())).getError()).toContain(legacy);
 	});
 
+	it("reports errors of concurrently loaded models files in precedence order", async () => {
+		const agent = join(home, ".pi", "agent", "models.json");
+		const root = join(home, ".pi", "models.json");
+		write(getModelsPath(), "{native broken");
+		write(agent, "{agent broken");
+		write(root, "{root broken");
+		const error = (await ModelConfig.load(getModelsPath())).getError() ?? "";
+		const order = [getModelsPath(), agent, root].map((file) => error.indexOf(`File: ${file}`));
+		expect(order.every((index) => index >= 0)).toBe(true);
+		expect(order).toEqual([...order].sort((a, b) => a - b));
+	});
+
 	it("loads image capabilities and limits from Pi provider definitions and model overrides", async () => {
 		const legacy = join(home, ".pi", "agent", "models.json");
 		const content = JSON.stringify({

@@ -75,6 +75,10 @@ function fresh(text: string, width: number, style?: DefaultTextStyle): string[] 
 	return new Markdown(text, 1, 1, defaultMarkdownTheme, style).render(width);
 }
 
+function fresh2(text: string, width: number): string[] {
+	return new Markdown(text, 2, 1, defaultMarkdownTheme, STYLE).render(width);
+}
+
 /** An OSC 8 id is `<component>-<block>-<link>-<piece>`: the component part is unique, the rest follows source order. */
 const LINK_ID = /\x1b\]8;id=(oc\d+)-/g;
 
@@ -180,6 +184,32 @@ describe("Markdown streaming", () => {
 			streamed.setText(text);
 			assertRendersAs(streamed.render(40), new Markdown(text, 0, 0, defaultMarkdownTheme).render(40));
 		}
+	});
+
+	it("frames rows again when the width changes, also where the content width stays the same", () => {
+		const streamed = new Markdown("", 2, 1, defaultMarkdownTheme, STYLE);
+		// Widths 1 and 3 clamp the padding to 0 and 1: one content column each, different framed rows.
+		const widths = [40, 3, 1, 3, 40, 17];
+		for (let step = 0; step < widths.length; step++) {
+			const text = DOCUMENT.slice(0, Math.round((DOCUMENT.length * (step + 1)) / widths.length));
+			streamed.setText(text);
+			assertRendersAs(streamed.render(widths[step]), fresh2(text, widths[step]), `width ${widths[step]}`);
+			assertRendersAs(streamed.render(widths[step]), fresh2(text, widths[step]), `width ${widths[step]} again`);
+		}
+	});
+
+	it("frames only the rows of the block an append changed", () => {
+		let framed = 0;
+		const counting: DefaultTextStyle = { bgColor: (text) => (framed++, `\x1b[40m${text}\x1b[49m`) };
+		const paragraphs = Array.from({ length: 200 }, (_, i) => `Paragraph ${i} with enough words to wrap twice.`);
+		const streamed = new Markdown(paragraphs.join("\n\n"), 1, 1, defaultMarkdownTheme, counting);
+		const total = streamed.render(30).length;
+		framed = 0;
+		streamed.setText(`${paragraphs.join("\n\n")} more`);
+		const rows = streamed.render(30);
+		assert.strictEqual(rows.length, total);
+		// The last paragraph's rows and the blank rows above and below, not the hundreds of rows before them.
+		assert.ok(framed <= 8, `framed ${framed} of ${total} rows`);
 	});
 
 	it("re-renders for a new width and after invalidate with a changed theme", () => {

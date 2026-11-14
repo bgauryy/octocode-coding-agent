@@ -10,7 +10,7 @@ import {
 	groupStartTimes,
 	processAlive,
 	processMatch,
-	sameProcess,
+	sameProcessAsync,
 	stopTree,
 } from "../../shared/process.ts";
 import { validPid } from "../../../utils/process-id.ts";
@@ -92,7 +92,10 @@ export async function liveJobFiles(dir: string): Promise<Set<string>> {
 	for (const name of names.filter((each) => each.endsWith(RECORD_SUFFIX))) {
 		const text = await fs.promises.readFile(path.join(folder, name), "utf8").catch(() => undefined);
 		const record = text === undefined ? undefined : parseRecord(text);
-		if (text !== undefined && (!record || (!foreign(record) && !sameProcess(record.owner.pid, record.owner.started))))
+		if (
+			text !== undefined &&
+			(!record || (!foreign(record) && !(await sameProcessAsync(record.owner.pid, record.owner.started))))
+		)
 			continue;
 		const log = record ? path.basename(record.log) : `${name.slice(0, -RECORD_SUFFIX.length)}.log`;
 		for (const each of [name, log, `${log}.1`]) live.add(each);
@@ -146,7 +149,7 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
 			latest.set(record.pid, Math.max(latest.get(record.pid) ?? 0, Number(record.started)));
 	}
 	for (const { file, record } of entries) {
-		if (record && (foreign(record) || sameProcess(record.owner.pid, record.owner.started))) continue;
+		if (record && (foreign(record) || (await sameProcessAsync(record.owner.pid, record.owner.started)))) continue;
 		const claimed = `${file}${claimSuffix(CLAIM_MARKER)}`;
 		try {
 			fs.renameSync(file, claimed);

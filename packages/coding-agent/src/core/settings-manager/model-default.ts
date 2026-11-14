@@ -18,17 +18,43 @@ export function saveDefaultModelSelection(
 	modelId: string,
 	options: DefaultModelSelectionOptions = {},
 ): Promise<void> {
-	const previous = pendingSelections.get(state) ?? Promise.resolve();
 	const snapshot = { ...options, ...(options.enabledModels ? { enabledModels: [...options.enabledModels] } : {}) };
-	const saved = previous
-		.catch(() => undefined)
-		.then(() => commitSelection(state, persistence, provider, modelId, snapshot));
+	return queueSelection(state, () => commitSelection(state, persistence, provider, modelId, snapshot));
+}
+
+function queueSelection(state: SettingsState, commit: () => Promise<void>): Promise<void> {
+	const previous = pendingSelections.get(state) ?? Promise.resolve();
+	const saved = previous.catch(() => undefined).then(commit);
 	pendingSelections.set(state, saved);
 	const forget = () => {
 		if (pendingSelections.get(state) === saved) pendingSelections.delete(state);
 	};
 	void saved.then(forget, forget);
 	return saved;
+}
+
+/** Save shortcut selection through the same queue as defaults; a failed write keeps the prior saved selection. */
+export function saveEnabledModels(
+	state: SettingsState,
+	persistence: SettingsPersistence,
+	patterns: readonly string[] | undefined,
+): Promise<void> {
+	const snapshot = patterns ? [...patterns] : undefined;
+	return queueSelection(state, async () => {
+		if (state.globalSettingsLoadError) throw state.globalSettingsLoadError;
+		const previous = state.globalSettings.enabledModels;
+		if (snapshot) state.globalSettings.enabledModels = snapshot;
+		else delete state.globalSettings.enabledModels;
+		persistence.markModified("enabledModels");
+		const error = await persistence.save();
+		if (!error) return;
+		if (state.globalSettings.enabledModels === snapshot) {
+			if (previous) state.globalSettings.enabledModels = previous;
+			else delete state.globalSettings.enabledModels;
+		}
+		state.settings = effectiveSettings(state);
+		throw error;
+	});
 }
 
 /** Commit all fields together; retain diagnostics and restore the attempted settings if storage fails. */

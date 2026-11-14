@@ -190,6 +190,22 @@ describe("stored session format", () => {
 		expect(whole(loadEntriesFromFile(exported).slice(1))).toEqual(whole(session.getBranch()));
 	});
 
+	it("continues references after a reopen with the codec that decoded the file", () => {
+		const session = SessionManager.create(cwd, join(scratch, "reopen"));
+		record(session, 4);
+		const file = session.getSessionFile()!;
+		const before = lines(file).length;
+		const opened = SessionManager.open(file, join(scratch, "reopen"), cwd);
+		// The same system message again: every part the file already holds is written as a reference.
+		opened.appendMessage(systemMessage());
+		const added = lines(file)
+			.slice(before)
+			.map((line) => JSON.parse(line) as Record<string, any>);
+		const system = added.find((entry) => entry.message?.role === "system")!;
+		expect(system.message.toolsAdded.every((tool: unknown) => Object.keys(tool as object)[0] === "$ref")).toBe(true);
+		expect(whole(loadEntriesFromFile(file))).toEqual(whole([loadEntriesFromFile(file)[0], ...opened.getEntries()]));
+	});
+
 	it("keeps request traces linear in the turn count over 200 turns", () => {
 		const sizes = [100, 200].map((turns) => {
 			const session = SessionManager.create(cwd, join(scratch, `turns-${turns}`));

@@ -16,8 +16,8 @@ const LATE_REPORTS_MS = 4 * SUBAGENT_STOP_GRACE_MS;
 export class LateReports {
 	private dir: string | undefined;
 	private stopClock: (() => void) | undefined;
-	/** The take in progress, or the last one: the next starts after it, so two takes never claim the same file. */
-	private taking: Promise<void> = Promise.resolve();
+	/** Explicit takes remain ordered; timer ticks skip a scan while one is outstanding. */
+	private taking: Promise<void> | undefined;
 	private generation = 0;
 
 	private readonly runs: AgentRuns;
@@ -34,17 +34,20 @@ export class LateReports {
 		const until = Date.now() + LATE_REPORTS_MS;
 		this.stopClock?.();
 		this.stopClock = onSecond(() => {
-			void this.take();
-			if (Date.now() >= until) this.stopPolling();
+			const ending = Date.now() >= until;
+			// Keep a final scan after any slow take: a report may have arrived since its directory snapshot.
+			if (!this.taking || ending) void this.take();
+			if (ending) this.stopPolling();
 		});
 		return first;
 	}
 
 	take(): Promise<void> {
 		const dir = this.dir;
+		if (!dir) return Promise.resolve();
 		const generation = this.generation;
-		const next = this.taking.then(async () => {
-			if (!dir || generation !== this.generation) return;
+		const next = (this.taking ?? Promise.resolve()).then(async () => {
+			if (generation !== this.generation) return;
 			const reports = await takePendingReports(dir);
 			if (generation !== this.generation) {
 				await releasePendingReports(reports);
@@ -52,7 +55,12 @@ export class LateReports {
 			}
 			for (const report of reports) this.runs.reports.add(report);
 		});
-		this.taking = next.catch(() => undefined);
+		const settled = next
+			.catch(() => undefined)
+			.finally(() => {
+				if (this.taking === settled) this.taking = undefined;
+			});
+		this.taking = settled;
 		return next;
 	}
 

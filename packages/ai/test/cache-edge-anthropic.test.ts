@@ -325,10 +325,11 @@ describe("Anthropic session with every marker source", () => {
 		for (const payload of payloads) expect(JSON.stringify(payload)).not.toContain("cache_control");
 	});
 
-	// Red today: the held update moves behind the retry, so the tool turn before it is read again (one turn per abort).
-	// Flushing held updates before a user message that follows a tool result keeps the prefix, but puts a system message
-	// before a user message (not yet verified against the live API) and changes model-visible order: see decisionsForUser.
-	it.skip("keeps the previous tail cached when an aborted reply is followed by a user message after a system update", async () => {
+	// Known miss, pinned with `it.fails` so it runs and flags the change: the held update moves behind the retry, so the
+	// tool turn before it is read again (one turn per abort). Flushing held updates before a user message that follows a
+	// tool result keeps the prefix, but puts a system message before a user message (not yet verified against the live
+	// API) and changes model-visible order. When a fix lands, this fails: turn it into `it`.
+	it.fails("keeps the previous tail cached when an aborted reply is followed by a user message after a system update", async () => {
 		// Request N ends with tool results and a tool addition; the reply is aborted empty and the user writes again.
 		const base: Message[] = [
 			user("task"),

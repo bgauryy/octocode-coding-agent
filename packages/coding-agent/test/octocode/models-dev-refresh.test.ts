@@ -52,8 +52,11 @@ async function observe(start: (env: NodeJS.ProcessEnv) => unknown, saved: Saved)
 	const readWhole = reads.mock.calls.some(([name]) => name === file);
 	const didFetch = fetched.mock.calls.length > 0;
 	// Let a started refresh finish, so the next case starts with none in flight.
-	if (didFetch)
+	if (didFetch) {
+		// The rename can become visible before the write's directory flush and request cleanup finish.
+		await catalog.loadCatalog({ file });
 		await vi.waitFor(() => expect(catalog.readCatalog(file)?.fetchedAt).toBeGreaterThan(Date.now() - 60_000));
+	}
 	vi.restoreAllMocks();
 	return { didFetch, readWhole, after: catalog.readCatalog(file) };
 }

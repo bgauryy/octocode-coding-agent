@@ -47,6 +47,7 @@ export class ScrollView extends Container {
 	private scrollbarHideTimer: NodeJS.Timeout | undefined;
 	/** Measures the rest of a virtualized frame's content, so a scroll starts from exact positions. */
 	private contentSettler: ContentSettler | undefined;
+	private releaseContent: (() => void) | undefined;
 
 	constructor(component: Component, options: ScrollViewOptions = {}) {
 		super();
@@ -143,11 +144,21 @@ export class ScrollView extends Container {
 		this.hideTransientScrollbar();
 		this.scrollbarActive = false;
 		this.requestRenderCallback = undefined;
+		this.contentSettler?.cancel?.();
+		this.contentSettler = undefined;
+		this.releaseContent?.();
+		this.releaseContent = undefined;
 	}
 
 	/** Set by layout for a frame that left rows unmeasured; scrolling measures them first. */
-	setContentSettler(settle: ContentSettler | undefined): void {
+	setContentSettler(settle: ContentSettler | undefined, release?: () => void): void {
 		this.contentSettler = settle;
+		this.releaseContent = release;
+	}
+
+	/** Whether the current layout's background row measurement has finished, without forcing it. */
+	get isContentSettled(): boolean {
+		return this.contentSettler?.isSettled?.() ?? true;
 	}
 
 	/** Measure what the last frame left unmeasured, so `scrollTop` and the content height are exact. */
@@ -167,6 +178,16 @@ export class ScrollView extends Container {
 
 	scrollTo(scrollTop: number, options: ScrollViewScrollToOptions = {}): void {
 		this.settleContent();
+		this.moveTo(scrollTop, options);
+	}
+
+	/** Thumb dragging uses the current height estimate; the next frame measures the destination. */
+	scrollToFraction(fraction: number): void {
+		if (!Number.isFinite(fraction)) return;
+		this.moveTo(Math.round(Math.max(0, this.contentHeight - this.currentViewportHeight) * fraction));
+	}
+
+	private moveTo(scrollTop: number, options: ScrollViewScrollToOptions = {}): void {
 		const requested = Number.isFinite(scrollTop) ? Math.trunc(scrollTop) : this.currentScrollTop;
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
 		const next = Math.max(0, Math.min(maxScrollTop, requested));
@@ -209,7 +230,6 @@ export class ScrollView extends Container {
 	}
 
 	scrollToStart(): void {
-		this.settleContent();
 		const changed =
 			this.currentScrollTop !== 0 ||
 			this.followingEnd !== (this.followEnd && this.contentHeight <= this.currentViewportHeight);

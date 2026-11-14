@@ -10,7 +10,7 @@ import {
 } from "@octocodeai/octocode-contracts/daemon";
 import { privateDir } from "../shared/home.ts";
 import { isLoopbackHostname } from "../shared/net.ts";
-import { sameProcess } from "../shared/process.ts";
+import { sameProcessAsync } from "../shared/process.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 
@@ -39,12 +39,14 @@ export const writeDaemonRecord = (file: string, record: DaemonRecord): void => w
 export const readAttachRecord = (file: string): AttachRecord | undefined => readJson(file, AttachRecordSchema);
 export const writeAttachRecord = (file: string, record: AttachRecord): void => writeJson(file, record);
 
-export function removeRecord(file: string, owns?: (text: string) => boolean): void {
+export function removeRecord(file: string, owns?: (text: string) => boolean): boolean {
 	try {
-		if (owns && !owns(fs.readFileSync(file, "utf8"))) return;
+		if (owns && !owns(fs.readFileSync(file, "utf8"))) return false;
 		fs.rmSync(file, { force: true });
+		return true;
 	} catch {
 		// Already gone.
+		return false;
 	}
 }
 
@@ -70,11 +72,12 @@ export function recordOrigin(record: Pick<DaemonRecord, "url" | "port">): string
 }
 
 /** Whether a record's process may still be the one that wrote it (alive, and not a later process that got the pid). */
-export const recordProcessAlive = (record: Pick<DaemonRecord | AttachRecord, "pid" | "pid_started">): boolean =>
-	sameProcess(record.pid, record.pid_started);
+export const recordProcessAlive = (
+	record: Pick<DaemonRecord | AttachRecord, "pid" | "pid_started">,
+): Promise<boolean> => sameProcessAsync(record.pid, record.pid_started);
 
 /** Removes attach records whose process is gone (a session killed without its shutdown); returns how many. */
-export function sweepAttachRecords(dir: string): number {
+export async function sweepAttachRecords(dir: string): Promise<number> {
 	let removed = 0;
 	let names: string[];
 	try {
@@ -85,9 +88,8 @@ export function sweepAttachRecords(dir: string): number {
 	for (const name of names) {
 		const file = path.join(dir, name);
 		const record = readAttachRecord(file);
-		if (record && !recordProcessAlive(record)) {
-			removeRecord(file);
-			removed++;
+		if (record && !(await recordProcessAlive(record))) {
+			if (removeRecord(file, (text) => JSON.parse(text).token === record.token)) removed++;
 		}
 	}
 	return removed;

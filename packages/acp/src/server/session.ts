@@ -54,6 +54,7 @@ export class AcpSession {
 	private active?: Turn;
 	private observed?: Turn;
 	private workerBusy = false;
+	private changingModel = false;
 	private dead = false;
 	private releasing = false;
 	private closing?: Promise<void>;
@@ -136,7 +137,7 @@ export class AcpSession {
 	}
 
 	isBusy(): boolean {
-		return this.starting || this.active !== undefined || this.observed !== undefined || this.workerBusy;
+		return this.changingModel || this.starting || Boolean(this.active ?? this.observed) || this.workerBusy;
 	}
 
 	/** The config options a client can change (the model); empty when the worker cannot list its models, which is reported. */
@@ -151,13 +152,20 @@ export class AcpSession {
 
 	/** Switches the worker's model between turns; a value the worker does not offer is an invalid parameter. */
 	async setModel(value: string): Promise<SessionConfigOption[]> {
+		if (this.isClosed() || this.releasing) throw RequestError.invalidRequest(undefined, "Session is closed.");
 		if (this.isBusy()) throw RequestError.invalidRequest(undefined, "Session is busy; the model was not changed.");
 		const models = await this.worker.getModels();
+		// A prompt or shutdown can begin while the worker lists its models.
+		if (this.isClosed() || this.releasing) throw RequestError.invalidRequest(undefined, "Session is closed.");
+		if (this.isBusy()) throw RequestError.invalidRequest(undefined, "Session is busy; the model was not changed.");
 		if (!models.available.includes(value)) throw RequestError.invalidParams(undefined, `Unknown model "${value}".`);
+		this.changingModel = true;
 		try {
 			await this.worker.setModel(value);
 		} catch (error) {
 			throw RequestError.internalError(undefined, error instanceof Error ? error.message : String(error));
+		} finally {
+			this.changingModel = false;
 		}
 		return modelConfigOptions({ ...models, current: value });
 	}
@@ -165,8 +173,7 @@ export class AcpSession {
 	prompt(content: ContentBlock[]): Promise<PromptResponse> {
 		if (this.dead || this.closing || this.releasing) throw RequestError.invalidRequest(undefined, "Session is closed.");
 		if (this.active) throw RequestError.invalidRequest(undefined, "Session already has an active prompt.");
-		if (this.starting || this.observed || this.workerBusy)
-			throw RequestError.invalidRequest(undefined, "Session is busy; nothing was sent.");
+		if (this.isBusy()) throw RequestError.invalidRequest(undefined, "Session is busy; nothing was sent.");
 		const input = convertPrompt(content);
 		const turn = createTurn(this.summaryText);
 		this.active = turn;

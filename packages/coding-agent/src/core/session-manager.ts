@@ -4,6 +4,7 @@ import { normalizePath, resolvePath } from "../../../common/src/paths.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { SessionManagerApi } from "./session-manager/api.ts";
 import * as appends from "./session-manager/appends.ts";
+import { loadSessionFileAsync, type LoadedSessionFile } from "./session-manager/file-reader.ts";
 import { findSessionFileById, listAllSessions, listSessions } from "./session-manager/listing.ts";
 import { recordFork } from "./session-manager/mirror.ts";
 import * as persistence from "./session-manager/persistence.ts";
@@ -64,9 +65,10 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 		persist: boolean,
 		newSessionOptions?: NewSessionOptions,
 		preloadedFileEntries?: FileEntry[],
+		loadedFile?: LoadedSessionFile,
 	) {
 		super(sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist));
-		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries);
+		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries, loadedFile);
 	}
 
 	setSessionFile(sessionFile: string): void {
@@ -223,6 +225,25 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 		return new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries);
 	}
 
+	/** Open while yielding disk reads and transcript decoding to input; reuse the resulting codec and indexes. */
+	static async openAsync(
+		path: string,
+		sessionDir?: string,
+		cwdOverride?: string,
+		signal?: AbortSignal,
+	): Promise<SessionManager> {
+		const loaded = await loadSessionFileAsync(resolvePath(path), signal);
+		const header = loaded.entries[0];
+		const { cwd, dir, resolvedPath } = resolveOpenedSession(
+			path,
+			sessionDir,
+			cwdOverride,
+			header?.type === "session" ? header : null,
+		);
+		signal?.throwIfAborted();
+		return new SessionManager(cwd, dir, resolvedPath, true, undefined, undefined, loaded);
+	}
+
 	/**
 	 * Continue the most recent session, or create new if none.
 	 * @param cwd Working directory
@@ -231,6 +252,12 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	static continueRecent(cwd: string, sessionDir?: string): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 		return new SessionManager(cwd, dir, findMostRecentForCwd(cwd, sessionDir && dir) ?? undefined, true);
+	}
+
+	static async continueRecentAsync(cwd: string, sessionDir?: string): Promise<SessionManager> {
+		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
+		const file = findMostRecentForCwd(cwd, sessionDir && dir);
+		return file ? SessionManager.openAsync(file, dir, cwd) : new SessionManager(cwd, dir, undefined, true);
 	}
 
 	/** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */

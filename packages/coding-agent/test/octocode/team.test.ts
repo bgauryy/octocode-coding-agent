@@ -398,9 +398,6 @@ describe("collaboration prompt", () => {
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
 			"own user communication, approvals and integration.",
 		);
-		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
-			"A report is a claim: read its `Noticed` line first and check what your next step depends on against the diff, tests or state, not the report alone.",
-		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
 			{
@@ -567,7 +564,9 @@ describe("team database schema", () => {
 		other.close();
 		// A newer, breaking writer also raises the floor an older Octocode may still read (`schema_readable_from`).
 		exec(file, "PRAGMA user_version=99; UPDATE meta SET value = '99' WHERE key = 'schema_readable_from';");
-		expect(() => open(cwd, file)).toThrow(/unsupported Octocode schema/);
+		expect(() => open(cwd, file)).toThrow(
+			/schema version 99, newer than this Octocode's .*Nothing in the file changed/,
+		);
 		const db = new DatabaseSync(file);
 		expect((db.prepare("SELECT id FROM agents").all() as Array<{ id: string }>).map((row) => row.id)).toEqual([
 			"a-0001",

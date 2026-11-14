@@ -57,15 +57,40 @@ export function frameContentLines(
 	bgFn?: (text: string) => string,
 	keepRow?: (line: string) => boolean,
 ): string[] {
-	const fill = (line: string): string => {
-		const padded = line + " ".repeat(Math.max(0, width - visibleWidth(line)));
-		return bgFn ? bgFn(padded) : padded;
-	};
-	const margin = " ".repeat(paddingX);
-	const contentLines = lines.map((line) => (keepRow?.(line) ? line : fill(margin + line + margin)));
+	const contentLines = frameContentRows(lines, width, paddingX, bgFn, keepRow);
 	const blankLines: string[] = [];
-	for (let i = 0; i < paddingY; i++) blankLines.push(fill(" ".repeat(width)));
+	for (let i = 0; i < paddingY; i++) blankLines.push(frameBlankRow(width, bgFn));
+	if (blankLines.length === 0) return contentLines;
 	const result = [...blankLines, ...contentLines, ...blankLines];
-	flattenLines(result);
+	flattenLines(blankLines);
 	return result;
+}
+
+/** One padded blank row of `width`, with `bgFn` applied: the rows `frameContentLines` adds above and below. */
+export function frameBlankRow(width: number, bgFn?: (text: string) => string): string {
+	const blank = " ".repeat(Math.max(0, width));
+	return bgFn ? bgFn(blank) : blank;
+}
+
+/**
+ * The content rows of `frameContentLines` without the blank rows above and below: each row gets `paddingX` spaces on
+ * both sides, is padded to `width` and has `bgFn` applied; rows for which `keepRow` returns true pass through. A caller
+ * that keeps the rows of unchanged blocks frames only the rows it adds.
+ */
+export function frameContentRows(
+	lines: readonly string[],
+	width: number,
+	paddingX: number,
+	bgFn?: (text: string) => string,
+	keepRow?: (line: string) => boolean,
+): string[] {
+	const margin = " ".repeat(paddingX);
+	const rows = lines.map((line) => {
+		if (keepRow?.(line)) return line;
+		const framed = margin + line + margin;
+		const padded = framed + " ".repeat(Math.max(0, width - visibleWidth(framed)));
+		return bgFn ? bgFn(padded) : padded;
+	});
+	flattenLines(rows);
+	return rows;
 }

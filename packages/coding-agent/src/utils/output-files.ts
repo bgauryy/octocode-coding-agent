@@ -28,6 +28,20 @@ import { finished, pipeline } from "node:stream/promises";
 /** Output can carry private data, so only the user may read the files. */
 const OUTPUT_FILE_MODE = 0o600;
 const completedOutputs = new Map<string, { dev: number; ino: number }>();
+/**
+ * Most completed outputs remembered: a session that runs for days spills thousands. Past it the oldest can no longer be
+ * shown again in full (a read fails closed), never read without its identity.
+ */
+const COMPLETED_OUTPUTS_MAX = 4096;
+
+function rememberOutput(path: string, identity: { dev: number; ino: number }): void {
+	completedOutputs.delete(path);
+	completedOutputs.set(path, identity);
+	for (const oldest of completedOutputs.keys()) {
+		if (completedOutputs.size <= COMPLETED_OUTPUTS_MAX) break;
+		completedOutputs.delete(oldest);
+	}
+}
 
 /** The most of a user shell command's spilled output a view reads back. */
 export const DISPLAY_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
@@ -136,7 +150,7 @@ export function moveOutputFile(path: string, dir: string): string {
 		if (identity) {
 			const { dev, ino } = statSync(target);
 			completedOutputs.delete(path);
-			completedOutputs.set(target, { dev, ino });
+			rememberOutput(target, { dev, ino });
 		}
 		return target;
 	} catch {
@@ -184,7 +198,7 @@ export function createOutputFileStream(
 			}
 			return completion.then(() => {
 				const opened = identity();
-				if (opened) completedOutputs.set(path, opened);
+				if (opened) rememberOutput(path, opened);
 			});
 		},
 	};

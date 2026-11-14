@@ -13,15 +13,12 @@ import { allSections } from "./helpers.ts";
  * request, and in a resumed session whose entries hold such a call.
  */
 const HEADING = "## Run children and use reports";
-const RULES = [
-	"you own the result: never predict a pending result.",
-	"A child near its request limit may ask for more",
-	"A report is a claim: read its `Noticed` line first",
-	"| `blocked` |",
-	"| `partial` |",
-	"| `failed` |",
-	"A fresh reviewer, not the author, checks a risky change.",
-];
+// The report outcomes are machine words; the prose around them is checked against `policy/children.md` itself.
+const RULES = [HEADING, "| `blocked` |", "| `partial` |", "| `failed` |"];
+/** The bullets and outcome rows of the source file that render without template values. */
+const SOURCE_RULES = instructionSource("policy/children.md")
+	.split("\n")
+	.filter((line) => !line.includes("{{") && (line.startsWith("- ") || line.startsWith("| `")));
 
 type Sections = Record<string, string>;
 const options = (selectedTools: string[]) => ({
@@ -62,7 +59,8 @@ describe("the children section", () => {
 		const after = octocodePromptSections({ research: undefined, profiles: [], canDelegate: true, childStarted: true });
 		expect(before.children).toBe("");
 		expect(after.children.startsWith(HEADING)).toBe(true);
-		for (const rule of RULES) {
+		expect(SOURCE_RULES.length).toBeGreaterThan(0);
+		for (const rule of [...RULES, ...SOURCE_RULES]) {
 			expect(after.children, rule).toContain(rule);
 			expect(before.delegation, rule).not.toContain(rule);
 		}

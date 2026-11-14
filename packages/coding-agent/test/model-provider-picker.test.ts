@@ -48,6 +48,7 @@ it("selects only the chosen provider, including when shortcuts point elsewhere",
 		refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 		getError: () => undefined,
 		getProviderKind: () => "API key",
+		getProvider: () => undefined,
 	} as unknown as ModelRuntime;
 	const select = vi.fn();
 	const selector = new ModelSelectorComponent(

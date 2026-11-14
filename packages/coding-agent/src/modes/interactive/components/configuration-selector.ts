@@ -111,7 +111,7 @@ export class ConfigurationSelectorComponent extends Container {
 		};
 	}
 
-	private buildList(): SettingsList {
+	private buildList(initialQuery?: string): SettingsList {
 		const items = [...(this.options.extraItems ?? []), ...[...this.entries.values()].map((entry) => this.item(entry))];
 		return new SettingsList(
 			items,
@@ -119,7 +119,7 @@ export class ConfigurationSelectorComponent extends Container {
 			getSettingsListTheme(),
 			(id, value) => void this.change(id, value),
 			this.options.onClose,
-			{ enableSearch: true },
+			{ enableSearch: true, initialQuery },
 		);
 	}
 
@@ -138,7 +138,7 @@ export class ConfigurationSelectorComponent extends Container {
 		const fresh = await this.options.get(id);
 		if (fresh) {
 			this.entries.set(id, fresh);
-			this.list.updateValue(id, shown(fresh, scope));
+			this.list.updateValue(id, shown(fresh, this.scope));
 		}
 		const color = result.status === "applied" ? "success" : "error";
 		this.notice.setText(
@@ -153,8 +153,11 @@ export class ConfigurationSelectorComponent extends Container {
 	handleInput(data: string): void {
 		if (data === "\t") {
 			if (!this.options.projectAvailable) return;
+			const query = this.list.getSearchQuery();
+			const selectedId = this.list.getSelectedId();
 			this.scope = this.scope === "global" ? "project" : "global";
-			this.list = this.buildList();
+			this.list = this.buildList(query);
+			if (selectedId) this.list.selectItem(selectedId);
 			this.notice.setText("");
 			this.rebuild();
 			this.options.requestRender();

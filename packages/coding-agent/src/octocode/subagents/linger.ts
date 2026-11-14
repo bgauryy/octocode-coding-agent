@@ -208,6 +208,7 @@ export class Lingering {
 		for (const entry of this.entries.values()) clearTimeout(entry.timer);
 		this.entries.clear();
 		this.sessionId = undefined;
+		this.notifier = undefined;
 	}
 
 	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */

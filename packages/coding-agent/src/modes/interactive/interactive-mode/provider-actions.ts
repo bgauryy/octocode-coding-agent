@@ -5,6 +5,7 @@ import {
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
+import { providerAccessLabel } from "../../../core/provider-label.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { confirmAction, successNotice } from "./provider-ui.ts";
 
@@ -16,7 +17,9 @@ export async function providerStatus(host: Pick<ProviderManagerHost, "session">,
 		const refusal = await claudeSubscriptionRefusal(host, id);
 		return refusal ? `Not configured: ${refusal}` : "Not configured";
 	}
-	return `${KIND_LABELS[await runtime.getCredentialKind(id)]} configured · ${credentialSource(host, id)}`;
+	const kind = await runtime.getCredentialKind(id);
+	const label = kind === "key" ? providerAccessLabel(runtime, id) : KIND_LABELS[kind];
+	return `${label} configured · ${credentialSource(host, id)}`;
 }
 
 /**
@@ -40,14 +43,14 @@ export async function claudeSubscriptionRefusal(
 const KIND_LABELS = { account: "Account", subscription: "Subscription", key: "API key" } as const;
 
 /** Where the credential comes from, for a row: a label or variable name, never a value. */
-export function credentialSource(host: Pick<ProviderManagerHost, "session">, id: string): string {
+function credentialSource(host: Pick<ProviderManagerHost, "session">, id: string): string {
 	return credentialSourceLabel(host.session.modelRuntime.getProviderAuthStatus(id));
 }
 
 export const isProviderDisabled = (host: Pick<ProviderManagerHost, "session">, id: string): boolean =>
 	host.session.settingsManager.getDisabledProviders().includes(id);
 
-export const modelCount = (host: Pick<ProviderManagerHost, "session">, id: string): number =>
+const modelCount = (host: Pick<ProviderManagerHost, "session">, id: string): number =>
 	host.session.modelRuntime.getAvailableSnapshot().filter((model) => model.provider === id).length;
 
 /** Turn a provider on or off in settings and the live runtime. Saved credentials are never touched. */
@@ -59,7 +62,14 @@ export function setProviderEnabled(host: ProviderManagerHost, id: string, name: 
 	modelRuntime.setDisabledProviders(disabled);
 	host.updateAvailableProviderCount();
 	if (enabled) {
-		host.showStatus(successNotice("Enabled", name, "Its models are available again."));
+		const count = modelCount(host, id);
+		host.showStatus(
+			successNotice(
+				"Enabled",
+				name,
+				`${count} ${count === 1 ? "model" : "models"} available${count ? "." : "; check credentials and plan status."}`,
+			),
+		);
 		return;
 	}
 	host.showStatus(successNotice("Disabled", name, "Its models are hidden; saved credentials are unchanged."));

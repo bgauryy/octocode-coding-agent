@@ -558,7 +558,9 @@ describe("AgentSession prompt characterization", () => {
 		const harness = await createHarness({ withConfiguredAuth: false });
 		harnesses.push(harness);
 
-		await expect(harness.session.prompt("hi")).rejects.toThrow(`No API key found for ${harness.getModel().provider}.`);
+		await expect(harness.session.prompt("hi")).rejects.toThrow(
+			`No usable credentials for ${harness.getModel().provider}.`,
+		);
 	});
 
 	// A run started by sendMessage(..., { triggerTurn: true }) skipped

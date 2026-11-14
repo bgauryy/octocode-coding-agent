@@ -15,6 +15,11 @@ export const CHECK_LABELS: Record<ProfileFindingKind, string> = {
 	"permission-wait": "Waiting for a permission",
 	interrupt: "Interrupted runs",
 	cost: "Cost outliers",
+	"slow-phase": "Tool time outside execution",
+	"slow-first-token": "Slow first token",
+	"slow-turn-start": "Slow start from prompt to request",
+	"retry-wait": "Waiting on failed requests and retries",
+	"main-thread-stall": "Event loop blocked",
 };
 
 const SEVERITY_RANK: Record<ProfileFinding["severity"], number> = { high: 0, medium: 1, low: 2 };

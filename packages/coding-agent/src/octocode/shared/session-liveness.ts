@@ -1,7 +1,7 @@
 import { type Db, sessions } from "../../../../db/src/api.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { liveProcess, sameProcess } from "./process.ts";
+import { liveProcess, sameProcess, sameProcessAsync } from "./process.ts";
 
 /**
  * The one liveness test for an Octocode session (backlog claims, `/resume`, the sweep): the pid recorded in its
@@ -25,10 +25,11 @@ export function sessionRunningPid(db: Db, id: string, timer = false): number | u
  * Live pid recorded for a session file, or undefined when the file/index is unavailable or no live process owns it.
  * Reads only the header: the process that has the session open may be appending to the transcript.
  */
-export function sessionFileRunningPid(sessionPath: string): number | undefined {
+export async function sessionFileRunningPid(sessionPath: string): Promise<number | undefined> {
 	try {
 		const header = readSessionHeaderForDiscovery(sessionPath);
-		return header ? sessionRunningPid(sharedAgentDb().db, header.id) : undefined;
+		const row = header ? sessions.pidOf(sharedAgentDb().db, header.id) : undefined;
+		return row?.pid != null && (await sameProcessAsync(row.pid, row.pid_started)) ? row.pid : undefined;
 	} catch {
 		// Resuming does not require the optional index: without it, retain the ordinary session-open path.
 		return undefined;

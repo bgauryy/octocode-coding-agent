@@ -10,7 +10,9 @@ import {
 	sandbox,
 	script,
 	startEndpoint,
+	until,
 } from "./e2e-real-process-harness.ts";
+import { acpClient, initialize } from "./e2e-acp-client.ts";
 import { seedTrust } from "./e2e-helpers/seed-trust.ts";
 
 /**
@@ -84,6 +86,48 @@ const agents = [
 ];
 
 describe.each(agents)("an ACP client and $name", ({ cli }) => {
+	it("rejects a model change overlapping a prompt and allows it after cancellation", async () => {
+		const box = sandbox(endpoint);
+		const modelsFile = path.join(box.home, ".octocode", "octocodecode", "models.json");
+		const models = JSON.parse(fs.readFileSync(modelsFile, "utf8")) as {
+			providers: { scripted: { models: Array<{ id: string; name: string }> } };
+		};
+		models.providers.scripted.models.push({
+			...models.providers.scripted.models[0],
+			id: "alternate",
+			name: "alternate",
+		});
+		fs.writeFileSync(modelsFile, JSON.stringify(models));
+		seedTrust(box);
+		const run = box.start(["--mode", "acp"], { stdin: "pipe", cli, trust: false });
+		const acp = acpClient(run.process);
+		await acp.request("initialize", initialize);
+		const { sessionId } = await acp.request<{ sessionId: string }>("session/new", { cwd: box.project, mcpServers: [] });
+		const changeParams = { sessionId, configId: "model", value: "scripted/alternate" };
+		// Send both without awaiting: the model setter must recheck ownership after its async work.
+		const hanging = script([{ hang: true }]);
+		run.process.stdin?.cork();
+		const change = acp.raw("session/set_config_option", changeParams);
+		const turn = acp.prompt(sessionId, hanging);
+		run.process.stdin?.uncork();
+		await until(
+			() => endpoint.requests.some((request) => request.lastUserText.includes(hanging)),
+			"the overlapping prompt",
+		);
+		const response = await change;
+		const requestedModel = endpoint.requests.at(-1)?.model;
+		acp.notify("session/cancel", { sessionId });
+		expect((await turn).stopReason).toBe("cancelled");
+		expect(response.error).toMatchObject({ message: expect.stringMatching(/busy/i) });
+		expect(requestedModel).toBe("model");
+		await acp.request("session/set_config_option", changeParams);
+		expect((await acp.prompt(sessionId, script([{ text: "alternate reply" }]))).stopReason).toBe("end_turn");
+		expect(endpoint.requests.at(-1)?.model).toBe("alternate");
+		expect(acp.said()).toContain("alternate reply");
+		run.process.stdin?.end();
+		expect((await run.exited).code).toBe(0);
+		expect(box.survivors()).toEqual([]);
+	});
 	it("initializes, opens a session, runs a tool and answers across two prompts, then exits when the client leaves", async () => {
 		const box = sandbox(endpoint);
 		// ACP refuses `--trust`: a session's folder must already be trusted.

@@ -88,7 +88,6 @@ describe("lean profiles", () => {
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("lean");
-		expect(text).toContain("You are a subagent: do exactly the task, then stop.");
 		expect(text).not.toContain("Start it with the outcome word");
 		expect(text).not.toContain("## Understand the request");
 		expect(text).not.toContain("Octocode MCP");

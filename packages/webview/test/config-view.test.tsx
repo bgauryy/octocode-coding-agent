@@ -96,7 +96,7 @@ describe("ConfigView", () => {
 		const model = within(within(list).getByText("defaultModel").closest("li") as HTMLElement);
 		expect(model.getByText("Not set")).toBeInTheDocument();
 		expect(model.getByText("Default")).toBeInTheDocument();
-		expect(screen.getByText("/settings")).toBeInTheDocument();
+		expect(screen.getByText("/model")).toBeInTheDocument();
 	});
 
 	it("shows workspace trust in words, and why untrusted settings are ignored", async () => {

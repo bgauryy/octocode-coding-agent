@@ -45,7 +45,8 @@ describe("the composed extension on session_shutdown", () => {
 			closeSharedAgentDb();
 			expect(usable(before)).toBe(false);
 			const after = sharedAgentDb();
-			expect(after).not.toBe(before);
+			// Identity, not `not.toBe`: vitest deep-compares for its hint, which reads the closed handle's throwing `mirror` getter.
+			expect(after === before).toBe(false);
 			expect(usable(after)).toBe(true);
 		},
 	);

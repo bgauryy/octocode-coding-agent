@@ -180,23 +180,29 @@ describe("saving a default model", () => {
 		if (!apiKey) throw new Error("Fixture provider has no API-key method");
 		const originalCheck = apiKey.check;
 		const started = Promise.withResolvers<void>();
-		const controller = new AbortController();
-		const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
 		apiKey.check = () => {
 			started.resolve();
 			return new Promise(() => {});
 		};
+		// The 15 s limit is a cleared timer (not `AbortSignal.timeout`): fake time shows it fires, and not before.
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		try {
 			const selecting = context.session.setModel(context.selected, { persist: true });
+			let settled = false;
+			void selecting.then(
+				() => (settled = true),
+				() => (settled = true),
+			);
 			await started.promise;
-			controller.abort(new DOMException("Model authentication timed out", "TimeoutError"));
+			await vi.advanceTimersByTimeAsync(14_999);
+			expect(settled).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
 			await expect(selecting).rejects.toMatchObject({ name: "TimeoutError" });
-			expect(timeout).toHaveBeenCalledWith(15_000);
 			expect(context.session.model?.id).toBe(context.initial.id);
 			expect(existsSync(context.settingsPath)).toBe(false);
 		} finally {
+			vi.useRealTimers();
 			apiKey.check = originalCheck;
-			timeout.mockRestore();
 		}
 	});
 

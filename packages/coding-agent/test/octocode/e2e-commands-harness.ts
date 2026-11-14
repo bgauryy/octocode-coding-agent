@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
@@ -290,6 +291,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		host.onInputCallback?.("");
 		host.stop();
 		await runtime.dispose();
+		// This harness's home has its own agent database: close its connections and writer threads with the run.
+		closeSharedAgentDb();
 		// `/web` and `/remote` start the detached user-level daemon in this home: ask it to exit with the run.
 		const daemon = await findWebDaemon(process.env);
 		if (daemon) await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });

@@ -8,6 +8,7 @@ import chalk from "chalk";
 import { openImageFile, resolveUserFilePath } from "../core/image-files.ts";
 import { processImage } from "../utils/image-process.ts";
 import { stripBom } from "../../../common/src/text.ts";
+import { mapConcurrent } from "../../../common/src/map-concurrent.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ProcessedFiles {
@@ -20,61 +21,105 @@ interface ProcessFileOptions {
 	autoResizeImages?: boolean;
 }
 
-/** Process @file arguments into text content and image attachments */
-export async function processFileArguments(fileArgs: string[], options?: ProcessFileOptions): Promise<ProcessedFiles> {
-	const autoResizeImages = options?.autoResizeImages ?? true;
-	let text = "";
-	const images: ImageContent[] = [];
+/** Files read at once. Reads are independent; the results are assembled in argument order. */
+const FILE_READ_CONCURRENCY = 8;
+/** Images processed at once, lower than reads: each one holds its bytes and may start a resize worker. */
+const IMAGE_PROCESS_CONCURRENCY = 3;
 
-	for (const fileArg of fileArgs) {
-		// Expand and resolve path (handles ~ expansion and macOS screenshot Unicode spaces)
-		const absolutePath = resolveUserFilePath(fileArg, process.cwd());
+/** What one argument produced. Failures are kept, not thrown, so the first one in argument order is the one reported. */
+type FileOutcome =
+	| { kind: "missing"; path: string }
+	| { kind: "unreadable"; path: string; message: string }
+	| { kind: "thrown"; error: unknown }
+	| { kind: "empty" }
+	| { kind: "text"; text: string; image?: ImageContent };
 
+/** At most `limit` calls of `run` in flight; the rest wait in call order. */
+function slots(limit: number): <T>(run: () => Promise<T>) => Promise<T> {
+	let active = 0;
+	const waiting: Array<() => void> = [];
+	return async (run) => {
+		if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
+		active++;
 		try {
-			await access(absolutePath);
-		} catch {
-			console.error(chalk.red(`Error: File not found: ${absolutePath}`));
-			process.exit(1);
+			return await run();
+		} finally {
+			active--;
+			waiting.shift()?.();
 		}
+	};
+}
 
+async function processFileArgument(
+	fileArg: string,
+	autoResizeImages: boolean,
+	imageSlot: ReturnType<typeof slots>,
+): Promise<FileOutcome> {
+	// Expand and resolve path (handles ~ expansion and macOS screenshot Unicode spaces)
+	const absolutePath = resolveUserFilePath(fileArg, process.cwd());
+	try {
+		await access(absolutePath);
+	} catch {
+		return { kind: "missing", path: absolutePath };
+	}
+	try {
 		const stats = await stat(absolutePath);
-		if (stats.size === 0) {
-			continue;
-		}
+		if (stats.size === 0) return { kind: "empty" };
 
 		const image = await openImageFile(absolutePath);
-
 		if (image) {
-			const processed = await processImage(await image.read(), image.mimeType, { autoResizeImages });
-
-			if (!processed.ok) {
-				text += `<file name="${absolutePath}">${processed.message}</file>\n`;
-				continue;
-			}
-
-			const attachment: ImageContent = {
-				type: "image",
-				mimeType: processed.mimeType,
-				data: processed.data,
+			const processed = await imageSlot(async () =>
+				processImage(await image.read(), image.mimeType, { autoResizeImages }),
+			);
+			if (!processed.ok) return { kind: "text", text: `<file name="${absolutePath}">${processed.message}</file>\n` };
+			return {
+				kind: "text",
+				text: `<file name="${absolutePath}">${processed.hints.join("\n")}</file>\n`,
+				image: { type: "image", mimeType: processed.mimeType, data: processed.data },
 			};
-			images.push(attachment);
+		}
+	} catch (error) {
+		return { kind: "thrown", error };
+	}
+	try {
+		const content = stripBom(await readFile(absolutePath, "utf-8"));
+		return { kind: "text", text: `<file name="${absolutePath}">\n${content}\n</file>\n` };
+	} catch (error: unknown) {
+		return { kind: "unreadable", path: absolutePath, message: errorMessage(error) };
+	}
+}
 
-			if (processed.hints.length > 0) {
-				text += `<file name="${absolutePath}">${processed.hints.join("\n")}</file>\n`;
-			} else {
-				text += `<file name="${absolutePath}"></file>\n`;
-			}
-		} else {
-			try {
-				const content = stripBom(await readFile(absolutePath, "utf-8"));
-				text += `<file name="${absolutePath}">\n${content}\n</file>\n`;
-			} catch (error: unknown) {
-				const message = errorMessage(error);
-				console.error(chalk.red(`Error: Could not read file ${absolutePath}: ${message}`));
+/**
+ * Process @file arguments into text content and image attachments. Files are read concurrently (images with a lower
+ * limit); the text and images keep argument order, and the first failing argument in that order is the one reported.
+ */
+export async function processFileArguments(fileArgs: string[], options?: ProcessFileOptions): Promise<ProcessedFiles> {
+	const autoResizeImages = options?.autoResizeImages ?? true;
+	const imageSlot = slots(IMAGE_PROCESS_CONCURRENCY);
+	const outcomes = await mapConcurrent(fileArgs, FILE_READ_CONCURRENCY, (fileArg) =>
+		processFileArgument(fileArg, autoResizeImages, imageSlot),
+	);
+
+	let text = "";
+	const images: ImageContent[] = [];
+	for (const outcome of outcomes) {
+		switch (outcome.kind) {
+			case "missing":
+				console.error(chalk.red(`Error: File not found: ${outcome.path}`));
 				process.exit(1);
-			}
+				break;
+			case "unreadable":
+				console.error(chalk.red(`Error: Could not read file ${outcome.path}: ${outcome.message}`));
+				process.exit(1);
+				break;
+			case "thrown":
+				throw outcome.error;
+			case "empty":
+				break;
+			case "text":
+				text += outcome.text;
+				if (outcome.image) images.push(outcome.image);
 		}
 	}
-
 	return { text, images };
 }

@@ -7,6 +7,7 @@ import {
 	Input,
 	Spacer,
 	Text,
+	TruncatedText,
 	type TUI,
 } from "@octocodeai/octocode-tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
@@ -14,9 +15,10 @@ import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import {
 	type DefaultModelReference,
+	type DefaultModelContext,
 	isDefaultModel,
 	isDefaultSearch,
 	type ModelItem,
@@ -26,10 +28,9 @@ import {
 	groupModelItems,
 } from "./model-selector/model-items.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { modelDetails } from "./model-selector/details.ts";
-import { emptyModelListText } from "./model-selector/empty-state.ts";
 import { filterByProvider, providerLine, providersOf, stepProvider } from "./model-selector/provider-filter.ts";
-import { modelListLines } from "./model-selector/rows.ts";
+import { updateModelList } from "./model-selector/list-view.ts";
+import { ModelPickerHints } from "./model-selector/picker-hints.ts";
 
 /**
  * Component that renders a model selector with search
@@ -65,13 +66,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private defaultModel?: DefaultModelReference;
 	private scope: ModelScope = "all";
 	private scopeText?: Text;
-	private scopeHintText?: Text;
 	/** The one provider shown, switched with left/right; undefined shows every provider. */
 	private providerFilter?: string;
 	private providerText: Text;
 	private readonly refreshAbortController = new AbortController();
 	private refreshTimeout?: ReturnType<typeof setTimeout>;
 	private closed = false;
+	private details = false;
+	private detailOffset = 0;
+	private layoutWidth = 80;
 
 	constructor(
 		tui: TUI,
@@ -83,6 +86,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		initialSearchInput?: string,
 		onSelectAsDefault?: (model: Model<any>) => void,
 		defaultModel?: DefaultModelReference,
+		defaultContext?: DefaultModelContext,
 	) {
 		super();
 
@@ -97,21 +101,27 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.onCancelCallback = onCancel;
 
 		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
 
 		this.addChild(new Text(theme.fg("accent", theme.bold("Choose a model for this chat")), 0, 0));
+		this.addChild(
+			new TruncatedText(
+				theme.fg(
+					"muted",
+					defaultModel
+						? `Startup default (${defaultContext?.source ?? "global"}): ${defaultModel.provider}/${defaultModel.id}`
+						: "Startup default: automatic",
+				),
+				0,
+				0,
+			),
+		);
 		if (scopedModels.length > 0) {
 			this.scopeText = new Text(this.getScopeText(), 0, 0);
 			this.addChild(this.scopeText);
-			this.scopeHintText = new Text(this.getScopeHintText(), 0, 0);
-			this.addChild(this.scopeHintText);
-		} else {
-			const hintText = "Models from configured providers. /providers manages access; /modelsettings sets shortcuts.";
-			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
 		}
 		this.providerText = new Text(providerLine(undefined), 0, 0);
 		this.addChild(this.providerText);
-		this.addChild(new Spacer(1));
+		if (scopedModels.length === 0) this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
 		if (initialSearchInput) {
@@ -130,16 +140,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.listContainer = new Container();
 		this.addChild(this.listContainer);
 
-		this.addChild(new Spacer(1));
-		if (this.onSelectAsDefaultCallback) {
-			this.addChild(
-				new HintBar([
-					[keyText("tui.select.confirm"), "select", 1],
-					[keyText("app.models.save"), "set as default", 2],
-					[keyText("tui.select.cancel"), "cancel", 0],
-				]),
-			);
-		}
+		this.addChild(new ModelPickerHints(Boolean(this.onSelectAsDefaultCallback)));
 
 		this.addChild(new DynamicBorder());
 
@@ -198,8 +199,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					this.refreshStatusSuccess = true;
 				}
 			}
+			const selected = this.filteredModels[this.selectedIndex]?.model;
 			this.loadModelsFromSnapshot();
-			this.filterModels(this.searchInput.getValue());
+			this.filterModels(this.searchInput.getValue(), selected);
 			this.tui.requestRender();
 		} catch (error) {
 			if (this.closed) return;
@@ -224,11 +226,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private getScopeText(): string {
 		const allText = this.scope === "all" ? theme.fg("accent", "all") : theme.fg("muted", "all");
 		const scopedText = this.scope === "scoped" ? theme.fg("accent", "scoped") : theme.fg("muted", "scoped");
-		return `${theme.fg("muted", "Scope: ")}${allText}${theme.fg("muted", " | ")}${scopedText}`;
-	}
-
-	private getScopeHintText(): string {
-		return keyHint("tui.input.tab", "scope") + theme.fg("muted", " (all/scoped)");
+		return `${theme.fg("muted", "Scope: ")}${allText}${theme.fg("muted", " | ")}${scopedText} · ${keyHint("tui.input.tab", "scope")}`;
 	}
 
 	private isDefaultModel(model: Model<any>): boolean {
@@ -247,7 +245,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 	}
 
-	private filterModels(query: string): void {
+	private filterModels(query: string, selected?: Model<any>): void {
 		const shown = filterByProvider(this.activeModels, this.providerFilter);
 		this.providerFilter = shown.filter;
 		this.providerText.setText(providerLine(shown.filter));
@@ -271,55 +269,63 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		} else {
 			this.filteredModels = pool;
 		}
-		// When filtering by a query, move the selector to the top row so the best
-		// match is highlighted. When the query is cleared, keep the current position
-		// clamped to the (restored) list length.
-		this.selectedIndex = query ? 0 : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+		// Catalog refresh keeps the browsed model when it remains available. A changed
+		// query selects its best match; clearing it keeps the current position clamped.
+		const retained = selected ? this.filteredModels.findIndex((item) => modelsAreEqual(selected, item.model)) : -1;
+		this.selectedIndex =
+			retained >= 0 ? retained : query ? 0 : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 		this.updateList();
 	}
 
 	private updateList(): void {
-		this.listContainer.clear();
+		this.detailOffset = updateModelList(this.listContainer, {
+			items: this.filteredModels,
+			selectedIndex: this.selectedIndex,
+			currentModel: this.currentModel,
+			defaultModel: this.defaultModel,
+			runtime: this.modelRuntime,
+			width: this.layoutWidth,
+			details: this.details,
+			detailOffset: this.detailOffset,
+			searched: this.searchInput.getValue().trim() !== "",
+			error: this.errorMessage,
+			refresh: this.refreshStatusMessage,
+			refreshed: this.refreshStatusSuccess,
+		});
+	}
 
-		const lines = modelListLines(this.filteredModels, this.selectedIndex, (item) => ({
-			current: modelsAreEqual(this.currentModel, item.model),
-			isDefault: this.isDefaultModel(item.model),
-			kind: this.modelRuntime.getProviderKind(item.provider),
-		}));
-		for (const line of lines) this.listContainer.addChild(new Text(line, 0, 0));
-
-		if (this.errorMessage) {
-			const errorLines = this.errorMessage.split("\n");
-			for (const line of errorLines) {
-				this.listContainer.addChild(new Text(theme.fg("error", line), 0, 0));
-			}
-		} else if (this.filteredModels.length === 0) {
-			const text = emptyModelListText(this.modelRuntime, this.searchInput.getValue().trim() !== "");
-			this.listContainer.addChild(new Text(theme.fg("muted", `  ${text}`), 0, 0));
-		} else {
-			const selected = this.filteredModels[this.selectedIndex];
-			this.listContainer.addChild(new Spacer(1));
-			const kind = this.modelRuntime.getProviderKind(selected.provider);
-			this.listContainer.addChild(new Text(theme.fg("muted", modelDetails(selected.model, Date.now(), kind)), 0, 0));
+	override render(width: number): string[] {
+		if (this.layoutWidth !== width) {
+			this.layoutWidth = width;
+			this.updateList();
 		}
-		if (this.refreshStatusMessage) {
-			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(
-				new Text(theme.fg(this.refreshStatusSuccess ? "success" : "muted", `  ${this.refreshStatusMessage}`), 0, 0),
-			);
-		}
+		return super.render(width);
 	}
 
 	handleInput(keyData: string): void {
 		if (this.closed) return;
 		const kb = getKeybindings();
+		if (this.details && (kb.matches(keyData, "tui.select.pageUp") || kb.matches(keyData, "tui.select.pageDown"))) {
+			this.detailOffset += kb.matches(keyData, "tui.select.pageUp") ? -5 : 5;
+			this.updateList();
+			return;
+		}
+		if (kb.matches(keyData, "tui.select.pageUp") || kb.matches(keyData, "tui.select.pageDown")) {
+			const step = kb.matches(keyData, "tui.select.pageUp") ? -3 : 3;
+			this.selectedIndex = Math.max(0, Math.min(this.filteredModels.length - 1, this.selectedIndex + step));
+			this.updateList();
+			return;
+		}
+		if (kb.matches(keyData, "app.models.details")) {
+			this.details = !this.details;
+			this.detailOffset = 0;
+			this.updateList();
+			return;
+		}
 		if (kb.matches(keyData, "tui.input.tab")) {
 			if (this.scopedModelItems.length > 0) {
 				const nextScope: ModelScope = this.scope === "all" ? "scoped" : "all";
 				this.setScope(nextScope);
-				if (this.scopeHintText) {
-					this.scopeHintText.setText(this.getScopeHintText());
-				}
 			}
 			return;
 		}
@@ -356,8 +362,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				this.onSelectAsDefaultCallback(selectedModel.model);
 			}
 		} else {
+			const query = this.searchInput.getValue();
 			this.searchInput.handleInput(keyData);
-			this.filterModels(this.searchInput.getValue());
+			if (this.searchInput.getValue() !== query) this.filterModels(this.searchInput.getValue());
 		}
 	}
 

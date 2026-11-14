@@ -295,7 +295,7 @@ export async function startAttachServer(
 	server.unref();
 	const port = (server.address() as AddressInfo).port;
 	// Records of sessions killed without their shutdown never go away on their own.
-	sweepAttachRecords(webDaemonPaths(env).attachDir);
+	await sweepAttachRecords(webDaemonPaths(env).attachDir);
 	const file = attachRecordPath(env, source.sessionId);
 	const record: AttachRecord = {
 		protocolVersion: ATTACH_PROTOCOL_VERSION,

@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import { AsyncResource } from "node:async_hooks";
 import { SCAN_WORKER } from "./search-worker.ts";
 
 /** The text a search of strings already in memory (`matchTexts`) accepts, in total. */
@@ -121,53 +122,157 @@ export async function matchTexts(
 	return new Set(results[0]?.matched);
 }
 
-async function run(
-	input: Record<string, unknown>,
-	pattern: RegExp,
-	signal: AbortSignal | undefined,
-): Promise<HistoryScan> {
-	const worker = new Worker(SCAN_WORKER, {
-		eval: true,
-		execArgv: [],
-		workerData: { ...input, pattern: pattern.source, flags: pattern.flags.replace("g", "") },
-		resourceLimits: { maxOldGenerationSizeMb: 256 },
+/** Small, lazy pool: keep bursts warm without retaining idle threads or an unbounded queue of text. */
+const WORKERS = 2;
+const MAX_TASKS = 8;
+const MAX_QUEUED_BYTES = 64 * 1024 * 1024;
+const IDLE_MS = 5_000;
+interface SearchTask {
+	input?: Record<string, unknown>;
+	bytes: number;
+	slot?: SearchSlot;
+	finish(outcome: { error: unknown } | { result: HistoryScan }, retire?: boolean): void;
+}
+interface SearchSlot {
+	worker: Worker;
+	task?: SearchTask;
+	idle?: NodeJS.Timeout;
+	closing?: boolean;
+}
+const slots = new Set<SearchSlot>();
+const queue: SearchTask[] = [];
+let pending = 0;
+let pendingBytes = 0;
+
+function retireSlot(slot: SearchSlot): void {
+	if (slot.closing) return;
+	slot.closing = true;
+	clearTimeout(slot.idle);
+	void slot.worker
+		.terminate()
+		.catch(() => undefined)
+		.finally(() => {
+			slots.delete(slot);
+			pump();
+		});
+}
+
+function makeSlot(): SearchSlot {
+	const slot: SearchSlot = {
+		worker: new Worker(SCAN_WORKER, { eval: true, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 256 } }),
+	};
+	slots.add(slot);
+	slot.worker.on("message", (message: { type?: string; error?: string } & Partial<HistoryScan>) => {
+		if (slot.closing || message?.type !== "octocode-history-matches") return;
+		slot.task?.finish(
+			message.error
+				? { error: new Error(message.error) }
+				: {
+						result: {
+							results: message.results ?? [],
+							scanned: message.scanned ?? 0,
+							...(message.next ? { next: message.next } : {}),
+							unreadable: message.unreadable ?? 0,
+							skippedLines: message.skippedLines ?? 0,
+						},
+					},
+		);
 	});
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	let abort: (() => void) | undefined;
-	try {
-		return await new Promise<HistoryScan>((resolve, reject) => {
-			abort = () => reject(signal?.reason ?? new Error("Archive search aborted."));
-			signal?.addEventListener("abort", abort, { once: true });
-			timer = setTimeout(
-				() =>
-					reject(
-						new Error(
+	const lost = (error: Error) => {
+		if (slot.task) slot.task.finish({ error }, true);
+		else retireSlot(slot);
+	};
+	slot.worker.once("error", lost);
+	slot.worker.once("exit", (code) =>
+		lost(new Error(`Archive search worker exited before returning results (code ${code}).`)),
+	);
+	return slot;
+}
+
+function pump(): void {
+	while (queue.length > 0) {
+		let slot = [...slots].find((candidate) => !candidate.task && !candidate.closing);
+		if (!slot) {
+			if (slots.size >= WORKERS) return;
+			try {
+				slot = makeSlot();
+			} catch (error) {
+				queue[0].finish({ error });
+				continue;
+			}
+		}
+		const task = queue.shift()!;
+		clearTimeout(slot.idle);
+		slot.idle = undefined;
+		slot.task = task;
+		task.slot = slot;
+		slot.worker.ref();
+		try {
+			slot.worker.postMessage(task.input);
+		} catch (error) {
+			task.finish({ error }, true);
+		}
+		task.input = undefined;
+	}
+}
+
+function run(input: Record<string, unknown>, pattern: RegExp, signal: AbortSignal | undefined): Promise<HistoryScan> {
+	signal?.throwIfAborted();
+	const strings = (input.texts ?? input.files ?? []) as readonly string[];
+	const bytes = strings.reduce((total, text) => total + text.length * 2, pattern.source.length * 2);
+	if (pending >= MAX_TASKS || pendingBytes + bytes > MAX_QUEUED_BYTES)
+		return Promise.reject(new Error("Archive search queue is full; retry after the current searches finish."));
+	return new Promise<HistoryScan>((resolve, reject) => {
+		const resource = new AsyncResource("OctocodeHistorySearch");
+		let done = false;
+		const abort = () => task.finish({ error: signal?.reason ?? new Error("Archive search aborted.") }, true);
+		const timer = setTimeout(
+			() =>
+				task.finish(
+					{
+						error: new Error(
 							"Archive search exceeded 5 seconds; simplify query (nested quantifiers backtrack inside one line) or narrow file to a session folder or one archive file.",
 						),
-					),
-				SEARCH_TIMEOUT_MS,
-			);
-			worker.on("message", (message: { type?: string; error?: string } & Partial<HistoryScan>) => {
-				if (message?.type !== "octocode-history-matches") return;
-				if (message.error) reject(new Error(message.error));
-				else
-					resolve({
-						results: message.results ?? [],
-						scanned: message.scanned ?? 0,
-						...(message.next ? { next: message.next } : {}),
-						unreadable: message.unreadable ?? 0,
-						skippedLines: message.skippedLines ?? 0,
-					});
-			});
-			worker.once("error", reject);
-			worker.once("exit", (code) =>
-				reject(new Error(`Archive search worker exited before returning results (code ${code}).`)),
-			);
-			if (signal?.aborted) abort();
-		});
-	} finally {
-		clearTimeout(timer);
-		if (abort) signal?.removeEventListener("abort", abort);
-		await worker.terminate();
-	}
+					},
+					true,
+				),
+			SEARCH_TIMEOUT_MS,
+		);
+		const task: SearchTask = {
+			input: { ...input, pattern: pattern.source, flags: pattern.flags.replace("g", "") },
+			bytes,
+			finish(outcome, retire = false) {
+				if (done) return;
+				done = true;
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", abort);
+				const at = queue.indexOf(task);
+				if (at >= 0) queue.splice(at, 1);
+				pending--;
+				pendingBytes -= task.bytes;
+				task.input = undefined;
+				const slot = task.slot;
+				task.slot = undefined;
+				if (slot) {
+					slot.task = undefined;
+					if (retire) retireSlot(slot);
+					else {
+						slot.worker.unref();
+						slot.idle = setTimeout(() => retireSlot(slot), IDLE_MS);
+						slot.idle.unref();
+					}
+				}
+				if ("error" in outcome) resource.runInAsyncScope(reject, undefined, outcome.error);
+				else resource.runInAsyncScope(resolve, undefined, outcome.result);
+				resource.emitDestroy();
+				pump();
+			},
+		};
+		pending++;
+		pendingBytes += bytes;
+		queue.push(task);
+		signal?.addEventListener("abort", abort, { once: true });
+		if (signal?.aborted) abort();
+		else pump();
+	});
 }

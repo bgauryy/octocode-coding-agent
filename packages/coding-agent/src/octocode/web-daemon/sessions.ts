@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contracts/daemon";
-import { runningPid } from "../shared/session-liveness.ts";
+import { sameProcessAsync } from "../shared/process.ts";
 import { sessions } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { AttachClient } from "./attach-client.ts";
@@ -33,7 +33,7 @@ export class SessionRegistry {
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly changed: () => void;
 	private timer: ReturnType<typeof setInterval> | undefined;
-	private refreshing = false;
+	private refreshing: Promise<void> | undefined;
 	private stopped = false;
 	/** While true no new session is attached: a draining daemon only serves what it already has. */
 	paused = false;
@@ -49,48 +49,51 @@ export class SessionRegistry {
 		this.timer.unref();
 	}
 
-	private endedInDatabase(sessionId: string): boolean {
+	private async endedInDatabase(sessionId: string): Promise<boolean> {
 		try {
 			const row = sessions.pidOf(sharedAgentDb(this.env).db, sessionId);
-			return row !== undefined && runningPid(row.pid, row.pid_started) === undefined;
+			return row !== undefined && !(await sameProcessAsync(row.pid, row.pid_started));
 		} catch {
 			return false;
 		}
 	}
 
-	async refresh(): Promise<void> {
-		if (this.refreshing || this.stopped) return;
-		this.refreshing = true;
+	refresh(): Promise<void> {
+		if (this.stopped) return Promise.resolve();
+		return (this.refreshing ??= this.scan().finally(() => {
+			this.refreshing = undefined;
+		}));
+	}
+
+	private async scan(): Promise<void> {
+		const dir = webDaemonPaths(this.env).attachDir;
+		let names: string[] = [];
 		try {
-			const dir = webDaemonPaths(this.env).attachDir;
-			let names: string[] = [];
-			try {
-				names = fs.readdirSync(dir).filter((name) => name.endsWith(".json"));
-			} catch {
-				// No session has attached yet.
+			names = fs.readdirSync(dir).filter((name) => name.endsWith(".json"));
+		} catch {
+			// No session has attached yet.
+		}
+		const seen = new Set<string>();
+		for (const name of names) {
+			const file = path.join(dir, name);
+			const record = readAttachRecord(file);
+			if (!record) continue;
+			if (!(await recordProcessAlive(record))) {
+				removeRecord(file, (text) => JSON.parse(text).token === record.token);
+				continue;
 			}
-			const seen = new Set<string>();
-			for (const name of names) {
-				const file = path.join(dir, name);
-				const record = readAttachRecord(file);
-				if (!record) continue;
-				if (!recordProcessAlive(record)) {
-					removeRecord(file);
-					continue;
-				}
-				if (this.endedInDatabase(record.sessionId)) continue;
-				seen.add(record.sessionId);
-				this.attach(record);
-			}
-			for (const [id, link] of this.links) {
-				if (seen.has(id)) continue;
-				link.watch?.close();
-				link.client?.close();
-				this.links.delete(id);
-				this.changed();
-			}
-		} finally {
-			this.refreshing = false;
+			if (this.stopped) return;
+			if (await this.endedInDatabase(record.sessionId)) continue;
+			if (this.stopped) return;
+			seen.add(record.sessionId);
+			this.attach(record);
+		}
+		for (const [id, link] of this.links) {
+			if (seen.has(id)) continue;
+			link.watch?.close();
+			link.client?.close();
+			this.links.delete(id);
+			this.changed();
 		}
 	}
 

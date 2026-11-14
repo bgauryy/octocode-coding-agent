@@ -146,12 +146,14 @@ describe("trusted_folders queries", () => {
 });
 
 describe("the schema", () => {
-	it("refuses a pre-versioned database without creating trust grants or changing existing data", () => {
+	it("sets a pre-versioned database aside without creating trust grants or changing its data", () => {
 		agent.db.exec("DROP TABLE trusted_folders; PRAGMA user_version=0");
 		agent.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
 		agent.close();
-		expect(() => openAgentDb(file)).toThrow(/unsupported Octocode schema version 0/);
-		const original = new DatabaseSync(file, { readOnly: true });
+		// An older file is renamed whole (`<file>.v0.retired`) and a new one opened in its place.
+		agent = openAgentDb(file);
+		expect(agent.db.prepare("SELECT value FROM meta WHERE key='keep'").get()).toBeUndefined();
+		const original = new DatabaseSync(`${file}.v0.retired`, { readOnly: true });
 		try {
 			expect(original.prepare("SELECT name FROM sqlite_schema WHERE name='trusted_folders'").get()).toBeUndefined();
 			expect(original.prepare("SELECT value FROM meta WHERE key='keep'").get()).toEqual({ value: "me" });

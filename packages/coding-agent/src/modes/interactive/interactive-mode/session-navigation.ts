@@ -301,7 +301,7 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 				renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
 					const next = (nextName ?? "").trim();
 					if (!next) return;
-					const mgr = SessionManager.open(sessionFilePath);
+					const mgr = await SessionManager.openAsync(sessionFilePath);
 					mgr.appendSessionInfo(next);
 				},
 				showRenameHint: true,
@@ -339,7 +339,7 @@ export async function handleResumeSession(
 		host.showStatus("That is the current session.");
 		return { cancelled: true };
 	}
-	const runningPid = sessionFileRunningPid(sessionPath);
+	const runningPid = await sessionFileRunningPid(sessionPath);
 	if (
 		runningPid !== undefined &&
 		!(await host.showExtensionConfirm(

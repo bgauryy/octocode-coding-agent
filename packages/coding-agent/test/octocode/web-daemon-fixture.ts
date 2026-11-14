@@ -17,11 +17,11 @@ const homes: NodeJS.ProcessEnv[] = [];
 
 // A detached daemon outlives the test that started it unless the test stops it; a test that failed before it could
 // stop one leaves it here, so each file stops the daemons its homes still record (the run fails one that outlives it).
-afterAll(() => {
+afterAll(async () => {
 	for (const env of homes.splice(0)) {
 		const record = readDaemonRecord(webDaemonPaths(env).record);
 		// A test may run the daemon server in this worker (the record names this process): never stop the worker itself.
-		if (!record || record.pid === process.pid || !recordProcessAlive(record)) continue;
+		if (!record || record.pid === process.pid || !(await recordProcessAlive(record))) continue;
 		try {
 			process.kill(record.pid, "SIGKILL");
 		} catch {

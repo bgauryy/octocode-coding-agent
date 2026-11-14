@@ -94,8 +94,13 @@ export class PersistentMap<T> implements ReadonlyMap<string, T> {
 		for (let at = 0; at < this.size; at++) yield this.lineage.keys[at];
 	}
 
-	*values(): MapIterator<T> {
-		for (let at = 0; at < this.size; at++) yield this.at(at);
+	values(): MapIterator<T> {
+		return this.valuesFrom(0);
+	}
+
+	/** Values in insertion order starting at an index, without visiting the preceding entries. */
+	*valuesFrom(start: number): MapIterator<T> {
+		for (let at = Math.max(0, Math.trunc(start)); at < this.size; at++) yield this.at(at);
 	}
 
 	*entries(): MapIterator<[string, T]> {

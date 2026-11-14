@@ -26,6 +26,8 @@ import {
 	parseSessionEntryLine,
 } from "./entries.ts";
 import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
+import { loadSessionFile } from "./file-reader.ts";
+export { loadSessionFile } from "./file-reader.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
 /** Default transcript directory shared by all working directories in this checkout. */
@@ -37,7 +39,6 @@ export function getDefaultSessionDir(cwd: string): string {
 	return ensureWorkspaceStateDir(cwd, "sessions");
 }
 
-const SESSION_READ_BUFFER_SIZE = 1024 * 1024;
 const SESSION_HEADER_READ_BUFFER_SIZE = 4096;
 /** Bound synchronous header discovery while allowing large cwd and custom metadata fields. */
 const MAX_SESSION_HEADER_SCAN_BYTES = 1024 * 1024;
@@ -51,47 +52,7 @@ class SessionHeaderScanLimitError extends Error {
 
 /** Exported for testing */
 export function loadEntriesFromFile(filePath: string): FileEntry[] {
-	const resolvedFilePath = normalizePath(filePath);
-	if (!existsSync(resolvedFilePath)) return [];
-
-	const entries: FileEntry[] = [];
-	const pending: string[] = [];
-	const fd = openSync(resolvedFilePath, "r");
-	try {
-		const decoder = new StringDecoder("utf8");
-		const buffer = Buffer.allocUnsafe(SESSION_READ_BUFFER_SIZE);
-
-		while (true) {
-			const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
-			if (bytesRead === 0) break;
-
-			const chunk = decoder.write(buffer.subarray(0, bytesRead));
-			let lineStart = 0;
-			let newlineIndex = chunk.indexOf("\n", lineStart);
-			while (newlineIndex !== -1) {
-				pending.push(chunk.slice(lineStart, newlineIndex));
-				const entry = parseSessionEntryLine(pending.join(""));
-				pending.length = 0;
-				if (entry) entries.push(entry);
-				lineStart = newlineIndex + 1;
-				newlineIndex = chunk.indexOf("\n", lineStart);
-			}
-			if (lineStart < chunk.length) pending.push(chunk.slice(lineStart));
-		}
-
-		pending.push(decoder.end());
-		const finalEntry = parseSessionEntryLine(pending.join(""));
-		if (finalEntry) entries.push(finalEntry);
-	} finally {
-		closeSync(fd);
-	}
-
-	if (entries.length === 0) return entries;
-	const header = entries[0];
-	if (header.type !== "session" || typeof (header as { id?: unknown }).id !== "string") {
-		return [];
-	}
-	return decodeSessionRecords(entries);
+	return loadSessionFile(filePath).entries;
 }
 
 /**
@@ -251,11 +212,16 @@ export interface OpenedSessionTarget {
 }
 
 /** Resolve the cwd and session directory used by `SessionManager.open()`. */
-export function resolveOpenedSession(path: string, sessionDir?: string, cwdOverride?: string): OpenedSessionTarget {
+export function resolveOpenedSession(
+	path: string,
+	sessionDir?: string,
+	cwdOverride?: string,
+	loadedHeader?: SessionHeader | null,
+): OpenedSessionTarget {
 	const resolvedPath = resolvePath(path);
-	let header: SessionHeader | null = null;
+	let header: SessionHeader | null = loadedHeader ?? null;
 	let preloadedFileEntries: FileEntry[] | undefined;
-	if (cwdOverride === undefined && existsSync(resolvedPath)) {
+	if (loadedHeader === undefined && cwdOverride === undefined && existsSync(resolvedPath)) {
 		try {
 			header = readSessionHeader(resolvedPath);
 		} catch (error) {

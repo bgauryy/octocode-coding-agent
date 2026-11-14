@@ -28,6 +28,7 @@ export async function landChild(
 	id: string,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
 	override: (listed: string) => Promise<boolean>,
+	signal?: AbortSignal,
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);
 	if (working) return { ok: false, text: working };
@@ -37,7 +38,7 @@ export async function landChild(
 		if (!(await override(listed)))
 			return { ok: false, reserved: true, text: `Not merged: ${id} changes reserved files.\n${listed}` };
 	}
-	const result = await mergeAgent(ctx.cwd, id);
+	const result = await mergeAgent(ctx.cwd, id, signal);
 	const noted = result.ok && result.ref ? noteMerge(ctx, result.ref, result.into ?? "HEAD") : "";
 	return { ok: result.ok, text: `${result.text}${noted}` };
 }
@@ -74,7 +75,7 @@ export async function mergeChild(
 		...(signal ? { signal } : {}),
 	});
 	if (!verdict.allowed) return { ok: false, text: verdict.message };
-	return landChild(team, id, ctx, () => Promise.resolve(false));
+	return landChild(team, id, ctx, () => Promise.resolve(false), signal);
 }
 
 /**

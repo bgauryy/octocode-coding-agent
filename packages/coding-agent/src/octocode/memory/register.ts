@@ -101,7 +101,7 @@ export function registerMemory(
 			notify(ctx.ui, `Recalled ${used.map(memoryLabel).join(", ")} (/memory last shows them)`, "info");
 		try {
 			// Through the database writer: another process holding the write lock never stalls this thread.
-			await storeFor(ctx).markUsedLater(used);
+			await storeFor(ctx).markUsed(used);
 		} catch {
 			// A missing agent DB or a busy writer never blocks a turn; only the usage mark is lost.
 		}

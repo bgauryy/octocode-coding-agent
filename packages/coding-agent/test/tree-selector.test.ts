@@ -737,3 +737,40 @@ describe("TreeSelectorComponent", () => {
 		});
 	});
 });
+
+test("keeps an initially empty tree navigable when hidden entries are revealed", () => {
+	const selected: string[] = [];
+	const selector = new TreeSelectorComponent(
+		[{ entry: modelChange("one", null), children: [] }],
+		null,
+		24,
+		(id) => selected.push(id),
+		() => {},
+	);
+	const list = selector.getTreeList();
+	expect(list.getSelectedNode()).toBeUndefined();
+	for (const key of ["\x1b[A", "\x1b[B", "\x1b[B", "\x1b[6~"]) selector.handleInput(key);
+	selector.handleInput("\x01");
+	expect(list.getSelectedNode()?.entry.id).toBe("one");
+	expect(selector.render(80).join("\n")).toContain("(1/1)");
+	selector.handleInput("\r");
+	expect(selected).toEqual(["one"]);
+});
+
+test.each(["😀", "👩‍💻", "e\u0301"])("erases the whole %s grapheme from tree search", (grapheme) => {
+	const selector = new TreeSelectorComponent(
+		[
+			{ entry: userMessage("plain", null, "hello"), children: [] },
+			{ entry: userMessage("unicode", null, `hello${grapheme}`), children: [] },
+		],
+		null,
+		24,
+		() => {},
+		() => {},
+	);
+	selector.handleInput(`hello${grapheme}`);
+	expect(selector.getTreeList().getSelectedNode()?.entry.id).toBe("unicode");
+	selector.handleInput("\x7f");
+	expect(selector.getTreeList().getSearchQuery()).toBe("hello");
+	expect(selector.render(80).join("\n")).toContain("(2/2)");
+});

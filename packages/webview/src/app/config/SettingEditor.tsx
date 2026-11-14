@@ -7,6 +7,7 @@ export type SaveSetting = (command: ConfigSettingCommand) => Promise<void>;
 
 interface SettingEditorProps {
 	setting: ConfigSetting;
+	provider?: ConfigSetting;
 	save: SaveSetting;
 	/** The workspace the page is showing, when one is selected; its settings file is a target only while trusted. */
 	workspace?: { id: string; trusted: boolean };
@@ -16,10 +17,14 @@ interface SettingEditorProps {
  * Changes one allow-listed setting in the global or the workspace file. The host decides: it refuses an untrusted
  * workspace and an invalid file, and the page shows its reason. Values are not secrets, so they stay in the field.
  */
-export function SettingEditor({ setting, save, workspace }: SettingEditorProps) {
+export function SettingEditor({ setting, provider, save, workspace }: SettingEditorProps) {
 	const id = useId();
 	const [value, setValue] = useState(typeof setting.value === "string" ? setting.value : "");
-	const [scope, setScope] = useState<ConfigSettingScope>(setting.source === "workspace" ? "workspace" : "global");
+	const [providerValue, setProviderValue] = useState(typeof provider?.value === "string" ? provider.value : "");
+	const paired = provider !== undefined;
+	const [scope, setScope] = useState<ConfigSettingScope>(
+		setting.source === "workspace" || provider?.source === "workspace" ? "workspace" : "global",
+	);
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
 	const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | undefined>();
 	const canWorkspace = workspace?.trusted === true;
@@ -29,20 +34,34 @@ export function SettingEditor({ setting, save, workspace }: SettingEditorProps) 
 		setBusy(next === null ? "clear" : "save");
 		setMessage(undefined);
 		try {
-			await save({
-				key: setting.key as ConfigSettingCommand["key"],
+			const targetFields = {
 				scope: target,
-				value: next,
 				...(target === "workspace" && workspace ? { repoId: workspace.id } : {}),
-			});
-			if (next === null) setValue("");
+			};
+			await save(
+				paired
+					? {
+							key: "modelDefault",
+							value: next === null ? null : { provider: providerValue.trim(), model: next },
+							...targetFields,
+						}
+					: {
+							key: setting.key as "defaultProvider" | "defaultModel",
+							value: next,
+							...targetFields,
+						},
+			);
+			if (next === null) {
+				setValue("");
+				if (paired) setProviderValue("");
+			}
 			const timing =
 				setting.key === "defaultProvider" || setting.key === "defaultModel"
 					? "Model defaults apply to new sessions; the current chat keeps its model."
 					: "Running sessions pick it up with /reload.";
 			setMessage({
 				tone: "ok",
-				text: `${next === null ? "Cleared in" : "Saved to"} ${target} settings. ${timing}`,
+				text: `${next === null ? "Cleared in" : "Saved to"} ${target} settings. ${timing}${target === "global" && (setting.source === "workspace" || provider?.source === "workspace") ? " Workspace defaults still take precedence here." : ""}`,
 			});
 		} catch (error) {
 			setMessage({ tone: "error", text: errorMessage(error) });
@@ -54,11 +73,30 @@ export function SettingEditor({ setting, save, workspace }: SettingEditorProps) 
 	const submit = (event: SubmitEvent) => {
 		event.preventDefault();
 		const trimmed = value.trim();
-		if (trimmed) void apply(trimmed);
+		if (trimmed && (!paired || providerValue.trim())) void apply(trimmed);
 	};
 
 	return (
-		<form className="config-edit" onSubmit={submit} aria-label={`Change ${setting.key}`}>
+		<form
+			className="config-edit"
+			onSubmit={submit}
+			aria-label={paired ? "Change startup model" : `Change ${setting.key}`}
+		>
+			{paired && (
+				<label htmlFor={`${id}-provider`}>
+					Provider
+					<input
+						id={`${id}-provider`}
+						aria-label="Default provider"
+						value={providerValue}
+						maxLength={256}
+						autoComplete="off"
+						spellCheck={false}
+						onChange={(event) => setProviderValue(event.target.value)}
+					/>
+				</label>
+			)}
+			{paired && <label htmlFor={`${id}-value`}>Model ID</label>}
 			<input
 				id={`${id}-value`}
 				aria-label={`Value for ${setting.key}`}
@@ -78,7 +116,13 @@ export function SettingEditor({ setting, save, workspace }: SettingEditorProps) 
 					{canWorkspace ? "Workspace settings" : "Workspace settings (needs a trusted workspace)"}
 				</option>
 			</select>
-			<Button type="submit" size="sm" variant="primary" loading={busy === "save"} disabled={!value.trim() || !!busy}>
+			<Button
+				type="submit"
+				size="sm"
+				variant="primary"
+				loading={busy === "save"}
+				disabled={!value.trim() || (paired && !providerValue.trim()) || !!busy}
+			>
 				Save
 			</Button>
 			<Button size="sm" loading={busy === "clear"} disabled={!!busy} onClick={() => void apply(null)}>

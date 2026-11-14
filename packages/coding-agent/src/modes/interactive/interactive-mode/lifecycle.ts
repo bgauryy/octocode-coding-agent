@@ -1,3 +1,4 @@
+import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
 /**
  * Exit, suspend and shutdown: Ctrl+C, Ctrl+D and Ctrl+Z, signal handlers, and stopping the terminal UI.
  */
@@ -212,6 +213,17 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 		host.signalCleanupHandlers.push(() => stream.off("error", terminalErrorHandler));
 	}
 
+	// Uncommon syntax grammars load the first time shown code names one (`syntax-highlight.ts`). Re-render (a full
+	// transcript replay in regular mode) only when code already shown named a language that has just loaded. The
+	// listener set is module-wide: removed with the rest, or every replaced mode would stay reachable from it.
+	host.signalCleanupHandlers.push(
+		onHighlightLanguagesLoaded(() => {
+			if (!host.isInitialized) return;
+			host.ui.invalidate();
+			host.ui.requestRender();
+		}),
+	);
+
 	// Restore the terminal before the process dies on an uncaught throw.
 	// Without this, an unhandled exception from extension code (or anywhere
 	// in Octocode) leaves the terminal in raw mode with no cursor.
@@ -298,24 +310,28 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 }
 
 export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsManager.getFullscreenExitOutput()): void {
-	host.disposeActiveSelector();
-	if (host.settingsManager.getShowTerminalProgress()) {
-		host.ui.terminal.setProgress(false);
+	// The process-wide signal, stream-error and uncaught handlers go whatever a disposer below throws.
+	try {
+		host.disposeActiveSelector();
+		if (host.settingsManager.getShowTerminalProgress()) {
+			host.ui.terminal.setProgress(false);
+		}
+		host.clearStatusIndicator();
+		host.themeController.disableAutoSync();
+		host.clearExtensionTerminalInputListeners();
+		host.footerDataProvider.dispose();
+		disposeLoadedResources(host.loadedResourcesContainer);
+		if (host.unsubscribe) {
+			host.unsubscribe();
+		}
+		if (host.isInitialized) {
+			// Leaving raw mode waits for the terminal to read pending output; one that stopped reading must not hold the exit.
+			endIfStalled(() => host.stopInteractiveTui(fullscreenExitOutput));
+			host.isInitialized = false;
+		}
+		// Final transcript output still needs live rows; release their clocks only after the renderer stops.
+		disposeTranscript(host.chatContainer);
+	} finally {
+		host.unregisterSignalHandlers();
 	}
-	host.clearStatusIndicator();
-	host.themeController.disableAutoSync();
-	host.clearExtensionTerminalInputListeners();
-	host.footerDataProvider.dispose();
-	disposeLoadedResources(host.loadedResourcesContainer);
-	if (host.unsubscribe) {
-		host.unsubscribe();
-	}
-	if (host.isInitialized) {
-		// Leaving raw mode waits for the terminal to read pending output; one that stopped reading must not hold the exit.
-		endIfStalled(() => host.stopInteractiveTui(fullscreenExitOutput));
-		host.isInitialized = false;
-	}
-	// Final transcript output still needs live rows; release their clocks only after the renderer stops.
-	disposeTranscript(host.chatContainer);
-	host.unregisterSignalHandlers();
 }

@@ -29,6 +29,8 @@ export function watchFileChanges(file: string, onChange: () => void, options: Wa
 	let unreliable = options.poll === true;
 	let stopped = false;
 	let settle: ReturnType<typeof setTimeout> | undefined;
+	let pollTimer: ReturnType<typeof setTimeout> | undefined;
+	let pollGeneration = 0;
 
 	const changed = () => {
 		if (stopped || settle) return;
@@ -47,21 +49,43 @@ export function watchFileChanges(file: string, onChange: () => void, options: Wa
 			// Already closed.
 		}
 	};
-	const onPoll = (next: fs.Stats, previous: fs.Stats) => {
-		if (next.mtimeMs !== previous.mtimeMs || next.ctimeMs !== previous.ctimeMs || next.size !== previous.size)
-			changed();
-		// The directory is back (created, or restored after a rename): the native watcher takes over again.
-		if (!unreliable && fs.existsSync(directory) && arm()) stopPolling();
-	};
 	const startPolling = () => {
 		if (polling || stopped) return;
 		polling = true;
-		fs.watchFile(file, { interval: intervalMs, persistent: false }, onPoll);
+		const generation = ++pollGeneration;
+		let first = true;
+		let previous: fs.Stats | undefined;
+		const active = () => polling && !stopped && generation === pollGeneration;
+		const poll = async () => {
+			const next = await fs.promises.stat(file).catch(() => undefined);
+			if (!active()) return;
+			// An async initial stat can already include a write after registration. Callers compare revisions.
+			if (
+				first ||
+				next?.mtimeMs !== previous?.mtimeMs ||
+				next?.ctimeMs !== previous?.ctimeMs ||
+				next?.size !== previous?.size
+			)
+				changed();
+			first = false;
+			previous = next;
+			if (!unreliable && arm()) {
+				// Cover a write between the completed stat and installing the native watcher.
+				changed();
+				stopPolling();
+				return;
+			}
+			// Schedule after completion: slow file systems never accumulate overlapping reads.
+			pollTimer = setTimeout(() => void poll(), intervalMs);
+			pollTimer.unref?.();
+		};
+		void poll();
 	};
 	const stopPolling = () => {
-		if (!polling) return;
 		polling = false;
-		fs.unwatchFile(file, onPoll);
+		pollGeneration++;
+		if (pollTimer) clearTimeout(pollTimer);
+		pollTimer = undefined;
 	};
 	const arm = (): boolean => {
 		if (stopped) return false;
