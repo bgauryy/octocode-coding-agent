@@ -98,6 +98,52 @@ describe("the sign-in check of an ACP agent", () => {
 });
 
 describe("a prompt response's usage", () => {
+	it.each([
+		{ inputTokens: 2 ** 53, outputTokens: 0, cachedReadTokens: 1, totalTokens: 2 ** 53 },
+		{ inputTokens: 100, outputTokens: 10, cachedReadTokens: 0.5, cachedWriteTokens: 0.5, totalTokens: 110 },
+	])("retains imprecise counts without inferring cache overlap: %j", (counts) => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		expect(output.reply({ stopReason: "end_turn", usage: counts } as never).usage).toEqual(counts);
+	});
+	it.each<[Record<string, unknown>, number]>([
+		[{ cachedReadTokens: 40, totalTokens: 110 }, 60],
+		[{ cachedWriteTokens: 20, totalTokens: 110 }, 80],
+		[{ cachedReadTokens: 40, cachedWriteTokens: 10, totalTokens: 110 }, 50],
+		[{ cachedReadTokens: 40, cachedWriteTokens: null, totalTokens: 110 }, 60],
+		[{ cachedReadTokens: 0, totalTokens: 110 }, 100],
+		[{ cachedReadTokens: 40, totalTokens: 150 }, 100],
+		[{ cachedReadTokens: 40 }, 100],
+		[{ cachedReadTokens: 40, totalTokens: null }, 100],
+		[{ cachedReadTokens: 40, totalTokens: -1 }, 100],
+		[{ cachedReadTokens: 40, totalTokens: Number.NaN }, 100],
+		[{ cachedReadTokens: 40, totalTokens: "110" }, 100],
+		[{ cachedReadTokens: 40, totalTokens: 999 }, 100],
+		[{ cachedReadTokens: 110, totalTokens: 110 }, 100],
+		[{ cachedReadTokens: 40, cachedWriteTokens: -1, totalTokens: 110 }, 100],
+		[{ cachedReadTokens: 40, cachedWriteTokens: "bad", totalTokens: 110 }, 100],
+	])("normalizes cached input only when valid totals prove overlap: %j", (counts, expectedInput) => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		const usage = output.reply({
+			stopReason: "end_turn",
+			usage: { inputTokens: 100, outputTokens: 10, ...counts },
+		} as never).usage;
+		expect(usage?.inputTokens).toBe(expectedInput);
+		expect(usage?.outputTokens).toBe(10);
+		expect(usage?.cachedReadTokens).toBe(
+			typeof counts.cachedReadTokens === "number" ? counts.cachedReadTokens : undefined,
+		);
+		expect(usage?.cachedWriteTokens).toBe(
+			typeof counts.cachedWriteTokens === "number" && counts.cachedWriteTokens >= 0
+				? counts.cachedWriteTokens
+				: undefined,
+		);
+		expect(usage?.totalTokens).toBe(
+			typeof counts.totalTokens === "number" && Number.isFinite(counts.totalTokens) && counts.totalTokens >= 0
+				? counts.totalTokens
+				: undefined,
+		);
+	});
+
 	it("keeps the token totals an agent reports and drops anything else", () => {
 		const output = new AcpOutput(acpClientHost.saveOutput);
 		const reply = output.reply({

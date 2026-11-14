@@ -46,6 +46,8 @@ export interface MarkOptions {
 	now?: number;
 	/** When the state was entered: a `done` mark glows briefly after it. */
 	since?: number;
+	/** A mark of work running in the background: it spins at `MOTION.backgroundSpinnerMs`, its owner repaints at that pace. */
+	background?: boolean;
 }
 
 function concrete(theme: MarkTheme, token: ThemeColor): Color | undefined {
@@ -78,7 +80,7 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
 	switch (state) {
 		case "running": {
 			const frames = SPINNER.braille;
-			return theme.fg(color, frames[Math.floor(now / MOTION.spinnerMs) % frames.length]);
+			return theme.fg(color, frames[Math.floor(now / spinnerMs(options.background)) % frames.length]);
 		}
 		case "waiting":
 			if (options.since !== undefined && now - options.since >= WAIT_PULSE_MS) return theme.fg(color, GLYPH.waiting);
@@ -107,9 +109,12 @@ export function markMoves(state: UiState, options: MarkOptions = {}): boolean {
 	return (options.now ?? Date.now()) - options.since < MOTION.flashMs;
 }
 
+/** A running mark's spinner frame interval: slower for work in the background (see `MarkOptions.background`). */
+export const spinnerMs = (background = false): number => (background ? MOTION.backgroundSpinnerMs : MOTION.spinnerMs);
+
 /** The frame interval a moving mark needs. */
-export function markFrameMs(state: UiState): number {
-	return state === "running" ? MOTION.spinnerMs : MOTION.glowFrameMs;
+export function markFrameMs(state: UiState, background = false): number {
+	return state === "running" ? spinnerMs(background) : MOTION.glowFrameMs;
 }
 
 /** What `liveShimmer` needs from a theme: concrete colours and their colour mode. */

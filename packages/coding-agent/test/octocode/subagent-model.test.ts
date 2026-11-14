@@ -27,6 +27,32 @@ const available: ModelRef[] = [
 ];
 
 describe("routeModel", () => {
+	it("refuses an explicit ambiguous bare id without choosing a paid or subscription provider by order", () => {
+		const shared = [
+			{ provider: "paid", id: "shared" },
+			{ provider: "subscription", id: "shared" },
+		];
+		for (const models of [shared, [...shared].reverse()]) {
+			const route = routeModel({ explicit: "shared:high", available: models, parent: available[0] });
+			expect(route).toHaveProperty("error");
+			if ("error" in route) {
+				expect(route.error).toContain("matches several providers");
+				expect(route.error).toContain("paid/shared:high");
+				expect(route.error).toContain("subscription/shared:high");
+			}
+		}
+		expect(routeModel({ explicit: "shared:high", available: shared, parent: shared[1] })).toEqual({
+			model: "subscription/shared:high",
+		});
+		expect(routeModel({ explicit: "paid/shared:high", available: shared, parent: shared[1] })).toEqual({
+			model: "paid/shared:high",
+		});
+		// Profile preferences retain their existing fallback selection contract.
+		expect(routeModel({ preferred: "shared", available: shared, parent: available[0] })).toEqual({
+			model: "paid/shared",
+		});
+	});
+
 	it("prefers the parent provider for a bare id, else any provider that has it", () => {
 		expect(
 			routeModel({

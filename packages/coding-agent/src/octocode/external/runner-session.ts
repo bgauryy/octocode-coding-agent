@@ -6,7 +6,14 @@ import { authRequiredIn } from "../../../../acp/src/client/auth.ts";
 import { clip } from "../shared/text.ts";
 import { connectAcp } from "./acp-host.ts";
 import { HEADLESS_ARGS, headlessReady, HeadlessSignedOut, headlessTurn } from "./runner-headless.ts";
-import { cachedRunners, forgetRunner, isConnected, type RunnerState } from "./runner-status.ts";
+import {
+	cachedRunners,
+	checkRunners,
+	forgetRunner,
+	isConnected,
+	listRunners,
+	type RunnerState,
+} from "./runner-status.ts";
 import { adapterArgs, type RunnerBilling, runnerSpec } from "./runners.ts";
 
 /** A runner that streams nothing this long has stalled (a native child's idle limit is the same order). */
@@ -44,8 +51,14 @@ export interface RunnerLaunch {
 export function launchOf(runner: string, states: readonly RunnerState[] = cachedRunners()): RunnerLaunch {
 	const spec = runnerSpec(runner);
 	const state = states.find((entry) => entry.id === runner);
-	if (!spec || !state || !isConnected(state))
+	if (!spec || !state || !state.cli)
 		throw new Error(`Runner ${runner} is not connected; connect it in /providers (External agents).`);
+	if (state.auth?.signedIn === false)
+		throw new Error(`${runner} is signed out: sign in with /providers (External agents), then start the task again.`);
+	if (!state.auth)
+		throw new Error(
+			`${runner} sign-in could not be confirmed${state.error ? `: ${redactSecrets(state.error)}` : ""}. Check /providers (External agents), then retry.`,
+		);
 	const billing = state.auth?.billing;
 	const command = findOnPath(spec.adapter.command);
 	if (command) return { command, args: adapterArgs(spec, billing), billing };
@@ -69,7 +82,7 @@ function reportedCost(update: SessionUpdate): number | undefined {
 }
 
 export interface RunnerTurnDeps {
-	launch: (runner: string) => RunnerLaunch;
+	launch: (runner: string, signal: AbortSignal) => RunnerLaunch | Promise<RunnerLaunch>;
 	connect: (input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal) => Promise<AcpBackend>;
 	permission: (ctx: ExtensionContext) => AcpPermission;
 }
@@ -81,7 +94,9 @@ export interface RunnerTurnDeps {
  * dropped so `/providers` checks it again.
  */
 export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
-	const launch = deps.launch(input.runner);
+	input.signal.throwIfAborted();
+	const launch = await deps.launch(input.runner, input.signal);
+	input.signal.throwIfAborted();
 	const idle = new AbortController();
 	let timer: NodeJS.Timeout | undefined;
 	const awake = () => {
@@ -136,7 +151,7 @@ export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 		};
 	} catch (error) {
 		if (authRequiredIn(error) || error instanceof HeadlessSignedOut) {
-			forgetRunner(input.runner);
+			await forgetRunner(input.runner);
 			throw new Error(
 				`${input.runner} is signed out: sign in with /providers (External agents), then start the task again.`,
 				{
@@ -151,9 +166,15 @@ export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 	}
 }
 
-/** The defaults: the cached connected runners, the shared ACP host, and the session's external permission policy. */
+/** Check only the selected runner on use; retry unknown or signed-out checks, reuse valid positive metadata. */
 export const runnerTurnDeps = (permission: (ctx: ExtensionContext) => AcpPermission): RunnerTurnDeps => ({
-	launch: (runner) => launchOf(runner),
+	launch: async (runner, signal) => {
+		signal.throwIfAborted();
+		const known = listRunners().find((state) => state.id === runner);
+		const states = await checkRunners({ ids: [runner], signal, refresh: !known || !isConnected(known) });
+		signal.throwIfAborted();
+		return launchOf(runner, states);
+	},
 	connect: connectAcp,
 	permission,
 });

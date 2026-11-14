@@ -79,7 +79,7 @@ function manager() {
 			settingsManager: {
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
-				getExternalAgents: () => false,
+				getExternalAgents: () => true,
 				setDisabledProviders: vi.fn((ids: string[]) => {
 					disabled = ids;
 				}),
@@ -667,7 +667,7 @@ describe("provider setup flow", () => {
 		);
 		expect(setExternalAgents).not.toHaveBeenCalled();
 		again.handleInput(ENTER);
-		choose(await pageAt(value, 3), "Run agent tasks in connected external agents");
+		choose(await pageAt(value, 3), "Run agent tasks in installed external agents");
 		await vi.waitFor(() => expect(setExternalAgents).toHaveBeenCalledWith(true));
 		(await pageAt(value, 4)).handleInput(ESC);
 		await run;
@@ -688,38 +688,49 @@ describe("provider setup flow", () => {
 		mkdirSync(sourceEnvironment().agentDir, { recursive: true });
 	};
 
-	it("External agents: Check again on a connected runner turns externalAgents on when it was never set", async () => {
-		installSignedInClaude();
-		const { host, value } = manager();
-		let externalAgents: boolean | undefined;
-		const setExternalAgents = vi.fn((enabled: boolean) => {
-			externalAgents = enabled;
-		});
-		Object.assign(value.session.settingsManager, {
-			getExternalAgents: () => externalAgents === true,
-			getGlobalSettings: () => (externalAgents === undefined ? {} : { externalAgents }),
-			setExternalAgents,
-		});
-		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
-		const run = showProviderManager(host, "", { sourceEnvironment: environment });
-		choose(await pageAt(value, 0), "Claude Code");
-		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
-		choose(await pageAt(value, 1), "Check again");
-		await vi.waitFor(() => expect(setExternalAgents).toHaveBeenCalledWith(true), { timeout: 15_000 });
-		expect(setExternalAgents).toHaveBeenCalledTimes(1);
-		expect(value.showStatus).toHaveBeenCalledWith(
-			"Claude Code: signed in · claude.ai · plan. External agents turned on: new sessions can run agent tasks in it (externalAgents).",
-		);
-		const again = await pageAt(value, 2);
-		for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
-		expect(textOf(again)).toMatch(/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected$/m);
-		again.handleInput(ESC);
-		await run;
-	});
+	it.each([undefined, false])(
+		"External agents: Check again preserves externalAgents=%s without a setting write",
+		async (initial) => {
+			installSignedInClaude();
+			const { host, value } = manager();
+			let externalAgents: boolean | undefined = initial;
+			const globalSettings = () => (externalAgents === undefined ? {} : { externalAgents });
+			const setExternalAgents = vi.fn((enabled: boolean) => {
+				externalAgents = enabled;
+			});
+			Object.assign(value.session.settingsManager, {
+				getExternalAgents: () => externalAgents !== false,
+				getGlobalSettings: globalSettings,
+				setExternalAgents,
+			});
+			const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
+			const run = showProviderManager(host, "", { sourceEnvironment: environment });
+			choose(await pageAt(value, 0), "Claude Code");
+			await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
+			choose(await pageAt(value, 1), "Check again");
+			await vi.waitFor(
+				() => expect(value.showStatus).toHaveBeenCalledWith("Claude Code: signed in · claude.ai · plan."),
+				{ timeout: 15_000 },
+			);
+			expect(setExternalAgents).not.toHaveBeenCalled();
+			expect(externalAgents).toBe(initial);
+			expect(globalSettings()).toEqual(initial === undefined ? {} : { externalAgents: false });
+			const again = await pageAt(value, 2);
+			for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
+			expect(textOf(again)).toMatch(
+				initial === false
+					? /Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/
+					: /Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected$/m,
+			);
+			again.handleInput(ESC);
+			await run;
+		},
+	);
 
 	it("External agents: a connected runner with externalAgents off says so on the main page", async () => {
 		installSignedInClaude();
 		const { host, value } = manager();
+		Object.assign(value.session.settingsManager, { getExternalAgents: () => false });
 		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
 		// The first visit checks the runner; the list shows that answer from then on.
 		const first = showProviderManager(host, "", { sourceEnvironment: environment });

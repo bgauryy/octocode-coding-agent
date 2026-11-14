@@ -45,6 +45,48 @@ describe("routing and provider health (B347 P2-5)", () => {
 		});
 	});
 
+	it.each([
+		"403 You do not have access to model tiny",
+		"403 Access to this model is denied",
+		"403 Model tiny is not available for your account",
+	])("keeps a model access refusal scoped to that route: %s", (error) => {
+		const health = new ProviderHealth();
+		health.noteRun("cheap/tiny:low", error, true);
+		const sibling = { provider: "cheap", id: "allowed", cost: { input: 0.2, output: 0.5 } };
+		const models = [...available, sibling];
+		const refused = health.refused.bind(health);
+		expect(health.refused("cheap", "tiny")).toBe(true);
+		expect(health.refused("cheap", "tiny", true)).toBe(true);
+		expect(health.refused("cheap", "allowed")).toBe(false);
+		expect(health.refused("other", "tiny")).toBe(false);
+		expect(health.refused("cheap")).toBe(false);
+		expect(routeModel({ explicit: "small", available: models, parent, refused })).toEqual({ model: "cheap/allowed" });
+		expect(routeModel({ preferred: "cheap/allowed", available: models, parent: available[2], refused })).toEqual({
+			model: "cheap/allowed",
+		});
+		expect(routeModel({ preferred: "cheap/tiny", available: models, parent: available[2], refused })).toEqual({
+			model: "cheap/tiny",
+		});
+		const advice = failedNext({ model: "cheap/tiny", parent: "home/big" }, error, false, true);
+		expect(advice).not.toContain("/providers");
+		expect(advice).toContain('Retry with model: "home/big"');
+		health.noteRun("cheap/tiny");
+		expect(health.refused("cheap", "tiny")).toBe(false);
+	});
+
+	it.each([
+		"401 Unauthorized for model tiny",
+		"403 Invalid API key for model tiny",
+		"403 API key has expired; no access to model tiny",
+		"403 forbidden",
+	])("keeps credential-wide refusals provider scoped: %s", (error) => {
+		const health = new ProviderHealth();
+		health.noteRun("cheap/tiny", error, true);
+		expect(health.refused("cheap", "allowed")).toBe(true);
+		expect(health.refused("cheap", "allowed", true)).toBe(false);
+		expect(health.refused("other", "tiny")).toBe(false);
+	});
+
 	it("counts only a recent credential refusal, not a timeout or an old refusal", () => {
 		vi.useFakeTimers({ now: 1_000_000 });
 		const health = new ProviderHealth();

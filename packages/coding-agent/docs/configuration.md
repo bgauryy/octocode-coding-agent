@@ -44,6 +44,10 @@ Text, JSON and RPC runs use the same configuration precedence as terminal sessio
 
 Do not change global defaults for every delegated task. Prefer run flags, and keep caller deadlines and output limits in the launching program. The [external-agent guide](external-agents.md) has working invocation patterns and RPC lifecycle requirements; [providers](providers.md) covers authentication.
 
+Octocode configuration and the [Pi fallback](#pi-configuration-fallback) are available by default. Each native child can use a different enabled `provider/model`; it inherits the configuration sources, rather than being limited to the coordinator’s provider. A credential supplied only with `--api-key` is not forwarded to children: configure the provider in the shared user configuration instead.
+
+Installed [external runners](native-features.md#external-runners), including OpenCode, are available by default through `externalAgents`. Discovery starts no CLI processes; the selected runner’s sign-in is checked when a task uses it. Set `externalAgents: false` in global settings to disable external delegation for new sessions. Project settings cannot change this choice. Vendor CLIs use their own configuration and sign-in.
+
 ## Agent directory
 
 Global configuration and runtime state live in `~/.octocode/octocodecode/` ("global" below). Project configuration lives in `.octocode/` of the workspace. MCP definitions are the exception: `~/.octocode/mcp.json` and `.octocode/mcp.json`.

@@ -1,10 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { probeAcpSignIn } from "../../../../acp/src/client/probe.ts";
 import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
 import { spawnProcess, waitForChildProcess } from "../../../../common/src/child-process.ts";
+import { withFileWriteLock } from "../../../../common/src/file-write-lock.ts";
 import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
 import { findOnPath } from "../../../../common/src/find-on-path.ts";
 import { getAgentDir } from "../../config.ts";
@@ -70,7 +72,7 @@ function stamp(spec: RunnerSpec, env: NodeJS.ProcessEnv): { cli?: string; adapte
 	};
 }
 
-type Cache = Record<string, { stamp: string; state: RunnerState }>;
+type Cache = Record<string, { stamp: string; state?: RunnerState; revision?: string }>;
 
 function readCache(agentDir: string): Cache {
 	try {
@@ -81,11 +83,23 @@ function readCache(agentDir: string): Cache {
 	}
 }
 
-function writeCache(agentDir: string, cache: Cache): void {
+/** Merge under the shared file lock; no vendor command runs while it is held. */
+async function updateCache(agentDir: string, update: (cache: Cache) => void, signal?: AbortSignal): Promise<void> {
 	try {
-		atomicWriteFileSync(cacheFile(agentDir), `${JSON.stringify(cache, null, 2)}\n`, { mode: PRIVATE_FILE_MODE });
+		mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+		await withFileWriteLock(
+			cacheFile(agentDir),
+			async (_target, assertHeld) => {
+				const cache = readCache(agentDir);
+				signal?.throwIfAborted();
+				update(cache);
+				assertHeld();
+				atomicWriteFileSync(cacheFile(agentDir), `${JSON.stringify(cache, null, 2)}\n`, { mode: PRIVATE_FILE_MODE });
+			},
+			signal,
+		);
 	} catch {
-		// The next check runs again; nothing depends on the file being there.
+		// A cache write failure makes the next explicit check run again.
 	}
 }
 
@@ -173,17 +187,27 @@ export async function checkRunners(
 	const agentDir = options.agentDir ?? getAgentDir();
 	const cache = readCache(agentDir);
 	const specs = options.ids ? RUNNERS.filter((spec) => options.ids!.includes(spec.id)) : RUNNERS;
+	const updates: Cache = {};
 	const states = await Promise.all(
 		specs.map(async (spec) => {
 			const found = stamp(spec, env);
 			const cached = cache[spec.id];
-			if (!options.refresh && cached?.stamp === found.key) return cached.state;
+			if (!options.refresh && cached?.state && cached.stamp === found.key) return cached.state;
 			const state = await check(spec, found, env, options.signal);
-			if (!options.signal?.aborted) cache[spec.id] = { stamp: found.key, state };
+			if (!options.signal?.aborted) updates[spec.id] = { stamp: found.key, state, revision: cached?.revision };
 			return state;
 		}),
 	);
-	writeCache(agentDir, cache);
+	if (!options.signal?.aborted)
+		await updateCache(
+			agentDir,
+			(current) => {
+				for (const [id, entry] of Object.entries(updates)) {
+					if (current[id]?.revision === entry.revision) current[id] = entry;
+				}
+			},
+			options.signal,
+		);
 	return states;
 }
 
@@ -196,7 +220,7 @@ export function listRunners(env: NodeJS.ProcessEnv = process.env, agentDir: stri
 	return RUNNERS.map((spec) => {
 		const found = stamp(spec, env);
 		const cached = cache[spec.id];
-		if (cached?.stamp === found.key) return cached.state;
+		if (cached?.state && cached.stamp === found.key) return cached.state;
 		return { id: spec.id, name: spec.name, cli: Boolean(found.cli), adapter: Boolean(found.adapter) };
 	});
 }
@@ -206,7 +230,7 @@ export function cachedRunners(env: NodeJS.ProcessEnv = process.env, agentDir: st
 	const cache = readCache(agentDir);
 	return RUNNERS.flatMap((spec) => {
 		const cached = cache[spec.id];
-		return cached && cached.stamp === stamp(spec, env).key ? [cached.state] : [];
+		return cached?.state && cached.stamp === stamp(spec, env).key ? [cached.state] : [];
 	});
 }
 
@@ -218,9 +242,10 @@ export const isConnected = (state: RunnerState): boolean =>
 	(state.cli && state.adapter && state.auth?.signedIn === true) || headlessReady(state);
 
 /** Forgets a runner's cached check (its run was refused as signed out): the next check runs its commands again. */
-export function forgetRunner(id: string, agentDir: string = getAgentDir()): void {
-	const cache = readCache(agentDir);
-	if (!(id in cache)) return;
-	delete cache[id];
-	writeCache(agentDir, cache);
+export async function forgetRunner(id: string, agentDir: string = getAgentDir()): Promise<void> {
+	if (!RUNNERS.some((spec) => spec.id === id)) return;
+	await updateCache(agentDir, (cache) => {
+		// Keep the invalidation across processes, including when a first check is still in flight.
+		cache[id] = { stamp: "", revision: randomUUID() };
+	});
 }

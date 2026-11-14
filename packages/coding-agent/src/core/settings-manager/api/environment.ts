@@ -22,7 +22,7 @@ export interface EnvironmentSettingsApi {
 	getBashInheritProviderKeys(): boolean;
 	/** Most bytes the saved full output of a foreground bash command holds; 0 lifts the cap. */
 	getBashSpillMaxBytes(): number;
-	/** Whether the agent tool may declare its `external` type; off unless set. */
+	/** Whether the agent tool may use external agents and runners; on unless disabled. */
 	getExternalAgents(): boolean;
 	/** Turns external agents and runners on or off in the global settings (`/providers`, External agents). */
 	setExternalAgents(enabled: boolean): void;

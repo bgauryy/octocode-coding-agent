@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { ModelRuntime } from "../src/core/model-runtime.ts";
 import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
-import { modelDetails } from "../src/modes/interactive/components/model-selector/details.ts";
+import { compactModelDetails, modelDetails } from "../src/modes/interactive/components/model-selector/details.ts";
 import { sortModelItems } from "../src/modes/interactive/components/model-selector/model-items.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -48,6 +48,7 @@ it("selects only the chosen provider, including when shortcuts point elsewhere",
 		refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 		getError: () => undefined,
 		getProviderKind: () => "API key",
+		getProviderBilling: () => "metered",
 		getProvider: () => undefined,
 	} as unknown as ModelRuntime;
 	const select = vi.fn();
@@ -95,4 +96,14 @@ it("shows the rates in effect at the given time for a dated price", () => {
 	const after = modelDetails(selected, new Date("2027-01-01T00:00:00Z"));
 	expect(after).toContain("input $1.5 · output $7.5 · cache read $0.15");
 	expect(after).not.toContain("$0.75");
+});
+
+it("uses billing facts independently of CLI access labels", () => {
+	const selected = model("claude-code", "shared-model");
+	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("plan billing");
+	expect(modelDetails(selected, 0, "CLI", "plan")).toContain("Billing: billed by plan");
+	expect(modelDetails(selected, 0, "CLI", "plan")).not.toContain("Billing: metered");
+	expect(compactModelDetails(selected, "CLI", "metered").join("\n")).toContain("metered");
+	expect(modelDetails(selected, 0, "CLI", "metered")).toContain("Billing: metered");
+	expect(modelDetails(selected, 0, "CLI")).toContain("Billing: unknown");
 });

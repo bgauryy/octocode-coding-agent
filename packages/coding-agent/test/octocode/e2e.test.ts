@@ -965,7 +965,7 @@ describe("a subagent session with MCP enabled", () => {
 		)!.lastResults;
 		const schema = refused.find((result) => result.toolName === "archive")?.text ?? "";
 		expect(schema).toContain('"enum":["list","search","get"]');
-		expect(schema).toContain('"enum":["all","sessions","compactions","agents"]');
+		expect(schema).toContain('"enum":["all","sessions","compactions","agents","profile"]');
 		expect(turn.toolContracts.find((tool) => tool.name === "backlog")?.parameters).toMatchObject({
 			properties: { op: { enum: ["get", "claim", "note", "done", "close", "step"] } },
 		});

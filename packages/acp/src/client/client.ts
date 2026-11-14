@@ -11,6 +11,7 @@ import {
 	type RequestPermissionRequest,
 	type RequestPermissionResponse,
 	type SessionNotification,
+	type SetSessionConfigOptionResponse,
 } from "@agentclientprotocol/sdk";
 import type { AcpClientHost } from "../host.ts";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
@@ -29,7 +30,7 @@ export interface AcpConnectInput {
 	vendor: string;
 	cwd: string;
 	sessionId?: string;
-	/** A value of the agent's model config option, set before the connection is returned. */
+	/** An advertised model ID, selected before the connection is returned. */
 	model?: string;
 	/** MCP servers the agent's session starts with; none by default. */
 	mcpServers?: McpServer[];
@@ -209,15 +210,20 @@ export class AcpBackend implements ExternalBackend {
 			}
 			backend.closeOnShutdown = capabilities?.sessionCapabilities?.close != null;
 			if (input.model) {
-				phase = "session/set_config_option";
+				phase = backend.currentModels?.configId ? "session/set_config_option" : "session/set_model";
 				const refusal = modelRefusal(backend.currentModels, input.model);
 				if (refusal) throw new Error(refusal);
-				const selected = await untilAborted(
-					connection.agent.request(methods.agent.session.setConfigOption, {
-						sessionId: backend.currentSessionId,
-						configId: backend.currentModels!.configId!,
-						value: input.model,
-					}),
+				const selected = await untilAborted<SetSessionConfigOptionResponse | Record<string, never>>(
+					backend.currentModels!.configId
+						? connection.agent.request(methods.agent.session.setConfigOption, {
+								sessionId: backend.currentSessionId,
+								configId: backend.currentModels!.configId,
+								value: input.model,
+							})
+						: connection.agent.request<Record<string, never>>("session/set_model", {
+								sessionId: backend.currentSessionId,
+								modelId: input.model,
+							}),
 					startup,
 				);
 				backend.currentModels = acpModels(selected) ?? { ...backend.currentModels!, current: input.model };

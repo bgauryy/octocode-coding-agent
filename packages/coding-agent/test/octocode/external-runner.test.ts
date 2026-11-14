@@ -150,7 +150,7 @@ describe("checking runners", () => {
 		expect(saved).not.toContain("example.com");
 		expect(fs.statSync(path.join(claude.agentDir, "external-runners.json")).mode & 0o777).toBe(0o600);
 		expect(runnerRows(second.filter(isConnected)).join("\n")).toMatch(
-			/^Connected runners:[^\n]*\n {2}\S+ claude-code · Claude Code 2\.1\.400 · claude\.ai · plan$/,
+			/^Installed runners:[^\n]*\n {2}\S+ claude-code · Claude Code 2\.1\.400 · claude\.ai · plan$/,
 		);
 	});
 

@@ -11,7 +11,7 @@ instructions/
   lean/              lean.md                  (the whole policy of a `lean: true` child)
   subagent/          identity.md worktree.md why.md report.md   (a child's task message); role-skills.md (its role section); runner.md (an external runner's task message)
   notices/           runtime messages the model reads: compaction, recovery, resume, subagents, mail, hooks, the loop guard
-  tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`); `tools/bash/cli.md` is the CLI guide appended to the bash description
+  tools/             each tool's snippet and guidelines (`tools/<tool>/snippet.md`, `guidelines.md`); `tools/archive/description.md` describes archive reads; `tools/bash/cli.md` is the CLI guide appended to the bash description
   system/            skills-intro.md skill-references.md preamble.md docs.md rules-bash.md rules-floor.md project-context.md environment.md harnesses.md harness.md; claude-code.md and claude-code-history.md (what a `claude-code/*` model's Claude Code is told, `claude-code/transcript.ts`)
   workflows/         planning.md plan-approved.md plan-reminder.md side-question.md summarization.md title.md optimize-prompt.md
   roles/             researcher.md implementer.md reviewer.md browser.md lean.md   (profiles with front matter)

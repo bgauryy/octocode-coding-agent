@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
+import { runnerRows } from "../../src/octocode/external/connected.ts";
+import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
 import { externalListing } from "../../src/octocode/external/describe.ts";
 import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
 import { meteredBilling } from "./fake-host.ts";
@@ -11,13 +13,21 @@ const refs: ModelRef[] = [
 	{ provider: "gateway", id: "qwen", cost: { input: 1, output: 2 }, contextWindow: 200_000 },
 ];
 
-function run(input: Record<string, unknown>, external?: { call: (value: unknown) => Promise<unknown> }, kinds = {}) {
+function run(
+	input: Record<string, unknown>,
+	external?: { call: (value: unknown) => Promise<unknown> },
+	kinds = {},
+	runners: RunnerState[] = [],
+) {
 	let tool: ToolDefinition | undefined;
 	registerModelsTool(
 		{ registerTool: (definition: ToolDefinition) => void (tool = definition) } as never,
 		() => new Map(),
 		// `octocode/index.ts` composes the external listing; the models tool imports nothing of `external/`.
-		(ctx) => externalListing(external, ctx),
+		async (ctx, _signal, filters) => [
+			...runnerRows(runners, filters),
+			...(await externalListing(external, ctx, filters)),
+		],
 	);
 	return tool!
 		.execute("c", input, undefined, undefined, {
@@ -81,5 +91,51 @@ describe("models tool agents and credentials", () => {
 		expect(asked.sort()).toEqual(["gateway", "openai"]);
 		expect(text).toContain("\n  openai · subscription · saved credential");
 		expect(text).toContain("\n  gateway · API key · saved credential");
+	});
+	it("lists only matching external runners even when no native model matches", async () => {
+		const runners: RunnerState[] = ["opencode", "codex"].map((id) => ({
+			id,
+			name: id === "opencode" ? "OpenCode" : "Codex CLI",
+			cli: true,
+			adapter: true,
+			auth: { signedIn: true },
+		}));
+		for (const filter of [{ query: "OpenCode" }, { provider: "opencode" }]) {
+			const text = await run(filter, undefined, {}, runners);
+			expect(text).toContain("Installed runners");
+			expect(text).toContain("opencode · OpenCode");
+			expect(text).not.toContain("codex ·");
+			expect(text).not.toContain("No model matches");
+		}
+		const missing = await run({ query: "missing-runner" }, undefined, {}, runners);
+		expect(missing).toContain("No model matches");
+		const unknownAbility = await run({ query: "opencode", ability: "tools" }, undefined, {}, runners);
+		expect(unknownAbility).toContain("No model matches");
+		expect(unknownAbility).not.toContain("Installed runners");
+	});
+
+	it("filters structured external connections, instances and installed adapters", async () => {
+		const external = {
+			call: async () => ({
+				connections: [
+					{ id: "oc-1", vendor: "opencode", transport: "acp", model: "native-model" },
+					{ id: "codex-1", vendor: "codex", transport: "acp" },
+				],
+				instances: [{ id: "other-session", name: "other" }],
+				acpAgents: [
+					{ vendor: "opencode", command: "opencode" },
+					{ vendor: "codex", command: "codex-acp" },
+				],
+			}),
+		};
+		const text = await run({ provider: "opencode" }, external);
+		expect(text).toContain("oc-1");
+		expect(text).toContain("Installed ACP agents");
+		expect(text).not.toContain("codex-1");
+		expect(text).not.toContain("other-session");
+		expect(text).not.toContain("codex-acp");
+		const selected = await run({ query: "native-model" }, external);
+		expect(selected).toContain("oc-1");
+		expect(selected).not.toContain("Installed ACP agents");
 	});
 });

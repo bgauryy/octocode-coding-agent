@@ -122,10 +122,10 @@ export class AcpTextRedactor {
 	}
 }
 
-/** Keep answer previews safe even when independent message IDs interleave. */
+/** Coherent logical messages in first-seen order; raw notification updates retain chunk arrival order. */
 export class AcpAnswerPreview {
-	private readonly streams = new Map<string, AcpTextRedactor>();
-	private readonly text = new AcpTextRedactor();
+	private readonly streams = new Map<string, { redactor: AcpTextRedactor; slot: { text: string; active: boolean } }>();
+	private readonly slots: Array<{ text: string; active: boolean }> = [];
 	private omitted = false;
 	bytes = 0;
 
@@ -136,21 +136,50 @@ export class AcpAnswerPreview {
 		const key = textStreamKey(notification);
 		let stream = this.streams.get(key);
 		if (!stream && this.streams.size === ACP_TEXT_STREAMS) {
-			const idle = [...this.streams].find(([, candidate]) => candidate.idle);
-			if (idle) this.streams.delete(idle[0]);
+			const idle = [...this.streams].find(([, candidate]) => candidate.redactor.idle);
+			if (idle) {
+				idle[1].slot.text = idle[1].redactor.preview();
+				idle[1].slot.active = false;
+				this.streams.delete(idle[0]);
+				this.compact();
+			}
 		}
 		if (!stream && this.streams.size < ACP_TEXT_STREAMS && Buffer.byteLength(key) <= ACP_STREAM_KEY_BYTES) {
-			stream = new AcpTextRedactor((text) => this.text.append(text), false);
+			const slot = { text: "", active: true };
+			this.slots.push(slot);
+			stream = { redactor: new AcpTextRedactor(), slot };
 			this.streams.set(key, stream);
 		}
-		if (stream) stream.append(update.content.text);
+		if (stream) stream.redactor.append(update.content.text);
 		else this.omitted = true;
 	}
 
+	/** At most one retired span between active streams; each span retains only the bounded answer tail. */
+	private compact(): void {
+		for (let index = this.slots.length - 2; index >= 0; index--) {
+			const left = this.slots[index];
+			const right = this.slots[index + 1];
+			if (left.active || right.active) continue;
+			left.text = cutText(redactSecretFragments([left.text, right.text]).filter(Boolean).join("\n\n"), ACP_TEXT_BYTES, {
+				tail: true,
+			});
+			this.slots.splice(index + 1, 1);
+		}
+	}
+
 	finish(): string {
-		for (const stream of this.streams.values()) stream.finish();
-		this.text.finish();
-		return this.text.preview() + (this.omitted ? "\n[ACP text omitted: text stream identity limit reached.]" : "");
+		for (const { redactor, slot } of this.streams.values()) {
+			redactor.finish();
+			slot.text = redactor.preview();
+		}
+		// Redact again across message boundaries before retaining the combined tail.
+		const joined = redactSecretFragments(this.slots.map((slot) => slot.text))
+			.filter(Boolean)
+			.join("\n\n");
+		return (
+			cutText(redactSecrets(joined), ACP_TEXT_BYTES, { tail: true }) +
+			(this.omitted ? "\n[ACP text omitted: text stream identity limit reached.]" : "")
+		);
 	}
 }
 

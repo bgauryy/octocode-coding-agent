@@ -142,12 +142,12 @@ export function createProfiler(
 		}
 		return rows;
 	};
-	const rowOf = (base: ProfilerMember, prepared: Prepared | undefined): ProfileAgent =>
+	const rowOf = (base: ProfilerMember, prepared: Prepared | undefined, traffic: Traffic[], now: number): ProfileAgent =>
 		withContext(agentRow(base, prepared), {
 			member: base,
 			prepared,
-			traffic: source.traffic(),
-			now: Date.now(),
+			traffic,
+			now,
 			contextWindowOf: source.contextWindowOf?.bind(source),
 			cache: breakdowns,
 		});
@@ -168,11 +168,13 @@ export function createProfiler(
 
 	const frames = (): ProfileUpdate[] => {
 		const rows = listed();
+		const traffic = source.traffic();
+		const now = Date.now();
 		const { events, messages } = allEvents({
 			sessionId: source.sessionId,
 			lanes: lanes(rows),
-			traffic: source.traffic(),
-			now: Date.now(),
+			traffic,
+			now,
 		});
 		const freshEvents = events.filter((event) => !knownEvents.has(event.id));
 		const freshMessages = messages.filter((message) => knownMessages.get(message.id) !== message.state);
@@ -189,9 +191,9 @@ export function createProfiler(
 				(message) =>
 					message.from === base.id || (!rows.some((r) => r.base.id === message.from) && message.to[0] === base.id),
 			);
-			const agent = rowOf(base, prepared);
+			const agent = rowOf(base, prepared, traffic, now);
 			// Status, activity and context change without a new request: they get a frame of their own.
-			const state = JSON.stringify([agent.status, agent.activity, agent.contextTokens]);
+			const state = JSON.stringify(agent);
 			const moved = shown.get(base.id) !== state;
 			shown.set(base.id, state);
 			if (!prepared || (count <= from && !mine.length && !sent.length)) {
@@ -241,8 +243,9 @@ export function createProfiler(
 
 	return {
 		agents: () => {
-			const agents = listed().map(({ base, prepared }) => rowOf(base, prepared));
 			const generatedAt = Date.now();
+			const traffic = source.traffic();
+			const agents = listed().map(({ base, prepared }) => rowOf(base, prepared, traffic, generatedAt));
 			const starts = agents.flatMap((agent) => (agent.startedAt ? [agent.startedAt] : []));
 			return {
 				sessionId: source.sessionId,
@@ -252,9 +255,11 @@ export function createProfiler(
 			};
 		},
 		requests: (agentId, after, detail) => {
-			const row = listed().find((each) => each.base.id === agentId);
-			if (!row) return undefined;
-			const { prepared } = row;
+			const self = source.self();
+			const base = self?.id === agentId ? self : source.members().find((member) => member.id === agentId);
+			if (!base) return undefined;
+			const file = self?.id === agentId ? source.coordinatorFile() : source.transcript(agentId);
+			const prepared = file ? cache.load(file) : undefined;
 			if (!prepared) return { agentId, requests: [], hasMore: false };
 			const requests = deriveRequests(prepared.entries, { agentId, after, detail, prepared });
 			const next = (requests.at(-1)?.index ?? after ?? -1) + 1;

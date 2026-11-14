@@ -165,7 +165,7 @@ it("switches panels with the arrow keys on the tab strip and sends retired panel
 	const tab = await screen.findByRole("tab", { name: "Overview" });
 	tab.focus();
 	await user.keyboard("{ArrowRight}");
-	expect(screen.getByRole("tab", { name: "Trace" }).getAttribute("aria-selected")).toBe("true");
+	expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("true");
 	cleanup();
 	setup("requests");
 	expect((await screen.findByRole("tab", { name: "Trace" })).getAttribute("aria-selected")).toBe("true");

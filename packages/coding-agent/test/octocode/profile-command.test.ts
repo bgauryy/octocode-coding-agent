@@ -140,9 +140,11 @@ describe("octocode profile", () => {
 		expect(code).toBe(0);
 		expect(out).toContain("Session sess-main: 2 agents, $0.750");
 		const lines = out.split("\n");
-		expect(lines[1]).toMatch(/^AGENT\s+ROLE\s+MODEL\s+REQ\s+HIT\s+WRITTEN\s+COST$/);
-		expect(lines[2]).toMatch(/^steady-main\s+main\s+claude-sonnet-4-5\s+2\s+2%\s+90k\s+\$0\.500$/);
-		expect(lines[3]).toMatch(/^ {2}quick-finch\s+researcher\s+claude-sonnet-4-5\s+1\s+0%\s+12k\s+\$0\.250$/);
+		expect(lines[1]).toMatch(/^AGENT\s+ROLE\s+MODEL\s+REQ\s+HIT\s+WRITTEN\s+COST\s+CONTEXT\s+ACTIVITY$/);
+		expect(lines[2]).toMatch(/^steady-main\s+main\s+claude-sonnet-4-5\s+2\s+2%\s+90k\s+\$0\.500\s+62k\s+idle$/);
+		expect(lines[3]).toMatch(
+			/^ {2}quick-finch\s+researcher\s+claude-sonnet-4-5\s+1\s+0%\s+12k\s+\$0\.250\s+12k\s+left$/,
+		);
 	});
 
 	it("prints the contract objects with --json, for a session named by a prefix", async () => {

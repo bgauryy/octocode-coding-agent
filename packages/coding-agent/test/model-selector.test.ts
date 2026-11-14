@@ -208,4 +208,88 @@ describe("model selector", () => {
 			expect(rendered).toContain("Could not refresh 2 model catalogs (openai, anthropic); showing cached models.");
 		});
 	});
+	it("hides unavailable shortcut models while keeping all-model scope reachable", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "enabled", name: "Enabled" },
+				{ id: "disabled", name: "Disabled" },
+			],
+		});
+		const enabled = harness.getModel("enabled")!;
+		const disabled = harness.getModel("disabled")!;
+		vi.spyOn(harness.session.modelRuntime, "getAvailableSnapshot").mockReturnValue([enabled]);
+		vi.spyOn(harness.session.modelRuntime, "refresh").mockResolvedValue({ aborted: false, errors: new Map() });
+		const select = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			enabled,
+			harness.session.modelRuntime,
+			[{ model: disabled }],
+			select,
+			vi.fn(),
+		);
+		await vi.waitFor(() => expect(stripAnsi(selector.render(120).join("\n"))).toContain("Model catalogs refreshed."));
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("No available scoped shortcuts");
+		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("connect a provider");
+		selector.handleInput("\r");
+		expect(select).not.toHaveBeenCalled();
+		selector.handleInput("\t");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("enabled");
+		selector.handleInput("\r");
+		expect(select).toHaveBeenCalledWith(enabled);
+		selector.dispose();
+	});
+
+	it("keeps refreshed available shortcut identity and removes unavailable shortcuts", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "kept", name: "Kept" },
+				{ id: "removed", name: "Removed" },
+			],
+		});
+		const kept = harness.getModel("kept")!;
+		const removed = harness.getModel("removed")!;
+		let finish!: (value: { aborted: boolean; errors: Map<string, Error> }) => void;
+		vi.spyOn(harness.session.modelRuntime, "refresh").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const available = vi.spyOn(harness.session.modelRuntime, "getAvailableSnapshot").mockReturnValue([kept, removed]);
+		const select = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			kept,
+			harness.session.modelRuntime,
+			[{ model: kept }, { model: removed }],
+			select,
+			vi.fn(),
+		);
+		selector.handleInput("\x1b[B");
+		available.mockReturnValue([kept]);
+		finish({ aborted: false, errors: new Map() });
+		await vi.waitFor(() => expect(stripAnsi(selector.render(120).join("\n"))).toContain("Model catalogs refreshed."));
+		selector.handleInput("\r");
+		expect(select).toHaveBeenCalledWith(kept);
+		selector.dispose();
+	});
+	it("renders plan billing for a provider accessed through a CLI", async () => {
+		harness = await createHarness({ models: [{ id: "cli-model", name: "CLI model" }] });
+		vi.spyOn(harness.session.modelRuntime, "getProviderKind").mockReturnValue("CLI");
+		vi.spyOn(harness.session.modelRuntime, "getProviderBilling").mockReturnValue("plan");
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			harness.getModel("cli-model"),
+			harness.session.modelRuntime,
+			[],
+			vi.fn(),
+			vi.fn(),
+		);
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("plan billing");
+		selector.handleInput("\x04");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Billing: billed by plan");
+		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("Billing: metered");
+		selector.dispose();
+	});
 });

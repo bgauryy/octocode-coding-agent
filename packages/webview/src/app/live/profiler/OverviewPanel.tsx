@@ -10,7 +10,10 @@ import type { ProfileSelection } from "./panel-props.ts";
 import { formatClock, useNow } from "./use-now.ts";
 
 /** Where a tile or a row sends the page: another panel, optionally with the filter text and a row to open. */
-export type Navigate = (panel: "trace" | "insights", options?: { filter?: string; select?: ProfileSelection }) => void;
+export type Navigate = (
+	panel: "trace" | "insights" | "cache",
+	options?: { filter?: string; select?: ProfileSelection },
+) => void;
 
 const TOP_FINDINGS = 3;
 
@@ -169,7 +172,7 @@ export function OverviewPanel({
 	const pick = (id: KpiId) => {
 		if (id === "running") setWorkingOnly((value) => !value);
 		else if (id === "context" || id === "cost") setSort((value) => (value === id ? "activity" : id));
-		else if (id === "cache") onNavigate("insights", { filter: "cache" });
+		else if (id === "cache") onNavigate("cache");
 		else if (id === "attention") onNavigate("insights");
 	};
 	const selectedId = selection?.kind === "agent" || selection?.kind === "request" ? selection.agentId : undefined;

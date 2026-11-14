@@ -215,4 +215,24 @@ describe("provider health", () => {
 		);
 		expect(health.get("p")).toBeUndefined();
 	});
+
+	it("tries a sibling after a model-specific 403 instead of rejecting the provider credential", async () => {
+		const health = new ProviderHealth();
+		const tried: string[] = [];
+		const registry = {
+			streamSimple: (target: Model<Api>) => {
+				tried.push(target.id);
+				return {
+					result: async () =>
+						target.id === "restricted"
+							? { stopReason: "error", errorMessage: "403 You do not have access to model restricted" }
+							: { stopReason: "stop" },
+				} as never;
+			},
+		};
+		await checkProviders(registry, [[model("gateway", "restricted", 1, 1), model("gateway", "allowed", 2, 2)]], health);
+		expect(tried).toEqual(["restricted", "allowed"]);
+		expect(health.get("gateway")).toMatchObject({ ok: true, via: "check" });
+		expect(health.refused("gateway", "allowed")).toBe(false);
+	});
 });

@@ -112,6 +112,7 @@ describe("provider and model layout regressions", () => {
 			getAvailableSnapshot: () => models,
 			getModel: (p: string, id: string) => models.find((m) => m.provider === p && m.id === id),
 			getProviderKind: () => "subscription",
+			getProviderBilling: () => "plan",
 			getProvider: () => undefined,
 			refresh: async () => ({ aborted: false, errors: new Map() }),
 			getError: () => undefined,

@@ -22,7 +22,7 @@ export interface ContextBarProps {
 	caption?: boolean;
 }
 
-const pct = (part: number, whole: number) => `${Math.min(100, (part / whole) * 100)}%`;
+const pct = (part: number, whole: number) => `${whole > 0 ? Math.min(100, (part / whole) * 100) : 0}%`;
 
 function describe(segments: readonly ContextSegment[], text: string, label: string | undefined): string {
 	const parts = segments.map((segment) => `${groupLabel(segment.key)} ${formatTokens(segment.tokens)}`);

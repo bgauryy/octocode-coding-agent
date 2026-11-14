@@ -33,7 +33,7 @@ export interface RunnerReply {
 	billing?: RunnerBilling;
 }
 
-/** The connected runners of this session, fixed when the `agent` tool is declared, and how a turn runs in one. */
+/** The installed runners available in this session, fixed at tool declaration; a turn checks sign-in before launch. */
 export interface Runners {
 	readonly ids: readonly string[];
 	turn(input: RunnerTurn): Promise<RunnerReply>;

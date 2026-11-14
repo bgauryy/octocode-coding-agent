@@ -1,5 +1,5 @@
 import path from "node:path";
-import { animationClock, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TimerRow } from "../../../db/src/api.ts";
@@ -480,7 +480,8 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		motion.sync();
 		expect(motion.precise).toBe(true);
 		vi.advanceTimersByTime(1_000);
-		expect(repaints).toBeGreaterThan(5);
+		// A moving mark repaints at the background spinner's cadence.
+		expect(repaints).toBeGreaterThanOrEqual(Math.floor(1_000 / MOTION.backgroundSpinnerMs));
 		marks = [];
 		vi.advanceTimersByTime(1_000);
 		expect(motion.precise).toBe(false);

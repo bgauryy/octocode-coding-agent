@@ -78,9 +78,9 @@ export function registerBacklogTool(
 		{
 			op: StringEnum(OPS, { description: ops }),
 			id: Type.Optional(Type.String({ description: "B12; get: several; step: T12" })),
-			note: Type.Optional(Type.String({ description: "progress; step: result/check evidence" })),
+			note: Type.Optional(Type.String()),
 			why: Type.Optional(Type.String({ description: "claim: why, if unset" })),
-			goal: Type.Optional(Type.String({ description: "claim: checkable Definition of Done, if unset" })),
+			goal: Type.Optional(Type.String({ description: "claim: checkable goal, if unset" })),
 			completion: completionField("done: the result"),
 			close: Type.Optional(closeField),
 		},

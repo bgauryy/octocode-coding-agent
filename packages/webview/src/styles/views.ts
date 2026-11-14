@@ -1,5 +1,12 @@
 /** Board, table, tree and lists, the sheet. */
 export const VIEWS_CSS = `/* Board */
+.item-flow { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.item-flow ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; list-style: none; margin: 0; padding: 0; }
+.item-flow li { display: flex; align-items: center; gap: 6px; padding: 6px; font-size: var(--fs-xs); color: var(--text-2); border-bottom: 2px solid var(--border); }
+.item-flow li[aria-current] { color: var(--accent-strong); border-color: var(--accent); font-weight: 600; }
+.item-flow li > span { font-variant-numeric: tabular-nums; }
+.item-flow p { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
+@media (max-width: 480px) { .item-flow ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .view-description { margin-top: 5px; font-size: var(--fs-sm); }
 .board-overview { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; font-size: var(--fs-xs); color: var(--text-2); }
 .board-overview strong { color: var(--text); font-variant-numeric: tabular-nums; }

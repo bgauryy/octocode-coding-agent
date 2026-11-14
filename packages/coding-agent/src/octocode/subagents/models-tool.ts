@@ -1,3 +1,4 @@
+import type { ExternalModelFilters } from "../shared/model-filters.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
@@ -26,7 +27,11 @@ type ModelsContext = Pick<ExtensionContext, "model" | "thinkingLevel" | "modelRe
  * The blocks about agents outside Octocode's model loop (connected runners, external agents), from `octocode/index.ts`:
  * subagents reach no transport themselves. Empty when there are none or they are off.
  */
-export type ExternalListing = (ctx: ExtensionContext, signal?: AbortSignal) => Promise<string[]>;
+export type ExternalListing = (
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+	filters?: ExternalModelFilters,
+) => Promise<string[]>;
 
 /**
  * The `models` tool: this session's model and thinking level, the configured providers with their credential status,
@@ -46,9 +51,11 @@ export function registerModelsTool(
 		description:
 			"Session model/thinking, providers/credential status, model price/context/abilities and small/medium/profile routes. No filter: one row per provider; provider lists its models. Filters combine.",
 		parameters: Type.Object({
-			provider: Type.Optional(Type.String({ description: "List this provider's models" })),
+			provider: Type.Optional(Type.String({ description: "List this provider's models or external vendor/runner ID" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
-			query: Type.Optional(Type.String({ description: "Keep models whose provider/id contains this text" })),
+			query: Type.Optional(
+				Type.String({ description: "Keep models whose provider/id or external route identity contains this text" }),
+			),
 			check: Type.Optional(
 				Type.Boolean({
 					description: "true: check credentials by listing or small requests (may cost)",
@@ -75,7 +82,8 @@ export function registerModelsTool(
 			const kinds = providerKinds(ctx.modelRegistry, all);
 			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
 			const filtered = query || provider || params.ability;
-			if (filtered && shown.length === 0 && unconnected.length === 0)
+			const outside = await externalSection(listExternal, ctx, signal, { query, provider, ability: params.ability });
+			if (filtered && shown.length === 0 && unconnected.length === 0 && outside.length === 0)
 				return textResult(
 					[
 						sessionHeader(ctx),
@@ -86,7 +94,7 @@ export function registerModelsTool(
 			if (params.check)
 				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
 			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
-			const outside = await externalSection(listExternal, ctx, signal);
+
 			const credentials = `${source}\n${CREDENTIAL_MARKS}`;
 			// An unfiltered call, or a query or ability that keeps too many rows, gets one row per provider; a provider
 			// (or a short filter) gets the models themselves.
@@ -146,9 +154,14 @@ export function registerModelsTool(
 }
 
 /** Connected runners and external agents, when the setting enables them; a listing that fails adds nothing. */
-async function externalSection(list: ExternalListing, ctx: ExtensionContext, signal?: AbortSignal): Promise<string[]> {
+async function externalSection(
+	list: ExternalListing,
+	ctx: ExtensionContext,
+	signal?: AbortSignal,
+	filters?: ExternalModelFilters,
+): Promise<string[]> {
 	try {
-		return (await list(ctx, signal)).filter((block) => block.trim());
+		return (await list(ctx, signal, filters)).filter((block) => block.trim());
 	} catch {
 		return [];
 	}

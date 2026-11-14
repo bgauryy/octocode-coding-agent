@@ -44,6 +44,12 @@ export const SEPARATOR = " · ";
 export const MOTION = {
 	/** Spinner frame interval. */
 	spinnerMs: 80,
+	/**
+	 * Spinner frame interval of work running in the background (the team panel's agents and jobs). These rows can spin
+	 * for hours while nothing else moves; every frame repaints the terminal, and terminals that render rows as DOM
+	 * (VS Code with GPU acceleration off, screen-reader mode) pay for each one. The foreground keeps `spinnerMs`.
+	 */
+	backgroundSpinnerMs: 200,
 	/** A light band crossing a live label (thinking, the working verb). */
 	shimmerPeriodMs: 2_000,
 	/** One in-and-out breath of a mark that waits on the user. */

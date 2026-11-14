@@ -279,7 +279,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			expect(octocode).toContain(
 				"Never bypass a hook, a safety check (such as `--no-verify`) or a permission refusal, for example by retrying through another tool",
 			);
-			expect(octocode).toContain("exact paths, item/agent/job/message ids and cursors");
+			expect(octocode).toContain("exact paths/ids/cursors");
 			expect(octocode).toContain("state truncation or coverage gaps");
 			expect(octocode).toContain("Fetch only the evidence the next decision needs");
 			expect(octocode).not.toContain("Use bash for builds");
@@ -339,7 +339,7 @@ describe("registerTurnSetup routing and child trim", () => {
 			{ name: "browser", enabled: true, state: "unselected", toolCount: 0, source: "default", exposure: "direct" },
 		]);
 		expect((await run(fake, { selectedTools })).delegation).toContain(
-			"Delegate browser interaction to `browser`: give the task, URL and required evidence. Follow up the same agent while reachable; it has the browser tools you lack.",
+			"Delegate browser interaction to `browser` with the task, URL and required evidence. Follow up the same agent while reachable; it has the browser tools you lack.",
 		);
 		setMcpSessionStatus(fake.api.events, [
 			{ name: "browser", enabled: true, state: "connecting", toolCount: 0, source: "default", exposure: "direct" },

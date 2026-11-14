@@ -8,7 +8,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The models an ACP agent reports, and the config option that selects one when the agent offers it. */
 export interface AcpModels extends ExternalModels {
-	/** Absent when the agent reports models only through the unstable `models` field, which this client cannot set. */
+	/** Absent when the agent reports models only through the unstable `models` field, selected through `session/set_model`. */
 	configId?: string;
 }
 
@@ -46,10 +46,7 @@ export function acpModels(state: SessionState): AcpModels | undefined {
 
 /** Why a requested model cannot be set, naming what the agent offers; undefined when it can. */
 export function modelRefusal(models: AcpModels | undefined, model: string): string | undefined {
-	if (!models?.configId)
-		return models?.available.length
-			? `ACP agent reports models (${models.available.slice(0, 20).join(", ")}) but no model config option to set; connect without model.`
-			: "ACP agent offers no model option; connect without model.";
+	if (!models?.available.length) return "ACP agent offers no model option; connect without model.";
 	if (models.available.includes(model)) return undefined;
 	const shown = models.available.slice(0, 20).join(", ");
 	const more = models.available.length > 20 ? `, and ${models.available.length - 20} more` : "";

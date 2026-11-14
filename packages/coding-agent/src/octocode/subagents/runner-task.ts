@@ -10,24 +10,24 @@ import type { Runners } from "./runner-port.ts";
 /** Task fields that belong to an Octocode child: a runner has its own tools, skills and session, so they do not apply. */
 const NATIVE_ONLY = ["skills", "mcp", "profile", "resume", "headless"] as const;
 
-/** The `runner` field of a task, declared only while a runner is connected (the default prompt carries none of it). */
+/** The `runner` field of a task, declared when an installed runnable CLI is available in this session. */
 export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Vendor CLI over ACP, using its own sign-in (plan or metered key; models). Worktree, report and stop behave as for children; model is its own option. No skills, mcp, profile, resume or headless.",
+				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). See models. No skills, mcp, profile, resume or headless.",
 		}),
 	);
 
 /**
  * The plan of a runner task: no profile, and the runner as its route (`claude-code/opus`), so the start result and the
- * row say where it runs. Refuses a runner that is not connected and the fields only an Octocode child takes.
+ * row say where it runs. Refuses a runner unavailable in this session and the fields only an Octocode child takes.
  */
 export function runnerPlan(params: Record<string, unknown>, runners: Runners | undefined): RunPlan {
 	const runner = String(params.runner);
 	if (!runners?.ids.includes(runner))
 		throw new Error(
-			`Runner ${runner} is not connected${runners?.ids.length ? `; connected: ${runners.ids.join(", ")}` : ""}. Connect it in /providers (External agents).`,
+			`Runner ${runner} is unavailable in this session${runners?.ids.length ? `; available: ${runners.ids.join(", ")}` : ""}. Check /providers (External agents), then start a new session to discover installed runners.`,
 		);
 	const native = NATIVE_ONLY.filter((field) => params[field] !== undefined);
 	if (native.length) throw new Error(`A runner task does not take ${native.join(", ")}.`);
@@ -44,7 +44,7 @@ interface SpawnPermission {
 }
 
 /**
- * A subagent's `agent` task type when a runner is connected: it starts only runner tasks, in the foreground, in its own
+ * A subagent's `agent` task type when a runner is available: it starts only runner tasks, in the foreground, in its own
  * working directory (its worktree when it is isolated). The runner's process belongs to this child, whose process tree
  * its parent stops; the spawn approval and the runner's permission requests reach the user through the parent's relay.
  */
@@ -58,9 +58,9 @@ export function registerChildRunnerTask(
 		name: "agent",
 		label: "Agent",
 		description:
-			"Run a self-contained task in a connected vendor CLI using its own sign-in and return its report; the call waits for it.",
+			"Run a self-contained task in an installed vendor CLI using its own sign-in, checked when used, and return its report; the call waits for it.",
 		parameters: Type.Object({
-			runner: StringEnum(runners.ids, { description: "The connected vendor CLI that does the task (see models)" }),
+			runner: StringEnum(runners.ids, { description: "The installed vendor CLI that does the task (see models)" }),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({ description: "The whole brief: the runner sees nothing else of this session" }),
 			model: Type.Optional(Type.String({ description: "The runner's own model option" })),

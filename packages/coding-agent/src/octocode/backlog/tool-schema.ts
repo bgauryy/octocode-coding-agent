@@ -10,7 +10,6 @@ import { BacklogError, parseRef } from "./item.ts";
  */
 export const closeField = Type.Object(CloseInputSchema.properties, {
 	additionalProperties: false,
-	description: "close: the reason",
 });
 
 /**
@@ -102,12 +101,12 @@ export function completionField(description: string) {
 				summary: { type: "string" },
 				verification: {
 					type: "string",
-					description: "Starts with passed, failed, not run or not applicable; then what ran",
+					description: "Start passed, failed, not run or not applicable; name the check",
 				},
 				files: { type: "array", items: { type: "string" } },
 				lesson: { type: "string" },
 				replaces: { type: "integer", description: "Completion id to correct" },
-				operationKey: { type: "string", description: "Retry key: a repeat is not recorded twice" },
+				operationKey: { type: "string", description: "Retry key; repeats record once" },
 			},
 			additionalProperties: false,
 			description,

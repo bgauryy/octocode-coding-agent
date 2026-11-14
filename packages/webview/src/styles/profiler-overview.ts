@@ -1,5 +1,12 @@
 /** The Overview: KPI strip, agent rows with their context bars, Right now and Top findings. */
 export const PROFILER_OVERVIEW_CSS = `/* Profiler overview */
+.pf-cache-panel, .pf-cache-card, .pf-cache-usage { display: grid; gap: 12px; min-width: 0; }
+.pf-cache-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; }
+.pf-cache-card { align-content: start; overflow-wrap: anywhere; }
+.pf-cache-card p, .pf-cache-panel h3 { margin: 0; }
+.pf-cache-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.pf-cache-bar { display: flex; height: 22px; border-radius: 5px; overflow: hidden; background: var(--surface-3); }
+.pf-cache-bar > span { display: block; height: 100%; }
 .pf-ctx { display: grid; gap: 4px; min-width: 0; }
 .pf-ctx-track { position: relative; display: block; height: 14px; border-radius: 4px; background: var(--surface-3); overflow: hidden; outline: 1px solid transparent; outline-offset: -1px; }
 .pf-ctx-sm .pf-ctx-track { height: 10px; }

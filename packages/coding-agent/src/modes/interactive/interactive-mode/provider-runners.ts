@@ -146,18 +146,9 @@ export function runnerSection(states: readonly RunnerState[], enabled: boolean):
 /** What a runner's page uses of the interactive host. */
 type RunnerPageHost = Pick<ProviderManagerHost, "session" | "ui" | "showStatus" | "showError" | "showSelector">;
 
-/**
- * After a sign-in or a fresh check: one status line with the runner's sign-in. Connecting a runner turns
- * `externalAgents` on (RFC D3.2) when the user never set it; a setting the user chose, on or off, stands.
- */
-function reportCheck(page: Pick<RunnerPageHost, "session" | "showStatus">, name: string, now: RunnerState): void {
-	const settings = page.session.settingsManager;
-	const turnOn =
-		isConnected(now) && !settings.getExternalAgents() && settings.getGlobalSettings().externalAgents === undefined;
-	if (turnOn) settings.setExternalAgents(true);
-	page.showStatus(
-		`${name}: ${signIn(now)}.${turnOn ? " External agents turned on: new sessions can run agent tasks in it (externalAgents)." : ""}`,
-	);
+/** Report the runner's sign-in after a login or fresh check; changing task availability is a separate user action. */
+function reportCheck(page: Pick<RunnerPageHost, "showStatus">, name: string, now: RunnerState): void {
+	page.showStatus(`${name}: ${signIn(now)}.`);
 }
 
 /**
@@ -219,7 +210,7 @@ export async function showRunnerDetail(
 	actions.set(
 		enabled
 			? "Stop running agent tasks in external agents (new sessions)"
-			: "Run agent tasks in connected external agents (new sessions)",
+			: "Run agent tasks in installed external agents (new sessions)",
 		() => {
 			settings.setExternalAgents(!enabled);
 			page.showStatus(

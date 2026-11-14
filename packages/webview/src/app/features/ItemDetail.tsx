@@ -11,6 +11,7 @@ import { Badge, IconButton, PriorityIcon, RelativeTime, Section, StatusLabel } f
 import { isEpic, shownState } from "../model/hierarchy.ts";
 import { RelatedList, StaleBadge } from "./shared.tsx";
 import { RollupLine, TaskList } from "./Tasks.tsx";
+import { ItemFlow } from "./ItemFlow.tsx";
 
 export function MissingItem({ refName, onClose }: { refName: string; onClose: () => void }) {
 	return (
@@ -88,6 +89,7 @@ export function ItemDetail({
 				</ul>
 			)}
 			{actions && <div className="sheet-actions">{actions}</div>}
+			<ItemFlow item={it} />
 			{((it.blockedBy?.length ?? 0) > 0 || it.needsReview) && (
 				<div className="callout tone-warning" role="note">
 					{it.blockedBy?.length ? <p>Blocked by {it.blockedBy.join(", ")}.</p> : null}

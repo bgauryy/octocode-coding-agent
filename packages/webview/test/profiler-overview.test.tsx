@@ -248,7 +248,7 @@ describe("Overview agent rows", () => {
 		act(() => screen.getByRole("button", { name: /^Running now/ }).click());
 		expect(screen.queryByRole("button", { name: /^kid,/ })).toBeNull();
 		act(() => screen.getByRole("button", { name: /^Cache hit/ }).click());
-		expect(onNavigate).toHaveBeenCalledWith("insights", { filter: "cache" });
+		expect(onNavigate).toHaveBeenCalledWith("cache");
 	});
 });
 

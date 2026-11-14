@@ -1,1 +1,1 @@
-Before answering about earlier sessions or anything from before a compaction summary
+Read earlier sessions and compactions; profile context, cache and latency

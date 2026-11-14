@@ -92,9 +92,9 @@ describe("native prompt section updates", () => {
 			const prompt = buildSystemPrompt(options);
 			expect(prompt.match(/Test public behavior/g)).toHaveLength(1);
 			expect(prompt).toContain("Test public behavior");
-			expect(prompt).toContain("reproduce bugs with failing tests");
+			expect(prompt).toContain("Reproduce bugs in failing tests");
 			expect(prompt).toContain("mocking only external boundaries");
-			expect(prompt).toContain("Never weaken or delete tests");
+			expect(prompt).toContain("Never weaken/delete tests");
 			// The agent tool's message guideline owns when to message; the policy does not restate it.
 			expect(prompt).not.toContain("promptly exchange");
 			if (isSubagent) {
@@ -109,7 +109,8 @@ describe("native prompt section updates", () => {
 		const root = octocodePrompt(input);
 		const writer = octocodePrompt({ ...input, canDelegate: false });
 		const reader = octocodePrompt({ ...input, canDelegate: false, readOnly: true });
-		for (const prompt of [root, writer]) expect(prompt).toContain("check exports, config and docs");
+		for (const prompt of [root, writer])
+			expect(prompt).toContain("Before edits, read implementation/callers/tests/exports/config/docs");
 		expect(root).toContain("propose wider cleanups.");
 		expect(writer).toContain("report issues outside your assignment");
 		expect(reader).not.toContain("blast radius");
@@ -133,7 +134,7 @@ describe("native prompt section updates", () => {
 		expect(root).toContain("keep commands and link targets exact.");
 		expect(root).toContain("Do not repeat visuals in prose;");
 		expect(root).toContain("Use the shortest clear form.");
-		expect(root).toContain("Finish or revert partial edits; stop only your jobs whose result is moot.");
+		expect(root).toContain("Finish/revert partial edits; stop only your moot jobs.");
 		for (const prompt of [writer, reader]) {
 			expect(prompt).not.toContain("draw it in plain text");
 			expect(prompt).not.toContain("Finish or revert partial edits");

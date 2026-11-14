@@ -79,7 +79,8 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 	}
 
 	getExternalAgents(): boolean {
-		return this.settings.externalAgents === true;
+		const value: unknown = this.settings.externalAgents;
+		return value === undefined ? SETTINGS_DEFAULTS.externalAgents : value === true;
 	}
 
 	setExternalAgents(enabled: boolean): void {

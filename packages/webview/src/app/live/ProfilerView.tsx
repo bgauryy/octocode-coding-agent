@@ -4,6 +4,7 @@ import type { ViewProps } from "../extension.ts";
 import { movedProfilerPanel } from "../model/route.ts";
 import { Button, cx } from "../ui/primitives.tsx";
 import { Drawer } from "./profiler/Drawer.tsx";
+import { CachePanel } from "./profiler/CachePanel.tsx";
 import type { Evidence } from "./profiler/insight-model.ts";
 import { InsightsPanel } from "./profiler/InsightsPanel.tsx";
 import { MessagesPanel } from "./profiler/MessagesPanel.tsx";
@@ -18,6 +19,7 @@ import { useLive } from "./session.tsx";
 
 const PANELS = [
 	{ name: "overview", label: "Overview" },
+	{ name: "cache", label: "Cache" },
 	{ name: "trace", label: "Trace" },
 	{ name: "messages", label: "Messages" },
 	{ name: "insights", label: "Insights" },
@@ -217,6 +219,8 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 						/>
 					) : !loaded ? (
 						<output className="muted">{error ? "The profiler is unavailable." : "Loading…"}</output>
+					) : panel === "cache" ? (
+						<CachePanel {...props} />
 					) : panel === "trace" ? (
 						<TracePanel {...props} evidence={evidence} />
 					) : panel === "messages" ? (

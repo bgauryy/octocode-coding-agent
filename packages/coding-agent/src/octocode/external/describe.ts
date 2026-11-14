@@ -1,3 +1,4 @@
+import { matchesExternalModel, type ExternalModelFilters } from "../shared/model-filters.ts";
 import { GLYPH } from "@octocodeai/octocode-tui";
 import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/text.ts";
@@ -13,34 +14,48 @@ const cell = (value: unknown, max = 120): string =>
 const row = (...cells: string[]): string => `  ${cells.filter(Boolean).join(" · ")}`;
 
 /** Connected and discoverable external agents as readable rows; empty when there are none. */
-export function externalRows(data: unknown): string[] {
+export function externalRows(data: unknown, filters?: ExternalModelFilters): string[] {
 	const found = asRecord(data);
-	const connections = asRecords(found.connections).map((entry) =>
-		row(
-			`${GLYPH.live} ${cell(entry.id, 64)}`,
-			[cell(entry.transport, 16), cell(entry.vendor, 32)].filter(Boolean).join(" "),
-			cell(entry.model, 64),
-			entry.busy === true ? "busy" : "idle",
-			cell(entry.cwd),
-		),
-	);
-	const instances = asRecords(found.instances).map((entry) =>
-		row(
-			`${GLYPH.pending} octocode ${cell(entry.id, 64)}`,
-			cell(entry.name, 64),
-			entry.pid === undefined ? "" : `pid ${cell(entry.pid, 12)}`,
-			cell(entry.cwd),
-		),
-	);
-	const installed = asRecords(found.acpAgents).map((entry) =>
-		row(
-			`${GLYPH.pending} ${cell(entry.vendor, 32)}`,
-			[cell(entry.command, 64), ...(Array.isArray(entry.args) ? entry.args.map((arg) => cell(arg, 32)) : [])]
-				.filter(Boolean)
-				.join(" "),
-			cell(entry.path),
-		),
-	);
+	const connections = asRecords(found.connections)
+		.filter((entry) =>
+			matchesExternalModel(
+				filters,
+				cell(entry.vendor),
+				[entry.id, entry.vendor, entry.model].map((value) => cell(value)).join(" "),
+			),
+		)
+		.map((entry) =>
+			row(
+				`${GLYPH.live} ${cell(entry.id, 64)}`,
+				[cell(entry.transport, 16), cell(entry.vendor, 32)].filter(Boolean).join(" "),
+				cell(entry.model, 64),
+				entry.busy === true ? "busy" : "idle",
+				cell(entry.cwd),
+			),
+		);
+	const instances = asRecords(found.instances)
+		.filter((entry) => matchesExternalModel(filters, "octocode", `octocode ${cell(entry.id)} ${cell(entry.name)}`))
+		.map((entry) =>
+			row(
+				`${GLYPH.pending} octocode ${cell(entry.id, 64)}`,
+				cell(entry.name, 64),
+				entry.pid === undefined ? "" : `pid ${cell(entry.pid, 12)}`,
+				cell(entry.cwd),
+			),
+		);
+	const installed = asRecords(found.acpAgents)
+		.filter((entry) =>
+			matchesExternalModel(filters, cell(entry.vendor), `${cell(entry.vendor)} ${cell(entry.command)}`),
+		)
+		.map((entry) =>
+			row(
+				`${GLYPH.pending} ${cell(entry.vendor, 32)}`,
+				[cell(entry.command, 64), ...(Array.isArray(entry.args) ? entry.args.map((arg) => cell(arg, 32)) : [])]
+					.filter(Boolean)
+					.join(" "),
+				cell(entry.path),
+			),
+		);
 	return [
 		...(connections.length ? ["Connected external agents", ...connections] : []),
 		...(instances.length
@@ -101,10 +116,11 @@ export function describeExternalFailure(failure: Record<string, unknown>): strin
 export async function externalListing(
 	agents: Pick<ExternalAgents, "call"> | undefined,
 	ctx: ExtensionContext,
+	filters?: ExternalModelFilters,
 ): Promise<string[]> {
 	if (!agents) return [];
 	try {
-		const rows = externalRows(await agents.call({ action: "list" }, ctx));
+		const rows = externalRows(await agents.call({ action: "list" }, ctx), filters);
 		return rows.length ? [rows.join("\n")] : [];
 	} catch {
 		return [];

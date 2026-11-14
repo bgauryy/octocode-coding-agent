@@ -30,8 +30,8 @@ const LINES: Record<Mode, string> = {
 		"Queue steering, questions or evidence to teammates; only reachable non-isolated background children resume on a message.",
 };
 
-/** Added to the task line only while a runner is connected (the task schema then declares `runner`). */
-const RUNNER_LINE = " With runner, a connected vendor CLI uses its own sign-in (models lists them).";
+/** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */
+const RUNNER_LINE = " With runner: vendor CLI (see models).";
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =

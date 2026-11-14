@@ -1,13 +1,6 @@
-import {
-	animationClock,
-	GLYPH,
-	MOTION,
-	SEPARATOR,
-	SPINNER,
-	truncateToWidth,
-	visibleWidth,
-} from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, SEPARATOR, SPINNER, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
+import { spinnerMs } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { formatCost, formatTokens } from "../../shared/format.ts";
 import { collapsedRows, type Finished, panelBudget } from "./compact.ts";
@@ -25,7 +18,7 @@ const MAX_ROWS = 6;
 const workMark = (now: number): string =>
 	animationClock.isReducedMotion()
 		? GLYPH.live
-		: SPINNER.braille[Math.floor(now / MOTION.spinnerMs) % SPINNER.braille.length];
+		: SPINNER.braille[Math.floor(now / spinnerMs(true)) % SPINNER.braille.length];
 
 /** How much each agent shows, from most to least: its rows and every message line; its rows and the lines that wait on the user; one row each with those lines; one row each. */
 const TIERS = [

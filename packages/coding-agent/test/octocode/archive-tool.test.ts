@@ -167,18 +167,20 @@ describe("the archive tool", () => {
 			expect(archive.parameters.properties, field).not.toHaveProperty(field);
 	});
 
-	it("declares the diagnostics for the main session only and refuses them in a subagent", async () => {
+	it("allows subagent profiling while keeping lifecycle events and errors coordinator-only", async () => {
 		const fake = fakeHost();
 		registerArchiveTool(fake.api, { isSubagent: true });
 		const archive = fake.tools.get("archive");
-		expect(archive.parameters.properties.source.enum).toEqual(["all", "sessions", "compactions", "agents"]);
-		for (const field of ["errors", "agentId", "eventType", "until"])
+		expect(archive.parameters.properties.source.enum).toEqual(["all", "sessions", "compactions", "agents", "profile"]);
+		expect(archive.parameters.properties).toHaveProperty("agentId");
+		expect(archive.parameters.properties).toHaveProperty("request");
+		for (const field of ["errors", "eventType", "until"])
 			expect(archive.parameters.properties, field).not.toHaveProperty(field);
 		for (const [name, schema] of Object.entries(
 			archive.parameters.properties as Record<string, { description?: string }>,
 		)) {
 			expect(schema.description, name).toBeTruthy();
-			expect(schema.description, name).not.toMatch(/errors|profile|events/i);
+			expect(schema.description, name).not.toMatch(/errors|events/i);
 		}
 		const main = fakeHost();
 		registerArchiveTool(main.api);
@@ -188,7 +190,7 @@ describe("the archive tool", () => {
 		await expect(run({ op: "search", errors: true })).rejects.toThrow(
 			"errors is read by the main session only: ask your coordinator for it.",
 		);
-		for (const source of ["events", "profile"])
+		for (const source of ["events"])
 			await expect(run({ op: "list", source })).rejects.toThrow(
 				`source ${source} is read by the main session only: ask your coordinator for it.`,
 			);

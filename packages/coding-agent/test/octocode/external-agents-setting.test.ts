@@ -14,17 +14,32 @@ describe("externalAgents setting", () => {
 
 	const write = (settings: unknown) => fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify(settings));
 
-	it("is off by default and with no settings file", () => {
-		expect(SETTINGS_DEFAULTS.externalAgents).toBe(false);
-		expect(externalAgentsEnabled(dir)).toBe(false);
+	it("is on by default and with no settings file", () => {
+		expect(SETTINGS_DEFAULTS.externalAgents).toBe(true);
+		expect(externalAgentsEnabled(dir)).toBe(true);
 		write({});
+		expect(externalAgentsEnabled(dir)).toBe(true);
+	});
+
+	it("honors global disable and fails closed for invalid settings", () => {
+		write({ externalAgents: true });
+		expect(externalAgentsEnabled(dir)).toBe(true);
+		write({ externalAgents: false });
+		expect(externalAgentsEnabled(dir)).toBe(false);
+		write({ externalAgents: "yes" });
+		expect(externalAgentsEnabled(dir)).toBe(false);
+		fs.writeFileSync(path.join(dir, "settings.json"), "{broken");
 		expect(externalAgentsEnabled(dir)).toBe(false);
 	});
 
-	it("is on only when the global settings say true", () => {
-		write({ externalAgents: true });
-		expect(externalAgentsEnabled(dir)).toBe(true);
-		write({ externalAgents: "yes" });
+	it("does not let project settings override the global choice", () => {
+		const project = path.join(dir, ".octocode");
+		fs.mkdirSync(project);
+		fs.writeFileSync(path.join(project, "settings.json"), JSON.stringify({ externalAgents: true }));
+		write({ externalAgents: false });
 		expect(externalAgentsEnabled(dir)).toBe(false);
+		fs.writeFileSync(path.join(project, "settings.json"), JSON.stringify({ externalAgents: false }));
+		write({});
+		expect(externalAgentsEnabled(dir)).toBe(true);
 	});
 });

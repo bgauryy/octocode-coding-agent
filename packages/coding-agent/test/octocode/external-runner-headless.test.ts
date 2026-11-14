@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectAcp } from "../../src/octocode/external/acp-host.ts";
 import { HEADLESS_ROUTE, headlessReady, runnerRoute } from "../../src/octocode/external/runner-headless.ts";
 import { launchOf, type RunnerLaunch, runnerTurn } from "../../src/octocode/external/runner-session.ts";
-import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
+import { cachedRunners, type RunnerState } from "../../src/octocode/external/runner-status.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -131,7 +131,7 @@ describe("the headless route", () => {
 			billing: "plan",
 		});
 		expect(() => launchOf("claude-code", [{ ...signedIn(false), auth: { signedIn: false } }])).toThrow(
-			/not connected.*\/providers/,
+			/is signed out.*\/providers/,
 		);
 	});
 });
@@ -198,7 +198,10 @@ describe("a runner's turn headless", () => {
 		await expect(
 			turn({ command: claude.command, args: ["-p"], billing: "plan", route: "headless" }, { cwd }).reply,
 		).rejects.toThrow(/claude-code is signed out: sign in with \/providers/);
-		expect(JSON.parse(fs.readFileSync(cache, "utf8"))).toEqual({});
+		expect(JSON.parse(fs.readFileSync(cache, "utf8"))).toEqual({
+			"claude-code": { stamp: "", revision: expect.any(String) },
+		});
+		expect(cachedRunners(process.env, agentDir)).toEqual([]);
 	});
 
 	it("reports an exit without a result with its stderr, secrets redacted", async () => {

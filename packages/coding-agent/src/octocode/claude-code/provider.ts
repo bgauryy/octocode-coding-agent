@@ -35,7 +35,10 @@ export interface ClaudeCodeBackend {
  * calls Octocode's tools over MCP. The loop's requests in the bound session continue that session's Claude Code session;
  * any other request (a summary, a side call) runs once in a session of its own, without tools, closed when it ends.
  */
-export function createClaudeCodeBackend(launch: ClaudeCodeLaunch, signedOut?: () => void): ClaudeCodeBackend {
+export function createClaudeCodeBackend(
+	launch: ClaudeCodeLaunch,
+	signedOut?: () => void | Promise<void>,
+): ClaudeCodeBackend {
 	const sessions = new Map<string, ClaudeCodeSession>();
 	let bound: { id: string; cwd: string } | undefined;
 	let turn = false;

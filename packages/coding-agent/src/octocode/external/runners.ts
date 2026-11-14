@@ -54,8 +54,10 @@ function readClaudeStatus(output: string): RunnerAuth | undefined {
 	const method = typeof status.authMethod === "string" ? status.authMethod : undefined;
 	const provider = typeof status.apiProvider === "string" ? status.apiProvider : "firstParty";
 	if (!status.loggedIn) return { signedIn: false };
-	const metered = method === "api_key" || (provider !== "firstParty" && provider !== "gateway");
-	const billing = metered ? "metered" : method === "claude.ai" ? "plan" : undefined;
+	const metered =
+		Boolean(status.apiKeySource) || method === "api_key" || (provider !== "firstParty" && provider !== "gateway");
+	const plan = method === "claude.ai" || (method === "oauth_token" && provider === "firstParty");
+	const billing = metered ? "metered" : plan ? "plan" : undefined;
 	return {
 		signedIn: true,
 		...(method ? { method: provider === "firstParty" ? method : `${method} (${provider})` } : {}),
@@ -71,14 +73,25 @@ function readCodexStatus(output: string, code: number | null): RunnerAuth | unde
 	return code === 1 ? { signedIn: false } : undefined;
 }
 
-/** `opencode auth list --format json`: signed in when it lists a credential; their values are never read. */
+/** OpenCode V2 lists provider connections: stored credentials or credentials supplied by its server environment. */
 function readOpencodeStatus(output: string): RunnerAuth | undefined {
-	const listed = parseJson(output.trim().startsWith("[") ? `{"list":${output.trim()}}` : output);
-	if (!isRecord(listed)) return undefined;
-	const entries = Object.values(listed).flatMap((value) =>
-		Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [],
-	);
-	return entries.length > 0 ? { signedIn: true, method: "opencode auth" } : { signedIn: false };
+	const parsed = parseJson(output.trim().startsWith("[") ? `{"list":${output.trim()}}` : output);
+	const rows = isRecord(parsed) && Array.isArray(parsed.list) ? parsed.list : undefined;
+	if (!rows) return undefined;
+	let connected = false;
+	for (const row of rows) {
+		if (!isRecord(row)) return undefined;
+		if (typeof row.id === "string" && Array.isArray(row.connections)) {
+			for (const connection of row.connections) {
+				if (!isRecord(connection) || !["credential", "env"].includes(String(connection.type))) return undefined;
+				connected = true;
+			}
+		} else if (typeof row.provider === "string" && ["api", "oauth"].includes(String(row.type))) {
+			// Earlier CLIs returned credential rows directly.
+			connected = true;
+		} else return undefined;
+	}
+	return connected ? { signedIn: true, method: "opencode auth" } : { signedIn: false };
 }
 
 const configDir = (env: NodeJS.ProcessEnv, name: string, fallback: string) => env[name]?.trim() || fallback;
@@ -115,7 +128,8 @@ export const RUNNERS: readonly RunnerSpec[] = [
 		cli: "opencode",
 		adapter: { command: "opencode", args: ["acp"], install: "brew install opencode" },
 		tested: "2.0.32",
-		status: { args: ["auth", "list", "--format", "json"], read: readOpencodeStatus },
+		// Checked with V2 2.0.32: a private server receives this run's environment; ACP starts its own private server.
+		status: { args: ["auth", "list", "--format", "json", "--standalone"], read: readOpencodeStatus },
 		login: ["auth", "login"],
 		signInFiles: (env, home) => [
 			path.join(configDir(env, "XDG_DATA_HOME", path.join(home, ".local", "share")), "opencode", "auth.json"),
@@ -131,7 +145,7 @@ export const RUNNERS: readonly RunnerSpec[] = [
 		// No status command: an ACP session check tells signed in from signed out.
 		login: [],
 		signInFiles: (env, home) => [path.join(configDir(env, "GEMINI_CLI_HOME", home), ".gemini", "oauth_creds.json")],
-		keep: [],
+		keep: ["GEMINI_CLI_CUSTOM_HEADERS"],
 	},
 ];
 

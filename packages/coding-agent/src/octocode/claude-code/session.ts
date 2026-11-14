@@ -54,7 +54,7 @@ interface SessionOptions {
 	/** false: a one-shot request (a summary, a side call) that gets no tools. */
 	tools: boolean;
 	/** Called when Claude Code answers `auth_required`: its cached check is stale. */
-	signedOut?(): void;
+	signedOut?(): void | Promise<void>;
 }
 
 /**
@@ -312,7 +312,11 @@ export class ClaudeCodeSession {
 	private async failed(error: unknown, out: Segment): Promise<void> {
 		await this.cancel();
 		if (authRequiredIn(error)) {
-			this.options.signedOut?.();
+			try {
+				await this.options.signedOut?.();
+			} catch {
+				// Cache invalidation must not replace the provider's sign-in error.
+			}
 			return out.fail("error", "Claude Code is signed out: sign in with /providers (External agents), then try again.");
 		}
 		out.fail("error", `Claude Code failed: ${errorMessage(error)}`);

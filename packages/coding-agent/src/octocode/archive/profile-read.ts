@@ -77,11 +77,14 @@ export function readProfile(cwd: string, query: ProfileQuery): ProfileText {
 			const pages = Math.max(shownAgents.pages, shownFindings.pages);
 			return { text: text.filter(Boolean).join("\n\n"), session: session.id, page, pages };
 		}
-		const requests = allRequests(profiler, query.agentId, query.request !== undefined);
+		const requests =
+			query.request === undefined
+				? allRequests(profiler, query.agentId, false)
+				: profiler.requests(query.agentId, query.request - 1, true)?.requests;
 		if (!requests) throw new Error(`No agent ${query.agentId} in session ${session.id}; list agents without agentId.`);
 		if (query.request !== undefined) {
 			const one = requests.find((request) => request.index === query.request);
-			if (!one) throw new Error(`${query.agentId} has no request ${query.request} (it has ${requests.length}).`);
+			if (!one) throw new Error(`${query.agentId} has no request ${query.request}.`);
 			return {
 				text: requestsTable({ agentId: query.agentId, requests: [one], hasMore: false }, true),
 				session: session.id,

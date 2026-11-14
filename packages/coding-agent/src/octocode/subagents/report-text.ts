@@ -4,7 +4,7 @@ import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
 import { routeSummary } from "./model.ts";
-import { BILLING_ERROR, CREDENTIAL_ERROR, refusedBeforeWork } from "./provider-health.ts";
+import { BILLING_ERROR, isCredentialError, refusedBeforeWork } from "./provider-health.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
 
@@ -46,7 +46,7 @@ const MODEL_UNKNOWN =
  */
 function refusalKind(error: string, nothingSpent: boolean): "billing" | "credential" | "request" | undefined {
 	if (BILLING_ERROR.test(error)) return "billing";
-	if (CREDENTIAL_ERROR.test(error)) return "credential";
+	if (isCredentialError(error)) return "credential";
 	if (MODEL_UNKNOWN.test(error) || refusedBeforeWork(error, nothingSpent)) return "request";
 	return undefined;
 }

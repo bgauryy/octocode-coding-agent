@@ -76,11 +76,39 @@ Like the Harness panel, only the page opened from the terminal reads or changes 
 
 Earlier conversation and session updates show up to 100 cards at a time. **Older loaded** and **Newer loaded** move through the records already fetched; **Load earlier** fetches another page from the session. **Search loaded history** searches those fetched records, including pages currently out of view. Clear the search to return to your previous page.
 
-Other views: **Profiler** (its Agents panel holds the same structured reports as the terminal, a bounded recent feed; the transcript keeps full output), **Settings** ([below](#settings-page)) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
+Other views: **Profiler** ([below](#profiler)), **Settings** ([below](#settings-page)) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
+
+## Profiler
+
+| Panel | Shows |
+| --- | --- |
+| Overview | Agent hierarchy, current activity, context by layer, token usage and findings |
+| Cache | Each agent's cumulative cache usage beside its latest request, context, recorded cache group and lifetime; **Inspect layers** opens the request evidence |
+| Trace | Requests, tool calls, waits and timing phases on a shared timeline |
+| Messages | Delivery and reply state between agents |
+| Insights | Findings with evidence to inspect before deciding on a fix |
+
+Cache segments use provider-reported prompt tokens; output is separate. Context uses the latest completed request plus its reply. A missing window or unavailable profile is shown as unknown. Layer estimates are labelled. A recorded cache lifetime does not guarantee a future hit.
+
+```mermaid
+flowchart LR
+  A[Agent requests and team messages] --> P[Session profiler]
+  P --> W[Web panels]
+  P --> C[octocode profile]
+  P --> T[archive profile source]
+  W --> E[Inspect evidence]
+  C --> E
+  T --> E
+  E --> B[Backlog research and root cause]
+```
+
+No browser is needed to diagnose a run. Use `octocode profile --insights` or `octocode profile --agent <id> --request <n>`; `--session <id>` selects a stored session. Agents, including subagents, use `archive` with `op: "list", source: "profile"` and a reason. Its overview includes context and findings; `agentId` and `request` select the evidence.
 
 ## Backlog board
 
 Columns: Backlog, To do, In progress, Done, each with a count. A card shows the title, a priority dot, tag chips, a task tally (`3/5`), dependency warnings and the assignee. Item rules and commands: [commands](commands.md) (`/backlog`) and the [entity model](https://github.com/bgauryy/octocodecode/blob/main/docs/ENTITIES.md).
+
+An item's **Work flow** shows its current stage, owner and blocking dependencies. Research and root-cause notes should name the trigger, mechanism, evidence and verification; unverified causes stay labelled hypotheses. Use evidence links for saved research and RFCs so the item opens the supporting report. Closing an unneeded item is distinct from completing it with verification.
 
 | To do this              | Do this                                                                                                                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

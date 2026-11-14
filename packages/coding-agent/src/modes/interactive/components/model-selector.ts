@@ -163,11 +163,13 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const refreshed = this.modelRuntime.getModel(scoped.model.provider, scoped.model.id);
 			return refreshed ? { ...scoped, model: refreshed } : scoped;
 		});
-		this.scopedModelItems = this.scopedModels.map((scoped) => ({
-			provider: scoped.model.provider,
-			id: scoped.model.id,
-			model: scoped.model,
-		}));
+		this.scopedModelItems = this.scopedModels
+			.filter((scoped) => models.some((available) => modelsAreEqual(available.model, scoped.model)))
+			.map((scoped) => ({
+				provider: scoped.model.provider,
+				id: scoped.model.id,
+				model: scoped.model,
+			}));
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
 		this.filteredModels = this.activeModels;
 		const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
@@ -288,6 +290,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			details: this.details,
 			detailOffset: this.detailOffset,
 			searched: this.searchInput.getValue().trim() !== "",
+			scoped: this.scope === "scoped",
 			error: this.errorMessage,
 			refresh: this.refreshStatusMessage,
 			refreshed: this.refreshStatusSuccess,
@@ -323,7 +326,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			return;
 		}
 		if (kb.matches(keyData, "tui.input.tab")) {
-			if (this.scopedModelItems.length > 0) {
+			if (this.scopedModels.length > 0) {
 				const nextScope: ModelScope = this.scope === "all" ? "scoped" : "all";
 				this.setScope(nextScope);
 			}

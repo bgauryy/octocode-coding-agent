@@ -41,7 +41,7 @@ describe("panel state", () => {
 	});
 
 	it("draws the state marks: spinner frame for working, ○ for idle and departed", () => {
-		const frame = SPINNER.braille[Math.floor(NOW / MOTION.spinnerMs) % SPINNER.braille.length];
+		const frame = SPINNER.braille[Math.floor(NOW / MOTION.backgroundSpinnerMs) % SPINNER.braille.length];
 		const team = [
 			member("main-aaaaaa"),
 			member("busy-aaaa", { parentId: "main-aaaaaa", status: "working" }),
@@ -111,10 +111,10 @@ describe("panel motion", () => {
 		const repaint = vi.fn();
 		const motion = new PanelMotion(() => marks, repaint);
 		motion.sync();
-		vi.advanceTimersByTime(MOTION.spinnerMs * 3);
+		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 3);
 		expect(repaint.mock.calls.length).toBeGreaterThanOrEqual(2);
 		marks = [idle];
-		vi.advanceTimersByTime(MOTION.spinnerMs);
+		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs);
 		const painted = repaint.mock.calls.length;
 		expect(motion.active).toBe(false);
 		vi.advanceTimersByTime(1_000);
@@ -167,7 +167,7 @@ describe("AgentsView motion", () => {
 		factory({ requestRender }, theme);
 		expect(animationClock.isRunning()).toBe(true);
 		requestRender.mockClear();
-		vi.advanceTimersByTime(MOTION.spinnerMs * 5);
+		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 5);
 		expect(requestRender.mock.calls.length).toBeGreaterThanOrEqual(4);
 		// The worker goes idle: the next data refresh drops the animation subscription.
 		members = [members[0], peer("idle")];

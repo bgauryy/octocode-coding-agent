@@ -76,4 +76,8 @@ export const panelColor = (state: PanelState) => STATE_COLOR[state.state];
 
 /** The mark in front of an agent's row, painted for `now` (a spinner frame while it works, a glow just after it finished at `since`). */
 export const panelMark = (theme: Theme, state: PanelState, now: number, since?: number): string =>
-	stateMark(theme, state.state, { now, ...(since === undefined ? {} : { since }) });
+	stateMark(theme, state.state, {
+		now,
+		background: true,
+		...(since === undefined ? {} : { since }),
+	});

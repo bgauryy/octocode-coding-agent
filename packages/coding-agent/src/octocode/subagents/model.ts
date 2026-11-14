@@ -131,6 +131,15 @@ export function resolveModel(
 	available: readonly ModelRef[],
 	parentProvider?: string,
 ): string | undefined {
+	return modelChoice(requested, available, parentProvider)?.model;
+}
+
+/** Preserve preference routing while exposing ambiguity to strict, explicit task requests. */
+function modelChoice(
+	requested: string,
+	available: readonly ModelRef[],
+	parentProvider?: string,
+): { model: string; alternatives?: string[] } | undefined {
 	const colon = requested.lastIndexOf(":");
 	const suffix = colon > 0 && THINKING_LEVELS.has(requested.slice(colon + 1)) ? requested.slice(colon) : "";
 	// The whole text first: a model id may itself contain a colon.
@@ -139,8 +148,15 @@ export function resolveModel(
 	>) {
 		const qualified = available.find((model) => `${model.provider}/${model.id}` === base);
 		const bare = available.filter((model) => model.id === base);
-		const found = qualified ?? bare.find((model) => model.provider === parentProvider) ?? bare[0];
-		if (found) return `${found.provider}/${found.id}${thinking}`;
+		const parent = bare.find((model) => model.provider === parentProvider);
+		const found = qualified ?? parent ?? bare[0];
+		if (found)
+			return {
+				model: `${found.provider}/${found.id}${thinking}`,
+				...(!qualified && !parent && bare.length > 1
+					? { alternatives: bare.map((model) => `${model.provider}/${model.id}${thinking}`) }
+					: {}),
+			};
 	}
 	return undefined;
 }
@@ -268,7 +284,12 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 	if (explicit) {
 		const tier = tierOf(explicit);
 		if (tier) return tierRoute(tier, request, usable, parentModel);
-		const model = resolveModel(explicit, available, parentProvider);
+		const choice = modelChoice(explicit, available, parentProvider);
+		if (choice?.alternatives)
+			return {
+				error: `Model "${explicit}" matches several providers. Use provider/id: ${choice.alternatives.join(", ")}`,
+			};
+		const model = choice?.model;
 		if (model) {
 			const chosen = routedModel(model, available);
 			const blocker = chosen && !sameModel(chosen, parent) ? taskBlocker(chosen, request.catalog) : undefined;

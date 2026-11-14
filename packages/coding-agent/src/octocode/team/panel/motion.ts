@@ -50,7 +50,7 @@ export class PanelMotion {
 		const moving = this.marks(now).filter((mark) =>
 			markMoves(mark.state, { now, ...(mark.since === undefined ? {} : { since: mark.since }) }),
 		);
-		const fineMs = moving.length === 0 ? 0 : Math.min(...moving.map((mark) => markFrameMs(mark.state)));
+		const fineMs = moving.length === 0 ? 0 : Math.min(...moving.map((mark) => markFrameMs(mark.state, true)));
 		const everyMs = fineMs > 0 ? fineMs : (this.coarse?.(now) ?? 0);
 		const fine = fineMs > 0;
 		// A coarse tick still ahead is kept unless the boundary moved earlier (an older row appeared): a sync right at the

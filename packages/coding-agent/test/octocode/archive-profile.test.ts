@@ -118,9 +118,9 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-async function profileResult(params: Record<string, unknown>) {
+async function profileResult(params: Record<string, unknown>, isSubagent = false) {
 	const fake = fakeHost();
-	registerArchiveTool(fake.api);
+	registerArchiveTool(fake.api, { isSubagent });
 	return fake.tools
 		.get("archive")
 		.execute(
@@ -137,12 +137,27 @@ async function profile(params: Record<string, unknown>): Promise<string> {
 }
 
 describe("archive tool, source profile", () => {
+	it("lets a subagent inspect context and request layers without the web", async () => {
+		setCurrentSession("sess-kid");
+		try {
+			const overview = await profileResult({ op: "list" }, true);
+			expect(overview.content[0].text).toContain("Session sess-kid:");
+			expect(overview.content[0].text).toContain("CONTEXT");
+			expect(overview.content[0].text).toContain("context layers");
+			const detail = await profileResult({ op: "list", agentId: "quick-finch", request: 0 }, true);
+			expect(detail.content[0].text).toContain("STATE");
+			expect(detail.content[0].text).toMatch(/^#0 /);
+		} finally {
+			setCurrentSession(undefined);
+		}
+	});
 	it("lists agents and findings of the current session", async () => {
 		setCurrentSession("sess-main");
 		const text = await profile({});
 		expect(text).toContain("Session sess-main: 2 agents, $0.750");
 		expect(text).toMatch(/steady-main\s+main\s+claude-sonnet-4-5\s+2\s+2%\s+90k\s+\$0\.500/);
 		expect(text).toMatch(/cache-rewrite\s+steady-main/);
+		expect(text).toMatch(/Evidence: steady-main request \d/);
 		expect(text).toContain("agentId");
 		setCurrentSession(undefined);
 	});

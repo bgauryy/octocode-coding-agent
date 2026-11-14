@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpBackend } from "../../../acp/src/client/client.ts";
 import { acpModels, modelRefusal } from "../../../acp/src/client/session-config.ts";
 import { acpClientHost } from "../../src/octocode/external/acp-host.ts";
@@ -12,13 +12,14 @@ const cancelled = async () => ({ outcome: { outcome: "cancelled" as const } });
 const backends: AcpBackend[] = [];
 const roots: string[] = [];
 
-async function connect(model?: string) {
+async function connect(model?: string, mode = "modern", signal?: AbortSignal, timeoutMs = 30_000) {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-config-"));
 	roots.push(cwd);
 	const backend = await AcpBackend.connect(
 		acpClientHost,
-		{ command: process.execPath, args: [fixture], vendor: "fixture", cwd, model, timeoutMs: 30_000 },
+		{ command: process.execPath, args: [fixture, mode], vendor: "fixture", cwd, model, timeoutMs },
 		cancelled,
+		signal,
 	);
 	backends.push(backend);
 	return backend;
@@ -50,13 +51,14 @@ describe("ACP model state", () => {
 		expect(state).toEqual({ current: "b", available: ["a", "b"], configId: "pick" });
 	});
 
-	it("falls back to the unstable models field, which can be shown but not set", () => {
+	it("accepts only advertised IDs from the legacy models field", () => {
 		const state = acpModels({
 			configOptions: [],
 			models: { currentModelId: "m2", availableModels: [{ modelId: "m1" }, { modelId: "m2" }, { name: "no id" }] },
 		});
 		expect(state).toEqual({ current: "m2", available: ["m1", "m2"] });
-		expect(modelRefusal(state, "m1")).toContain("no model config option");
+		expect(modelRefusal(state, "m1")).toBeUndefined();
+		expect(modelRefusal(state, "missing")).toContain('has no model "missing"');
 		expect(acpModels({})).toBeUndefined();
 		expect(modelRefusal(undefined, "m1")).toBe("ACP agent offers no model option; connect without model.");
 	});
@@ -97,5 +99,60 @@ describe("ACP backend models", () => {
 		expect(kinds).not.toContain("config_option_update");
 		expect(kinds).toContain("agent_message_chunk");
 		expect(backend.models?.current).toBe("large");
+	});
+});
+
+function requests() {
+	const path = join(roots.at(-1)!, "requests.jsonl");
+	return existsSync(path)
+		? readFileSync(path, "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line) as { method: string; pid: number })
+		: [];
+}
+function expectStopped() {
+	const pid = requests()[0]?.pid;
+	expect(pid).toBeTypeOf("number");
+	expect(() => process.kill(pid, 0)).toThrow();
+}
+
+describe("ACP legacy model compatibility", () => {
+	it("sets an advertised legacy model before the first prompt", async () => {
+		const backend = await connect("large", "legacy");
+		expect(backend.models).toEqual({ current: "large", available: ["small", "large"] });
+		expect((await backend.prompt("hello", { timeoutMs: 30_000 })).text).toBe("started on large");
+		expect(requests().map((row) => row.method)).toEqual(["new", "set_model", "prompt"]);
+	});
+	it("prefers modern configuration when both catalogs are present", async () => {
+		await connect("large");
+		expect(requests().map((row) => row.method)).toEqual(["new", "set_config_option"]);
+	});
+	it("rejects unknown legacy models without selection or prompt and stops the child", async () => {
+		await expect(connect("huge", "legacy")).rejects.toThrow('has no model "huge"');
+		expect(requests().map((row) => row.method)).toEqual(["new"]);
+		expectStopped();
+	});
+	it.each(["legacy-reject", "modern-reject"])("propagates %s without falling back or prompting", async (mode) => {
+		await expect(connect("large", mode)).rejects.toThrow("selection denied");
+		expect(requests().map((row) => row.method)).toEqual([
+			"new",
+			mode.startsWith("legacy") ? "set_model" : "set_config_option",
+		]);
+		expectStopped();
+	});
+	it("aborts a pending legacy selection and stops the child", async () => {
+		const controller = new AbortController();
+		const pending = connect("large", "legacy-hang", controller.signal).then(
+			() => undefined,
+			(error) => error,
+		);
+		await vi.waitFor(() => expect(requests().map((row) => row.method)).toContain("set_model"));
+		controller.abort(new Error("stop selection"));
+		const error = await pending;
+		expect(error).toBeInstanceOf(Error);
+		expect(error.message).toContain("stop selection");
+		expect(requests().map((row) => row.method)).not.toContain("prompt");
+		expectStopped();
 	});
 });

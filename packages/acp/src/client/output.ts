@@ -244,20 +244,43 @@ const count = (value: unknown): number | undefined =>
 
 /**
  * The token totals a prompt response carries (ACP's unstable `usage`, which Claude Code's adapter sends): the input and
- * output counts are required, the others kept when they are counts. Anything else in the field is dropped.
+ * output counts are required, the others kept when they are counts. A coherent total makes overlapping cached input
+ * disjoint for consumers; anything else in the field is dropped.
  */
 function responseUsage(response: PromptResponse | undefined): ExternalUsage | undefined {
 	const raw = (response as { usage?: unknown } | undefined)?.usage;
 	if (!raw || typeof raw !== "object") return undefined;
 	const field = raw as Record<string, unknown>;
-	const inputTokens = count(field.inputTokens);
+	let inputTokens = count(field.inputTokens);
 	const outputTokens = count(field.outputTokens);
 	if (inputTokens === undefined || outputTokens === undefined) return undefined;
 	const optional = (["cachedReadTokens", "cachedWriteTokens", "totalTokens"] as const).flatMap((key) => {
 		const value = count(field[key]);
 		return value === undefined ? [] : [[key, value] as const];
 	});
-	return { inputTokens, outputTokens, ...Object.fromEntries(optional) };
+	const reported = Object.fromEntries(optional);
+	const cacheFields = ["cachedReadTokens", "cachedWriteTokens"] as const;
+	const validCache = cacheFields.every((key) => field[key] == null || count(field[key]) !== undefined);
+	const cached = (reported.cachedReadTokens ?? 0) + (reported.cachedWriteTokens ?? 0);
+	const precise = [
+		inputTokens,
+		outputTokens,
+		reported.totalTokens,
+		cached,
+		...cacheFields.map((key) => field[key] ?? 0),
+	].every(Number.isSafeInteger);
+	// Some peers include cache tokens in input. Deduct only when their total proves overlap;
+	// missing, malformed, imprecise or inconsistent counts leave the original input untouched.
+	if (
+		validCache &&
+		precise &&
+		cached > 0 &&
+		inputTokens >= cached &&
+		reported.totalTokens === inputTokens + outputTokens
+	) {
+		inputTokens -= cached;
+	}
+	return { inputTokens, outputTokens, ...reported };
 }
 
 /** Metadata and annotations must agree before adjacent textual notifications can merge. */

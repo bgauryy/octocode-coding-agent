@@ -280,8 +280,8 @@
     },
     "externalAgents": {
       "type": "boolean",
-      "description": "Declare the `external` type of the agent tool, which reaches ACP agents and other Octocode instances. Off by default; when true the type is still declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions. Connecting a runner in /providers (its Sign in, or Check again finding it signed in) turns it on while it was never set; a value you set stays.",
-      "default": false
+      "description": "Allow agent tasks in installed vendor CLIs and the `external` type for ACP agents and other Octocode instances. On by default; an explicit false disables both for new sessions. Only installed runnable CLIs are offered; the selected runner is checked when used, without starting CLIs during discovery. The external type is declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from global settings only; project files cannot change it. Manage sign-in and the switch in /providers.",
+      "default": true
     },
     "sessionApi": {
       "type": "boolean",

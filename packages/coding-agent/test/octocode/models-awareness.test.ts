@@ -98,6 +98,8 @@ describe("models tool listings", () => {
 	it("without a filter gives one row per provider with credential labels and counts, and no model rows", async () => {
 		const text = await modelsTool()({});
 		expect(text).toContain("  openai · API key · models.json · 2 runnable of 3 · cheapest openai/gpt-5-mini");
+		expect(text).toContain("highest priced openai/gpt-5");
+		expect(text).not.toContain("most capable");
 		expect(text).toContain("  opencode-go · API key · saved credential · 1 runnable · priced opencode-go/qwen-coder");
 		expect(text).not.toMatch(/per M in\/out · \d+k/);
 		expect(text).not.toContain("Models this session can use");

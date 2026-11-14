@@ -51,7 +51,7 @@ export function providerRows(
 
 /**
  * One row per provider: credential, last result, how many models can run a task, and the cheapest and the dearest of
- * those (the dearest stands for the most capable) with their prices. `matched` adds how many of each provider's
+ * those by blended price, with their rates. `matched` adds how many of each provider's
  * models a filter kept. The agent reads one provider's models with `provider:<id>`.
  */
 export function providerSummary(
@@ -65,7 +65,7 @@ export function providerSummary(
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	const priced = (model: ModelRef) => `${model.provider}/${model.id} (${priceText(modelCost(model, catalog))})`;
 	return [
-		"Providers (kind · credential source; last result; models that can run a task; cheapest and most capable of them, price per million tokens in/out):",
+		"Providers (kind · credential source; last result; models that can run a task; cheapest and highest priced of them, price per million tokens in/out):",
 		...providers.map((provider) => {
 			const own = available.filter((model) => model.provider === provider);
 			const runnable = own.filter((model) => canRunTask(model, catalog));
@@ -78,7 +78,7 @@ export function providerSummary(
 				? ""
 				: cheapest === dearest
 					? ` · priced ${priced(cheapest)}`
-					: ` · cheapest ${priced(cheapest)}, most capable ${priced(dearest!)}`;
+					: ` · cheapest ${priced(cheapest)}, highest priced ${priced(dearest!)}`;
 			const from = credentialText(registry, provider, kinds);
 			const count = `${runnable.length} runnable${runnable.length < own.length ? ` of ${own.length}` : ""}`;
 			const match = matched ? ` · ${matched.filter((model) => model.provider === provider).length} match` : "";

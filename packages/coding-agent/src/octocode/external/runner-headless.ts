@@ -31,8 +31,11 @@ interface RouteState {
 }
 
 /** Whether `state` runs headless: its CLI is installed and signed in, its adapter is missing, and it has the route. */
-export const headlessReady = (state: RouteState): boolean =>
-	HEADLESS_RUNNERS.has(state.id) && state.cli && !state.adapter && state.auth?.signedIn === true;
+export const headlessReady = (state: RouteState): boolean => headlessAvailable(state) && state.auth?.signedIn === true;
+
+/** Whether the installed CLI has a supported headless route, before its sign-in is checked. */
+export const headlessAvailable = (state: RouteState): boolean =>
+	HEADLESS_RUNNERS.has(state.id) && state.cli && !state.adapter;
 
 /** The route a runner's row names when it is not the ACP adapter; undefined for the adapter route or none. */
 export const runnerRoute = (state: RouteState): string | undefined =>

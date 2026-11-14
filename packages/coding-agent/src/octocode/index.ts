@@ -273,9 +273,9 @@ export default function octocode(host: ExtensionAPI): void {
 		registerModelsTool(
 			api,
 			() => profiles,
-			async (ctx) => [
-				...runnerRows(runners.states),
-				...(externalAgentsEnabled() ? await externalListing(external, ctx) : []),
+			async (ctx, _signal, filters) => [
+				...runnerRows(runners.states, filters),
+				...(externalAgentsEnabled() ? await externalListing(external, ctx, filters) : []),
 			],
 		);
 	} else if (runners.ids.length > 0) registerChildRunnerTask(runners, permission, agentTool.collect);

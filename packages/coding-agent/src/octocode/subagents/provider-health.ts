@@ -16,9 +16,24 @@ import { deadline } from "../../../../common/src/deadline.ts";
 export const BILLING_ERROR =
 	/\b402\b|payment required|insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)|billing|out of credit/i;
 
-/** The provider refused the key itself: 401/403, an invalid, expired or unauthorized key. */
-export const CREDENTIAL_ERROR =
+const CREDENTIAL_ERROR =
 	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|permission[ _]denied|expired/i;
+
+/** A 403 can deny one model while accepting the same credential for another. Explicit invalid credentials still win. */
+export function isCredentialError(text: string): boolean {
+	if (
+		/\b401\b|(?:invalid|incorrect|expired|revoked)[ _-]+(?:api[ _-]?key|token|credentials?)|(?:api[ _-]?key|token|credentials?)[ _-]+(?:(?:is|has)[ _-]+)?(?:invalid|incorrect|expired|revoked)/i.test(
+			text,
+		)
+	)
+		return true;
+	const modelAccess =
+		/\b403\b/.test(text) &&
+		/\bmodel\b/i.test(text) &&
+		/\b(?:access|available|enabled)\b/i.test(text) &&
+		/\b(?:not|no|denied|restricted|forbidden)\b/i.test(text);
+	return !modelAccess && CREDENTIAL_ERROR.test(text);
+}
 
 /**
  * A provider refused the credential or the account: a credential error, no funds, or a usage limit (the shared
@@ -26,7 +41,7 @@ export const CREDENTIAL_ERROR =
  * nothing about the other models of that provider.
  */
 const credentialRefused = (text: string): boolean =>
-	CREDENTIAL_ERROR.test(text) || BILLING_ERROR.test(text) || isUsageLimitError(text);
+	isCredentialError(text) || BILLING_ERROR.test(text) || isUsageLimitError(text);
 /** A known price of zero for input and output; an unknown price is not free. */
 const costsNothing = (cost: ModelRef["cost"]): boolean => {
 	const rates = currentPrice(cost);
@@ -113,7 +128,7 @@ export class ProviderHealth {
 		if (status === undefined || status.ok || Date.now() - status.at >= REFUSAL_ROUTING_MS) return false;
 		const detail = status.detail ?? "";
 		// Missing funds stop only what costs money: a model priced at zero (`cost` given and free) still routes.
-		if (BILLING_ERROR.test(detail) && !CREDENTIAL_ERROR.test(detail) && costsNothing(cost)) return false;
+		if (BILLING_ERROR.test(detail) && !isCredentialError(detail) && costsNothing(cost)) return false;
 		return credentialRefused(detail);
 	}
 }
@@ -130,7 +145,7 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
 	const detail = status.detail ?? "";
 	const billing = BILLING_ERROR.test(detail);
-	const limited = !billing && !CREDENTIAL_ERROR.test(detail) && isUsageLimitError(detail);
+	const limited = !billing && !isCredentialError(detail) && isUsageLimitError(detail);
 	const refused = billing || limited || credentialRefused(detail);
 	const label = billing
 		? "out of funds"

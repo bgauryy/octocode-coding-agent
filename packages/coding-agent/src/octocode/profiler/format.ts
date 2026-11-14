@@ -56,11 +56,19 @@ export function agentsTable({ sessionId, agents }: ProfileAgents): string {
 		percent(agent.hitRate),
 		tokens(agent.totals.cacheWrite),
 		dollars(agent.totals.cost),
+		agent.contextTokens === undefined ? "-" : tokens(agent.contextTokens),
+		agent.activity ? `${agent.activity.kind}: ${agent.activity.label}` : (agent.outcome ?? agent.status),
 	]);
 	const spent = agents.reduce((sum, agent) => sum + (agent.totals.cost ?? 0), 0);
 	return [
 		`Session ${sessionId}: ${agents.length} agent${agents.length === 1 ? "" : "s"}, ${dollars(spent)}`,
-		table(["AGENT", "ROLE", "MODEL", "REQ", "HIT", "WRITTEN", "COST"], rows, [3, 4, 5, 6]),
+		table(["AGENT", "ROLE", "MODEL", "REQ", "HIT", "WRITTEN", "COST", "CONTEXT", "ACTIVITY"], rows, [3, 4, 5, 6, 7]),
+		...agents
+			.filter((agent) => agent.contextTop?.length)
+			.map(
+				(agent) =>
+					`${agent.id} context layers${agent.contextEstimated ? " (estimated)" : ""}: ${agent.contextTop!.map((layer) => `${layer.label} ${tokens(layer.tokens)}`).join(", ")}`,
+			),
 	].join("\n");
 }
 
@@ -82,7 +90,15 @@ export function insightsTable({ sessionId, findings }: ProfileInsights): string 
 	return [
 		`Session ${sessionId}: ${findings.length} finding${findings.length === 1 ? "" : "s"}, most costly first`,
 		table(["SEV", "KIND", "AGENT", "COST", "FINDING"], rows, [3]),
-		...findings.flatMap((finding) => ["", finding.title, `  ${finding.detail}`]),
+		...findings.flatMap((finding) => [
+			"",
+			finding.title,
+			`  ${finding.detail}`,
+			...finding.evidence.map(
+				(item) =>
+					`  Evidence: ${item.agentId}${item.request === undefined ? "" : ` request ${item.request}`}${item.event ? ` event ${item.event}` : ""}`,
+			),
+		]),
 	].join("\n");
 }
 

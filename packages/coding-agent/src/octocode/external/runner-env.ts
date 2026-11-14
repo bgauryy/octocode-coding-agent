@@ -2,10 +2,16 @@ import { providerKeyNames } from "../../utils/shell.ts";
 import { runnerSpec } from "./runners.ts";
 
 /**
- * Key variables an agent CLI reads in place of its own sign-in. `CODEX_API_KEY` is in no provider table; the other two
- * are provider keys `providerKeyNames` also finds, listed so this names every key an agent CLI reads.
+ * Known agent credentials, including vendor-owned token and header configuration. A runner keeps its own declared
+ * configuration; other runners never inherit those credentials.
  */
-const AGENT_CREDENTIALS = ["CODEX_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN"];
+const AGENT_CREDENTIALS = [
+	"CODEX_API_KEY",
+	"OPENAI_API_KEY",
+	"COPILOT_GITHUB_TOKEN",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"GEMINI_CLI_CUSTOM_HEADERS",
+];
 /** Every Anthropic variable: a key, a token or a base URL would route Claude Code around the user's own login. */
 const ANTHROPIC = /^ANTHROPIC_/;
 /** This process's own variables (team identity, permission handoff files, internal flags); the Octocode home is the user's. */

@@ -51,7 +51,7 @@ export const SETTINGS_DEFAULTS = {
 	subagents: {
 		checkInSeconds: 300,
 	},
-	externalAgents: false,
+	externalAgents: true,
 	sessionApi: true,
 	sessionApiTurnPermission: "session",
 	mcpPresentation: "declared",

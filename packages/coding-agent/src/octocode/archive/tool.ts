@@ -70,12 +70,12 @@ function callSummary(raw: unknown): string {
 const historyCall = (args: object): Parameters<ReturnType<typeof createHistoryTool>["execute"]>[1] =>
 	args as Parameters<ReturnType<typeof createHistoryTool>["execute"]>[1];
 
-/** The diagnostic sources: agent lifecycle events and a session's request profile, read by the main session only. */
+/** The diagnostic sources; lifecycle events remain coordinator-only. */
 const DIAGNOSTIC_SOURCES = ["events", "profile"] as const;
 
 /**
  * Session history, compaction summaries and diagnostics. Memories have their own tool (`memory/tool.ts`). A subagent
- * reads history and summaries; the diagnostics (`events`, `profile`, `errors`) are declared for the main session only.
+ * reads history, summaries and its request profile; events and errors remain coordinator-only.
  */
 export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: boolean } = {}): void {
 	const subagent = options.isSubagent === true;
@@ -85,17 +85,17 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 		op: StringEnum(["list", "search", "get"] as const, {
 			description: "get: full record by id; list: newest",
 		}),
-		id: Type.Optional(Type.String({ description: "Record reference from list/search" })),
-		keywords: Type.Optional(Type.String({ description: "Topic words, ranked" })),
-		limit: Type.Optional(Type.Integer({ description: "1–50 records per source (default 10)" })),
-		cursor: Type.Optional(Type.String({ description: "Continue a result: the cursor its last line names" })),
+		id: Type.Optional(Type.String({ description: "Reference from list/search" })),
+		keywords: Type.Optional(Type.String({ description: "Rank by topic" })),
+		limit: Type.Optional(Type.Integer({ description: "Records/source: 1–50, default 10" })),
+		cursor: Type.Optional(Type.String({ description: "Continue with the returned cursor" })),
 	};
 	const main = Type.Object({
 		...history.parameters.properties,
 		...fields,
 		source: Type.Optional(
 			StringEnum(["all", "sessions", "compactions", "agents", ...DIAGNOSTIC_SOURCES] as const, {
-				description: "Record collection (default all)",
+				description: "Collection; default all",
 			}),
 		),
 		query: Type.Optional(
@@ -103,16 +103,15 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 				description: "Case-insensitive regex. With errors: filters by tool name or error text",
 			}),
 		),
-		agentId: Type.Optional(Type.String({ description: "Events, profile: existing agent name" })),
-		request: Type.Optional(Type.Integer({ description: "Profile with agentId: one request's layers" })),
+		agentId: Type.Optional(Type.String({ description: "Events/profile: agent name" })),
+		request: Type.Optional(Type.Integer({ description: "Profile: request index with agentId" })),
 		sessionId: Type.Optional(
 			Type.String({
-				description:
-					"List or search one session's history (current: this session); events, profile: session id (profile default: current)",
+				description: "History: session id or current; events/profile: session id, profile defaults to current",
 			}),
 		),
-		eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: lifecycle transition" })),
-		until: Type.Optional(Type.String({ description: "Events: inclusive ISO timestamp" })),
+		eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: transition" })),
+		until: Type.Optional(Type.String({ description: "Events: through ISO time" })),
 	});
 	const child = Type.Object({
 		...shared,
@@ -120,11 +119,13 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 		line: Type.Optional(Type.Integer({ description: "Read from this line" })),
 		since: Type.Optional(Type.String({ description: "Files changed since this ISO time" })),
 		source: Type.Optional(
-			StringEnum(["all", "sessions", "compactions", "agents"] as const, {
+			StringEnum(["all", "sessions", "compactions", "agents", "profile"] as const, {
 				description: "Record collection (default all)",
 			}),
 		),
 		query: Type.Optional(Type.String({ description: "Case-insensitive regex" })),
+		agentId: Type.Optional(Type.String({ description: "Profile: agent name from the overview" })),
+		request: main.properties.request,
 	});
 	api.registerTool(
 		timedTool({
@@ -132,8 +133,7 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 			promptSnippet: renderInstruction("tools/archive/snippet.md"),
 			// One description for every role (it leads the cached tool list); `source` and the field texts say what this
 			// one reads.
-			description:
-				"Read complete compaction summaries and session history; source may also list lifecycle events and profile (session agents, cache findings, request layers). Session search reads this session, then newer sessions, stopping at a match or time budget with a cursor. Narrow by sessionId, file or since. keywords ranks; query filters; together they rank matching passages.",
+			description: renderInstruction("tools/archive/description.md"),
 			// `execute` reads the main session's fields; a subagent's schema declares fewer of them and refuses the rest.
 			parameters: subagent ? (child as unknown as typeof main) : main,
 			// Validation runs on the result, so the declared type is checked there, not here.
@@ -158,7 +158,7 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 				if (!input.reason?.trim()) throw new Error("archive needs reason (why history is needed, not the code).");
 				if (!archiveRead(input)) throw new Error("Unknown archive operation.");
 				if (subagent) {
-					const source = DIAGNOSTIC_SOURCES.find((name) => name === input.source);
+					const source = input.source === "events" ? "events" : undefined;
 					const diagnostic = input.errors ? "errors" : source ? `source ${source}` : undefined;
 					if (diagnostic)
 						throw new Error(`${diagnostic} is read by the main session only: ask your coordinator for it.`);

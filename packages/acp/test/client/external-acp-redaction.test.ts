@@ -221,8 +221,60 @@ describe("ACP logical stream redaction", () => {
 			.map((entry) => "content" in entry.update && (entry.update.content as { text: string }).text)
 			.join("");
 		expect(privateText).toBe("[redacted]");
-		expect(reply.text).toBe("unrelated answer\n[redacted]");
+		expect(reply.text).toBe("[redacted]\n\nunrelated answer\n");
 		expect(JSON.stringify(reply)).not.toContain("a".repeat(30));
+	});
+
+	it.each([ACP_TEXT_BYTES - 1, ACP_TEXT_BYTES])(
+		"preserves a single message of %i bytes without artificial separator overflow",
+		(size) => {
+			const output = new AcpOutput(acpClientHost.saveOutput);
+			output.append(chunk("x".repeat(size)));
+			expect(output.reply({ stopReason: "end_turn" }).text).toBe("x".repeat(size));
+		},
+	);
+
+	it("takes the combined tail without dropping a complete maximum-size message at its separator", () => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		output.append(chunk("x".repeat(ACP_TEXT_BYTES), "first"));
+		output.append(chunk("last", "second"));
+		const reply = output.reply({ stopReason: "end_turn" });
+		expect(reply.text.split("\n[ACP output truncated.")[0]).toBe("x".repeat(ACP_TEXT_BYTES - 6) + "\n\nlast");
+		expect(overflow(reply).archiveComplete).toBe(true);
+	});
+
+	it("keeps incomplete earlier messages before later complete messages", () => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		output.append(chunk("I will inspect it.", "commentary"));
+		output.append(chunk("done: verified\n", "final"));
+		output.append(chunk("Checks passed.", "final"));
+		expect(output.reply({ stopReason: "end_turn" }).text).toBe("I will inspect it.\n\ndone: verified\nChecks passed.");
+	});
+	it("joins interleaved chunks by message while preserving raw update order and blank lines", () => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		output.append(chunk("A1\n\n", "a"));
+		output.append(chunk("B1\n", "b"));
+		output.append(chunk("A2", "a"));
+		const reply = output.reply({ stopReason: "end_turn" });
+		expect(reply.text).toBe("A1\n\nA2\n\nB1\n");
+		expect(
+			(reply.updates as SessionNotification[])
+				.slice(0, 3)
+				.map((x) => ("messageId" in x.update ? x.update.messageId : undefined)),
+		).toEqual(["a", "b", "a"]);
+	});
+	it("keeps an early pending message ordered across retired stream spans and bounds the tail", () => {
+		const output = new AcpOutput(acpClientHost.saveOutput);
+		output.append(chunk("sk-", "pending"));
+		for (let index = 0; index < 100; index++) output.append(chunk(`${index}: ${"safe ".repeat(1000)}\n`, `m${index}`));
+		output.append(chunk("a".repeat(30), "pending"));
+		output.append(chunk("last answer", "final"));
+		const reply = output.reply({ stopReason: "cancelled" });
+		expect(reply.text).toContain("last answer");
+		expect(reply.text.indexOf("98:")).toBeLessThan(reply.text.indexOf("99:"));
+		expect(reply.text).not.toContain("a".repeat(30));
+		expect(reply.text.split("[ACP output truncated.")[0].length).toBeLessThanOrEqual(ACP_TEXT_BYTES + 1);
+		expect(reply.stopReason).toBe("cancelled");
 	});
 
 	it("keeps multiline introducers pending across many whitespace chunks and omits oversized units", () => {

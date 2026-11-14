@@ -1,9 +1,10 @@
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cachedRunners, checkRunners } from "../../src/octocode/external/runner-status.ts";
+import { cachedRunners, checkRunners, forgetRunner } from "../../src/octocode/external/runner-status.ts";
 import { runnerSpec } from "../../src/octocode/external/runners.ts";
 
 const roots: string[] = [];
@@ -38,6 +39,97 @@ const claude = () =>
 	);
 
 describe("runner configuration and probe isolation", () => {
+	it("merges concurrent checks without dropping a completed runner", async () => {
+		const fixture = claude();
+		fs.writeFileSync(
+			path.join(fixture.env.PATH, "codex"),
+			`#!${process.execPath}\nconsole.log(process.argv.includes("--version") ? "9.0.0" : "Logged in using ChatGPT");`,
+			{ mode: 0o755 },
+		);
+		const env = { ...fixture.env, CLAUDE_CODE_OAUTH_TOKEN: "fixture-active" };
+		const states = await Promise.all(
+			["claude-code", "codex"].map((id) => checkRunners({ ids: [id], env, agentDir: fixture.agentDir })),
+		);
+		expect(states.flat().every((state) => state.auth?.signedIn)).toBe(true);
+		expect(cachedRunners(env, fixture.agentDir).map((state) => state.id)).toEqual(["claude-code", "codex"]);
+	});
+
+	it("merges checks committed by separate processes sharing one cache", async () => {
+		const fixture = claude();
+		const gate = path.join(fixture.home, "release");
+		for (const [name, status] of [
+			["claude", JSON.stringify({ loggedIn: true, authMethod: "claude.ai" })],
+			["codex", "Logged in using ChatGPT"],
+		]) {
+			fs.writeFileSync(
+				path.join(fixture.env.PATH, name),
+				`#!${process.execPath}\nif(process.argv.includes("--version")){console.log("9.0.0");process.exit(0)}\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(path.join(fixture.home, name + "-started"))},'');const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(gate)})){clearInterval(timer);console.log(${JSON.stringify(status)})}},10);`,
+				{ mode: 0o755 },
+			);
+		}
+		const module = new URL("../../src/octocode/external/runner-status.ts", import.meta.url).href;
+		const children = ["claude-code", "codex"].map((id) =>
+			spawn(
+				process.execPath,
+				[
+					"--experimental-strip-types",
+					"--input-type=module",
+					"-e",
+					`const {checkRunners}=await import(${JSON.stringify(module)});await checkRunners(${JSON.stringify({ ids: [id], env: fixture.env, agentDir: fixture.agentDir, refresh: true })});`,
+				],
+				{ stdio: ["ignore", "pipe", "pipe"] },
+			),
+		);
+		const diagnostics: string[] = [];
+		for (const child of children) child.stderr.on("data", (chunk: Buffer) => diagnostics.push(chunk.toString()));
+		const exits = children.map(
+			(child) =>
+				new Promise<number | null>((resolve, reject) => {
+					child.once("error", reject);
+					child.once("exit", resolve);
+				}),
+		);
+		try {
+			await vi.waitFor(() => {
+				expect(diagnostics.join("")).not.toContain("Error");
+				expect(fs.existsSync(path.join(fixture.home, "claude-started"))).toBe(true);
+				expect(fs.existsSync(path.join(fixture.home, "codex-started"))).toBe(true);
+			});
+			fs.writeFileSync(gate, "");
+			expect(await Promise.all(exits)).toEqual([0, 0]);
+			expect(cachedRunners(fixture.env, fixture.agentDir).map((state) => state.id)).toEqual(["claude-code", "codex"]);
+			fs.unlinkSync(gate);
+			fs.unlinkSync(path.join(fixture.home, "claude-started"));
+			const checking = spawn(process.execPath, children[0].spawnargs.slice(1), { stdio: ["ignore", "pipe", "pipe"] });
+			children.push(checking);
+			const done = new Promise<number | null>((resolve, reject) => {
+				checking.once("error", reject);
+				checking.once("exit", resolve);
+			});
+			exits.push(done);
+			await vi.waitFor(() => expect(fs.existsSync(path.join(fixture.home, "claude-started"))).toBe(true));
+			await forgetRunner("claude-code", fixture.agentDir);
+			fs.writeFileSync(gate, "");
+			expect(await done).toBe(0);
+			expect(cachedRunners(fixture.env, fixture.agentDir).map((state) => state.id)).toEqual(["codex"]);
+		} finally {
+			for (const child of children) if (child.exitCode === null) child.kill("SIGKILL");
+			await Promise.allSettled(exits);
+		}
+	});
+
+	it("does not resurrect an invalidated runner when an earlier check completes", async () => {
+		const fixture = claude();
+		const env = { ...fixture.env, CLAUDE_CODE_OAUTH_TOKEN: "fixture-active" };
+		await checkRunners({ ids: ["claude-code"], env, agentDir: fixture.agentDir });
+		const checking = checkRunners({ ids: ["claude-code"], env, agentDir: fixture.agentDir, refresh: true });
+		await forgetRunner("claude-code", fixture.agentDir);
+		await checking;
+		expect(cachedRunners(env, fixture.agentDir)).toEqual([]);
+		await checkRunners({ ids: ["claude-code"], env, agentDir: fixture.agentDir });
+		expect(cachedRunners(env, fixture.agentDir)[0].auth?.signedIn).toBe(true);
+	});
+
 	it("passes the supplied cleaned environment to the fallback ACP sign-in probe", async () => {
 		const peer = fileURLToPath(new URL("../../../acp/test/client/capability-peer.mjs", import.meta.url));
 		const fixture = cli(
