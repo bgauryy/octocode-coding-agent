@@ -125,8 +125,8 @@ describe("write rules live in the store", () => {
 		// A child's guideline names the one item it may update, sends follow-ups to its report and leaves the fields to the schema and the store error.
 		const child = setup({ isSubagent: true, parentSession: "p" }).tool;
 		const childGuideline = child.promptGuidelines.join("\n");
-		expect(childGuideline).toContain("Update only the backlog item your task names");
-		expect(childGuideline).toContain("follow-ups and unfixed failures (trigger, evidence, fix) in your report");
+		expect(childGuideline).toContain("Update only your assigned item under its closure rule");
+		expect(childGuideline).toContain("Report follow-ups/unfixed failures to your coordinator: trigger, evidence, fix");
 		// Registered either way, declared to the model only when the task names an item.
 		expect(child.defaultActive).toBe(false);
 		expect(setup({ isSubagent: true, parentSession: "p", item: "B1" }).tool.defaultActive).toBe(true);

@@ -548,7 +548,7 @@ describe("subagents", () => {
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");
 		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, bare id, small or medium.*:off\|minimal\|low.*Default: the profile's.*no profile: medium, thinking medium/,
+			/provider\/id, unambiguous bare id, small or medium.*:off\|minimal\|low.*Default: profile; without one, medium with medium thinking/,
 		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];

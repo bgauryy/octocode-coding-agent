@@ -396,7 +396,7 @@ describe("agents view", () => {
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
 		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
-			"own user communication, approvals and integration.",
+			"own communication, approvals and integration.",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(

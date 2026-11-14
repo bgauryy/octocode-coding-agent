@@ -164,8 +164,9 @@ describe("unified agent", () => {
 		for (const name of [...native, "mcp"]) expect(line).toContain(`/${name}`);
 	});
 
-	it("keeps only communication modes in a child session", async () => {
+	it("keeps only communication modes in a child without an installed runner", async () => {
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
+		vi.stubEnv("PATH", tmp());
 		try {
 			const fake = fakeHost();
 			await octocode(fake.api);

@@ -10,6 +10,7 @@ import { BacklogError, parseRef } from "./item.ts";
  */
 export const closeField = Type.Object(CloseInputSchema.properties, {
 	additionalProperties: false,
+	description: "close: the reason",
 });
 
 /**

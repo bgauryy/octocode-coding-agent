@@ -72,21 +72,21 @@ describe("renderCliGuide", () => {
 		const mac = renderCliGuide(host("darwin", ["yq"]));
 		// Read routing belongs to the research policy: the guide holds host facts only.
 		expect(mac).not.toMatch(/Code research:|The commands below are for|^Find:|^Read:/m);
-		expect(mac.split("\n")[0]).toMatch(/^Host: macOS arm64\. On PATH: git, rg; not found: yq\. gh: logged in\./);
-		expect(mac).toContain("Host notes: BSD:");
+		expect(mac.split("\n")[0]).toMatch(/^Host: macOS arm64\. PATH: git, rg; missing: yq\. gh: logged in\./);
+		expect(mac).toContain("BSD:");
 		expect(mac).not.toContain("GNU:");
 		const linux = renderCliGuide(host("linux"));
-		expect(linux.split("\n")[0]).toMatch(/^Host: Linux arm64\. On PATH: git, rg\. gh: logged in\./);
-		expect(linux).toContain("Host notes: GNU:");
+		expect(linux.split("\n")[0]).toMatch(/^Host: Linux arm64\. PATH: git, rg\. gh: logged in\./);
+		expect(linux).toContain("GNU:");
 		expect(linux).toContain("sha256sum");
-		expect(linux).not.toContain("Host notes: BSD:");
+		expect(linux).not.toContain("BSD:");
 		expect(renderCliGuide(host("win32"))).toContain("type: powershell");
-		expect(renderCliGuide(host("freebsd"))).toContain("Host notes: check flags");
+		expect(renderCliGuide(host("freebsd"))).toContain("Check flags");
 	});
 
 	it("lists the octocode CLI on PATH like any other program, without usage text", () => {
 		const withCli = renderCliGuide({ ...host("linux"), present: ["git", "rg", "octocode"] });
-		expect(withCli.split("\n")[0]).toContain("On PATH: git, rg, octocode.");
+		expect(withCli.split("\n")[0]).toContain("PATH: git, rg, octocode.");
 		expect(withCli).not.toContain("`octocode");
 	});
 

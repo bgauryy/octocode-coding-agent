@@ -50,8 +50,8 @@ describe("read-only subagent roles", () => {
 		};
 		const reviewer = await policy(true);
 		expect(reviewer).toContain("Investigate and report; do not modify repository source.");
-		expect(reviewer).not.toContain("Make the smallest complete change");
-		expect(await policy(false)).toContain("Make the smallest complete change");
+		expect(reviewer).not.toContain("Make the smallest complete fix");
+		expect(await policy(false)).toContain("Make the smallest complete fix");
 	});
 
 	it("does not infer a read-only role from a main session without file tools", async () => {
@@ -70,7 +70,7 @@ describe("read-only subagent roles", () => {
 			};
 			await fake.emit("before_agent_start", event, {});
 			const prompt = Object.values(allSections(event)).join("\n\n");
-			expect(prompt).toContain("Make the smallest complete change");
+			expect(prompt).toContain("Make the smallest complete fix");
 			expect(prompt).not.toContain("Investigate and report; do not modify repository source");
 			expect(prompt).not.toContain("Run only read-only commands");
 			if (selectedTools[0] === "web") expect(prompt).not.toContain("Search with bash");

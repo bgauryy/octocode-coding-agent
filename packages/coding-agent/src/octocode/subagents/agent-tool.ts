@@ -37,7 +37,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			task: Type.String({
 				description:
-					"Brief as in <delegation>; msg#<N> and report:<agent-id> append fenced excerpts. Invalid/oversized references refuse.",
+					"Brief as in <delegation>; msg#<N> appends the complete fenced message, report:<agent-id> a fenced report or bounded excerpt. Invalid or unresolvable references, including oversized messages, refuse the call.",
 			}),
 			item: Type.Optional(
 				Type.String({

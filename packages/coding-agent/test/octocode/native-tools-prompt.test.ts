@@ -53,14 +53,26 @@ describe("native tools and the system prompt", () => {
 		expect(of("memory")?.promptGuidelines?.[0]).toMatch(/^Save with `memory` when/);
 		// History has no rule of its own: `archive` no longer carries the memory guidance.
 		expect(of("archive")?.promptGuidelines ?? []).toEqual([]);
-		expect(of("backlog")?.promptGuidelines?.[0]).toMatch(/^Claim the `backlog` item/);
+		const backlog = of("backlog")?.promptGuidelines?.[0] ?? "";
+		expect(backlog).toMatch(/claim[^.]*`backlog`[^.]*before work or delegation/i);
+		expect(backlog).toMatch(/claim[^.]*its own call/i);
 	});
 
 	it("asks for handoff notes before a handoff, not before a compaction the agent cannot time", () => {
 		const policy = readFileSync(new URL("../../src/octocode/instructions/policy/work.md", import.meta.url), "utf8");
-		expect(policy).toMatch(
-			/Preserve goal, constraints, checked state, open decisions, pending effects and next step[^\n]*in a handoff or scratch file/,
-		);
+		const handoff = policy.split("\n").find((line) => /handoff/i.test(line)) ?? "";
+		expect(handoff).toMatch(/(?:preserve|save|record)/i);
+		for (const field of [
+			"goal",
+			"constraints",
+			"checked state",
+			"open decisions",
+			"pending effects",
+			"next step",
+			"paths/ids/cursors",
+		])
+			expect(handoff).toContain(field);
+		expect(handoff).toMatch(/handoff or scratch/i);
 		expect(policy).not.toMatch(/before a[^.\n]*compaction/i);
 	});
 

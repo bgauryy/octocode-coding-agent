@@ -265,7 +265,7 @@ describe("backlog list filters", () => {
 		for (const field of ["states", "query", "since", "limit"])
 			expect(properties[field].description, field).toBeTruthy();
 		// The description says it, so a deferred declaration (no schema) still does.
-		expect(tool.description).toContain("list finds items by the other fields");
+		expect(tool.description).toContain("list filters by other fields");
 		for (const field of ["assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
 		// Every other field is one `add` and `edit` write, inside an `items` entry, and none of them is also a filter.
 		expect(Object.keys(properties).filter((field) => !filters.includes(field))).toEqual(["op", "items"]);

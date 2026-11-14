@@ -56,7 +56,7 @@ describe("instruction context edges", () => {
 	it("keeps the final judgment with the coordinator: no model tier is routed the work it must not delegate", () => {
 		for (const research of [FAKE_RESEARCH, undefined]) {
 			const delegation = octocodePromptSections({ research, profiles: [], canDelegate: true }).delegation ?? "";
-			expect(delegation).toContain("Never delegate understanding, synthesis or the final judgment");
+			expect(delegation).toContain("Never delegate understanding, synthesis or final judgment");
 			// The routing line picks a child's model; naming the final judgment there invites delegating it.
 			expect(delegation.match(/final judgment/g) ?? []).toHaveLength(1);
 		}
@@ -77,11 +77,12 @@ describe("instruction context edges", () => {
 
 	it("asks the coordinator for a brief with boundaries, objective, answer shape and a Definition of Done", () => {
 		const root = octocodePrompt({ research: undefined, profiles: [], canDelegate: true });
-		const brief = root.split("\n").find((line) => line.startsWith("- Write for a fresh agent:")) ?? "";
-		expect(brief).toContain("hard limits first; output and purpose");
-		expect(brief).toContain("when to stop (Definition of Done as evidence");
+		const brief = root.split("\n").find((line) => line.startsWith("- Brief a fresh agent:")) ?? "";
+		for (const requirement of ["limits", "output", "purpose", "evidence", "Definition of Done"])
+			expect(brief).toContain(requirement);
+		expect(brief).toMatch(/pass\/fail command when available/);
 		// The child returns a conclusion the coordinator can use, not material it must digest again.
-		expect(brief).toContain("Ask for the answer, not raw material or advice");
+		expect(brief).toContain("Ask for answers, not raw material/advice");
 	});
 
 	it("tells every child that can write to keep bulky output in a file and cite its path, so its report stays condensed", () => {
@@ -89,8 +90,21 @@ describe("instruction context edges", () => {
 		// the rule here keeps logs and listings out of the report in the first place, without cutting anything.
 		const writer = octocodePrompt({ research: undefined, profiles: [], canDelegate: false });
 		const reader = octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true });
-		expect(writer).toContain("Put substantial results in a Markdown doc in your scratch folder and cite its path");
+		expect(writer).toContain(
+			"Save substantial results and long-task checkpoints as Markdown in your scratch folder; cite the path",
+		);
 		expect(reader).toContain("Save substantial results as Markdown in scratch and cite the path.");
+		for (const readOnly of [false, true]) {
+			const noSave = octocodePrompt({
+				research: undefined,
+				profiles: [],
+				canDelegate: false,
+				readOnly,
+				canSave: false,
+			});
+			expect(noSave).not.toMatch(/Save substantial results/);
+			if (readOnly) expect(noSave).toContain("Put what you produce in your report.");
+		}
 		expect(writer).toContain("Be concise and refer to files by their paths.");
 		const lean = leanPromptSections({ canShell: true, canSave: true, readOnly: false }).lean;
 		expect(lean).toContain("Put long output in a file in your scratch folder and cite its path.");

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../db/src/api.ts";
 import { type Args, parseArgs } from "../src/cli/args.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { sessionMirrorSettled } from "../src/core/session-manager/mirror.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createSessionManager } from "../src/main/session-manager.ts";
 
@@ -59,7 +60,9 @@ beforeEach(() => {
 	vi.spyOn(console, "error").mockImplementation((line: unknown) => void errors.push(String(line)));
 });
 
-afterEach(() => {
+afterEach(async () => {
+	// Saved fixtures enqueue mirror writes; finish them before closing the worker or removing its directory.
+	if (!(await sessionMirrorSettled())) throw new Error("Session fixture mirror did not settle before teardown");
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
 	closeSharedAgentDb();

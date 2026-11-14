@@ -15,9 +15,9 @@ afterEach(() => vi.unstubAllEnvs());
 
 /**
  * A main session whose PATH holds one fake ACP adapter (`acp`, default) or no agent at all, with the `externalAgents`
- * setting on (`optIn`, default) or unset: `external` is declared only for an adapter and the opt-in together.
+ * setting unset (on by default) or explicit: `external` also requires a discoverable adapter.
  */
-async function mainSession(options: { acp?: boolean; optIn?: boolean } = {}) {
+async function mainSession(options: { acp?: boolean; externalAgents?: boolean } = {}) {
 	const bin = tmp();
 	if (options.acp === false) vi.stubEnv("PATH", bin);
 	else {
@@ -29,7 +29,8 @@ async function mainSession(options: { acp?: boolean; optIn?: boolean } = {}) {
 	const home = tmp();
 	vi.stubEnv("OCTOCODE_HOME", home);
 	vi.stubEnv(ENV_AGENT_DIR, home); // the suite points the agent directory elsewhere; settings come from here
-	if (options.optIn !== false) writeFileSync(join(home, "settings.json"), JSON.stringify({ externalAgents: true }));
+	if (options.externalAgents !== undefined)
+		writeFileSync(join(home, "settings.json"), JSON.stringify({ externalAgents: options.externalAgents }));
 	const fake = fakeHost();
 	await octocode(fake.api);
 	return { fake, agent: fake.tools.get("agent")!, ctx: fakeCtx({ cwd: tmp() }) };
@@ -62,8 +63,8 @@ describe("agent with flat fields in a main session", () => {
 		expect((found.parameters.properties.type as { enum: string[] }).enum).toContain("external");
 	});
 
-	it("does not declare the external type unless the externalAgents setting is on, even with an ACP agent on PATH", async () => {
-		const { agent, fake } = await mainSession({ optIn: false });
+	it("honors an explicit externalAgents false even with an ACP agent on PATH", async () => {
+		const { agent, fake } = await mainSession({ externalAgents: false });
 		expect((agent.parameters.properties.type as { enum: string[] }).enum).toEqual(["coordinate", "message", "task"]);
 		expect(fake.tools.has("externalAgent")).toBe(false);
 	});

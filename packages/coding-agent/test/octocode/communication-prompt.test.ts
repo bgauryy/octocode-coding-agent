@@ -9,13 +9,11 @@ import { fakeHost } from "./fake-host.ts";
 describe("communication prompt contracts", () => {
 	it("distinguishes report excerpts from complete referenced messages", () => {
 		const task = agentToolSpec().parameters.properties.task;
+		expect(task).toHaveProperty("description", expect.stringMatching(/msg#<N>[^.]*complete[^.]*message/i));
+		expect(task).toHaveProperty("description", expect.stringMatching(/report:<agent-id>[^.]*bounded excerpt/i));
 		expect(task).toHaveProperty(
 			"description",
-			expect.stringContaining("msg#<N> messages and report:<agent-id> excerpts"),
-		);
-		expect(task).toHaveProperty(
-			"description",
-			expect.stringContaining("invalid or oversized references refuse the call"),
+			expect.stringMatching(/(?:invalid|unresolvable)[^.]*oversized messages[^.]*refuse/i),
 		);
 	});
 
@@ -60,22 +58,20 @@ describe("communication prompt contracts", () => {
 		expect(octocodePrompt({ ...main, canExternal: true })).toContain("Outside agent: `agent` type `external`.");
 		// Without the agent tool it names nothing.
 		const withoutAgent = octocodePrompt({ ...main, canUseAgent: false });
-		expect(withoutAgent).not.toContain("only you reach");
+		expect(withoutAgent).not.toContain("Only you reach");
 		expect(withoutAgent).not.toContain("`to` `coordinator`");
 		// Children cannot reach another process and do not land merges.
 		for (const child of [
 			octocodePrompt({ research: undefined, profiles: [], canDelegate: false }),
 			octocodePrompt({ research: undefined, profiles: [], canDelegate: false, readOnly: true, canSave: false }),
 		]) {
-			expect(child).not.toContain("only you reach");
+			expect(child).not.toContain("Only you reach");
 			expect(child).not.toContain("`to` `coordinator`");
 		}
 		// Every byte is in every request: the section stays this small.
-		const section = prompt.slice(
-			prompt.indexOf("- As the top-level session"),
-			prompt.indexOf("- Across coordinator trees"),
-		);
-		expect(Buffer.byteLength(section)).toBeLessThan(800);
+		const section = prompt.split("\n").find((line) => line.startsWith("- Only you reach other Octocode processes;"));
+		expect(section).toBeDefined();
+		expect(Buffer.byteLength(section ?? "")).toBeLessThan(800);
 	});
 
 	it("uses the flat agent contract and exact ids for cross-tree routing", () => {

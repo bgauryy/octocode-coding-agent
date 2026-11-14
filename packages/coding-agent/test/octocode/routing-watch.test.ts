@@ -112,7 +112,7 @@ describe("coordinator prompt routing", () => {
 
 		const first = await start();
 		expect(first.prompt).toContain(
-			"- Models: you run `p/opus`; providers: `p` (3), `q` (1); `small` runs `p/haiku`, `medium` `p/sonnet` (also the default)",
+			"- Models: you run `p/opus`; providers: `p` (3), `q` (1); `small`: `p/haiku`; `medium`: `p/sonnet` (default)",
 		);
 		expect(first.prompt).toContain("  - researcher (`p/haiku:medium`): Reads code");
 		expect(first.message).toBeUndefined();
@@ -138,7 +138,7 @@ describe("coordinator prompt routing", () => {
 		available = [opus, haiku];
 		turn.reset();
 		const reloaded = await start();
-		expect(reloaded.prompt).toContain("providers: `p` (2); `small` runs `p/haiku`");
+		expect(reloaded.prompt).toContain("providers: `p` (2); `small`: `p/haiku`");
 		expect(reloaded.message).toBeUndefined();
 	});
 

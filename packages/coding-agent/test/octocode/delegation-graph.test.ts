@@ -18,45 +18,45 @@ describe("coordinator planning graph", () => {
 		for (const text of delegation()) {
 			expect(text).toContain("Do the work yourself by default");
 			// The cost a coordinator under-counts: a fresh context, its own brief and checking the report.
-			expect(text).toContain("children cost context, briefing and verification");
-			expect(text).toContain("know only their brief and return summaries that may be wrong");
-			expect(text).toContain("Delegate only when parallel parts or a clean context repay that cost");
+			expect(text).toContain("Children cost context");
+			expect(text).toContain("see only their brief and may return wrong summaries");
+			expect(text).toContain("delegate when parallelism or clean context repays briefing and verification");
 		}
 	});
 
 	it("plans work for two or more children as one backlog graph: owner, files, check and real dependencies per item", () => {
 		for (const text of delegation()) {
-			const plan = text.split("\n").find((line) => line.startsWith("  1. Plan a graph")) ?? "";
+			const plan = text.split("\n").find((line) => line.startsWith("  1. Plan")) ?? "";
 			expect(plan).toContain("one `backlogPlan` `add`");
-			expect(plan).toContain("its owner (you or one child), files, pass/fail check and only real `dependsOn`");
+			expect(plan).toContain("an owner (you or one child), files and pass/fail check");
 			// Reservations and busy children are scheduling, not dependencies.
-			expect(plan).toContain("Reservations and busy children are not dependencies");
+			expect(plan).toContain("Use only real `dependsOn` links, never reservations or busy children");
 			// The user sees who does what before work starts.
-			expect(plan).toContain("Show the user a table: item, owner, depends on");
+			expect(plan).toContain("Show the user a table of item, owner and dependencies");
 		}
 	});
 
 	it("checks the graph before starting: disjoint files, one owner per coupling and resource, work worth a start, critical path first", () => {
 		for (const text of delegation()) {
-			const check = text.split("\n").find((line) => line.startsWith("  2. Check the graph before starting")) ?? "";
+			const check = text.split("\n").find((line) => line.startsWith("  2. Check:")) ?? "";
 			expect(check).toContain("one owner per coupled part or shared resource");
 			expect(check).toContain("shared resource (including builds)");
 			expect(check).toContain("disjoint files for independent parts");
-			expect(check).toContain("Merge parts too small to justify a child or do them yourself");
-			expect(check).toContain("start the longest dependency chain first");
+			expect(check).toContain("merge trivial parts or do them yourself");
+			expect(check).toContain("start the longest chain first");
 		}
 	});
 
 	it("runs the graph in waves with one build, and sends a failure back to the item that caused it", () => {
 		for (const text of delegation()) {
-			const waves = text.split("\n").find((line) => line.startsWith("  3. Run waves")) ?? "";
-			expect(waves).toContain("interfaces and shared types first");
-			expect(waves).toContain("then all parts with free files and satisfied dependencies");
-			expect(waves).toContain("one owner runs one build and the full test run");
+			const waves = text.split("\n").find((line) => line.startsWith("  3. Run")) ?? "";
+			expect(waves).toContain("interfaces/shared types first");
+			expect(waves).toContain("then parts with free files and satisfied dependencies");
+			expect(waves).toContain("One integration owner builds, runs the full suite");
 			// Build cycles: children never run whole builds, and a broken build is not a new child.
-			expect(waves).toContain("children run only focused tests of their files");
-			expect(waves).toContain("Return failing builds or tests to the owning child as below, not a new child");
-			expect(waves).toContain("Review the combined diff");
+			expect(waves).toContain("children run focused tests only");
+			expect(waves).toContain("return failures to their owner, not a new child");
+			expect(waves).toContain("reviews the combined diff");
 		}
 	});
 
@@ -69,14 +69,14 @@ describe("coordinator planning graph", () => {
 			expect(sections.coordinator).toContain("You are a subagent: finish your task yourself.");
 			expect(sections.delegation).toBe("");
 			expect(octocodePromptSections({ research, profiles: [], canDelegate: true }).coordinator).toBe("");
-			for (const rule of ["Plan a graph", "Check the graph before starting", "Run waves"]) {
+			for (const rule of ["  1. Plan", "  2. Check:", "  3. Run"]) {
 				expect(child).not.toContain(rule);
 			}
 		}
 	});
 
 	it("puts the coordinator's own work in the graph, not only its children's", () => {
-		for (const text of delegation()) expect(text).toContain("its owner (you or one child)");
+		for (const text of delegation()) expect(text).toContain("an owner (you or one child)");
 	});
 
 	it("plans the graph without the backlog when the session runs without the backlog tool", () => {
@@ -89,9 +89,11 @@ describe("coordinator planning graph", () => {
 			childStarted: true,
 		});
 		const text = `${sections.delegation}\n${sections.children}`;
-		const plan = text.split("\n").find((line) => line.startsWith("  1. Plan a graph")) ?? "";
-		expect(plan).toContain("Plan a graph: one part per independently checkable result");
-		expect(plan).toContain("Show the user a table: part, owner, depends on");
+		const plan = text.split("\n").find((line) => line.startsWith("  1. Plan")) ?? "";
+		expect(plan).toContain(
+			"Plan: each independently checkable part needs an owner (you or one child), files and pass/fail check",
+		);
+		expect(plan).toContain("Show the user a table of part, owner and dependencies");
 		// No rule may send the coordinator to a tool it lacks.
 		expect(text).not.toContain("backlog");
 		expect(text).not.toContain("`dependsOn`");
@@ -102,7 +104,7 @@ describe("coordinator planning graph", () => {
 	it("states each planning rule once", () => {
 		for (const text of delegation()) {
 			expect(text.match(/disjoint files/g) ?? []).toHaveLength(1);
-			expect(text.match(/landing order/g) ?? []).toHaveLength(1);
+			expect(text.match(/Order interdependent edits/g) ?? []).toHaveLength(1);
 			expect(text.match(/`dependsOn`/g) ?? []).toHaveLength(1);
 			expect(text.match(/combined diff/g) ?? []).toHaveLength(1);
 		}

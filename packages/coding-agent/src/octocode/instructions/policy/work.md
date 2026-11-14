@@ -22,7 +22,7 @@
 ## Finish
 
 - After edits, review the diff; verify requested results from runner summaries. Rerun affected checks; report failures/skips/blocks. Measure gains before claiming them.
-- Handoff/scratch: goal, constraints, checked state, open decisions, pending effects, next step, exact paths/ids/cursors.
+- In a handoff or scratch note, preserve goal, constraints, checked state, open decisions, pending effects, next step and exact paths/ids/cursors.
 {{#if main}}
 - Finish/revert partial edits; stop only your moot jobs. User leaving: keep jobs running and name them.
 {{/if}}

@@ -99,7 +99,7 @@ describe("the models tool", () => {
 
 	it("offers the suffixes the agent tool accepts", async () => {
 		const description = JSON.stringify(agentToolSpec().parameters);
-		const accepted = /optional ((?::?\w+\|?)+) thinking/
+		const accepted = /optional ((?::?\w+\|?)+)\./
 			.exec(description)?.[1]
 			?.split("|")
 			.map((level) => level.replace(":", ""));
