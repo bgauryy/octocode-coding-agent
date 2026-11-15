@@ -54,7 +54,7 @@ const ALLOWED: Record<string, string[]> = {
 	"child-sessions": ["shared"],
 	// Where worktree sessions live: the member and own worktree roots and the prompt root a worktree session rebases to.
 	"worktree-paths": ["shared"],
-	"mcp-host": ["shared", "skill", "trust", "web", "render"],
+	"mcp-host": ["shared", "skill", "trust", "web", "render", "guard"],
 	llama: ["shared"],
 	api: ["shared", "render"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
@@ -67,13 +67,16 @@ const ALLOWED: Record<string, string[]> = {
 	team: ["shared", "render", "tool-input", "worktree-paths"],
 	discovery: ["shared"],
 	// `permission`: a Claude hook's `if` is one permission rule, judged by the source-policy parser and matcher.
-	hooks: ["shared", "discovery", "render", "tool-input", "permission"],
+	// `guard`: session start withholds a handler the user has not approved (the extension guard).
+	hooks: ["shared", "discovery", "render", "tool-input", "permission", "guard"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
-	harness: ["shared", "plugins", "hooks", "discovery", "skill"],
+	// `guard`: every external row shows its review state, and Enter opens its check.
+	harness: ["shared", "plugins", "hooks", "discovery", "skill", "guard"],
 	web: ["shared", "permission", "render"],
-	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`).
-	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render"],
+	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`);
+	// `timer`: it names the active timers as their rows say (`timer/work.ts`).
+	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render", "timer"],
 	// The archive tool's profile source reads a stored session through the profiler.
 	archive: ["shared", "permission", "profiler", "history", "render"],
 	ui: ["shared", "permission", "render", "child-sessions", "tool-input"],
@@ -96,6 +99,9 @@ const ALLOWED: Record<string, string[]> = {
 	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
 	backlog: ["shared", "render", "browser"],
 	trust: ["shared"],
+	// The extension guard: review items, the scanner and the review records. A leaf: loaders hand it plain data.
+	// `trust`: the commands that record a decision refuse inside a session's shell.
+	guard: ["shared", "trust"],
 	// Rebuilds a stored session's profiler source from the team's message model; entry names from `shared`.
 	profiler: ["shared", "team"],
 	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],

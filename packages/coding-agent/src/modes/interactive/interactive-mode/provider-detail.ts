@@ -69,7 +69,7 @@ export async function showProviderDetail(
 	}
 	if (definition) {
 		const { origin, path } = definition;
-		actions.set(`Edit definition — ${origin} models.json: ${path}`, {
+		actions.set(`Show definition file — ${origin} models.json: ${path}`, {
 			run: () =>
 				host.showStatus(
 					`${name} is defined in ${path}. Edit that file, then open /model to refresh models (or restart).`,

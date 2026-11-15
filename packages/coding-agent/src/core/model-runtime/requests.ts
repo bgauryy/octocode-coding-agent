@@ -50,6 +50,7 @@ import {
 	classifierErrorResult,
 	imageErrorResult,
 } from "@octocodeai/octocode-ai/utils/model-operations";
+import { formatAuthRefreshFailedMessage } from "../auth-guidance.ts";
 import type { resolveConfiguredCache } from "../cache-configuration.ts";
 import { resolveConfiguredModelHeaders } from "../provider-composer.ts";
 import { isVirtualModel, type ModelRoute, type ModelRouteReason } from "../virtual-models.ts";
@@ -125,11 +126,16 @@ async function prepareModelRequest<
 }> {
 	const provider = host.getProvider(model.provider);
 	if (!provider) throw new ModelsError("provider", `Unknown provider: ${model.provider}`);
-	const resolution = await host.getAuth(model, {
-		apiKey: options?.apiKey,
-		env: options?.env,
-		signal: options?.signal,
-	});
+	const resolution = await host
+		.getAuth(model, { apiKey: options?.apiKey, env: options?.env, signal: options?.signal })
+		.catch((error: unknown) => {
+			// A failed renewal needs a new sign-in, not a retry: say which command does it.
+			if (error instanceof ModelsError && error.code === "oauth")
+				throw new ModelsError("oauth", formatAuthRefreshFailedMessage(model.provider, error.message), {
+					cause: error,
+				});
+			throw error;
+		});
 	if (!resolution) throw new ModelsError("auth", `Provider is not configured: ${model.provider}`);
 
 	const { transformHeaders, ...rawProviderOptions } = options ?? {};

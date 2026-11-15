@@ -49,6 +49,11 @@ export interface RegisteredCommand {
 	description?: string;
 	/** Usage shown beside the command in autocomplete and `get_commands`, such as `[all|<query>]`. */
 	argumentHint?: string;
+	/**
+	 * The only first words the command accepts, lowercase. The terminal keeps other text in the editor instead of running
+	 * the command, so a message that starts with the command's name (`/harness shows only skills`) is not lost.
+	 */
+	argumentWords?: readonly string[];
 	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }

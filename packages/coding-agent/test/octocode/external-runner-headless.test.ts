@@ -2,8 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectAcp } from "../../src/octocode/external/acp-host.ts";
-import { HEADLESS_ROUTE, headlessReady, runnerRoute } from "../../src/octocode/external/runner-headless.ts";
+import {
+	HEADLESS_ARGS,
+	HEADLESS_ROUTE,
+	headlessReady,
+	runnerRoute,
+} from "../../src/octocode/external/runner-headless.ts";
 import { launchOf, type RunnerLaunch, runnerTurn } from "../../src/octocode/external/runner-session.ts";
+import type { RunnerCommunication } from "../../src/octocode/external/runner-communication.ts";
 import { cachedRunners, type RunnerState } from "../../src/octocode/external/runner-status.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
 import { fakeCtx } from "./fake-host.ts";
@@ -36,9 +42,8 @@ const { spawn } = require("node:child_process");
 const journal = ${JSON.stringify(journal)};
 const log = (entry) => fs.appendFileSync(journal, JSON.stringify(entry) + "\\n");
 const out = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
-let stdin = "";
-process.stdin.on("data", (chunk) => (stdin += chunk));
-process.stdin.on("end", () => {
+require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+	const stdin = JSON.parse(line).message.content;
 	log({ args: process.argv.slice(2), cwd: process.cwd(), stdin, env: Object.keys(process.env), pid: process.pid });
 	const scenario = ${JSON.stringify(scenario)};
 	out({ type: "system", subtype: "init", cwd: process.cwd(), tools: ["Read"] });
@@ -85,13 +90,20 @@ const headlessDeps = (launch: RunnerLaunch) => ({
 
 function turn(
 	launch: RunnerLaunch,
-	options: { cwd: string; sessionCwd?: string; signal?: AbortSignal; model?: string },
+	options: {
+		cwd: string;
+		sessionCwd?: string;
+		signal?: AbortSignal;
+		model?: string;
+		communication?: RunnerCommunication;
+	},
 ) {
 	const activity: string[] = [];
 	const started: number[] = [];
 	const reply = runnerTurn(
 		{
 			runner: "claude-code",
+			communication: options.communication,
 			...(options.model ? { model: options.model } : {}),
 			cwd: options.cwd,
 			text: "Read src/app.ts and report. Secret: sk-ant-api03-donotputmeinargv",
@@ -120,7 +132,7 @@ describe("the headless route", () => {
 		vi.stubEnv("PATH", claude.bin);
 		expect(launchOf("claude-code", [signedIn(false)])).toEqual({
 			command: claude.command,
-			args: ["-p", "--output-format", "stream-json", "--verbose"],
+			args: [...HEADLESS_ARGS],
 			billing: "plan",
 			route: "headless",
 		});
@@ -146,7 +158,7 @@ describe("a runner's turn headless", () => {
 		const run = turn(
 			{
 				command: claude.command,
-				args: ["-p", "--output-format", "stream-json", "--verbose"],
+				args: [...HEADLESS_ARGS],
 				billing: "plan",
 				route: "headless",
 			},
@@ -165,9 +177,15 @@ describe("a runner's turn headless", () => {
 		expect(fs.realpathSync(String(started.cwd))).toBe(fs.realpathSync(worktree));
 		expect(started.args).toEqual([
 			"-p",
+			"--input-format",
+			"stream-json",
 			"--output-format",
 			"stream-json",
 			"--verbose",
+			"--setting-sources",
+			"",
+			"--strict-mcp-config",
+			"--disable-slash-commands",
 			"--permission-mode",
 			"acceptEdits",
 			"--permission-prompts",
@@ -184,8 +202,15 @@ describe("a runner's turn headless", () => {
 	it("runs a task in the session's own folder without accepting edits", async () => {
 		const claude = fakeClaude("report");
 		const cwd = tmp("octocode-headless-same-");
-		await turn({ command: claude.command, args: ["-p"], billing: "plan", route: "headless" }, { cwd }).reply;
-		expect(claude.entries()[0].args).toEqual(["-p", "--permission-mode", "manual", "--permission-prompts", "none"]);
+		await turn({ command: claude.command, args: [...HEADLESS_ARGS], billing: "plan", route: "headless" }, { cwd })
+			.reply;
+		expect(claude.entries()[0].args).toEqual([
+			...HEADLESS_ARGS,
+			"--permission-mode",
+			"manual",
+			"--permission-prompts",
+			"none",
+		]);
 	});
 
 	it("says a signed-out CLI is signed out and drops its cached check", async () => {
@@ -196,7 +221,7 @@ describe("a runner's turn headless", () => {
 		fs.writeFileSync(cache, JSON.stringify({ "claude-code": { stamp: "x", state: signedIn(false) } }));
 		const cwd = tmp("octocode-headless-out-");
 		await expect(
-			turn({ command: claude.command, args: ["-p"], billing: "plan", route: "headless" }, { cwd }).reply,
+			turn({ command: claude.command, args: [...HEADLESS_ARGS], billing: "plan", route: "headless" }, { cwd }).reply,
 		).rejects.toThrow(/claude-code is signed out: sign in with \/providers/);
 		expect(JSON.parse(fs.readFileSync(cache, "utf8"))).toEqual({
 			"claude-code": { stamp: "", revision: expect.any(String) },
@@ -208,7 +233,7 @@ describe("a runner's turn headless", () => {
 		const claude = fakeClaude("crash");
 		const cwd = tmp("octocode-headless-crash-");
 		const failure = await turn(
-			{ command: claude.command, args: ["-p"], billing: "plan", route: "headless" },
+			{ command: claude.command, args: [...HEADLESS_ARGS], billing: "plan", route: "headless" },
 			{ cwd },
 		).reply.then(
 			() => undefined,
@@ -223,14 +248,27 @@ describe("a runner's turn headless", () => {
 		const cwd = tmp("octocode-headless-stop-");
 		const stop = new AbortController();
 		const run = turn(
-			{ command: claude.command, args: ["-p"], billing: "plan", route: "headless" },
-			{ cwd, signal: stop.signal },
+			{ command: claude.command, args: [...HEADLESS_ARGS], billing: "plan", route: "headless" },
+			{
+				cwd,
+				signal: stop.signal,
+				communication: {
+					name: "octocode-team",
+					url: "http://127.0.0.1:12345/mcp",
+					headers: [{ name: "Authorization", value: "Bearer owned-private-token" }],
+				},
+			},
 		);
 		await vi.waitFor(() => expect(claude.entries().some((entry) => entry.grandchild)).toBe(true), { timeout: 10_000 });
+		const args = claude.entries()[0].args as string[];
+		const config = args[args.indexOf("--mcp-config") + 1];
+		expect(fs.existsSync(config)).toBe(true);
+		expect(args.join(" ")).not.toContain("owned-private-token");
 		const pid = Number(claude.entries()[0].pid);
 		const grandchild = Number(claude.entries().find((entry) => entry.grandchild)!.grandchild);
 		stop.abort(new Error("Subagent cancelled"));
 		await expect(run.reply).rejects.toThrow("Subagent cancelled");
+		expect(fs.existsSync(path.dirname(config))).toBe(false);
 		await vi.waitFor(() => {
 			expect(processAlive(pid)).toBe(false);
 			expect(processAlive(grandchild)).toBe(false);

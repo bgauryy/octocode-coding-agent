@@ -24,9 +24,9 @@ describe("TitleTracker", () => {
 		t.toolStart("b");
 		t.toolEnd("a");
 		expect(t.state).toBe("running");
-		t.promptStart();
+		t.promptStart("p");
 		expect(t.state).toBe("waiting");
-		t.promptEnd();
+		t.promptEnd("p");
 		t.toolEnd("b");
 		expect(t.state).toBe("thinking");
 		t.settle("failed");
@@ -35,16 +35,63 @@ describe("TitleTracker", () => {
 		expect(t.state).toBe("idle");
 	});
 
+	it("adds an octopus with the number of background subagents after the state mark", () => {
+		expect(terminalTitle("running", undefined, "/work/repo", 1)).toBe("◐ 🐙 Octocode · repo");
+		expect(terminalTitle("thinking", "fix", "/work/repo", 3)).toBe("✻ 🐙3 Octocode · fix · repo");
+		expect(terminalTitle("running", undefined, "/work/repo", 0)).toBe("◐ Octocode · repo");
+	});
+
+	it("stays running while background work outlives the run, and shows the outcome when the last of it ends", () => {
+		const title = new TitleTracker();
+		title.start();
+		title.setBackground(2);
+		title.settle("failed");
+		expect(title.state).toBe("running");
+		title.seen();
+		expect(title.state).toBe("running");
+		title.setBackground(0);
+		expect(title.state).toBe("failed");
+		title.seen();
+		expect(title.state).toBe("idle");
+	});
+
+	it("shows waiting for a blocking dialog with no run active, and ignores a dialog the user opened", () => {
+		const t = new TitleTracker();
+		t.promptStart("picker", false);
+		expect(t.state).toBe("idle");
+		t.promptEnd("picker");
+		t.promptStart("approval", true);
+		expect(t.state).toBe("waiting");
+		t.setBackground(1);
+		expect(t.state).toBe("waiting");
+		t.promptEnd("approval");
+		expect(t.state).toBe("running");
+	});
+
+	it("keeps waiting while any blocking dialog is open, whatever order dialogs open and close in", () => {
+		const t = new TitleTracker();
+		expect(t.promptStart("picker", false)).toBe(false);
+		expect(t.promptStart("approval", true)).toBe(true);
+		expect(t.state).toBe("waiting");
+		t.promptEnd("picker");
+		expect(t.state).toBe("waiting");
+		expect(t.promptStart("question", true)).toBe(false);
+		t.promptEnd("approval");
+		expect(t.state).toBe("waiting");
+		t.promptEnd("question");
+		expect(t.state).toBe("idle");
+	});
+
 	it("keeps a run's state when the user returns mid-run, and reset forgets an open dialog", () => {
 		const t = new TitleTracker();
 		t.start();
 		t.seen();
 		expect(t.state).toBe("thinking");
-		t.promptStart();
+		t.promptStart("p");
 		t.reset();
 		t.start();
 		expect(t.state).toBe("thinking");
-		t.promptEnd();
+		t.promptEnd("p");
 		expect(t.state).toBe("thinking");
 	});
 });

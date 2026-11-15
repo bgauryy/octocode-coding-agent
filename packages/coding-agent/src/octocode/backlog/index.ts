@@ -13,6 +13,7 @@ import { refreshItemTitles } from "./title-lookup.ts";
 import { registerBacklogPlanTool } from "./plan-tool.ts";
 import { registerBacklogTool } from "./tool.ts";
 import { sharedWorkspaceWeb } from "./shared-web.ts";
+import { releaseOwn, restoreOwn } from "./lifetime.ts";
 
 interface RegisterBacklogOptions extends BacklogOptions {
 	openWeb?: OpenBacklogWeb;
@@ -99,7 +100,19 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 				web: () => commands.get("web"),
 			}),
 		);
-	if (!options.isSubagent) registerBacklogDigest(api, backlogOptions);
+	if (!options.isSubagent) {
+		// Claims follow the session: a resume takes back what its exit returned, before the digest and the counts read the board.
+		api.on("session_start", (event, ctx) => {
+			if (event.reason !== "startup" && event.reason !== "resume") return;
+			try {
+				const { store, actor } = openBacklog(ctx, backlogOptions);
+				restoreOwn(store, actor);
+			} catch {
+				// An unreadable database restores nothing; the backlog tool reports the cause when asked.
+			}
+		});
+		registerBacklogDigest(api, backlogOptions);
+	}
 	api.on("session_start", (_event, ctx) => {
 		stopFollowing?.();
 		lastAudit = undefined;
@@ -111,10 +124,18 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 					})
 				: undefined;
 	});
-	api.on("session_shutdown", () => {
+	api.on("session_shutdown", (event, ctx) => {
 		stopFollowing?.();
 		stopFollowing = undefined;
 		currentContext = undefined;
+		// A reload continues this session; any other end returns its claims (a subagent holds none).
+		if (options.isSubagent || event.reason === "reload") return;
+		try {
+			const { store, actor } = openBacklog(ctx, backlogOptions);
+			releaseOwn(store, actor);
+		} catch {
+			// An unreadable database must not hold up quitting; the claims then wait for the start-up sweep.
+		}
 	});
 	// Another session or agent may have changed the board: repaint at the end of every run.
 	api.on("agent_end", (_event, ctx) => refresh(ctx));

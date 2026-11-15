@@ -27,7 +27,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { runSubagent } from "./process.ts";
 import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
-import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
+import { buildRouteArgs, type ChildSession, childSession } from "./process/session.ts";
 import type { AgentProfile } from "./profiles.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
@@ -193,7 +193,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
 			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
-			const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking, run.identity.mcpNamed);
+			const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 			const host = relayHost(ctx);
 			const launch = (signal: AbortSignal) =>
 				record(
@@ -260,7 +260,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		if (event.toolResults.length > 0) runs.reports.stepEnded();
 		return undefined;
 	});
-	registerIdleItems(api, team, runs);
+	registerIdleItems(api, team, runs, lingering);
 	api.on("before_agent_start", async () => {
 		runs.graph?.turnStarted();
 		runs.groups.nextStep();

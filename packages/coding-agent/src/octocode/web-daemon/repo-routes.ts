@@ -42,7 +42,7 @@ export async function handleRepoRequest(
 			reply(400, { error: "Invalid audit cursor" });
 			return true;
 		}
-		const events = store().audit(
+		const events = await store().auditAsync(
 			url.searchParams.get("backlogId") ?? undefined,
 			100,
 			before ? Number(before) : undefined,

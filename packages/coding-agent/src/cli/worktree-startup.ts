@@ -9,6 +9,7 @@ import { confirmWorktreeTrust } from "./trust-prompt.ts";
 import { enterWorktree } from "../octocode/worktrees/enter.ts";
 import { parseArgs } from "./args.ts";
 import { isSubcommand } from "./completion.ts";
+import { prepareAgentDb } from "../storage/database.ts";
 
 function fail(message: string): never {
 	process.stderr.write(`Error: ${message}\n`);
@@ -52,6 +53,7 @@ export async function startupCwd(args: string[]): Promise<string> {
 		);
 	}
 	try {
+		await prepareAgentDb();
 		const interactive = process.stdin.isTTY && process.stdout.isTTY && !parsed.print && parsed.mode === undefined;
 		const ask = interactive
 			? (request: WorktreeTrustRequest) =>

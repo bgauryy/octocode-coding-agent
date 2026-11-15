@@ -22,6 +22,7 @@ import type { McpServerConnection } from "./runtime.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { setMcpSessionStatus } from "./status.ts";
+import { mcpServerState, mcpServerToolCount } from "./row.ts";
 import { StartupGate } from "./startup-gate.ts";
 import type { McpToolDetails } from "./tools.ts";
 
@@ -213,16 +214,12 @@ export class McpExtensionState {
 			this.api.events,
 			this.servers.map((server) => ({
 				name: server.entry.name,
-				enabled: isEnabled(server),
-				state: !isEnabled(server)
-					? "disabled"
-					: server.unselected
-						? "unselected"
-						: server.connection?.isStopped
-							? "stopped"
-							: (server.connection?.state ?? "starting"),
+				// The switch; a server the security review withholds is switched on but shows state "not checked".
+				enabled: server.entry.config.enabled !== false,
+				state: mcpServerState(server),
 				exposure: exposureOf(server.entry),
-				toolCount: server.connection?.state === "connected" ? server.connection.tools.length : 0,
+				defaultActive: server.entry.config.defaultActive !== false,
+				toolCount: mcpServerToolCount(server),
 				source: server.entry.source,
 				...(server.entry.scope ? { scope: server.entry.scope } : {}),
 				group: mcpServerGroup(server.entry),

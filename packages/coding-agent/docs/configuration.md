@@ -46,7 +46,16 @@ Do not change global defaults for every delegated task. Prefer run flags, and ke
 
 Octocode configuration and the [Pi fallback](#pi-configuration-fallback) are available by default. Each native child can use a different enabled `provider/model`; it inherits the configuration sources, rather than being limited to the coordinator’s provider. A credential supplied only with `--api-key` is not forwarded to children: configure the provider in the shared user configuration instead.
 
-Installed [external runners](native-features.md#external-runners), including OpenCode, are available by default through `externalAgents`. Discovery starts no CLI processes; the selected runner’s sign-in is checked when a task uses it. Set `externalAgents: false` in global settings to disable external delegation for new sessions. Project settings cannot change this choice. Vendor CLIs use their own configuration and sign-in.
+Installed [external runners](native-features.md#external-runners), including OpenCode, require opt-in. Open `/providers` → **External agents**, select a CLI and choose **Enable this CLI for agent tasks**, then `/reload`. Discovery starts no CLI processes; opening a runner's page or using it checks its own sign-in. Vendor CLIs keep their own configuration and credentials.
+
+| Global setting                                                         | Meaning                                                    |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `externalAgents: false` (default)                                      | External delegation is off.                                |
+| `externalAgents: true`, `enabledExternalAgents: ["codex", "opencode"]` | Offer only these installed, runnable CLIs.                 |
+| `externalAgents: true`, `enabledExternalAgents: []`                    | Offer no vendor CLI.                                       |
+| Explicit `externalAgents: true`, selection omitted                     | Preserve the legacy choice to offer all installed runners. |
+
+Project settings cannot change these choices. Pausing external tasks keeps the selection; signing in never enables a CLI or changes the default model. Manual `/agents external` commands remain explicit, permission-checked user actions; a configured selection also constrains their ACP connections.
 
 ## Agent directory
 
@@ -137,7 +146,18 @@ MCP is always on and cannot be switched through `extensions`; a `-builtin:mcp` e
 
 ### Harnesses
 
-A harness is one source of configuration. `/harness` lists them.
+A harness is one source of configuration. `/harness` organizes loaded items into **Skills**, **MCPs**, **Hooks**, **Sources** and **Extensions**, each with a count. Empty categories stay visible. **Sources** contains the harness switches below.
+
+| Key                               | Action                                                             |
+| --------------------------------- | ------------------------------------------------------------------ |
+| Ctrl+← / Ctrl+→                   | Change category.                                                   |
+| Enter; Space with an empty filter | Toggle the selected item, following its approval and trust checks. |
+| Tab                               | Change global/project scope.                                       |
+| F2                                | Open full details; arrows and PgUp/PgDn scroll.                    |
+| Esc                               | Leave details or close the list.                                   |
+| Ctrl+R on a load failure          | Retry.                                                             |
+
+Changing category, scope, selection or filter clears an armed disable confirmation. Loading and failures appear in the selector, which remains cancellable.
 
 | Harness    | Reads                                   | Default   |
 | ---------- | --------------------------------------- | --------- |
@@ -231,6 +251,44 @@ flowchart TD
 | `octocode trust list [--json]`, `add [path] [--scope ...] [--yes]`, `remove <number\|path> [--yes]` | Same without a session; `--yes` skips confirmation |
 
 Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Octocode hook files always load; Claude Code and Codex hook files load once that harness is on (`/configuration enable harness:claude`), each under its own profile; `disableAllHooks: true` in a loaded hook file turns them all off; [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
+
+## Security review
+
+Trust lets a folder's configuration load; the security review decides each hook, MCP server and skill that Octocode did not ship. Such an item stays off until you have checked its report and approved its exact content. Octocode's own skills and MCP server always load, and a session never waits for a decision.
+
+```mermaid
+flowchart TD
+    L[A session loads a hook, MCP server or skill] --> S{Shipped with Octocode?}
+    S -- yes --> ON[loads]
+    S -- no --> D{Your decision for this exact content}
+    D -- approved --> ON
+    D -- "not checked, denied, or approved but changed since" --> OFF["off; counted in the start-up line and /security"]
+```
+
+| Rule           | Behavior                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| States         | `not checked`, `approved`, `denied`; an approved item whose content changed shows `not checked · changed` and is off until you approve it again                                                                                                                                                                                                                                         |
+| What is pinned | A hook: its definition and the script files its command names. An MCP server: command, arguments, URL, variable/header names, and digests of configured `NODE_OPTIONS` and `PATH` values; other literal values and resolved environment values are not pinned. A skill: every file of its folder, including linked files (up to 500 files, 8 MB); linked directories cannot be approved |
+| Rating         | `LOW` to `CRITICAL` from what the item can do and a static scan (download-and-run, decoded code, credential paths, edits to agent configuration, hidden characters, unpinned packages, plain HTTP). The report says what was checked; it never calls an item safe                                                                                                                       |
+| Upgrade        | The first run with the review records the global hooks, MCP servers and skills already present as approved and prints one line; repository items are never recorded this way                                                                                                                                                                                                            |
+| Scope          | A repository's items are decided once for all its worktrees; global items once for every folder                                                                                                                                                                                                                                                                                         |
+| Plugins        | Plugin MCP servers are reviewed when the plugin is installed; plugin hooks are reviewed here                                                                                                                                                                                                                                                                                            |
+| The agent      | Cannot approve: not through a tool, its shell, `--trust` or bypass mode                                                                                                                                                                                                                                                                                                                 |
+| Store fault    | If the decisions cannot be read, items load and a warning says so                                                                                                                                                                                                                                                                                                                       |
+
+| Setting            | Default                      | Does                                                                                                                                                      |
+| ------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security.enforce` | `["hooks", "mcp", "skills"]` | The kinds that stay off until approved. A kind left out is still rated and listed but loads unchecked. Global only: a project settings file cannot set it |
+
+| Command                                              | Does                                                                                                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `/security`                                          | Page: not checked, approved and denied items; Enter opens a report with Approve and Deny. Decisions apply with one reload when you leave |
+| `/security list [text]`, `show <id>`, `check`        | List items, show one report, or list what is not approved with ratings and findings                                                      |
+| `/security approve <id>`, `deny <id>`, `forget <id>` | Record or remove a decision                                                                                                              |
+| `/security approve --all [--kind hooks,mcp,skills]`  | Approve every waiting item at its current content, except `CRITICAL` items and items not read in full                                    |
+| `octocode security ...`                              | The same verbs without a session. `approve`, `deny` and `forget` refuse inside a session's shell                                         |
+
+For a headless run, approve in a setup step on a checkout you trust, before the run: `octocode security approve --all`. Do not run it after checking out someone else's changes, which would approve their hooks and servers.
 
 ## Pi configuration fallback
 
@@ -377,9 +435,17 @@ A transient model failure is retried up to `retry.maxRetries` times (default 3),
 | No route to the network (`ENETUNREACH`, `EHOSTUNREACH`, `ENETDOWN`, `EAI_AGAIN`: sleep, VPN drop, network switch)                                                                                                                                | Retried for up to ten minutes from the first failure, at most 30 s apart, so a run continues when the connection returns. `ENOTFOUND` (a host that does not exist) keeps the configured count                                                                                                   |
 | Other retryable errors                                                                                                                                                                                                                           | Configured count and exact backoff (some never clear, and each attempt resends the context)                                                                                                                                                                                                     |
 
-### When a usage limit is reached
+### When a model keeps failing
 
-A usage limit (quota, plan or billing limit, no funds) is not retried: it resets after hours. List models to continue on in `retry.fallbackModels`, in order, as `provider/id` with an optional `:thinking` level:
+Three failures move the turn to another model when you list models in `retry.fallbackModels`:
+
+| Failure                                                                                  | Example                                                                                                | Skipped afterwards           |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| Usage limit (quota, plan or billing limit, no funds): not retried, it resets after hours | `429 insufficient_quota`, `FreeUsageLimitError`                                                        | That model                   |
+| Refused credential: not retried                                                          | `401`, `403 Forbidden`, `invalid api key`, an expired sign-in (`OAuth refresh failed … invalid_grant`) | Every model of that provider |
+| Outage that outlasts the retries above                                                   | `503` after six retries, `fetch failed` after three                                                    | That model                   |
+
+List models to continue on in order, as `provider/id` with an optional `:thinking` level:
 
 ```json
 { "retry": { "fallbackModels": ["openrouter/some-model", "openai/other-model:high"] } }
@@ -387,19 +453,20 @@ A usage limit (quota, plan or billing limit, no funds) is not retried: it resets
 
 ```mermaid
 flowchart LR
-  E[Usage-limit error] --> L{Next listed model:<br/>signed in, not at its own limit,<br/>window holds the context?}
+  E[Usage limit, refused credential<br/>or outage after retries] --> L{Next listed model:<br/>signed in, not skipped,<br/>window holds the context?}
   L -->|yes| S[Becomes the session model<br/>with a notice] --> C[Turn continues]
   L -->|none left| F[Turn ends with the error]
 ```
 
-| Behavior        | Detail                                                                                                                                                                                                               |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default         | Empty list: the turn ends with the error                                                                                                                                                                             |
-| Stays selected  | The session keeps the fallback model; `/model` switches back. Switching back by itself would pay for a cold prompt cache twice                                                                                       |
-| Skipped entries | No credentials, a usage limit in the last 15 minutes, or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just hit its limit) |
-| Virtual models  | The failure goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used                                                                            |
-| Subagents       | Use the same list; new subagent routes avoid a provider that just reported a usage limit                                                                                                                             |
-| Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                         |
+| Behavior        | Detail                                                                                                                                                                                                                                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default         | Empty list: the turn ends with the error                                                                                                                                                                                                                                                                        |
+| Stays selected  | The session keeps the fallback model; `/model` switches back. Switching back by itself would pay for a cold prompt cache twice                                                                                                                                                                                  |
+| Skipped entries | No credentials, a failure in the last 15 minutes (for a refused credential, any model of that provider), or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just failed)                                                |
+| Billing         | The notice says when the switch moves from a subscription plan to per-token billing, or back: `billed per token instead of by plan`                                                                                                                                                                             |
+| Virtual models  | A usage limit goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used. Other failures end the turn                                                                                                                                        |
+| Subagents       | A subagent whose model a purpose (`small`, `medium`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential |
+| Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                                                                                                                    |
 
 Compaction and branch summaries use the same policy; Esc stops a wait. After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to 30 for each further failure, and resets after a quiet minute.
 

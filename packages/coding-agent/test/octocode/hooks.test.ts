@@ -11,6 +11,7 @@ import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../sr
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { commandsFor, hookCalls, toolAliases } from "../../src/octocode/hooks/config/calls.ts";
 import { matchesHook } from "../../src/octocode/hooks/profiles.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
@@ -21,6 +22,7 @@ function project(hooks: unknown, file = path.join(".octocode", "hooks.json")): s
 	fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
 	fs.writeFileSync(path.join(dir, file), JSON.stringify({ hooks }));
 	// The user trusted these hooks (`/trust`): Octocode's own trust never covers commands it did not show.
+	approveFixtureHooks(dir);
 	return dir;
 }
 

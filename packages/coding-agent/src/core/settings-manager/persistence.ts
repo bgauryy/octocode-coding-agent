@@ -77,6 +77,9 @@ export class SettingsPersistence {
 			...(scope === "project" && settings.retention !== undefined
 				? ['Setting "retention" is global only; a project settings file cannot set it, so it does nothing.']
 				: retentionProblems(settings.retention)),
+			...(scope === "project" && settings.security !== undefined
+				? ['Setting "security" is global only; a project settings file cannot set it, so it does nothing.']
+				: []),
 		];
 		for (const message of messages) this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 	}

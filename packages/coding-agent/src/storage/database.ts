@@ -3,6 +3,8 @@ import {
 	type AgentDb,
 	type DbWriter,
 	openDatabase,
+	prepareSharedDatabase,
+	isBusy,
 	sharedDatabase,
 	sharedDbWriter,
 	sharedMirrorWriter,
@@ -27,6 +29,16 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 /** Process-owned connection shared by every workspace using the configured database. */
 export function sharedAgentDb(env: NodeJS.ProcessEnv = process.env): AgentDb {
 	return sharedDatabase(locations(agentDbPath(env), env));
+}
+
+/** Prepare coordination before synchronous startup consumers; keep their existing diagnostics for unusable files. */
+export async function prepareAgentDb(env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal): Promise<void> {
+	try {
+		await prepareSharedDatabase(locations(agentDbPath(env), env), { signal });
+	} catch (error) {
+		// A busy deadline or cancellation must not fall straight into another synchronous five-second open attempt.
+		if (isBusy(error) || signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+	}
 }
 
 /** The process's writer for the configured database's bookkeeping (memory use marks, session stats): off the main thread. */

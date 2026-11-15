@@ -174,6 +174,7 @@ describe("context edits", () => {
 			"compaction/recovery.ts",
 			"files/dedupe.ts",
 			"memory/inject.ts",
+			"memory/session-notes.ts",
 		]);
 	});
 

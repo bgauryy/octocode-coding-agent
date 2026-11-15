@@ -85,6 +85,8 @@ describe("AgentSession retry.fallbackModels", () => {
 		const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 		const modelRegistry = await createModelRegistry(authStorage, tempDir);
 		await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));
+		await authStorage.modify("openai", async () => ({ type: "api_key", key: "test-key" }));
+		await authStorage.modify("opencode-go", async () => ({ type: "api_key", key: "test-key" }));
 		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 3, baseDelayMs: 1, fallbackModels } });
 		session = new AgentSession({
 			agent,
@@ -143,6 +145,33 @@ describe("AgentSession retry.fallbackModels", () => {
 		expect(created.calls).toEqual([PRIMARY]);
 		expect(created.session.model?.id).toBe(PRIMARY);
 		expect((created.session.messages.at(-1) as AssistantMessage).errorMessage).toContain("insufficient_quota");
+	});
+
+	it("moves to another provider after a refused credential, skipping the refused provider's other models", async () => {
+		const created = await createSession(
+			[`anthropic/${FALLBACK}`, "openai/gpt-4.1-mini"],
+			"OAuth refresh failed for anthropic (400 invalid_grant)",
+		);
+		await created.session.prompt("Test");
+		expect(created.calls).toEqual([PRIMARY, "gpt-4.1-mini"]);
+		expect(created.session.model?.provider).toBe("openai");
+		expect(created.session.lastRunOutcome?.warning).toContain("refused the credential");
+		expect(created.session.lastRunOutcome?.warning).not.toContain("billed");
+	});
+
+	it("moves on after an outage outlasts the retries", async () => {
+		const created = await createSession([`anthropic/${FALLBACK}`], "500 internal server error");
+		await created.session.prompt("Test");
+		expect(created.calls).toEqual([PRIMARY, PRIMARY, PRIMARY, PRIMARY, FALLBACK]);
+		expect(created.session.model?.id).toBe(FALLBACK);
+		expect(created.session.lastRunOutcome?.warning).toContain("kept failing after retries");
+	});
+
+	it("names a change between per-token and plan billing", async () => {
+		const created = await createSession(["opencode-go/minimax-m3"]);
+		await created.session.prompt("Test");
+		expect(created.session.model?.provider).toBe("opencode-go");
+		expect(created.session.lastRunOutcome?.warning).toContain("billed by plan instead of per token");
 	});
 
 	it("does not switch on an ordinary rate limit", async () => {

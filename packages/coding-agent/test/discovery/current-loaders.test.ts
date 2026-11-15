@@ -10,6 +10,8 @@ import {
 	write,
 } from "./fixtures.ts";
 import { join } from "node:path";
+import { approveFixtureSkillFiles } from "../octocode/guard-helpers.ts";
+import { knownReviews } from "../../src/octocode/guard/registry.ts";
 
 /** Pins what the existing loaders read today, so the discovery service starts from the same lists. */
 let sandbox: Sandbox;
@@ -26,6 +28,15 @@ describe("Octocode resource roots through the resource loader", () => {
 		const agentsSkill = skillFile(join(sandbox.home, ".agents", "skills"), "agents-skill");
 		const projectSkill = skillFile(join(sandbox.cwd, ".octocode", "skills"), "project-skill");
 		const projectAgentsSkill = skillFile(join(sandbox.cwd, ".agents", "skills"), "project-agents-skill");
+		approveFixtureSkillFiles(
+			[
+				{ name: "global-skill", filePath: globalSkill, category: "global" },
+				{ name: "agents-skill", filePath: agentsSkill, category: "global" },
+				{ name: "project-skill", filePath: projectSkill, category: "workspace" },
+				{ name: "project-agents-skill", filePath: projectAgentsSkill, category: "workspace" },
+			],
+			sandbox.cwd,
+		);
 		const globalPrompt = promptFile(join(sandbox.agentDir, "prompts"), "global-prompt");
 		const projectPrompt = promptFile(join(sandbox.cwd, ".octocode", "prompts"), "project-prompt");
 		themeFile(join(sandbox.agentDir, "themes"), "global-theme");
@@ -47,12 +58,18 @@ describe("Octocode resource roots through the resource loader", () => {
 	it("reads no project skills, prompts or themes in an untrusted folder", async () => {
 		const globalSkill = skillFile(join(sandbox.agentDir, "skills"), "global-skill");
 		skillFile(join(sandbox.cwd, ".octocode", "skills"), "project-skill");
+		approveFixtureSkillFiles([{ name: "global-skill", filePath: globalSkill, category: "global" }], sandbox.cwd);
 		skillFile(join(sandbox.cwd, ".agents", "skills"), "project-agents-skill");
 		promptFile(join(sandbox.cwd, ".octocode", "prompts"), "project-prompt");
 		themeFile(join(sandbox.cwd, ".octocode", "themes"), "project-theme");
 		const loader = createLoader(sandbox, false);
 		await loader.reload();
 		expect(paths(loader.getSkills().skills)).toEqual([globalSkill]);
+		expect(
+			knownReviews()
+				.filter((review) => review.item.kind === "skill")
+				.map((review) => review.item.label),
+		).toEqual(["global-skill"]);
 		expect(loader.getPrompts().prompts).toEqual([]);
 		expect(loader.getThemes().themes).toEqual([]);
 	});
@@ -84,6 +101,14 @@ describe("Pi global roots through the resource loader", () => {
 		themeFile(join(sandbox.piAgentDir, "themes"), "pi-theme");
 		const native = skillFile(join(sandbox.agentDir, "skills"), "clash");
 		skillFile(join(sandbox.piAgentDir, "skills"), "clash-copy", { name: "clash" });
+		approveFixtureSkillFiles(
+			[
+				{ name: "pi-skill", filePath: piSkill, category: "global" },
+				{ name: "pi-root-skill", filePath: piRootSkill, category: "global" },
+				{ name: "clash", filePath: native, category: "global" },
+			],
+			sandbox.cwd,
+		);
 		const loader = createLoader(sandbox, false);
 		await loader.reload();
 		expect(paths(loader.getSkills().skills)).toEqual([native, piRootSkill, piSkill].sort(byText));

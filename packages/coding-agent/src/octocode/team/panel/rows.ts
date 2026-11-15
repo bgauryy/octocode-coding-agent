@@ -1,8 +1,8 @@
 import path from "node:path";
 import { GLYPH, SEPARATOR, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { STATE_COLOR } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
+import { ENTITY } from "../../shared/entity.ts";
 import {
 	cachedPercent,
 	formatCost,
@@ -38,6 +38,8 @@ const WIDE_ONLY = ["cost", "tools"] as const;
 const GIVE_WAY = ["cache", "branch", "role"] as const;
 /** The branch or folder shown after `worktree`, cut to this many cells. */
 const WHERE_MAX = 28;
+/** Member rows carry the subagent mark from this many columns; narrower rows keep the cells for the goal and state. */
+const ENTITY_MIN_WIDTH = 120;
 
 /**
  * `anthropic/claude-opus-4-5:high` → `claude-opus-4-5:high`: the provider adds width, not meaning, in a one-line row. A
@@ -143,7 +145,8 @@ function row(entry: PanelEntry, now: number, theme: Theme): Row {
  * started, while the activity says what it does right now. Then the activity is cut.
  */
 function splitGoal(goal: string, activity: string, room: number): [string, string] {
-	const tail = activity ? `${goal ? " › " : ""}${activity}` : "";
+	const separator = goal ? " › " : "";
+	const tail = activity ? `${separator}${activity}` : "";
 	if (visibleWidth(goal) + visibleWidth(tail) <= room) return [goal, tail];
 	if (!goal) return ["", fitName(tail, room)];
 	if (!tail) return [fitName(goal, room), ""];
@@ -151,23 +154,27 @@ function splitGoal(goal: string, activity: string, room: number): [string, strin
 	// A stub such as `› loc…` says nothing: without room for a readable activity the goal keeps the cell.
 	if (room - goalRoom < Math.min(visibleWidth(tail), 3 + ACTIVITY_MIN)) return [fitName(goal, room), ""];
 	const shown = fitName(goal, goalRoom);
-	return [shown, fitName(tail, room - visibleWidth(shown))];
+	// Cut the activity alone: cutting the whole tail would trim the separator's leading space and glue `…›`.
+	return [shown, `${separator}${fitName(activity, room - visibleWidth(shown) - visibleWidth(separator))}`];
 }
 
 const widest = (texts: string[]) => Math.max(0, ...texts.map((text) => visibleWidth(text)));
 
 /**
- * One row per agent, under this session's row: tree, state mark, name, role, goal and what it does now (`›`), then aligned
- * columns: messages waiting for an answer and held locks, model, state, elapsed time, tokens with the cached share, and
- * tool calls and cost when wide. Too narrow even for that: a head row (who, state, time, tokens) and a detail row.
+ * One row per agent, under this session's row: tree, state mark, subagent mark, name, role, goal and what it does now
+ * (`›`), then aligned columns: messages waiting for an answer and held locks, model, state, elapsed time, tokens with
+ * the cached share, and tool calls and cost when wide. The subagent mark repeats what the tree under the main agent
+ * already says, so it shows from `ENTITY_MIN_WIDTH` columns only: a rule on the width alone, so rows never shift as an
+ * agent's clock, tokens or activity grow. Too narrow even for that: a head row (who, state, time, tokens) and a detail row.
  * Returns each agent's rows together, so a line can follow its own agent.
  */
 export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, width: number): string[][] {
 	const rows = tree.map((entry) => row(entry, now, theme));
 	const prefixes = treePrefixes(tree);
 	const goalText = (r: Row) => (r.activity ? `${r.goal}${r.goal ? " › " : ""}${r.activity}` : r.goal);
-	// Tree, mark and name are one cell: a deeper row indents, and the columns after it still line up.
-	const lead = (index: number) => `${prefixes[index]}${GLYPH.done} ${rows[index].name}`;
+	// Tree, mark, subagent mark and name are one cell: a deeper row indents, and the columns after it still line up.
+	const entity = width >= ENTITY_MIN_WIDTH ? `${ENTITY.subagent} ` : "";
+	const lead = (index: number) => `${prefixes[index]}${GLYPH.done} ${entity}${rows[index].name}`;
 	const nameWidth = widest(rows.map((_, index) => lead(index)));
 	const roleWidth = widest(rows.map((r) => r.role));
 	const goalWidth = widest(rows.map(goalText));
@@ -199,7 +206,11 @@ export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, w
 		const goalCut = `${theme.fg(r.working ? "text" : "muted", goalPart)}${theme.fg("dim", activityPart)}`;
 		const parts = [
 			" ",
-			pad(lead(index), `${theme.fg("dim", prefixes[index])}${r.mark} ${theme.fg(nameColor, r.name)}`, nameWidth),
+			pad(
+				lead(index),
+				`${theme.fg("dim", prefixes[index])}${r.mark} ${entity}${theme.fg(nameColor, r.name)}`,
+				nameWidth,
+			),
 			GAP,
 			withRole ? pad(r.role, theme.fg("dim", r.role), roleWidth) + GAP : "",
 			pad(cut, goalCut, goalShown),
@@ -217,7 +228,7 @@ export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, w
 /**
  * Narrow: a head row (who, state, messages, and while they fit elapsed time and tokens) and a detail row. As the width
  * shrinks the detail gives way first (activity, then the goal), then tokens and the elapsed time; the state word, the
- * `✉` count and the mark stay down to the narrowest terminal.
+ * `✉` count and the mark stay down to the narrowest terminal. No subagent mark: the tree under the main agent says it.
  */
 function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number): string[][] {
 	const detailTier = width >= DETAIL_ACTIVITY_WIDTH ? 2 : width >= DETAIL_GOAL_WIDTH ? 1 : 0;
@@ -254,8 +265,9 @@ function narrowRows(rows: Row[], prefixes: string[], theme: Theme, width: number
 }
 
 /**
- * This session's row, the root of the tree: its presence mark, name and role, then the team's state counts, tokens and
- * cost, right-aligned to the rows below (`alignTo` columns) when they fit.
+ * This session's row, the root of the tree: the main-agent mark, name and role (left out when it is `main`, which the
+ * mark already says), then the team's state counts, tokens and cost, right-aligned to the rows below (`alignTo`
+ * columns) when they fit.
  */
 export function rootRow(
 	self: Member | undefined,
@@ -268,11 +280,11 @@ export function rootRow(
 	attention = "",
 ): string {
 	const role = self?.role ?? "main";
-	const roleText = role === selfId ? "" : `${GAP}${theme.fg("dim", safe(role, 24))}`;
+	const roleText = role === selfId || role === "main" ? "" : `${GAP}${theme.fg("dim", safe(role, 24))}`;
 	const model = modelLabel(self?.model);
 	const modelText = model ? `${GAP}${theme.fg("muted", model)}` : "";
 	const attentionText = attention ? `${GAP}${theme.fg("warning", attention)}` : "";
-	const front = ` ${theme.fg(STATE_COLOR.done, GLYPH.live)} ${theme.fg("text", safe(selfId, 64))}${roleText}${attentionText}`;
+	const front = ` ${ENTITY.main} ${theme.fg("text", safe(selfId, 64))}${roleText}${attentionText}`;
 	// The model gives way before the team's counts do.
 	const lead =
 		visibleWidth(front) + visibleWidth(modelText) + GAP.length + visibleWidth(summary) <= width

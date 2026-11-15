@@ -8,7 +8,13 @@ import { claudeSubscriptionRefusal, isProviderDisabled, setProviderEnabled } fro
 import { showProviderDetail } from "./provider-detail.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
-import { listedRunners, runnerSection, showRunnerDetail } from "./provider-runners.ts";
+import {
+	externalAgentSignIns,
+	listedRunners,
+	runnerSection,
+	setRunnerEnabled,
+	showRunnerDetail,
+} from "./provider-runners.ts";
 import { type PageContext, showSignIn } from "./provider-signin.ts";
 import { showProviderTemplates } from "./provider-template.ts";
 import { showSourcesPage } from "./provider-sources-page.ts";
@@ -69,17 +75,28 @@ export async function showProviderManager(
 			...runtime.getProviders().map((provider) => provider.id),
 			...saved.map((entry) => entry.providerId),
 		]);
+		const runners = listedRunners(options.sourceEnvironment, (message) => host.showWarning(message));
 		const nameOf = (id: string) => runtime.getProvider(id)?.name ?? id;
+		// An external agent picked in **+ Add a provider** opens its own page: install, its own login, enable for tasks.
+		const openRunner = (rowId: string) =>
+			showRunnerDetail(host, rowId.slice(rowId.indexOf(":") + 1), runners, { source: options.sourceEnvironment });
 		if (wanted && initialId === undefined) {
 			const exact = [...ids].find((id) => [id, nameOf(id)].some((value) => value.toLowerCase() === wanted));
 			if (exact) {
 				await showProviderDetail(ctx, exact, saved);
 				return;
 			}
-			await showSignIn(ctx, saved, query);
+			const runner = runners.find((entry) =>
+				[entry.id, entry.name, `runner:${entry.id}`].some((value) => value.toLowerCase() === wanted),
+			);
+			if (runner) {
+				await showRunnerDetail(host, runner.id, runners, { source: options.sourceEnvironment });
+				return;
+			}
+			const picked = await showSignIn(ctx, saved, query, externalAgentSignIns());
+			if (typeof picked === "string") await openRunner(picked);
 			return;
 		}
-		const runners = listedRunners(options.sourceEnvironment, (message) => host.showWarning(message));
 		// A saved credential that configures nothing because it is a Claude subscription token: the row says so.
 		const refused = new Set<string>();
 		await Promise.all(
@@ -97,7 +114,11 @@ export async function showProviderManager(
 			{
 				heading: "Connect",
 				rows: [
-					{ id: SIGN_IN_ROW, name: "+ Add a provider", detail: "sign in with an account or an API key" },
+					{
+						id: SIGN_IN_ROW,
+						name: "+ Add a provider",
+						detail: "a subscription sign-in or an API key, or an external agent CLI",
+					},
 					{
 						id: TEMPLATE_ROW,
 						name: "+ Add from a template",
@@ -105,7 +126,7 @@ export async function showProviderManager(
 					},
 				],
 			},
-			runnerSection(runners, settingsManager.getExternalAgents()),
+			runnerSection(runners, settingsManager.getExternalAgents(), settingsManager.getEnabledExternalAgents()),
 			{
 				heading: "Advanced",
 				rows: [
@@ -119,7 +140,10 @@ export async function showProviderManager(
 		];
 		const choice = await showPage(host, {
 			title: "AI providers",
-			notes: ["Configured, not verified. Open a provider to test access."],
+			notes: [
+				"Provider credentials are configured, not verified. Open a provider to test access.",
+				"Providers run in Octocode's harness; external agents are vendor CLIs that run their own. Enable each agent for tasks.",
+			],
 			sections,
 			initialId,
 			keys: ["e"],
@@ -135,15 +159,24 @@ export async function showProviderManager(
 			const [kind, ...rest] = choice.id.split(":");
 			const key = rest.join(":");
 			let result: "again" | "stop" = "again";
-			if (choice.id === SIGN_IN_ROW) result = (await showSignIn(ctx, saved)) ? "stop" : "again";
-			else if (choice.id === TEMPLATE_ROW)
+			if (choice.id === SIGN_IN_ROW) {
+				const picked = await showSignIn(ctx, saved, "", externalAgentSignIns());
+				result = typeof picked === "string" ? await openRunner(picked) : picked ? "stop" : "again";
+			} else if (choice.id === TEMPLATE_ROW)
 				result = (await showProviderTemplates(host, ctx.reopen, saved)) ? "stop" : "again";
 			else if (choice.id === ADVANCED_ROW) result = await showSourcesPage(ctx, saved, options.sourceEnvironment);
 			else if (kind === "provider") {
 				if (choice.key) setProviderEnabled(host, key, nameOf(key), isProviderDisabled(host, key));
 				else result = await showProviderDetail(ctx, key, saved);
 			} else if (kind === "runner") {
-				if (!choice.key) result = await showRunnerDetail(host, key, runners, { source: options.sourceEnvironment });
+				if (choice.key) {
+					const selected = settingsManager.getEnabledExternalAgents();
+					setRunnerEnabled(
+						host,
+						key,
+						!(settingsManager.getExternalAgents() && (selected === undefined || selected.includes(key))),
+					);
+				} else result = await showRunnerDetail(host, key, runners, { source: options.sourceEnvironment });
 			}
 			if (result === "stop") return;
 		} catch (error) {

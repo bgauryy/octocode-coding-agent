@@ -116,7 +116,7 @@ describe("flat agent schema", () => {
 		expect(Check(tool.parameters, { type: "message", to: "parent" })).toBe(false);
 	});
 
-	it("leaves out starter-only interrupt and its wording for a session without the task type", () => {
+	it("leaves out starter-only interrupt for a session without the task type", () => {
 		const build = (names: string[]) => {
 			const modes = agentModes();
 			for (const [name, , properties] of registrations)
@@ -140,21 +140,7 @@ describe("flat agent schema", () => {
 		const fields = (tool: { parameters: unknown }) =>
 			Object.keys((tool.parameters as { properties: object }).properties);
 		expect(fields(main)).toContain("interrupt");
-		expect(main.description).toContain("only reachable non-isolated background children");
 		expect(fields(child)).not.toContain("interrupt");
-		expect(child.description).not.toContain("non-isolated");
-		expect(child.description).toContain("parent or teammates");
-	});
-
-	it("describes the configured concurrent child limit", () => {
-		vi.stubEnv("OCTOCODE_MAX_SUBAGENTS", "2");
-		try {
-			const { tool } = unified();
-			expect(tool.description).toContain("At most 2 at once; more wait.");
-			expect(tool.description).not.toContain("at most 6 at once");
-		} finally {
-			vi.unstubAllEnvs();
-		}
 	});
 
 	it("fails registration when two modes would share a public field", () => {

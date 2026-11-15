@@ -12,12 +12,6 @@ const isSchema = (value: unknown): value is Schema =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * Whether the server's schema declares a `reason` argument anywhere at its top level (its root, a root alternative or a
- * root `$ref` target, as the shared lift lists them), so the host must keep it.
- */
-export const declaresReason = (inputSchema: unknown): boolean => Object.hasOwn(liftedProperties(inputSchema), "reason");
-
-/**
  * The JSON types a property accepts, in branch order: its own `type` (or the type `properties`/`items` imply), else the
  * union of its `anyOf`/`oneOf` branches. Undefined when any part is unknown (no type, `allOf`, an unresolvable or
  * cyclic `$ref`), so the caller declares no type rather than a narrower one.

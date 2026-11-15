@@ -309,12 +309,16 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 /** A `ps` scan: a child's arguments name its session folder under the sandbox, and a script's command names its markers. */
 function processesNaming(needle: string): number[] {
 	const listing = execFileSync("ps", ["-axww", "-o", "pid=,command="], { encoding: "utf8" });
-	return listing
+	const found = listing
 		.split("\n")
-		.filter((line) => line.includes(needle))
-		.map((line) => Number.parseInt(line.trim(), 10))
-		.filter((pid) => Number.isInteger(pid) && pid !== process.pid);
+		.map((line) => ({ line: line.trim(), pid: Number.parseInt(line.trim(), 10) }))
+		.filter(({ line, pid }) => line.includes(needle) && Number.isInteger(pid) && pid !== process.pid);
+	lastSurvivors = found.map(({ line }) => line);
+	return found.map(({ pid }) => pid);
 }
+
+/** The `pid command` lines of the latest `survivors()` scan, so a timed-out wait can name what is still running. */
+let lastSurvivors: string[] = [];
 
 export function alive(pid: number): boolean {
 	try {
@@ -326,10 +330,18 @@ export function alive(pid: number): boolean {
 }
 
 /** Waits for a condition a real process will reach; only the test's own timeout bounds it. */
-export async function until(condition: () => boolean, label: string, ms = 120_000): Promise<void> {
+export async function until(
+	condition: () => boolean,
+	label: string,
+	ms = 120_000,
+	describe: () => string = () => (label.includes("process") ? lastSurvivors.join("\n") : ""),
+): Promise<void> {
 	const deadline = Date.now() + ms;
 	while (!condition()) {
-		if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
+		if (Date.now() > deadline) {
+			const detail = describe();
+			throw new Error(`Timed out waiting for ${label}${detail ? `. Still running:\n${detail}` : ""}`);
+		}
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
 }

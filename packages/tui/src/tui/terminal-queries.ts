@@ -1,5 +1,6 @@
 import { DEVICE_ATTRIBUTES_QUERY, DEVICE_ATTRIBUTES_RESPONSE_PATTERN } from "../terminal/device-attributes.ts";
 import type { Terminal } from "../terminal/types.ts";
+import { FENCE_REPLY } from "./latency-fence.ts";
 import {
 	parseOscColorResponse,
 	parseTerminalColorSchemeReport,
@@ -42,6 +43,8 @@ export interface TerminalQueriesHost {
 	isStopped(): boolean;
 	/** The terminal reported a new cell size: re-render so images use it. */
 	onCellSizeChanged(): void;
+	/** The terminal answered a latency probe (`CSI 0 n`). */
+	onFenceReply?(): void;
 }
 
 /**
@@ -111,6 +114,11 @@ export class TerminalQueries {
 	 * listeners never see or alter them. Returns whether `data` was one.
 	 */
 	consumeReply(data: string): boolean {
+		// A probe's answer is protocol even when no probe waits (a reply that came after the fence stopped).
+		if (data === FENCE_REPLY) {
+			this.host.onFenceReply?.();
+			return true;
+		}
 		return (
 			this.consumeTerminalColorResponse(data) ||
 			this.consumeTerminalColorSchemeReport(data) ||

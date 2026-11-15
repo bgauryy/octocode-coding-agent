@@ -1,12 +1,14 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
-import { type Api, isUsageLimitError, type Model, type Usage } from "@octocodeai/octocode-ai";
+import { type Api, isCredentialError, isUsageLimitError, type Model, type Usage } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { currentPrice, type ModelRef } from "./model.ts";
 import { deadline } from "../../../../common/src/deadline.ts";
+import { onCredentialChange } from "../../core/model-runtime/credential-operations.ts";
+import { defaultRefusalStore, type RefusalStore } from "./provider-refusals.ts";
 
 /**
  * The account cannot pay for the request (402, "Insufficient account funds", no credit or quota left): the key is
@@ -15,25 +17,6 @@ import { deadline } from "../../../../common/src/deadline.ts";
  */
 export const BILLING_ERROR =
 	/\b402\b|payment required|insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)|billing|out of credit/i;
-
-const CREDENTIAL_ERROR =
-	/\b(?:401|403)\b|unauthori[sz]ed|forbidden|authenticat|api[ _-]?key|credential|permission[ _]denied|expired/i;
-
-/** A 403 can deny one model while accepting the same credential for another. Explicit invalid credentials still win. */
-export function isCredentialError(text: string): boolean {
-	if (
-		/\b401\b|(?:invalid|incorrect|expired|revoked)[ _-]+(?:api[ _-]?key|token|credentials?)|(?:api[ _-]?key|token|credentials?)[ _-]+(?:(?:is|has)[ _-]+)?(?:invalid|incorrect|expired|revoked)/i.test(
-			text,
-		)
-	)
-		return true;
-	const modelAccess =
-		/\b403\b/.test(text) &&
-		/\bmodel\b/i.test(text) &&
-		/\b(?:access|available|enabled)\b/i.test(text) &&
-		/\b(?:not|no|denied|restricted|forbidden)\b/i.test(text);
-	return !modelAccess && CREDENTIAL_ERROR.test(text);
-}
 
 /**
  * A provider refused the credential or the account: a credential error, no funds, or a usage limit (the shared
@@ -48,7 +31,11 @@ const costsNothing = (cost: ModelRef["cost"]): boolean => {
 	return rates !== undefined && rates.input + rates.output === 0;
 };
 const CHECK_TIMEOUT_MS = 20_000;
-/** How long a credential refusal steers routing away from its provider: a `/providers` since then is not otherwise seen. */
+/**
+ * How long a refusal the credential does not cause (a usage limit, missing funds) steers routing away from its
+ * provider: limits reset and funds arrive without a credential change. A refused credential stays refused until it
+ * changes or a run or check on it succeeds.
+ */
 const REFUSAL_ROUTING_MS = 15 * 60_000;
 
 export interface ProviderStatus {
@@ -78,11 +65,51 @@ const withoutThinking = (model: string) => model.replace(/:(?:off|minimal|low|me
 /** Provider error text reaches the model listing: credentials are redacted, nothing is cut. */
 const clean = (text: string) => redactSecrets(sanitizeTerminalText(text)).replace(/\s+/g, " ").trim();
 
-/** What this process last learned about each provider's credential; the latest run or check replaces older news. */
+/** The provider refused the credential itself (not funds or a limit): only a new credential or a success lifts it. */
+const credentialCaused = (status: ProviderStatus | undefined): boolean =>
+	status !== undefined && !status.ok && isCredentialError(status.detail ?? "");
+
+/**
+ * What this process last learned about each provider's credential; the latest run or check replaces older news. A
+ * refusal the credential causes is also kept in `store` for the next start, while that credential is the one stored.
+ */
 export class ProviderHealth {
 	private readonly status = new Map<string, ProviderStatus>();
 	/** `provider/id` of models that refused a run before any token, and when. */
 	private readonly models = new Map<string, number>();
+	private readonly store: RefusalStore | undefined;
+	private loaded = false;
+
+	constructor(store?: RefusalStore) {
+		this.store = store;
+	}
+
+	/** Reads the saved refusals once, before the first question: a record made in this process stays newer. */
+	private load(): void {
+		if (this.loaded) return;
+		this.loaded = true;
+		for (const [provider, saved] of this.store?.load() ?? [])
+			if (!this.status.has(provider)) this.status.set(provider, { ok: false, ...saved });
+	}
+
+	/** Records the news about a provider; a credential refusal is saved for the next start, other news forgets it. */
+	private record(provider: string, status: ProviderStatus): void {
+		this.load();
+		this.status.set(provider, status);
+		const via = status.via === "list" ? undefined : status.via;
+		this.store?.save(
+			provider,
+			credentialCaused(status) && via && status.detail ? { at: status.at, via, detail: status.detail } : undefined,
+		);
+	}
+
+	/** The provider's credential changed (sign-in, sign-out, a new key): what was learned about the old one is void. */
+	credentialChanged(provider: string): void {
+		this.load();
+		this.status.delete(provider);
+		for (const ref of this.models.keys()) if (ref.startsWith(`${provider}/`)) this.models.delete(ref);
+		this.store?.save(provider, undefined);
+	}
 
 	/**
 	 * A finished subagent run on `model` ("provider/id[:level]"; undefined when it ran on this session's model): success
@@ -94,16 +121,19 @@ export class ProviderHealth {
 		if (!model || !provider) return;
 		const ref = withoutThinking(model);
 		if (!error) {
-			this.status.set(provider, { ok: true, at: Date.now(), via: "run" });
+			this.record(provider, { ok: true, at: Date.now(), via: "run" });
 			this.models.delete(ref);
 		} else if (credentialRefused(error))
-			this.status.set(provider, { ok: false, at: Date.now(), via: "run", detail: clean(error) });
+			this.record(provider, { ok: false, at: Date.now(), via: "run", detail: clean(error) });
 		else if (refusedBeforeWork(error, nothingSpent)) this.models.set(ref, Date.now());
 	}
 
 	/** A live check: any failure counts, since the request was the smallest one the provider accepts. */
 	noteCheck(provider: string, error?: string, via: "check" | "list" = "check"): void {
-		this.status.set(provider, {
+		this.load();
+		// A failure that says nothing about the credential (a timeout) does not lift a refusal the credential caused.
+		if (error && !credentialRefused(error) && credentialCaused(this.status.get(provider))) return;
+		this.record(provider, {
 			ok: !error,
 			at: Date.now(),
 			via,
@@ -112,20 +142,24 @@ export class ProviderHealth {
 	}
 
 	get(provider: string): ProviderStatus | undefined {
+		this.load();
 		return this.status.get(provider);
 	}
 
 	/**
 	 * Whether, in the last `REFUSAL_ROUTING_MS`, model `id` of `provider` refused a run before any token, or (unless
-	 * `proven`: the parent's own provider, whose session proves it) `provider` refused its credential (a run or check said
-	 * so; a timeout or other failure does not count): routing then prefers other models (`usableModels`).
+	 * `proven`: the parent's own provider, whose session proves it) `provider` refused its account (a usage limit, funds:
+	 * in the last `REFUSAL_ROUTING_MS`) or its credential (until it changes or a run or check succeeds; a timeout or
+	 * other failure does not count): routing then prefers other models (`usableModels`).
 	 */
 	refused(provider: string, id?: string, proven = false, cost?: ModelRef["cost"]): boolean {
+		this.load();
 		const at = id === undefined ? undefined : this.models.get(`${provider}/${id}`);
 		if (at !== undefined && Date.now() - at < REFUSAL_ROUTING_MS) return true;
 		if (proven) return false;
 		const status = this.status.get(provider);
-		if (status === undefined || status.ok || Date.now() - status.at >= REFUSAL_ROUTING_MS) return false;
+		if (status === undefined || status.ok) return false;
+		if (!credentialCaused(status) && Date.now() - status.at >= REFUSAL_ROUTING_MS) return false;
 		const detail = status.detail ?? "";
 		// Missing funds stop only what costs money: a model priced at zero (`cost` given and free) still routes.
 		if (BILLING_ERROR.test(detail) && !isCredentialError(detail) && costsNothing(cost)) return false;
@@ -134,7 +168,8 @@ export class ProviderHealth {
 }
 
 /** The process-wide record the model listing reads and subagent runs update. */
-export const providerHealth = new ProviderHealth();
+export const providerHealth = new ProviderHealth(defaultRefusalStore());
+onCredentialChange((provider) => providerHealth.credentialChanged(provider));
 
 /** One line about a provider's credential for the model listing; empty when nothing is known. */
 export function describeHealth(status: ProviderStatus | undefined): string {

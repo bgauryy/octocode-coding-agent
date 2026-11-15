@@ -14,6 +14,7 @@ import {
 	script,
 	session,
 	type Session,
+	settledRuns,
 } from "./e2e-a2a-helpers.ts";
 import {
 	type Endpoint,
@@ -102,10 +103,14 @@ describe("in manual mode", () => {
 		answer(receiver.run, tool.id, "Deny");
 		await until(() => requestsOf(endpoint, first).some((request) => request.step >= 1), "the rest of the turn");
 		expect(fs.existsSync(marker)).toBe(false);
+		// A send still being prepared when a run settles is refused (nothing sent): send the next one after this run.
+		await until(() => settledRuns(receiver.run) === 1, "the receiver's first run to settle");
 
 		// Once meant once.
 		const second = script([{ text: "second" }]);
-		expect(await send(sender, receiver, second)).toContain("Waiting for");
+		const secondReceipt = await send(sender, receiver, second);
+		expect(secondReceipt).not.toContain("did not take this message");
+		expect(secondReceipt).toContain("Waiting for");
 		await until(() => dialogs(receiver.run).length === 3, "the next message's dialog");
 		answer(receiver.run, dialogs(receiver.run)[2].id, ONCE);
 		await until(() => reached(second), "the second message");

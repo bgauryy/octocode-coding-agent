@@ -10,15 +10,15 @@ Save local artifacts under `<workspace>/.octocode/octocode-debugging/<capture>/`
 
 First time the unchanged workload (`time <command>` or its runner's duration), without instrumentation. For a comprehensive request, build this coverage checklist and mark unsupported dimensions explicitly:
 
-| Dimension | Capture | What it does not prove |
-|---|---|---|
-| Wall time / phases | Monotonic timers, marks/measures, request timeline | CPU cost or the cause of waiting |
-| CPU / functions / callers | Sampled stacks, self and inclusive top rows, flame chart | Exact invocation counts; sleeping/remote work |
-| Memory / allocations | RSS, heap, external/array buffers over time; allocation stacks | One large sample is not a leak |
-| Event loop / GC | Delay histogram, utilization, GC count/duration | Utilization is not process CPU utilization |
-| Processes / threads | PID/PPID, process tree, per-process CPU/RSS, native stacks | Main-thread V8 samples omit native/worker CPU |
-| Data / I/O | Payload sizes, file/block counters, network waterfall and spans | Block counters are not bytes or per-request latency |
-| Browser / GPU | Performance trace with rendering, compositor, GPU tracks | Browser JS CPU samples are not GPU utilization |
+| Dimension                 | Capture                                                         | What it does not prove                              |
+| ------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Wall time / phases        | Monotonic timers, marks/measures, request timeline              | CPU cost or the cause of waiting                    |
+| CPU / functions / callers | Sampled stacks, self and inclusive top rows, flame chart        | Exact invocation counts; sleeping/remote work       |
+| Memory / allocations      | RSS, heap, external/array buffers over time; allocation stacks  | One large sample is not a leak                      |
+| Event loop / GC           | Delay histogram, utilization, GC count/duration                 | Utilization is not process CPU utilization          |
+| Processes / threads       | PID/PPID, process tree, per-process CPU/RSS, native stacks      | Main-thread V8 samples omit native/worker CPU       |
+| Data / I/O                | Payload sizes, file/block counters, network waterfall and spans | Block counters are not bytes or per-request latency |
+| Browser / GPU             | Performance trace with rendering, compositor, GPU tracks        | Browser JS CPU samples are not GPU utilization      |
 
 ## Read the evidence
 

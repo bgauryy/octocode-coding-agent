@@ -17,8 +17,6 @@ import { assign, long, longTask, runChild } from "./agent-context/child-run.ts";
  * assignment, as a new child process does.
  */
 
-const BACKGROUND = "You run in the background: your coordinator can answer a message while you work.";
-
 const contract = admitResultSchema({
 	type: "object",
 	properties: { verdict: { type: "string" } },
@@ -53,7 +51,7 @@ describe("child identity after its own compaction (real sessions)", () => {
 				item: "B7",
 				isolation: { path: worktree, repo: f.cwd, cwd: worktree },
 				background: true,
-			} as Identity,
+			},
 			longTask("Migrate the parser."),
 			contract,
 		);
@@ -81,11 +79,13 @@ describe("child identity after its own compaction (real sessions)", () => {
 		expect(assignment.startsWith(identityBlock(run.assigned))).toBe(true);
 		for (const part of [
 			`\`${run.identity.isolation!.cwd}\``,
-			"Why you were started: The old parser blocks the release.\n\n## You\n",
-			"Your name is `child-example` (implementer). Your goal: migrate the parser. You work on a team led by your coordinator",
-			"Your backlog item is `B7`",
-			`Your scratch folder is \`${shortPath(fx.scratch)}\``,
-			BACKGROUND,
+			run.assigned.why!,
+			run.identity.id,
+			run.identity.role!,
+			run.identity.goal!,
+			run.identity.parentId!,
+			run.identity.item!,
+			shortPath(fx.scratch),
 			reportContract(),
 			`Result contract (SHA-256 ${contract.hash}`,
 		])

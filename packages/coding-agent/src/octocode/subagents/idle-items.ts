@@ -5,6 +5,7 @@ import { openBacklog } from "../backlog/context.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import type { Team } from "../team/session.ts";
 import type { AgentRuns } from "./claim.ts";
+import type { Lingering } from "./linger.ts";
 
 /** The custom message that names ongoing items nobody works on. */
 const IDLE_ITEM_TYPE = "octocode-idle-item";
@@ -41,10 +42,16 @@ function linkedItems(runs: Pick<AgentRuns, "running" | "items">): Set<string> {
 
 /**
  * When the main session ends a turn while children, bash jobs or timers run, names each ongoing item it holds that no
- * running child is linked to and whose paths nobody else reserves: the coordinator would otherwise wait with free work
- * unstarted. Once per item per wait; the message starts a turn so the coordinator acts on it.
+ * running child is linked to, no reported child can still be resumed on (a new child would be refused) and whose paths
+ * nobody else reserves: the coordinator would otherwise wait with free work unstarted. Once per item per wait; the
+ * message starts a turn so the coordinator acts on it.
  */
-export function registerIdleItems(api: ExtensionAPI, team: Team, runs: Pick<AgentRuns, "running" | "items">): void {
+export function registerIdleItems(
+	api: ExtensionAPI,
+	team: Team,
+	runs: Pick<AgentRuns, "running" | "items">,
+	lingering: Pick<Lingering, "onItem">,
+): void {
 	const told = new IdleItems();
 	api.on("agent_settled", async (event, ctx) => {
 		if (event.aborted) return undefined;
@@ -60,6 +67,7 @@ export function registerIdleItems(api: ExtensionAPI, team: Team, runs: Pick<Agen
 						(item) =>
 							item.assignee === backlog.session &&
 							!linked.has(item.ref) &&
+							lingering.onItem(item.ref) === undefined &&
 							!item.paths.some((entry) => team.reserved(path.resolve(ctx.cwd, entry))),
 					)
 					.map((item) => item.ref);

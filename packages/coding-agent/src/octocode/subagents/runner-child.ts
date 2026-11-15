@@ -8,6 +8,8 @@ import { noAnswerError, type SubagentOutcome } from "./process/outcome.ts";
 import { reportDir } from "./process/session.ts";
 import { ReportTracker } from "./report.ts";
 import type { RunnerBilling, RunnerReply, Runners } from "./runner-port.ts";
+import type { Team } from "../team/session.ts";
+import { renderInstruction } from "../../core/prompt-template.ts";
 
 /** ACP stop reasons as a report reads them: a cut-off turn is incomplete, a refusal failed, a cancelled turn aborted. */
 const STOP_REASONS: Record<string, string> = {
@@ -47,6 +49,7 @@ export interface RunnerChildInput {
 	onProgress: (progress: ChildProgress) => void;
 	onSpawn?: (pid: number) => void;
 	ctx: ExtensionContext;
+	team?: Team;
 }
 
 /**
@@ -71,29 +74,54 @@ export async function runRunnerChild(
 		}
 	};
 	const model = input.model?.trim();
-	const reply = await runners.turn({
-		runner: input.runner,
-		...(model ? { model } : {}),
-		cwd: input.cwd,
-		text: runnerTask(input.task, input.cwd),
-		signal: input.signal ?? new AbortController().signal,
-		onActivity: (line) => progress({ activity: line }),
-		...(input.onSpawn ? { onStart: input.onSpawn } : {}),
-		ctx: input.ctx,
-	});
-	usage = usageOf(reply);
-	progress({ requests: 1 });
-	const stop = STOP_REASONS[reply.stopReason ?? "end_turn"] ?? "stop";
-	report.answer(reply.text, stop, stop === "error" ? `${input.runner} refused the task` : undefined);
-	const result = report.result();
-	if (!result.answered) throw new Error(result.error ?? noAnswerError(undefined));
-	return {
-		text: result.text,
-		usage,
-		billing: reply.billing,
-		...(result.outcome ? { outcome: result.outcome, outcomeSource: result.outcomeSource } : {}),
-		...(result.error ? { error: result.error } : {}),
-		...(result.structured ? { structured: result.structured } : {}),
-		...(result.reportArtifact ? { reportArtifact: result.reportArtifact } : {}),
-	};
+	const communication = Boolean(input.team && runners.communication?.includes(input.runner));
+	const tracked = input.team?.trackRunner(identity.id, communication);
+	let bridge: Awaited<ReturnType<Team["runnerBridge"]>> | undefined;
+	try {
+		if (communication)
+			bridge = await input.team!.runnerBridge({
+				id: identity.id,
+				runner: input.runner,
+				goal: identity.goal,
+				model,
+				sessionId: identity.sessionId,
+				cwd: input.cwd,
+				signal: input.signal,
+			});
+		input.signal?.throwIfAborted();
+		const reply = await runners.turn({
+			runner: input.runner,
+			...(model ? { model } : {}),
+			cwd: input.cwd,
+			text:
+				runnerTask(input.task, input.cwd) +
+				(bridge ? `\n\n${renderInstruction("tools/agent/runner-mail.md", { id: identity.id })}` : ""),
+			...(bridge ? { communication: bridge.communication } : {}),
+			signal: input.signal ?? new AbortController().signal,
+			onActivity: (line) => progress({ activity: line }),
+			...(input.onSpawn ? { onStart: input.onSpawn } : {}),
+			ctx: input.ctx,
+		});
+		usage = usageOf(reply);
+		progress({ requests: 1 });
+		const stop = STOP_REASONS[reply.stopReason ?? "end_turn"] ?? "stop";
+		report.answer(reply.text, stop, stop === "error" ? `${input.runner} refused the task` : undefined);
+		const result = report.result();
+		if (!result.answered) throw new Error(result.error ?? noAnswerError(undefined));
+		return {
+			text: result.text,
+			usage,
+			billing: reply.billing,
+			...(result.outcome ? { outcome: result.outcome, outcomeSource: result.outcomeSource } : {}),
+			...(result.error ? { error: result.error } : {}),
+			...(result.structured ? { structured: result.structured } : {}),
+			...(result.reportArtifact ? { reportArtifact: result.reportArtifact } : {}),
+		};
+	} finally {
+		try {
+			await bridge?.close();
+		} finally {
+			tracked?.();
+		}
+	}
 }

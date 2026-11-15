@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
+import { approveFixtureSkillFiles } from "../../octocode/guard-helpers.ts";
 
 describe("skill collision precedence: user skills should override package skills", () => {
 	let tempDir: string;
@@ -42,6 +43,7 @@ describe("skill collision precedence: user skills should override package skills
 		mkdirSync(skillDir, { recursive: true });
 		const skillPath = join(skillDir, "SKILL.md");
 		writeFileSync(skillPath, `---\nname: ${name}\ndescription: ${description}\n---\nUser skill content`);
+		approveFixtureSkillFiles([{ name, filePath: skillPath, category: "global" }], cwd);
 		return skillPath;
 	}
 
@@ -50,6 +52,7 @@ describe("skill collision precedence: user skills should override package skills
 		mkdirSync(skillDir, { recursive: true });
 		const skillPath = join(skillDir, "SKILL.md");
 		writeFileSync(skillPath, `---\nname: ${name}\ndescription: ${description}\n---\nProject skill content`);
+		approveFixtureSkillFiles([{ name, filePath: skillPath, category: "workspace" }], cwd);
 		return skillPath;
 	}
 

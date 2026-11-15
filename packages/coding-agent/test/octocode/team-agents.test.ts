@@ -133,7 +133,6 @@ describe("agent identity on the team", () => {
 			role: "main",
 			goal: "refactor the whole auth module today please",
 		});
-		expect(coordinate.parameters.properties.goal.description).toMatch(/^join:/);
 		expect(coordinate.parameters.properties.goal).not.toHaveProperty("maxLength");
 		await fake.emit("session_shutdown", {}, ctx);
 	});
@@ -164,10 +163,10 @@ describe("what the team shows about an agent", () => {
 	it("draws the panel row as tree, name, role, goal › activity, then aligned flags, model, state and time, within the width", () => {
 		const lines = widgetLines(team, "salty-squid", NOW, theme, 150);
 		expect(lines[1]).toBe(
-			" ├ ⠋ inky-kraken    implementer  audit auth token refresh › Thinking  20 locks  claude-opus-5-5  working  8m38s  56 tool calls  ≈$2.28",
+			" ├ ⠋ 🐙 inky-kraken    implementer  audit auth token refresh › Thinking  20 locks  claude-opus-5-5  working  8m38s  56 tool calls  ≈$2.28",
 		);
 		expect(lines[2]).toBe(
-			" └ ○ deep-nautilus  reviewer     review parser changes                                           idle       45s",
+			" └ ○ 🐙 deep-nautilus  reviewer     review parser changes                                           idle       45s",
 		);
 		for (const width of [150, 100, 70, 40])
 			for (const line of widgetLines(team, "salty-squid", NOW, theme, width))

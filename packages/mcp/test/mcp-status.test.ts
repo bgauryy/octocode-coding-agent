@@ -64,13 +64,13 @@ describe("formatStatus", () => {
 			{ entry: entry("broken"), connection: connection("failed", { error: "first\nsecond" }) },
 		]).split("\n");
 		expect(lines).toEqual([
-			"browser: enabled · not selected (direct)",
-			"pending: enabled · starting (direct)",
-			"off: disabled (direct)",
-			"live: enabled · connected · 1 tool (direct)",
-			"dropped: enabled · disconnected, reconnects on next call (direct)",
-			"ended: enabled · stopped (direct)",
-			"broken: enabled · failed (direct)",
+			"browser: enabled · not selected · 0 tools · direct · every agent · Global · test",
+			"pending: enabled · starting · 0 tools · direct · every agent · Global · test",
+			"off: disabled · 0 tools · direct · every agent · Global · test",
+			"live: enabled · connected · 1 tool · direct · every agent · Global · test",
+			"dropped: enabled · disconnected, reconnects on next call · 0 tools · direct · every agent · Global · test",
+			"ended: enabled · stopped · 1 tool · direct · every agent · Global · test",
+			"broken: enabled · failed · 0 tools · direct · every agent · Global · test",
 			"    first",
 			"    second",
 		]);

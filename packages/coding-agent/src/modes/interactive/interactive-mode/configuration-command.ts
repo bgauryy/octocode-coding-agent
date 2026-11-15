@@ -4,7 +4,7 @@
  */
 
 import { type SettingItem, Text } from "@octocodeai/octocode-tui";
-import { getMcpSwitch, requestMcpReload } from "../../../../../mcp/src/api.ts";
+import { getMcpSessionStatus, getMcpSwitch, requestMcpReload } from "../../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../../config.ts";
 import { runConfigWords, splitConfigWords } from "../../../configuration/command.ts";
 import { type ConfigCatalog, createConfiguration } from "../../../configuration/index.ts";
@@ -50,7 +50,7 @@ function sessionCatalog(host: ConfigurationHost): ConfigCatalog {
 		projectTrusted: host.settingsManager.isProjectTrusted(),
 		live: {
 			...(mcpSwitch ? { mcpSwitch } : {}),
-			...(events ? { mcpReload: () => requestMcpReload(events) } : {}),
+			...(events ? { mcpReload: () => requestMcpReload(events), mcpStatus: () => getMcpSessionStatus(events) } : {}),
 			applySetting: (key, value) => applyLiveSetting(host, key, value),
 		},
 	});

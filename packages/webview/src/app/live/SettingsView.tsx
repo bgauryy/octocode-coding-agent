@@ -25,6 +25,8 @@ export function SettingsPanel({ access, repo }: { access: string; repo: string }
 			saveCredential={api.saveCredential}
 			saveProvider={api.saveProvider}
 			signIn={api.signIn}
+			addMcp={api.addMcp}
+			mcpAddStatus={api.mcpAddStatus}
 			harness={harness}
 			tools={tools}
 			repos={repos}

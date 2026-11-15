@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 it.each(["claude", "codex"] as const)("validates %s rewritten arguments before changing the call", async (protocol) => {
 	const home = tmp();
@@ -29,6 +30,7 @@ it.each(["claude", "codex"] as const)("validates %s rewritten arguments before c
 				},
 			}),
 		);
+		approveFixtureHooks(ctx.cwd, home);
 		await fake.fire("session_start", { reason: "reload" }, ctx);
 		const event = { toolName: "bash", toolCallId: "rewrite", input: { command: "original" } };
 		const result = await hooks.preToolUse(event as never, ctx);
@@ -75,6 +77,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 	});
 	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		toolName: "file",
@@ -111,6 +114,7 @@ it("projects Codex Bash command input and preserves native execution options on 
 	});
 	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = {
 		toolName: "bash",

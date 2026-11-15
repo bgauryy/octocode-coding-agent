@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { DatabaseSync } from "node:sqlite";
 import { privateDir } from "../../common/src/file-mode.ts";
-import { beginImmediate, loadSqlite } from "./sqlite.ts";
+import { beginImmediate, isBusy, loadSqlite, RETRY_MS } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
 import * as agentEvents from "./queries/agent-events.ts";
 import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
@@ -72,17 +73,22 @@ const MIRROR_FILE: FileKind = {
  * paths.
  */
 export function openDatabase(locations: DatabaseLocations, kind: FileKind = COORDINATION_FILE): AgentDb {
+	return openWithTimeout(locations, kind, 5000);
+}
+
+const mirrorOpeners = new WeakMap<AgentDb, (waitMs: number) => MirrorDb>();
+
+function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: number): AgentDb {
 	const { file, mirrorFile, archiveDir, privateParent } = locations;
-	const openMirror = () => openConnection(mirrorFile, privateParent, MIRROR_FILE);
-	const coordination = openConnection(file, privateParent, kind);
+	const coordination = openConnection(file, privateParent, kind, waitMs);
 	let mirror: Connection | undefined;
 	let refused: AgentDbError | undefined;
-	const mirrorDb = (): MirrorDb => {
+	const mirrorDb = (mirrorWaitMs = 5000): MirrorDb => {
 		if (!coordination.db.isOpen) throw new Error("The agent database is closed");
 		if (refused) throw refused;
 		if (!mirror?.db.isOpen) {
 			try {
-				mirror = openMirror();
+				mirror = openConnection(mirrorFile, privateParent, MIRROR_FILE, mirrorWaitMs);
 			} catch (error) {
 				if (error instanceof AgentDbError) refused = error;
 				throw error;
@@ -101,7 +107,7 @@ export function openDatabase(locations: DatabaseLocations, kind: FileKind = COOR
 			},
 		};
 	};
-	return {
+	const agent: AgentDb = {
 		...coordination,
 		file,
 		mirrorFile,
@@ -114,6 +120,8 @@ export function openDatabase(locations: DatabaseLocations, kind: FileKind = COOR
 			coordination.close();
 		},
 	};
+	mirrorOpeners.set(agent, mirrorDb);
+	return agent;
 }
 
 interface Connection {
@@ -131,20 +139,20 @@ interface Connection {
  * `<file>.v<version>.retired` (with its `-wal` and `-shm`), so nothing in it is lost, and a new file is created in its
  * place: Octocode has no upgrade steps.
  */
-function openConnection(target: string, privateParent: boolean, kind: FileKind): Connection {
+function openConnection(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {
 	try {
-		return connect(target, privateParent, kind);
+		return connect(target, privateParent, kind, waitMs);
 	} catch (error) {
 		if (!(error instanceof AgentDbRetiredError)) throw error;
 		for (const suffix of ["", "-wal", "-shm"]) {
 			const from = `${target}${suffix}`;
 			if (fs.existsSync(from)) fs.renameSync(from, `${target}.v${error.version}.retired${suffix}`);
 		}
-		return connect(target, privateParent, kind);
+		return connect(target, privateParent, kind, waitMs);
 	}
 }
 
-function connect(target: string, privateParent: boolean, kind: FileKind): Connection {
+function connect(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {
 	// Private to this user: it holds prompts, notes and memories. SQLite gives its -wal and -shm files the same mode.
 	// Our own folder is tightened when it already exists; a folder named by OCTOCODE_AGENT_DB is only created.
 	if (privateParent) privateDir(path.dirname(target));
@@ -208,9 +216,10 @@ function connect(target: string, privateParent: boolean, kind: FileKind): Connec
 		return result;
 	};
 	try {
-		db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
+		db.exec(`PRAGMA busy_timeout=${waitMs}; PRAGMA foreign_keys=ON;`);
 		const { fts } = prepareSchema(db, target, transaction, kind);
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
+		if (waitMs !== 5000) db.exec("PRAGMA busy_timeout=5000");
 		tighten(target);
 		let open = true;
 		return {
@@ -271,19 +280,24 @@ function tighten(target: string): void {
 
 const shared = new Map<string, AgentDb>();
 const refused = new Map<string, AgentDbError>();
+let sharedGeneration = 0;
 
 /**
  * One process connection per configured file. Opening another home must not close a database borrowed by a live
  * session. An `AgentDbError` is remembered per file and thrown again without retrying.
  */
 export function sharedDatabase(locations: DatabaseLocations): AgentDb {
+	return sharedWithTimeout(locations, 5000);
+}
+
+function sharedWithTimeout(locations: DatabaseLocations, waitMs: number): AgentDb {
 	const key = canonicalPath(locations.file);
 	const current = shared.get(key);
 	if (current?.db.isOpen) return current;
 	const problem = refused.get(key);
 	if (problem) throw problem;
 	try {
-		const opened = openDatabase(locations);
+		const opened = openWithTimeout(locations, COORDINATION_FILE, waitMs);
 		shared.set(key, opened);
 		return opened;
 	} catch (error) {
@@ -292,8 +306,38 @@ export function sharedDatabase(locations: DatabaseLocations): AgentDb {
 	}
 }
 
+/** Open the shared connection, optionally its mirror, yielding while initialization waits for a peer's SQLite lock. */
+export async function prepareSharedDatabase(
+	locations: DatabaseLocations,
+	options: { mirror?: boolean; signal?: AbortSignal } = {},
+): Promise<AgentDb> {
+	const generation = sharedGeneration;
+	const check = () => {
+		options.signal?.throwIfAborted();
+		if (generation !== sharedGeneration) throw new DOMException("Database preparation was closed", "AbortError");
+	};
+	const retry = async <T>(open: () => T): Promise<T> => {
+		const deadline = performance.now() + 5000;
+		for (;;) {
+			check();
+			try {
+				return open();
+			} catch (error) {
+				const left = deadline - performance.now();
+				if (!isBusy(error) || left <= 0) throw error;
+				await sleep(Math.min(RETRY_MS, left), undefined, { signal: options.signal });
+			}
+		}
+	};
+	const agent = await retry(() => sharedWithTimeout(locations, 0));
+	if (options.mirror) await retry(() => mirrorOpeners.get(agent)!(0));
+	check();
+	return agent;
+}
+
 /** Closes all process-owned connections; `api.ts`'s `closeSharedAgentDb` also stops their writers (`writer/client.ts`). */
 export function closeSharedConnections(): void {
+	sharedGeneration += 1;
 	for (const connection of shared.values()) connection.close();
 	shared.clear();
 	refused.clear();

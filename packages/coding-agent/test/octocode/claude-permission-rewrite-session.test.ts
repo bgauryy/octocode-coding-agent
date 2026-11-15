@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 const decision = (value: unknown) => ({
@@ -247,6 +248,7 @@ async function appendHandler(f: Awaited<ReturnType<typeof fixture>>, event: stri
 	config.hooks[event] ??= [{ hooks: [] }];
 	config.hooks[event][0].hooks.push({ type: "command", command });
 	fs.writeFileSync(file, JSON.stringify(config));
+	approveFixtureHooks(f.cwd);
 	await f.session.reload();
 }
 

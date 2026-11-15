@@ -3,8 +3,11 @@ import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
+import type { RanModel } from "./event-ran.ts";
 import { routeSummary } from "./model.ts";
-import { BILLING_ERROR, isCredentialError, refusedBeforeWork } from "./provider-health.ts";
+import { routeThinking, thinkingSuffix, withThinking } from "./thinking.ts";
+import { isCredentialError } from "@octocodeai/octocode-ai";
+import { BILLING_ERROR, refusedBeforeWork } from "./provider-health.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
 
@@ -30,8 +33,22 @@ export const foregroundExtras = (details: RunDetails, failed: boolean): string =
 	return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
 };
 
-/** The model and thinking level a run used and what chose them: `Ran on p/m, low thinking (profile researcher: small:low).` */
-export const ranOn = (route: RunRoute): string => (route.model ? `Ran on ${routeSummary(route)}.` : "");
+const withoutLevel = (model: string): string => model.slice(0, model.length - thinkingSuffix(model).length);
+
+/**
+ * The model and thinking level a run used and what chose them: `Ran on p/m, low thinking (profile researcher: small:low).`
+ * `ran` is the model of the child's last assistant message: when `retry.fallbackModels` moved the child off the planned
+ * model, the line names the model that answered (at the level its fallback entry names, else the planned one), the planned
+ * model and, when the child said why, the cause: `Ran on p/n, medium thinking (fallback from p/m: hit a usage limit).`
+ */
+export function ranOn(route: RunRoute, ran?: RanModel): string {
+	if (!route.model) return "";
+	const planned = withoutLevel(route.model);
+	if (!ran || ran.model === planned) return `Ran on ${routeSummary(route)}.`;
+	const entry = route.fallbackModels?.find((candidate) => withoutLevel(candidate) === ran.model);
+	const level = routeThinking(entry) ?? routeThinking(route.model);
+	return `Ran on ${routeSummary({ model: level ? withThinking(ran.model, level) : ran.model, via: `fallback from ${planned}${ran.cause ? `: ${ran.cause}` : ""}` })}.`;
+}
 
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
 export const FAILED_NEXT = renderInstruction("notices/subagents/failed-narrower.md");
@@ -61,8 +78,14 @@ const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("
  * the route (no funds, the credential, the request or the model), a narrower task cannot help: the advice names this
  * session's model to pass as `model` or what to fix, by cause.
  */
-export function failedNext(route: RunRoute, error: string, partial: boolean, nothingSpent = false): string {
-	const ran = ranOn(route);
+export function failedNext(
+	route: RunRoute,
+	error: string,
+	partial: boolean,
+	nothingSpent = false,
+	ran?: RanModel,
+): string {
+	const ranLine = ranOn(route, ran);
 	const kind = refusalKind(error, nothingSpent);
 	const provider = route.model ? providerOf(route.model) : "";
 	const advice = renderInstruction("notices/subagents/failed-next.md", {
@@ -76,7 +99,7 @@ export function failedNext(route: RunRoute, error: string, partial: boolean, not
 		provider: provider || "provider",
 		partial,
 	});
-	return [advice, ran].filter(Boolean).join("\n");
+	return [advice, ranLine].filter(Boolean).join("\n");
 }
 
 /** Why a foreground run that someone stopped ended: who stopped it, so the model does not just start it again. */

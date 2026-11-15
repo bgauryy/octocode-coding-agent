@@ -9,6 +9,7 @@
 import { matchesKey } from "./keys/match.ts";
 import { isKeyRelease } from "./keys/sequences.ts";
 import { FOCUS_IN } from "./terminal/sequences.ts";
+import { observeFocusReport, resetFocusReports, withoutFocusReport } from "./tui/focus-reports.ts";
 import { isTypedRun } from "./stdin-buffer/typed-run.ts";
 import { routeKey, routeTypedRun, type TypedRunRouter } from "./tui/typed-run.ts";
 import type { Terminal } from "./terminal/types.ts";
@@ -76,6 +77,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private readonly queries = new TerminalQueries({
 		terminal: () => this.terminal,
 		isStopped: () => this.stopped,
+		onFenceReply: () => this.scheduler.fenceReply(),
 		onCellSizeChanged: () => {
 			this.invalidate();
 			this.requestRender();
@@ -266,6 +268,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.stopped = true;
 		this.resizeDebounce.stop();
 		this.scheduler.stop();
+		resetFocusReports();
 		this.queries.stop();
 		this.beforeTerminalStop(options);
 		this.terminal.showCursor();
@@ -321,6 +324,7 @@ export abstract class TuiBase extends Container implements TUI {
 		if (this.queries.consumeReply(received)) {
 			return undefined;
 		}
+		observeFocusReport(received);
 		// tmux sends a focus-in when a client attaches; it does not consume the event.
 		if (received === FOCUS_IN && kittyPlaceholderMode()) {
 			void this.imageReupload.focusIn(
@@ -330,12 +334,11 @@ export abstract class TuiBase extends Container implements TUI {
 				},
 			);
 		}
-		return this.inputListeners.filter(received);
+		return withoutFocusReport(this.inputListeners.filter(received));
 	}
 
 	private deliverInput(data: string): void {
-		// Pass input to focused component (including Ctrl+C)
-		// The focused component can decide how to handle Ctrl+C
+		// The focused component gets all input, including Ctrl+C, and decides how to handle it.
 		const focused = this.focus.focusedComponent;
 		if (focused?.handleInput) {
 			// Filter out key release events unless component opts in
@@ -344,8 +347,7 @@ export abstract class TuiBase extends Container implements TUI {
 			}
 			this.scheduler.noteInput();
 			focused.handleInput(data);
-			// Keyboard input is latency-sensitive. Avoid the throttled timer path,
-			// where even setTimeout(0) can take a full 16 ms tick on Windows.
+			// Keyboard input skips the throttled timer path (setTimeout(0) can take 16 ms on Windows).
 			this.scheduler.requestImmediate();
 		}
 	}

@@ -683,8 +683,6 @@ describe("the timer tool and check", () => {
 		expect(Object.keys(tool.parameters.properties.until.properties).sort()).toEqual(
 			["agent", "check", "command", "item", "unlocked"].sort(),
 		);
-		expect(tool.description).toContain("`test -e path`");
-		expect(tool.description).toContain("`nc -z localhost 3000`");
 		const call = (until: unknown) => () => tool.prepareArguments({ op: "set", note: "n", reason: "r", until });
 		expect(call({ file: { path: "build.done", is: "exists" } })).toThrow(
 			"until.file was removed; set the timer with until.command instead: test -e build.done",

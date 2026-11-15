@@ -6,15 +6,30 @@ import { setupEditorSubmitHandler } from "../src/modes/interactive/interactive-m
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
-function mode() {
+const HINT = " Enter again sends it as a message.";
+
+function mode(commands: any[] = []) {
 	const instance: any = {};
+	const prompts: Array<[string, any]> = [];
 	Object.assign(instance, {
 		defaultEditor: {},
-		editor: { setText: vi.fn() },
+		editor: { setText: vi.fn(), addToHistory: vi.fn() },
 		showError: vi.fn(),
 		showWarning: vi.fn(),
+		flushPendingBashComponents: vi.fn(),
+		prompts,
 		session: {
-			extensionRunner: { getRegisteredCommands: () => [], createCommandContext: () => ({}), hasHandlers: () => false },
+			isStreaming: false,
+			async prompt(text: string, options: any) {
+				options?.preflightResult?.("started");
+				prompts.push([text, options]);
+			},
+			extensionRunner: {
+				getRegisteredCommands: () => commands,
+				getCommand: (name: string) => commands.find((command) => command.name === name),
+				createCommandContext: () => ({}),
+				hasHandlers: () => false,
+			},
 		},
 	});
 	setupEditorSubmitHandler(createFakeHost(instance));
@@ -51,15 +66,17 @@ describe("built-in slash commands", () => {
 		for (const removed of ["/models", "/thinking high", "/login", "/exit", "/config", "/stats"])
 			await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
-		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
-			"Unknown command /models. Did you mean /model?",
-			"Unknown command /thinking. Search commands with /help thinking.",
-			// /login became /providers in v20.0.1; the old name points there instead of a skill that mentions "login".
-			"Unknown command /login. Did you mean /providers?",
-			"Unknown command /exit. Search commands with /help exit.",
-			"Unknown command /config. Did you mean /configuration?",
-			"Unknown command /stats. Did you mean /status?",
-		]);
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual(
+			[
+				"Unknown command /models. Did you mean /model?",
+				"Unknown command /thinking. Search commands with /help thinking.",
+				// /login became /providers in v20.0.1; the old name points there instead of a skill that mentions "login".
+				"Unknown command /login. Did you mean /providers?",
+				"Unknown command /exit. Search commands with /help exit.",
+				"Unknown command /config. Did you mean /configuration?",
+				"Unknown command /stats. Did you mean /status?",
+			].map((message) => message + HINT),
+		);
 		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");
 	});
 
@@ -78,12 +95,14 @@ describe("built-in slash commands", () => {
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/web");
 		expect(effects).toEqual([]);
-		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
-			"Unknown command /wbe. Did you mean /web?",
-			"Unknown command /workspace. Did you mean /web?",
-			"Unknown command /dog. Search commands with /help dog.",
-			"Unknown command /web. Search commands with /help web.",
-		]);
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual(
+			[
+				"Unknown command /wbe. Did you mean /web?",
+				"Unknown command /workspace. Did you mean /web?",
+				"Unknown command /dog. Search commands with /help dog.",
+				"Unknown command /web. Search commands with /help web.",
+			].map((message) => message + HINT),
+		);
 		expect(instance.editor.setText.mock.calls.map(([text]: [string]) => text)).toEqual([
 			"/wbe",
 			"/workspace",
@@ -123,7 +142,54 @@ describe("built-in slash commands", () => {
 		await instance.defaultEditor.onSubmit("/quit");
 		await instance.defaultEditor.onSubmit("/quit later");
 		expect(instance.shutdown).toHaveBeenCalledTimes(2);
-		expect(instance.showWarning).toHaveBeenCalledWith("/quit does not take arguments.");
+		expect(instance.showWarning).toHaveBeenCalledWith(`/quit does not take arguments.${HINT}`);
+		expect(instance.editor.setText).toHaveBeenLastCalledWith("/quit later");
+	});
+
+	it("keeps slash text no command accepts, and sends it as a literal message on a second Enter", async () => {
+		const handler = vi.fn();
+		const instance = mode([{ name: "harness", argumentWords: ["list", "hooks"], handler, sourceInfo: {} }]);
+		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, { name: "harness" }];
+		instance.shutdown = vi.fn();
+		for (const text of ["/harness shows only skills", "/quit after the tests pass", "/dog walks"]) {
+			await instance.defaultEditor.onSubmit(text);
+			expect(instance.editor.setText).toHaveBeenLastCalledWith(text);
+			expect(instance.prompts).toEqual([]);
+			await instance.defaultEditor.onSubmit(text);
+			expect(instance.prompts.pop()).toEqual([text, expect.objectContaining({ expandPromptTemplates: false })]);
+		}
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
+			`/harness has no "shows" option; /help harness shows its usage.${HINT}`,
+			`/quit does not take arguments.${HINT}`,
+			`Unknown command /dog. Search commands with /help dog.${HINT}`,
+		]);
+		expect(handler).not.toHaveBeenCalled();
+		expect(instance.shutdown).not.toHaveBeenCalled();
+	});
+
+	it("keeps a refused literal in the editor while compaction runs", async () => {
+		const instance = mode();
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		await instance.defaultEditor.onSubmit("/dog walks");
+		instance.session.isCompacting = true;
+		await instance.defaultEditor.onSubmit("/dog walks");
+		expect(instance.prompts).toEqual([]);
+		expect(instance.editor.setText).toHaveBeenLastCalledWith("/dog walks");
+		instance.session.isCompacting = false;
+		await instance.defaultEditor.onSubmit("/dog walks");
+		expect(instance.prompts.map(([text]: [string]) => text)).toEqual(["/dog walks"]);
+	});
+
+	it("asks again after other input, and still runs declared first words", async () => {
+		const instance = mode([{ name: "harness", argumentWords: ["list"], handler: vi.fn(), sourceInfo: {} }]);
+		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, { name: "harness" }];
+		instance.onInputCallback = vi.fn();
+		await instance.defaultEditor.onSubmit("/harness is slow");
+		await instance.defaultEditor.onSubmit("/harness List");
+		await instance.defaultEditor.onSubmit("/harness is slow");
+		expect(instance.prompts).toEqual([]);
+		expect(instance.showWarning).toHaveBeenCalledTimes(2);
+		expect(instance.onInputCallback).toHaveBeenCalledWith("/harness List");
 	});
 
 	it("preserves file path arguments when importing and exporting sessions", async () => {

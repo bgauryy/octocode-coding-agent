@@ -221,8 +221,10 @@ Browser calls use the general MCP permission class, with these exceptions (`manu
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | Opening a page at a private or local address, a name that does not resolve, or a non-web scheme (`open`'s `url`, a connection's `newTab`, plan or step `goto`, a navigating CDP command)                                            | `net.private`     |
 | `script`, `api-replay`; `--profile` (your real profile) or `--chromePath` in any tool's `args`; raw CDP commands that set download behavior (other than `deny` or `default`) or wrap another command (`Target.sendMessageToTarget`) | `browser.control` |
-| `cookies`, and raw CDP commands that read or change cookies (`Network.*Cookie*`, `Storage.*Cookies`), in every mode including `full`; no profile permission answers it, you may allow it for the session                            | `browser.cookies` |
+| `cookies`, every raw CDP command (also in plans/steps), custom scripts and page-defined WebMCP invocations: opaque browser programs can access cookies; asks in `full` too, no profile grants it, one answer can cover the session  | `browser.cookies` |
 | Sending a file from outside the workspace to a page (`upload` action, `DOM.setFileInputFiles`, the `dom-operations-check` recipe's `DOM_VALUE` or `DOM_STEPS`)                                                                      | `upload.outside`  |
+
+A custom corpus script (`corpus-query --script`) or a caller-supplied `--scraping-skill-dir` for `corpus-query`, `protocol-corpus` or `har-ingest` runs a local Node program and requires both `browser.control` and `browser.cookies`. A normal corpus regex search without a selected helper directory keeps its existing permissions.
 
 A call that is several of these asks once, naming them all. A read-only role (the bundled `browser` specialist included) is refused the other calls in every mode, and its cookie access asks you through its coordinator.
 

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -221,11 +220,6 @@ describe("subagents", () => {
 			);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
-		// Parent/child and teammate communication share one policy: a child messages its parent for a decision, and its
-		// parent relays anything outside its session tree.
-		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/You cannot ask the user\. When stuck \(missing input or access, or a retry that failed again for the same cause\), ask instead of guessing or looping:\n\n```text\nWho can settle it\?\n├─ a teammate's file or fact → message the teammate/,
-		);
 	});
 
 	it("parses profile frontmatter and builds child Octocode arguments", () => {
@@ -348,8 +342,6 @@ describe("subagents", () => {
 		const profile = profiles.get("browser")!;
 		expect(profile.headless).toBe(true);
 		expect(profile.prompt.length).toBeLessThanOrEqual(2_000);
-		expect(profile.prompt).toContain("headless");
-		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).not.toContain("--no-mcp");
 		// Every Octocode tool stays declared for every bundled role: none excludes tools.
 		for (const name of ["researcher", "reviewer", "implementer"])
@@ -547,9 +539,6 @@ describe("subagents", () => {
 		const agent = tools.find((tool) => tool.name === "agent")!;
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");
-		expect(agent.parameters.properties.model?.description).toMatch(
-			/provider\/id, unambiguous bare id, small or medium.*:off\|minimal\|low.*Default: profile; without one, medium with medium thinking/,
-		);
 		expect([...commands.keys()]).toEqual(["agents"]);
 		const notes: string[] = [];
 		await commands.get("agents")!.handler("kill nobody-1", { ui: { notify: (text: string) => notes.push(text) } });

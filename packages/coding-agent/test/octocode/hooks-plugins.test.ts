@@ -6,6 +6,7 @@ import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 describe("plugin hooks through session registration", () => {
@@ -32,6 +33,7 @@ describe("plugin hooks through session registration", () => {
 			const hooks = registerHooks(f.api, { env: {}, home });
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const event = { toolName: "bash", toolCallId: "plugin-call", input: { command: "true" } };
+			approveFixtureHooks(ctx.cwd, home, { plugins: [entry] });
 			await f.fire("session_start", { reason: "startup" }, ctx);
 			expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({
 				block: true,
@@ -43,6 +45,7 @@ describe("plugin hooks through session registration", () => {
 					hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "echo changed >&2; exit 2" }] }] },
 				}),
 			);
+			approveFixtureHooks(ctx.cwd, home, { plugins: [entry] });
 			await f.fire("session_start", { reason: "reload" }, ctx);
 			// Enabling approves the declarations as they stand, so the changed hook loads as written.
 			expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({

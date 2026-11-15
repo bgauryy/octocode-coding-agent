@@ -5,6 +5,7 @@ import { foundSummary } from "../../core/discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "../../core/discovery/vendors/types.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import type { Settings } from "../../core/settings-schema.ts";
+import { type PreviewOptions, previewSource, renderPreview } from "./scan-preview.ts";
 
 /** Claude Code's auto memory is switched globally only: the loader reads the global key (`vendorItemOn`). */
 const memoryOn = (toggles: Settings["toggles"]) => toggles?.[CLAUDE_MEMORY_TOGGLE_ID] === true;
@@ -44,6 +45,12 @@ export function vendorItems(statuses: readonly HarnessStatus[], toggles: Setting
 		};
 		return [row, memory];
 	});
+}
+
+/** The scanned items turning a harness row on would bring, as text; undefined for a row with no source to scan (Claude's memory switch). */
+export function switchOnPreview(item: InventoryItem, options: PreviewOptions): string[] | undefined {
+	const preview = previewSource(item.name ?? "", options);
+	return preview && renderPreview(preview);
 }
 
 /** Switches a harness row: the vendor key through `switchItem`, or the Claude memory key (global only; unset when off, its default). */

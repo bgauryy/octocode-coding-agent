@@ -4,6 +4,8 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { matchTexts, HISTORY_BYTES } from "../history/search.ts";
 import { ownArchives } from "../history/archive.ts";
 import { historyScope } from "../history/transcripts.ts";
+import { focusedSessionIds } from "../history/focus.ts";
+import { currentSessionId } from "../shared/home.ts";
 import path from "node:path";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { summarySection, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
@@ -23,7 +25,8 @@ export interface ReadParams extends agentEvents.EventFilter {
 	diagnostics?: boolean;
 }
 interface Position {
-	seq: number;
+	seq?: number;
+	after?: string;
 }
 interface RecordHit {
 	id: string;
@@ -55,8 +58,8 @@ function isCursor(parsed: unknown): parsed is Cursor {
 			SOURCES.includes(source as DataSource) &&
 			before &&
 			typeof before === "object" &&
-			Number.isSafeInteger(before.seq) &&
-			before.seq >= 0,
+			((Number.isSafeInteger(before.seq) && before.seq >= 0 && before.after === undefined) ||
+				(source === "agents" && typeof before.after === "string" && before.seq === undefined)),
 	);
 }
 
@@ -130,12 +133,13 @@ const field = (label: string, value: unknown): string | undefined =>
 /** A source's rows below `before` (newest first), at most `count`, each with its full text and its index line. */
 function sourceRows(
 	source: DataSource,
-	scope: { db: Db; mirror: Db; workspace: string; own: string[] },
+	scope: { db: Db; mirror: Db; workspace: string; own: string[]; sessionIds?: string[] },
 	before: number,
 	count: number,
 	params: ReadParams,
+	after?: string,
 ): RecordHit[] {
-	const { db, mirror, workspace, own } = scope;
+	const { db, mirror, workspace, own, sessionIds } = scope;
 	if (source === "events")
 		return agentEvents.list(db, workspace, before, count, params).map((row) => ({
 			id: `event:${row.id}`,
@@ -150,7 +154,7 @@ function sourceRows(
 			source,
 		}));
 	if (source === "compactions")
-		return compactions.visible(mirror, workspace, own, before, count, params.keywords).map((row) => {
+		return compactions.visible(mirror, workspace, own, before, count, params.keywords, sessionIds).map((row) => {
 			const id = `compaction:${row.sessionId}:${row.entryId}`;
 			const tldr = summarySection(splitSummary(row.summary).body, TLDR_HEADING)
 				.filter((line) => !/^topics:/i.test(line))
@@ -165,7 +169,7 @@ function sourceRows(
 			};
 		});
 	if (source === "sessions")
-		return compactions.sessionIndex(mirror, workspace, own, before, count).map((row) => {
+		return compactions.sessionIndex(mirror, workspace, own, before, count, sessionIds).map((row) => {
 			const id = `session:${row.sessionId}`;
 			return {
 				id,
@@ -175,26 +179,30 @@ function sourceRows(
 				source,
 			};
 		});
-	return agents
-		.inWorkspace(db, workspace)
-		.map((row, i, all) => {
-			const id = `agent:${String(row.id)}`;
-			return {
-				id,
-				seq: all.length - i,
-				text: JSON.stringify(row),
-				line: indexLine(id, [
-					field("role", row.role),
-					field("status", row.status),
-					field("parent", row.parent_id),
-					field("model", row.model),
-					field("task:", firstLine(row.task as string | null)),
-				]),
-				source,
-			};
-		})
-		.filter((row) => row.seq < before)
-		.slice(0, count);
+	// Older cursors used positions in the live list. New pages continue by the stable agent name.
+	const rows =
+		after !== undefined || before === Number.MAX_SAFE_INTEGER
+			? agents.workspacePage(db, workspace, after ?? "", count)
+			: agents
+					.inWorkspace(db, workspace)
+					.filter((_row, index, all) => all.length - index < before)
+					.slice(0, count);
+	return rows.map((row) => {
+		const id = `agent:${String(row.id)}`;
+		return {
+			id,
+			seq: 0,
+			text: JSON.stringify(row),
+			line: indexLine(id, [
+				field("role", row.role),
+				field("status", row.status),
+				field("parent", row.parent_id),
+				field("model", row.model),
+				field("task:", firstLine(row.task as string | null)),
+			]),
+			source,
+		};
+	});
 }
 
 /**
@@ -236,6 +244,10 @@ export async function readRecords(
 		mirror: agent.mirror.db,
 		workspace: registeredWorkspace(cwd, agent).id,
 		own: ownArchives().map((folder) => path.basename(path.dirname(folder))),
+		sessionIds:
+			params.sessionId?.trim() && selected.some((source) => source === "compactions" || source === "sessions")
+				? focusedSessionIds(historyScope(cwd), params.sessionId, currentSessionId())
+				: undefined,
 	};
 	const regex = params.query?.trim() ? new RegExp(params.query.trim(), "i") : undefined;
 	const words = params.keywords?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
@@ -247,6 +259,7 @@ export async function readRecords(
 		signal?.throwIfAborted();
 		if (!SOURCES.includes(source)) continue;
 		let before = cursor[source]?.seq ?? Number.MAX_SAFE_INTEGER;
+		let after = cursor[source]?.after;
 		if (before === 0 || remaining === 0) continue;
 		const matches: Array<RecordHit & { score: number }> = [];
 		let searched = 0;
@@ -255,7 +268,7 @@ export async function readRecords(
 			signal?.throwIfAborted();
 			// A listing reads one page; a search reads batches until enough match.
 			const want = filtered ? FILTER_BATCH : limit;
-			const rows = sourceRows(source, scope, before, want + 1, params);
+			const rows = sourceRows(source, scope, before, want + 1, params, after);
 			const batch: RecordHit[] = [];
 			for (const row of rows.slice(0, want)) {
 				const size = Buffer.byteLength(row.text);
@@ -278,6 +291,7 @@ export async function readRecords(
 			for (const [index, row] of batch.entries()) {
 				searched++;
 				before = row.seq;
+				if (source === "agents") after = row.id.slice("agent:".length);
 				const lower = words.length > 0 ? row.text.toLowerCase() : "";
 				const score = words.reduce((sum, word) => sum + (lower.includes(word) ? 1 : 0), 0);
 				if ((!found || found.has(index)) && (words.length === 0 || score > 0)) matches.push({ ...row, score });
@@ -289,10 +303,12 @@ export async function readRecords(
 			ended = !stopped && remaining > 0 && rows.length <= want && batch.length === Math.min(rows.length, want);
 			if (ended || !filtered || matches.length >= limit) break;
 		}
-		cursor[source] = { seq: ended ? 0 : before };
+		cursor[source] = ended ? { seq: 0 } : source === "agents" && after !== undefined ? { after } : { seq: before };
 		if (words.length > 0) matches.sort((a, b) => b.score - a.score || b.seq - a.seq);
 		hits += matches.length;
 		const coverage = ended ? "every record" : "more remain";
+		// The index holds only sessions with a compaction; the history part counts every session with files.
+		const label = source === "sessions" ? "sessions with a compaction" : source;
 		const shown = filtered
 			? matches.map(
 					(row) => `${row.id}\n${row.text.slice(0, HIT_CHARS)}${row.text.length > HIT_CHARS ? "… (get by id)" : ""}`,
@@ -300,8 +316,8 @@ export async function readRecords(
 			: matches.map((row) => row.line);
 		groups.push(
 			filtered
-				? `${source}: ${matches.length === 0 ? "no match" : plural(matches.length, "match")} in ${plural(searched, "record")} searched (${coverage})${shown.length ? `\n${shown.join("\n\n")}` : ""}`
-				: `${source}: ${plural(matches.length, "record")}${ended ? "" : ", newest first; more remain"}${shown.length ? ` (get one by id)\n${shown.join("\n")}` : ""}`,
+				? `${label}: ${matches.length === 0 ? "no match" : plural(matches.length, "match", "matches")} in ${plural(searched, "record")} searched (${coverage})${shown.length ? `\n${shown.join("\n\n")}` : ""}`
+				: `${label}: ${plural(matches.length, "record")}${ended ? "" : `, ${source === "agents" ? "by name" : "newest first"}; more remain`}${shown.length ? ` (get one by id)\n${shown.join("\n")}` : ""}`,
 		);
 	}
 	const more = selected.some((source) => cursor[source]?.seq !== 0);

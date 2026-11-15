@@ -106,12 +106,17 @@ function statusOf(server: McpServerListing): string | undefined {
  */
 export function renderMcpStatusSection(
 	servers: readonly McpServerListing[],
-	options: { canManage: boolean },
+	options: { canManage: boolean; withheld?: readonly string[] },
 ): string | undefined {
 	const lines = listedServers(servers).flatMap((server) => {
 		const status = statusOf(server);
 		return status ? [`- ${server.entry.name}: ${oneLine(status)}`] : [];
 	});
-	if (lines.length === 0) return undefined;
-	return hostRender().instruction("sections/mcp_status.md", { canManage: options.canManage, lines: lines.join("\n") });
+	const withheld = (options.withheld ?? []).map((name) => `- ${oneLine(name)}`);
+	if (lines.length === 0 && withheld.length === 0) return undefined;
+	return hostRender().instruction("sections/mcp_status.md", {
+		canManage: options.canManage,
+		lines: lines.join("\n"),
+		withheld: withheld.join("\n"),
+	});
 }

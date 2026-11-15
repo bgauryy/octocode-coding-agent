@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOOK_CATALOG, profileEvents, profileSupport } from "../../src/octocode/hooks/catalog.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { agentHookInput } from "../../src/octocode/hooks/register/agents.ts";
 import { AGENT_LIFECYCLE_CHANNEL, type AgentLifecycleNotice } from "../../src/octocode/shared/agent-lifecycle.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -71,6 +72,7 @@ async function setup(hooks: unknown) {
 	const dbFile = path.join(tmp(), "team.sqlite");
 	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile });
 	teams.push(team);
+	approveFixtureHooks(cwd);
 	const view = registerHooks(fake.api, { env: {}, home: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	team.start(ctx);

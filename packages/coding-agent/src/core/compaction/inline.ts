@@ -7,12 +7,14 @@ import { renderInstruction } from "../prompt-template.ts";
 
 /**
  * `text` within `max` characters: its head and tail around a marker naming how much was omitted. Unchanged when it fits.
+ * `saved`: the caller names a file that keeps the complete text, so the marker does not say none does.
  * Not a duplicate of `clipText` or `truncateToWidth`, which keep only a head and end in `…`: this keeps both ends of a
  * text whose start and end both matter, and core cannot import the Octocode helpers.
  */
-export function clipWithMarker(text: string, max: number): string {
+export function clipWithMarker(text: string, max: number, saved = false): string {
 	if (text.length <= max) return text;
-	const marker = (omitted: number) => `\n${renderInstruction("notices/compaction/text-omitted.md", { omitted })}\n`;
+	const marker = (omitted: number) =>
+		`\n${renderInstruction("notices/compaction/text-omitted.md", { omitted, saved })}\n`;
 	const room = Math.max(0, max - marker(text.length).length);
 	const head = Math.ceil((room * 2) / 3);
 	const tail = room - head;

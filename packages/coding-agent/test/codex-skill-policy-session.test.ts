@@ -9,6 +9,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createBashTool } from "../src/core/tools/bash.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createHarness, getMessageText } from "./suite/harness.ts";
+import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
 
 const NAME = "policy-fixture";
 const DESCRIPTION = "Unique policy fixture catalog description";
@@ -42,6 +43,17 @@ async function fixture(
 		fs.mkdirSync(path.join(root, "plugin/.codex-plugin"), { recursive: true });
 		fs.writeFileSync(path.join(root, "plugin/.codex-plugin/plugin.json"), JSON.stringify({ name: "policy-kit" }));
 	}
+	approveFixtureSkillFiles(
+		[
+			{
+				name: options.plugin ? `policy-kit:${NAME}` : NAME,
+				filePath: options.plugin ? fs.realpathSync(file) : file,
+				// Explicit additionalSkillPaths use global review scope, including inferred Claude documents.
+				category: "global",
+			},
+		],
+		cwd,
+	);
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
@@ -168,6 +180,13 @@ it("does not apply Codex sidecar policy to an inferred Claude skill", async () =
 		claude: true,
 	});
 	try {
+		expect(f.loader.getSkills().skills).toContainEqual(
+			expect.objectContaining({
+				name: NAME,
+				argumentStyle: "claude",
+				sourceInfo: expect.objectContaining({ scope: "temporary" }),
+			}),
+		);
 		expect((await request(f, "Explain the project.")).system).toContain(DESCRIPTION);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
 	} finally {
@@ -230,8 +249,9 @@ it("does not execute or connect declared dependencies during resource loading or
 			],
 		},
 	});
-	const f = await fixture(metadata);
+	let f: Fixture | undefined;
 	try {
+		f = await fixture(metadata);
 		expect(f.loader.getSkills().diagnostics).toEqual([
 			expect.objectContaining({
 				type: "warning",
@@ -243,7 +263,7 @@ it("does not execute or connect declared dependencies during resource loading or
 		expect(fs.existsSync(sentinel)).toBe(false);
 		expect(connections).toBe(0);
 	} finally {
-		f.cleanup();
+		f?.cleanup();
 		await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 		fs.rmSync(scratch, { recursive: true, force: true });
 	}

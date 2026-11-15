@@ -237,6 +237,32 @@ describe("a graph planned in one backlog add", () => {
 		expect(ui.dependsOn.map((ref) => ref.id)).toEqual([api?.ref]);
 	});
 
+	it("puts entries under an epic added earlier in the same add, named by its title", async () => {
+		const { ctx } = mainBacklog();
+		const env = { OCTOCODE_AGENT_DB: process.env.OCTOCODE_AGENT_DB };
+		const fake = fakeHost();
+		registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed: () => undefined });
+		const result = (await fake.tools.get("backlogPlan").execute(
+			"c1",
+			{
+				op: "add",
+				reason: "plan the epic",
+				items: [
+					{ ...READY, title: "audit", type: "epic" },
+					{ ...READY, title: "audit tools", parentId: "audit" },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		)) as { content: Array<{ text: string }> };
+		expect(result.content[0].text).toMatch(/^Added 2 of 2\./);
+		const backlog = openBacklog(ctx, { isSubagent: false });
+		const [epic] = backlog.store.list({ title: "audit" }).items.filter((item) => item.title === "audit");
+		const child = backlog.store.list({ title: "audit tools" }).items.find((item) => item.title === "audit tools");
+		expect(child?.parentId).toBe(epic?.ref);
+	});
+
 	it("leaves a title that names no earlier added entry as it is, so the entry is refused", async () => {
 		const { ctx } = mainBacklog();
 		const env = { OCTOCODE_AGENT_DB: process.env.OCTOCODE_AGENT_DB };

@@ -6,6 +6,7 @@ import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { ExternalAgents } from "../../src/octocode/external/manager.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { EXTERNAL_SENDER } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -24,6 +25,7 @@ async function hookRuntime(hooks: unknown) {
 	fs.mkdirSync(path.join(cwd, ".git"));
 	fs.mkdirSync(path.join(cwd, ".octocode"));
 	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
+	approveFixtureHooks(cwd);
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	const view = registerHooks(fake.api, { env: {}, home: tmp() });

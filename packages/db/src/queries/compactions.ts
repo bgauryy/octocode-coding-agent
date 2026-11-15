@@ -95,14 +95,23 @@ export function visible(
 	before: number,
 	limit: number,
 	keywords = "",
+	sessionIds?: readonly string[],
 ): SummaryRow[] {
 	const words = keywords.match(/[\p{L}\p{N}_-]+/gu)?.slice(0, 16) ?? [];
 	const terms = words.map(() => "(instr(lower(summary), lower(?)) > 0 OR instr(lower(metadata), lower(?)) > 0)");
 	return (
 		db
 			.prepare(`SELECT * FROM compaction_summaries WHERE (workspace_id=? OR session_id IN (SELECT value FROM json_each(?)))
-		AND seq<? ${terms.length ? `AND (${terms.join(" OR ")})` : ""} ORDER BY seq DESC LIMIT ?`)
-			.all(workspace, JSON.stringify(own), before, ...words.flatMap((word) => [word, word]), limit) as Row[]
+			AND seq<? ${sessionIds ? "AND session_id IN (SELECT value FROM json_each(?))" : ""}
+			${terms.length ? `AND (${terms.join(" OR ")})` : ""} ORDER BY seq DESC LIMIT ?`)
+			.all(
+				workspace,
+				JSON.stringify(own),
+				before,
+				...(sessionIds ? [JSON.stringify(sessionIds)] : []),
+				...words.flatMap((word) => [word, word]),
+				limit,
+			) as Row[]
 	).map(decode);
 }
 
@@ -113,13 +122,15 @@ export function sessionIndex(
 	own: readonly string[],
 	before: number,
 	limit: number,
+	sessionIds?: readonly string[],
 ): Array<{ sessionId: string; seq: number; committedAt: number | null }> {
 	return (
 		db
 			.prepare(`SELECT session_id, MAX(seq) AS seq, MAX(committed_at) AS committed_at FROM compaction_summaries
-		WHERE workspace_id=? OR session_id IN (SELECT value FROM json_each(?)) GROUP BY session_id
+			WHERE (workspace_id=? OR session_id IN (SELECT value FROM json_each(?)))
+			${sessionIds ? "AND session_id IN (SELECT value FROM json_each(?))" : ""} GROUP BY session_id
 		HAVING MAX(seq)<? ORDER BY seq DESC LIMIT ?`)
-			.all(workspace, JSON.stringify(own), before, limit) as Row[]
+			.all(workspace, JSON.stringify(own), ...(sessionIds ? [JSON.stringify(sessionIds)] : []), before, limit) as Row[]
 	).map((row) => ({
 		sessionId: String(row.session_id),
 		seq: Number(row.seq),

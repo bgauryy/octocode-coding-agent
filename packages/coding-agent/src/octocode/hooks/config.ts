@@ -16,6 +16,7 @@ import { codexHomeFor } from "../../core/discovery/vendors/codex.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
 import { applyHookToggles } from "./config/toggles.ts";
+import { gateHooks } from "./review.ts";
 
 /**
  * A command-hook subset read from Claude Code, Codex and Octocode configuration:
@@ -88,8 +89,13 @@ export function loadHooks(
 	cwd: string,
 	projectTrusted: boolean,
 	home = os.homedir(),
-	options: { plugins?: Settings["plugins"]; toggles?: Settings["toggles"] } = {},
-): { config: HookConfig; errors: string[]; switchedOff: number } {
+	options: {
+		plugins?: Settings["plugins"];
+		toggles?: Settings["toggles"];
+		/** Session start only: withhold handlers the user has not approved (`enforce` off: rate them, load them all). */
+		gate?: { enforce: boolean };
+	} = {},
+): { config: HookConfig; errors: string[]; switchedOff: number; withheld: number } {
 	const config = emptyHooks();
 	const errors: string[] = [];
 	let disabled = false;
@@ -179,5 +185,6 @@ export function loadHooks(
 		errors.push("Codex hooks disabled by features.hooks in loaded TOML configuration");
 	}
 	const switchedOff = disabled ? 0 : applyHookToggles(config, options.toggles, cwd, home);
-	return { config: disabled ? emptyHooks() : config, errors, switchedOff };
+	const withheld = !disabled && options.gate ? gateHooks(config, cwd, home, options.gate.enforce) : 0;
+	return { config: disabled ? emptyHooks() : config, errors, switchedOff, withheld };
 }

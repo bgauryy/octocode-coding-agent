@@ -194,7 +194,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), tried in order, each as `provider/id` with an optional `:thinking` level, for example `[\"openrouter/some-model\", \"openai/other-model:high\"]`. The first one with credentials becomes the session model with a notice and stays selected; `/model` switches back. Empty: such a failure ends the turn.",
+          "description": "Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401, 403, an expired sign-in) or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `[\"openrouter/some-model\", \"openai/other-model:high\"]`. After a refused credential, entries of the same provider are skipped. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.",
           "default": []
         }
       }
@@ -280,8 +280,8 @@
     },
     "externalAgents": {
       "type": "boolean",
-      "description": "Allow agent tasks in installed vendor CLIs and the `external` type for ACP agents and other Octocode instances. On by default; an explicit false disables both for new sessions. Only installed runnable CLIs are offered; the selected runner is checked when used, without starting CLIs during discovery. The external type is declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from global settings only; project files cannot change it. Manage sign-in and the switch in /providers.",
-      "default": true
+      "description": "Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
+      "default": false
     },
     "sessionApi": {
       "type": "boolean",
@@ -801,6 +801,14 @@
         }
       }
     },
+    "enabledExternalAgents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers."
+    },
     "enabledModels": {
       "type": "array",
       "items": {
@@ -1020,6 +1028,37 @@
           ],
           "description": "Publish a link of that access (\"view\" or \"control\") when a session starts and print it. A project settings file can set \"off\" but never turn it on; the global value stands.",
           "default": "off"
+        }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "enforce": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "hooks"
+              },
+              {
+                "type": "string",
+                "const": "mcp"
+              },
+              {
+                "type": "string",
+                "const": "skills"
+              }
+            ]
+          },
+          "description": "The kinds that stay off until you check and approve them in /security: hooks, MCP servers and skills Octocode did not ship. A kind left out is still rated but loads unchecked. Global only.",
+          "default": [
+            "hooks",
+            "mcp",
+            "skills"
+          ]
         }
       },
       "additionalProperties": false

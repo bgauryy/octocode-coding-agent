@@ -17,6 +17,8 @@ import { collectionSkillDetail, coreSkillItems } from "../../core/extensibility/
 import { hostInstalledPlugins } from "../../core/extensibility/host-plugins.ts";
 import { markLosingSkills } from "./skill-duplicates.ts";
 import { vendorItems } from "./vendor-items.ts";
+import { mcpItems } from "./mcp-items.ts";
+import type { McpServerStatus } from "../../../../mcp/src/api.ts";
 import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
 import type { DiscoverInput } from "../../core/discovery/types.ts";
 import { harnessStatuses } from "../../core/discovery/vendors/index.ts";
@@ -37,12 +39,7 @@ import {
 	type ToggleHost,
 } from "../../core/extensibility/toggles.ts";
 
-export {
-	EMPTY_INVENTORY,
-	type Inventory,
-	type InventoryHost,
-	type InventoryItem,
-} from "../../core/extensibility/inventory-types.ts";
+export { type Inventory, type InventoryHost, type InventoryItem } from "../../core/extensibility/inventory-types.ts";
 /** Headings in display order. */
 export const HOST_TITLES: Record<InventoryHost, string> = {
 	harness: "Harnesses",
@@ -246,49 +243,6 @@ async function resourceItems(
 	return [...rows("extensions"), ...[...rows("skills"), ...extraSkills].sort((a, b) => a.label.localeCompare(b.label))];
 }
 
-/** What an MCP row reads of a server in the MCP host's status snapshot (core does not import the MCP package). */
-interface McpRowSource {
-	name: string;
-	enabled: boolean;
-	state: string;
-	toolCount: number;
-	exposure: string;
-	scope?: string;
-	source: string;
-	/** `core`, `workspace` or `global`, as skills are grouped (the MCP owner's `mcpServerGroup`). */
-	group?: string;
-}
-
-const groupLabel = (group: string): string => group.charAt(0).toUpperCase() + group.slice(1);
-
-/**
- * One `mcp:<name>` row per MCP server in the session's registry snapshot. The MCP owner keeps its own `enabled` setting
- * (in the server's `mcp.json` or a project override) and applies a switch at once, so these rows carry no `toggles` key.
- */
-function mcpItems(servers: readonly McpRowSource[], home?: string): InventoryItem[] {
-	return servers.map((server) => ({
-		id: `mcp:${server.name}`,
-		name: server.name,
-		host: "mcp",
-		kind: "mcp",
-		depth: 0,
-		label: server.name,
-		on: server.enabled,
-		// Group first, as the skill rows name their folder: `Core · connected · 14 tools · direct · built in`.
-		detail: [
-			server.group ? groupLabel(server.group) : undefined,
-			server.state,
-			`${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`,
-			server.exposure,
-			server.scope === "default"
-				? "built in"
-				: `${server.scope === "extension" ? "plugin " : ""}${homeTilde(server.source, home)}`,
-		]
-			.filter(Boolean)
-			.join(" · "),
-	}));
-}
-
 /** Everything `/harness` lists, from the same loaders the session uses; nothing is installed or executed. */
 export async function buildInventory(options: {
 	cwd: string;
@@ -299,7 +253,7 @@ export async function buildInventory(options: {
 	manager: SettingsManager;
 	projectTrusted: boolean;
 	/** The session's MCP registry snapshot; omitted when no MCP owner runs. */
-	mcp?: readonly McpRowSource[];
+	mcp?: readonly McpServerStatus[];
 	home?: string;
 }): Promise<Inventory> {
 	const notes: string[] = [];

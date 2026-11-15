@@ -29,7 +29,7 @@ export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): Mode
 	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning);
 }
 
-/** `retry.fallbackModels` replaced a model that hit a usage limit: say so, since the session model changed by itself.
+/** `retry.fallbackModels` replaced a failed model: say so and why, since the session model changed by itself.
  * Interactive and RPC clients see this notification; print mode has no UI and reads the run outcome warning instead
  * (`retry-fallback.ts`), so each surface shows the notice once. */
 export function registerFallbackNotice(api: ExtensionAPI): void {
@@ -38,7 +38,7 @@ export function registerFallbackNotice(api: ExtensionAPI): void {
 		const from = event.previousModel ? `${event.previousModel.provider}/${event.previousModel.id}` : "The model";
 		notify(
 			ctx.ui,
-			`${from} hit a usage limit; continuing on ${event.model.provider}/${event.model.id} (retry.fallbackModels). /model switches back.`,
+			`${from} ${event.reason ?? "hit a usage limit"}; continuing on ${event.model.provider}/${event.model.id} (retry.fallbackModels). /model switches back.`,
 			"warning",
 		);
 	});

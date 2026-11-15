@@ -78,6 +78,7 @@ export class ClaudeCodeSession {
 	private wake?: () => void;
 	private readonly handed = new Map<string, Call>();
 	private used?: number;
+	private capacity?: number;
 
 	constructor(options: SessionOptions) {
 		this.options = options;
@@ -130,7 +131,11 @@ export class ClaudeCodeSession {
 	/** Token totals with the context size Claude Code last reported, which is what context accounting reads. */
 	private withContext(usage: Usage): Usage {
 		const sum = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-		return sum === 0 ? usage : { ...usage, totalTokens: this.used ?? sum };
+		return {
+			...usage,
+			...(sum === 0 ? {} : { totalTokens: this.used ?? sum }),
+			...(this.capacity === undefined ? {} : { contextWindow: this.capacity }),
+		};
 	}
 
 	/** A live adapter for `model`: the one open, or a new one resuming this session's ACP session when it can. */
@@ -183,6 +188,7 @@ export class ClaudeCodeSession {
 
 	private start(text: string): void {
 		const backend = this.backend!;
+		this.capacity = undefined;
 		const generation = this.generation;
 		const current = () => generation === this.generation;
 		this.prompting = true;
@@ -190,7 +196,10 @@ export class ClaudeCodeSession {
 			if (!current()) return;
 			if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text")
 				this.push({ type: "text", text: update.content.text });
-			else if (update.sessionUpdate === "usage_update") this.used = update.used;
+			else if (update.sessionUpdate === "usage_update") {
+				this.used = update.used;
+				if (Number.isFinite(update.size) && update.size > 0) this.capacity = update.size;
+			}
 		};
 		backend.prompt(text, { timeoutMs: NO_DEADLINE_MS, onUpdate }).then(
 			(reply) => {

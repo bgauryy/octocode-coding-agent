@@ -81,8 +81,16 @@ export async function signInToProvider(
 	return true;
 }
 
-/** The `Sign in` row: a provider picker (every provider with a sign-in method), then that provider's sign-in. */
-export async function showSignIn(ctx: PageContext, saved: readonly CredentialInfo[], query = ""): Promise<boolean> {
+/**
+ * The `Sign in` row: a provider picker (every provider with a sign-in method, then `external` agent CLIs), then that
+ * provider's sign-in. Picking an external agent returns its id for the caller to open its page.
+ */
+export async function showSignIn(
+	ctx: PageContext,
+	saved: readonly CredentialInfo[],
+	query = "",
+	external: readonly { id: string; name: string; detail: string }[] = [],
+): Promise<boolean | string> {
 	const { host } = ctx;
 	const runtime = host.session.modelRuntime;
 	const methods = new Map<string, AuthSelectorProvider[]>();
@@ -110,6 +118,10 @@ export async function showSignIn(ctx: PageContext, saved: readonly CredentialInf
 	});
 	// Sign-ins (subscriptions and accounts) first: a few among dozens of API-key providers, and what most users come for.
 	providers.sort((a, b) => Number(!signIns.has(a.id)) - Number(!signIns.has(b.id)) || a.name.localeCompare(b.name));
+	// External agents last: a vendor CLI runs the task in its own harness, so its id (`runner:<id>`) is returned to open
+	// its page rather than signed in here.
+	for (const entry of external) providers.push({ ...entry, authType: "api_key" });
+	const externalIds = new Set(external.map((entry) => entry.id));
 	const id = await new Promise<string | undefined>((resolve) => {
 		host.showSelector((done) => {
 			const selector = new OAuthSelectorComponent(
@@ -129,6 +141,7 @@ export async function showSignIn(ctx: PageContext, saved: readonly CredentialInf
 		});
 	});
 	if (!id) return false;
+	if (externalIds.has(id)) return id;
 	try {
 		return await signInToProvider(ctx, id, saved);
 	} catch (error) {

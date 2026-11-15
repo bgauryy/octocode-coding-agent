@@ -2,6 +2,12 @@ import { Type } from "typebox";
 
 /** Which models and providers the user lets the session use. */
 export const ModelAvailabilitySettingsProperties = {
+	enabledExternalAgents: Type.Optional(
+		Type.Array(Type.String({ minLength: 1 }), {
+			description:
+				"Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers.",
+		}),
+	),
 	enabledModels: Type.Optional(
 		Type.Array(Type.String(), {
 			description: "Model patterns for cycling, in the same format as the --models CLI flag.",

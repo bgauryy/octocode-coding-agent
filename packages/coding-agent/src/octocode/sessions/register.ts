@@ -17,6 +17,7 @@ import { addUsage, contentText, emptyUsage, type Spend, modelLookup, spendOf, un
 import {
 	type BriefInput,
 	latestRequest,
+	latestRequestIndex,
 	ongoingBrief,
 	openTasksBrief,
 	RESUME_TAG,
@@ -41,7 +42,7 @@ import {
 	totals,
 } from "./session-scan.ts";
 import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
-import { compactionRequestBrief, runningWorkBrief } from "./compaction-brief.ts";
+import { compactionRequestBrief, keptAfterCompaction } from "./compaction-brief.ts";
 
 /** Custom message type of the resume brief. */
 export const RESUME_MESSAGE_TYPE = "octocode-resume";
@@ -63,22 +64,17 @@ interface SessionsOptions {
 }
 
 /**
- * After a compaction, a non-waking reorient brief: the work still running (background bash jobs and subagents started
- * since this session started in this process, without a report yet), this session's ongoing backlog items with their
+ * After a compaction, a non-waking reorient brief: this session's ongoing backlog items with their
  * goal, why, paths, links and last notes, its open tasks, its path reservations and the questions waiting for its reply,
- * and the latest user request (left out when Octocode's summary already keeps that request inline).
- * The summary may have dropped them, and the running work's reports will arrive later as messages. Every part is capped
- * (see brief.ts).
+ * and the latest user request (left out when Octocode's summary keeps that request inline or the compaction kept it in
+ * the retained tail).
+ * The summary may have dropped them. The running jobs, subagents and timers are not repeated here: the summary's
+ * Recovery block states them (`compaction/live-state.ts`). Every part is capped (see brief.ts).
  */
 function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
-	let since = Date.now();
-	api.on("session_start", async () => {
-		since = Date.now();
-	});
 	api.on("session_compact", async (event, ctx) => {
 		const branch = branchOf(ctx);
 		const source = ctx.sessionManager.getSessionFile();
-		const running = runningWorkBrief(branch, since, source);
 		let ongoing: string[] = [];
 		try {
 			const agent = sharedAgentDb();
@@ -90,17 +86,12 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 		}
 		const held = team ? teamBrief(team) : [];
 		// The native summary keeps user messages within a budget; test for the actual copy before skipping this reminder.
-		const latest = latestRequest(branch);
+		// A request in the retained tail is still in the context whole: an excerpt would only repeat it.
+		const at = latestRequestIndex(branch);
+		const latest = keptAfterCompaction(branch, at, event.compactionEntry) ? undefined : latestRequest(branch);
 		const request = latest ? compactionRequestBrief(latest, event.compactionEntry, source) : undefined;
-		if (running.length === 0 && ongoing.length === 0 && held.length === 0 && !request) return;
-		const lines = [
-			...(running.length > 0
-				? [renderInstruction("notices/compaction/still-running.md", { work: running.join("; ") })]
-				: []),
-			...ongoing,
-			...held,
-			...(request ? [request] : []),
-		];
+		if (ongoing.length === 0 && held.length === 0 && !request) return;
+		const lines = [...ongoing, ...held, ...(request ? [request] : [])];
 		const content = renderInstruction("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
 			void api.sendMessage(

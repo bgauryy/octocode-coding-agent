@@ -18,12 +18,14 @@ import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptio
 import { BUSY_MS, INBOX_BATCH_SIZE, LEASE_MS, PRUNE_INTERVAL_MS, QUICK_BUSY_MS } from "./store/limits.ts";
 import {
 	claimMember,
+	memberTransaction,
 	listMembers,
 	type ProcessIdentity,
 	reachableMembers,
 	reapMember,
 	resumeMembers,
 	saveMember,
+	ownsMember,
 	retireOwned,
 	rowLive,
 } from "./store/members.ts";
@@ -67,6 +69,7 @@ export class TeamStore {
 	}
 	/** The team (the repository's git common dir): scopes agents, messages and deliveries, whatever worktree they work in. */
 	readonly team: string;
+	owns = (member: Member): boolean => ownsMember(this.db, member);
 	private readonly ownsConnection: boolean;
 	private constructor(
 		agent: AgentDb,
@@ -90,7 +93,7 @@ export class TeamStore {
 			agent.db,
 			this.team,
 			this.workspaceId,
-			(work) => this.transaction(work),
+			(work) => this.agent.transaction(work),
 			() => this.reachable(),
 		);
 	}
@@ -118,10 +121,6 @@ export class TeamStore {
 	/** Closes a connection `open` made; a `shared` store leaves the process connection open. */
 	close(): void {
 		if (this.ownsConnection) this.agent.close();
-	}
-
-	private transaction<T>(work: () => T): T {
-		return this.agent.transaction(work);
 	}
 
 	/** Moves whenever any process writes the database file (`dbStamp`): equal stamps mean a read would answer as it did. */
@@ -170,16 +169,17 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return this.transaction(() => saveMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle));
+		return this.agent.transaction(() => saveMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle));
 	}
 
 	/**
 	 * Takes the name `member.id` in one write transaction. False when another running process holds it: the caller
-	 * draws another name. A row of this same process (a second join) is refreshed; one whose process is gone is
-	 * retired first (its unread mail becomes dead letters) and the name is taken over; one naming `from` (its parent) is taken over.
+	 * draws again. Refreshes this process, retires dead holders with unread mail, or takes over from its parent.
 	 */
 	join(member: Member, from?: ProcessIdentity): boolean {
-		return this.transaction(() => claimMember(this.db, this.team, this.memberWorkspace, member, this.lifecycle, from));
+		return memberTransaction(this.agent, member, (held) =>
+			claimMember(this.db, this.team, this.memberWorkspace, member, held, this.lifecycle, from),
+		);
 	}
 
 	/**
@@ -187,7 +187,7 @@ export class TeamStore {
 	 * `owner` (a process leaving its own row) nothing is removed when the row now names another process.
 	 */
 	remove(id: string, now = Date.now(), owner?: ProcessIdentity, reason?: agentEvents.EndReason): boolean {
-		return this.transaction(() => retireOwned(this.db, id, now, owner, reason));
+		return this.agent.transaction(() => retireOwned(this.db, id, now, owner, reason));
 	}
 
 	/**
@@ -203,7 +203,7 @@ export class TeamStore {
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */
 	private reap(id: string, judged: ProcessIdentity | undefined, now: number): boolean {
-		return this.transaction(() => reapMember(this.db, id, judged, now));
+		return this.agent.transaction(() => reapMember(this.db, id, judged, now));
 	}
 
 	/**
@@ -213,7 +213,7 @@ export class TeamStore {
 	 * calls it. A member that stays silent after the wake goes `STALE_MS` later, its leases `LEASE_MS` later.
 	 */
 	resume(since: number, now = Date.now()): void {
-		this.transaction(() => {
+		this.agent.transaction(() => {
 			resumeMembers(this.db, this.team, since, now);
 			resumeLeases(this.db, this.team, since, now);
 		});
@@ -257,7 +257,7 @@ export class TeamStore {
 		now = Date.now(),
 	): { id: number | undefined; departed: string[]; woken: string[] } {
 		// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
-		return this.transaction(() =>
+		return this.agent.transaction(() =>
 			insertMessage(this.db, this.team, this.workspaceId, this.reachable(), from, to, body, options, now),
 		);
 	}
@@ -283,7 +283,7 @@ export class TeamStore {
 	/** Records that the sender was told these dead letters went unread. */
 	markNotified(letters: DeadLetter[], now = Date.now()): void {
 		if (letters.length === 0) return;
-		this.transaction(() => deliveries.markNotified(this.db, letters, now));
+		this.agent.transaction(() => deliveries.markNotified(this.db, letters, now));
 	}
 
 	/** How many messages newer than `after` wait undelivered for `id` (the inbox index alone): the inbox reads them only when this is non-zero. */
@@ -309,7 +309,7 @@ export class TeamStore {
 	/** Mark messages delivered to `id` (FYI messages are complete on delivery). One reader per recipient, so no lease. */
 	ack(id: string, messageIds: number[], now = Date.now()): void {
 		if (messageIds.length === 0) return;
-		this.transaction(() => deliveries.markDelivered(this.db, id, messageIds, now));
+		this.agent.transaction(() => deliveries.markDelivered(this.db, id, messageIds, now));
 	}
 
 	/**
@@ -354,14 +354,14 @@ export class TeamStore {
 	): { ok: true; leases: Lease[] } | { ok: false; conflicts: LeaseConflict[] } {
 		if (requests.length === 0) throw new Error("Give at least one path.");
 		refuseOverlap(this.workspace, requests);
-		return this.transaction(() => {
+		return memberTransaction(this.agent, child, (held) => {
 			this.prune(now);
 			const conflicts = requests.flatMap((request) => {
 				const heldBy = this.conflict(request.path, owner, request.kind, now);
 				return heldBy ? [{ path: request.path, heldBy }] : [];
 			});
 			if (conflicts.length > 0) return { ok: false as const, conflicts };
-			if (child && !claimMember(this.db, this.team, this.memberWorkspace, child))
+			if (child && !claimMember(this.db, this.team, this.memberWorkspace, child, held))
 				throw new Error(`The team name ${owner} is held by another running agent.`);
 			writeLeases(this.db, this.workspace, this.edits.workspaceId, owner, requests, now);
 			return { ok: true as const, leases: this.leases(now).filter((lease) => lease.owner === owner) };
@@ -374,7 +374,7 @@ export class TeamStore {
 	 * them, and must lock them again.
 	 */
 	renew(owner: string, now = Date.now()): void {
-		this.transaction(() => {
+		this.agent.transaction(() => {
 			leases.dropLapsed(this.db, owner, now);
 			leases.extendOwner(this.db, owner, now + LEASE_MS);
 		});

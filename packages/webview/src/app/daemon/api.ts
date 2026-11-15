@@ -1,4 +1,7 @@
 import type {
+	McpAddCommand,
+	McpAddResult,
+	McpAddAvailability,
 	ConfigCredentialCommand,
 	ConfigProviderCommand,
 	ConfigSettingCommand,
@@ -74,6 +77,36 @@ export function createDaemonApi(access: string, route: (path: string) => string 
 			const value = await requestJson(DAEMON_ROUTES.access, { headers, signal }, "Could not read the link's access");
 			return isRecord(value) && value.writable === true;
 		},
+		mcpAddStatus: (repoId?: string): Promise<McpAddAvailability> =>
+			requestJson(
+				withRepo(route(DAEMON_ROUTES.configMcpAdd), repoId),
+				{ headers },
+				"Could not check MCP availability",
+			).then((value) => {
+				if (
+					!isRecord(value) ||
+					typeof value.available !== "boolean" ||
+					(value.message !== undefined && typeof value.message !== "string")
+				)
+					throw new Error("Invalid MCP availability response");
+				return { available: value.available, ...(typeof value.message === "string" ? { message: value.message } : {}) };
+			}),
+		addMcp: (command: McpAddCommand): Promise<McpAddResult> =>
+			post(route(DAEMON_ROUTES.configMcpAdd), command, "Could not save the MCP definition").then((value) => {
+				if (
+					!isRecord(value) ||
+					value.saved !== true ||
+					typeof value.message !== "string" ||
+					(value.warnings !== undefined &&
+						(!Array.isArray(value.warnings) || value.warnings.some((warning) => typeof warning !== "string")))
+				)
+					throw new Error("Invalid MCP save response");
+				return {
+					saved: true,
+					message: value.message,
+					...(Array.isArray(value.warnings) ? { warnings: value.warnings as string[] } : {}),
+				};
+			}),
 		config: (repoId?: string): Promise<ConfigSnapshot> =>
 			requestJson(withRepo(route(DAEMON_ROUTES.config), repoId), { headers }, "Could not load settings").then(
 				configSnapshot,

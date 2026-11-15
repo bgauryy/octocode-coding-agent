@@ -111,10 +111,9 @@ describe("file tool: a single flat change", () => {
 	});
 });
 
-describe("file tool guidance and result text", () => {
-	it("tells the model to split a very large write, and adds no empty diagnostics line to a result", async () => {
-		const tool = fileTool() as FileTool & { promptGuidelines: string[] };
-		expect(tool.promptGuidelines.join("\n")).toMatch(/cut off by the output limit[^]*write a very large file in parts/);
+describe("file tool result text", () => {
+	it("returns the written source digest without an empty diagnostics line", async () => {
+		const tool = fileTool();
 		const cwd = fs.realpathSync(tmp());
 		const result = (await call(tool, { reason: "r", type: "write", path: "a.txt", content: "x" }, cwd)) as unknown as {
 			content: { text: string }[];

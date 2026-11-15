@@ -66,15 +66,55 @@ function isChromeOn(pid: number, port: string): boolean {
 	}
 }
 
-async function stopChrome(pid: number): Promise<void> {
-	process.kill(pid, "SIGTERM");
-	for (let waited = 0; waited < 3000 && running(pid); waited += 50)
-		await new Promise((resolve) => setTimeout(resolve, 50));
-	if (running(pid)) process.kill(pid, "SIGKILL");
+const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function exited(pid: number, ms: number): Promise<boolean> {
+	for (let waited = 0; waited < ms && running(pid); waited += 50) await pause(50);
+	return !running(pid);
 }
 
-/** Stops the headless Chromes this session owns under `cwd` and removes their state, as `cleanup` would. Never throws. */
-export async function stopOwnedBrowsers(cwd: string): Promise<void> {
+/** Whether `pid` leads its own process group, as a Chrome started detached does, so its renderers and GPU helper share it. */
+function leadsGroup(pid: number): boolean {
+	try {
+		return execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).trim() === String(pid);
+	} catch {
+		return false;
+	}
+}
+
+/** Ends the Chrome and, when it leads a group, its helpers; waits (bounded) after SIGTERM and again after SIGKILL. */
+async function stopChrome(pid: number): Promise<void> {
+	const target = process.platform !== "win32" && leadsGroup(pid) ? -pid : pid;
+	const signal = (name: NodeJS.Signals): void => {
+		try {
+			process.kill(target, name);
+		} catch {
+			// Already gone.
+		}
+	};
+	signal("SIGTERM");
+	if (await exited(pid, 3000)) {
+		// The leader left, but a helper may still hold the profile: end the rest of the group.
+		if (target < 0) signal("SIGKILL");
+		return;
+	}
+	signal("SIGKILL");
+	if (!(await exited(pid, 2000))) throw new Error(`Chrome process ${pid} did not exit after SIGKILL`);
+}
+
+/** Removes a profile directory, retrying while a helper that is still exiting holds files in it. */
+function removeProfile(dir: string): void {
+	rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+/**
+ * Stops the headless Chromes this session owns under `cwd` and removes their state, as `cleanup` would. Never throws: a
+ * Chrome that will not stop or a profile that cannot be removed goes to `report` (stderr by default), and its record stays.
+ */
+export async function stopOwnedBrowsers(
+	cwd: string,
+	report: (message: string) => void = (message) => process.stderr.write(`${message}\n`),
+): Promise<void> {
 	let files: string[];
 	try {
 		files = readdirSync(browserStateDir(cwd));
@@ -89,11 +129,14 @@ export async function stopOwnedBrowsers(cwd: string): Promise<void> {
 		if (session?.headless !== true || session.isolated !== true || typeof session.pid !== "number") continue;
 		try {
 			if (isChromeOn(session.pid, port)) await stopChrome(session.pid);
-			if (typeof session.profileDir === "string") rmSync(session.profileDir, { recursive: true, force: true });
+			if (typeof session.profileDir === "string") removeProfile(session.profileDir);
 			rmSync(sessionFile, { force: true });
 			rmSync(join(browserStateDir(cwd), file), { force: true });
-		} catch {
+		} catch (error) {
 			// Shutdown goes on: the Chrome stays listed in `/processes`, and `cleanup` still reaches it.
+			report(
+				`Could not stop or clean up the headless Chrome on port ${port}: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 	}
 }

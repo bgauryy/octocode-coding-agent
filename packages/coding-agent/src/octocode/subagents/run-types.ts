@@ -4,6 +4,7 @@ import type { ChildCacheMetrics } from "./cache-monitor.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import type { Ask } from "../team/asks.ts";
 import type { Compactions } from "./events.ts";
+import type { RanModel } from "./event-ran.ts";
 import type { ChildNotices } from "./notices.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
 import type { ReportArtifact } from "../child-sessions/report-artifact.ts";
@@ -72,6 +73,8 @@ export interface RunDetails {
 	stopping?: boolean;
 	/** The `provider/id` it runs on (with any `:thinking` suffix); absent when it runs on the parent's model. */
 	model?: string;
+	/** The model of the child's last assistant message, which differs from `model` after a `retry.fallbackModels` switch; absent before its first reply. */
+	ran?: RanModel;
 	/** The profile's preferred model, unavailable here: the run fell back to the parent's model. */
 	fallback?: string;
 	/** The provider of `fallback` when it is configured but refused its credential recently. */

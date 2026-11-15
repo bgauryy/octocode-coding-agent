@@ -3,9 +3,8 @@ import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
 import * as timers from "./queries/timers.ts";
 import type { HistoryTable } from "./queries/history.ts";
-import { isBusy, withBusyTimeout } from "./sqlite.ts";
+import { isBusy, withoutWaiting } from "./sqlite.ts";
 import { num, type Row } from "./rows.ts";
-import { DAY_MS, HOUR_MS } from "../../common/src/time.ts";
 import {
 	DEFAULT_HISTORY_WINDOWS,
 	type HistoryWindows,
@@ -36,10 +35,6 @@ const FAMILIES: ReadonlyArray<{ table: HistoryTable; family: Family; key: (row: 
 
 /** Rows per batch: each batch is one short write transaction, so another process never waits long. */
 const BATCH = 5000;
-/** How long a housekeeping write waits for another process's lock before it gives up until the next run. */
-const QUICK_BUSY_MS = 100;
-/** A skipped or failed run is retried after this long; a finished one after a day. */
-const RETRY_MS = HOUR_MS;
 
 export interface HousekeepingResult {
 	/** Rows written to the archive (rows already past the keep window are deleted without being archived). */
@@ -60,6 +55,7 @@ export function archiveHistory(
 	agentDb: AgentDb,
 	now: number,
 	windows: HistoryWindows = DEFAULT_HISTORY_WINDOWS,
+	assertActive: () => void = () => {},
 ): HousekeepingResult {
 	const { archiveAfterMs, keepMs } = windowsMs(windows);
 	const result: HousekeepingResult = { archived: 0, deleted: 0 };
@@ -67,12 +63,14 @@ export function archiveHistory(
 	const cutoff = now - archiveAfterMs;
 	const source = archiveSource(agentDb);
 	try {
-		trimArchive(agentDb.archiveDir, now, keepMs);
-		withBusyTimeout(db, QUICK_BUSY_MS, () => {
+		assertActive();
+		trimArchive(agentDb.archiveDir, now, keepMs, assertActive);
+		withoutWaiting(db, () => {
 			for (const { table, family, key } of FAMILIES) {
 				const oldest = history.oldestAt(db, table);
 				if (oldest === undefined || oldest >= cutoff) continue;
 				for (;;) {
+					assertActive();
 					const rows = history.rowsBefore(db, table, cutoff, BATCH);
 					const kept = rows.filter((row) => num(row.at) >= now - keepMs);
 					appendArchive(
@@ -82,13 +80,16 @@ export function archiveHistory(
 						kept.map((row) => ({ db: source, id: key(row), at: num(row.at), row: row as ArchiveRow })),
 						now,
 						keepMs,
+						assertActive,
 					);
 					result.archived += kept.length;
+					assertActive();
 					result.deleted += agentDb.transaction(() => history.deleteRows(db, table, rows));
 					if (rows.length < BATCH) break;
 				}
 			}
 			// Agent runs are the audit of who ran what: they stay for the keep window and are not archived.
+			assertActive();
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => agentRuns.purgeBefore(db, now - keepMs));
 			// Timers likewise: ended ones, and active ones left overdue and untouched for the whole window.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
@@ -99,42 +100,4 @@ export function archiveHistory(
 		throw error;
 	}
 	return result;
-}
-
-/** When each database file (this process) next runs housekeeping. */
-const due = new Map<string, number>();
-
-/**
- * Runs `archiveHistory` for the database at most once a day per process, after the current call returns, so it is never
- * on the open path or inside a user's write. A busy database or a failure is retried an hour later. Background work:
- * an error never reaches the caller. `windows` is read when the run starts (a function lets a setting change apply).
- */
-export function scheduleHistoryArchive(
-	agentDb: () => AgentDb,
-	windows: HistoryWindows | (() => HistoryWindows) = DEFAULT_HISTORY_WINDOWS,
-	now: () => number = Date.now,
-): void {
-	let target: AgentDb;
-	try {
-		target = agentDb();
-	} catch {
-		// An unreadable database: the call that opened the backlog reports why.
-		return;
-	}
-	const at = now();
-	if ((due.get(target.file) ?? 0) > at) return;
-	due.set(target.file, at + DAY_MS);
-	setImmediate(() => {
-		if (!target.db.isOpen) {
-			due.delete(target.file);
-			return;
-		}
-		try {
-			if (archiveHistory(target, now(), typeof windows === "function" ? windows() : windows).skipped)
-				due.set(target.file, now() + RETRY_MS);
-		} catch {
-			// Housekeeping only (an unwritable archive folder, a damaged archive file): the rows stay in the database.
-			due.set(target.file, now() + RETRY_MS);
-		}
-	}).unref();
 }

@@ -19,6 +19,65 @@ const serve = () => {
 	return server;
 };
 
+describe.runIf(posix)("api socket overload", () => {
+	it("rejects excess peers and closes even when a rejected peer stays open", async () => {
+		let dispatches = 0;
+		const server = new ApiServer(async () => ++dispatches, new EventLog(), "token");
+		servers.push(server);
+		const file = socketPath(tmp("octo-overload-"), "s");
+		await server.listenUnix(file);
+		const peers: net.Socket[] = [];
+		const connect = async (): Promise<net.Socket> => {
+			const peer = net.createConnection({ path: file, allowHalfOpen: true });
+			peers.push(peer);
+			peer.on("error", () => {});
+			await new Promise<void>((resolve, reject) => {
+				peer.once("connect", resolve);
+				peer.once("error", reject);
+			});
+			return peer;
+		};
+		const request = (peer: net.Socket, id: number): Promise<{ result?: number; error: { message: string } }> =>
+			new Promise((resolve) => {
+				peer.once("data", (data) => resolve(JSON.parse(data.toString())));
+				peer.write(`${JSON.stringify({ jsonrpc: "2.0", id, method: "test" })}\n`);
+			});
+		try {
+			for (let i = 0; i < 16; i++) {
+				const peer = await connect();
+				expect((await request(peer, i)).result).toBe(i + 1);
+			}
+			const rejected = await connect();
+			const response = await request(rejected, 17);
+			expect(response.error.message).toBe("Too many connections");
+			expect(dispatches).toBe(16);
+			// Abruptly disconnect an excess peer while the server may be writing its rejection.
+			const reset = await connect();
+			reset.destroy();
+			const freed = peers[0];
+			const ended = new Promise<void>((resolve) => freed.once("end", resolve));
+			freed.end();
+			await ended;
+			const recovered = await connect();
+			expect((await request(recovered, 18)).result).toBe(17);
+			expect(dispatches).toBe(17);
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			try {
+				await Promise.race([
+					server.close(),
+					new Promise<never>((_, reject) => {
+						timer = setTimeout(() => reject(new Error("server close timed out")), 500);
+					}),
+				]);
+			} finally {
+				clearTimeout(timer);
+			}
+		} finally {
+			for (const peer of peers) peer.destroy();
+		}
+	});
+});
+
 describe("api instance ids", () => {
 	it("are Octocode's own and unique", () => {
 		expect(newInstanceId()).toMatch(/^oc-[0-9a-f]{6}$/);

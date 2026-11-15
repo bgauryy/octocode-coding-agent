@@ -32,14 +32,24 @@ export * as meta from "./queries/meta.ts";
 export * as configAudits from "./queries/config-audits.ts";
 export * as history from "./queries/history.ts";
 export * as trust from "./queries/trust.ts";
+export * as guard from "./queries/guard.ts";
 export * as processSamples from "./queries/process-samples.ts";
 export * as purge from "./queries/purge.ts";
 export * as maintenance from "./queries/maintenance.ts";
 export * as expire from "./queries/expire.ts";
 export * as timers from "./queries/timers.ts";
 export * as shellHistory from "./queries/shell-history.ts";
-export { type AgentDb, type Db, dbStamp, type MirrorDb, openDatabase, sharedDatabase } from "./db.ts";
+export {
+	type AgentDb,
+	type Db,
+	dbStamp,
+	type MirrorDb,
+	openDatabase,
+	prepareSharedDatabase,
+	sharedDatabase,
+} from "./db.ts";
 export { isBusy, withoutWaiting } from "./sqlite.ts";
+export { transactionWhenReady } from "./transaction-ready.ts";
 export {
 	closeSharedAgentDb,
 	DB_WRITER_QUEUE_LIMIT,
@@ -83,8 +93,10 @@ export type { NewTimer, TimerConditionKind, TimerKind, TimerResult, TimerRow, Ti
 export type { ConfigAuditEntry } from "./queries/config-audits.ts";
 export type { ShellHistoryRow } from "./queries/shell-history.ts";
 export type { FolderDecision, FolderGrantRow, FolderIdentity } from "./queries/trust.ts";
+export type { ReviewDecision, ReviewInput, ReviewKey, ReviewRow } from "./queries/guard.ts";
 export { archivedAudits } from "./history-archive.ts";
-export { archiveHistory, scheduleHistoryArchive } from "./retention.ts";
+export { archiveHistory } from "./retention.ts";
+export { scheduleHistoryArchive } from "./history-scheduler.ts";
 export { DEFAULT_HISTORY_WINDOWS, type HistoryWindows } from "./history-archive.ts";
 export { bindingKey, sameBinding } from "./binding.ts";
 

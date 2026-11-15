@@ -370,7 +370,10 @@ export async function finalizeExecutedToolCall(
 				isError = afterResult.isError ?? isError;
 			}
 		} catch (error) {
-			result = createErrorToolResult(error instanceof Error ? error.message : String(error));
+			result = createErrorToolResult(
+				`Tool result post-processing failed: ${error instanceof Error ? error.message : String(error)}. ` +
+					"Effects may already be applied; inspect state before retrying.",
+			);
 			isError = true;
 		}
 	}

@@ -264,8 +264,6 @@ describe("backlog list filters", () => {
 		// A filter is named for what it matches; only the ones a name cannot explain carry a description.
 		for (const field of ["states", "query", "since", "limit"])
 			expect(properties[field].description, field).toBeTruthy();
-		// The description says it, so a deferred declaration (no schema) still does.
-		expect(tool.description).toContain("list filters by other fields");
 		for (const field of ["assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
 		// Every other field is one `add` and `edit` write, inside an `items` entry, and none of them is also a filter.
 		expect(Object.keys(properties).filter((field) => !filters.includes(field))).toEqual(["op", "items"]);
@@ -273,9 +271,8 @@ describe("backlog list filters", () => {
 		expect(Object.keys(written)).toEqual(
 			expect.arrayContaining(["id", "title", "type", "parentId", "priority", "tags", "paths", "dependsOn", "from"]),
 		);
-		for (const [field, schema] of Object.entries(written)) {
+		for (const field of Object.keys(written)) {
 			expect(filters, field).not.toContain(field);
-			expect(schema.description ?? "", field).not.toMatch(/\blist\b/);
 		}
 		// The work tool has no filter at all.
 		expect(Object.keys(fake.tools.get("backlog").parameters.properties)).toEqual(

@@ -849,13 +849,14 @@ process.exit(result.status ?? 1);
 			mkdirSync(dirname(target), { recursive: true });
 			git(tempDir, "clone", "-q", remote, target);
 		}
-		const NPM_GIT_INSTALL = ["install", "--omit=dev", "--legacy-peer-deps"];
+		const NPM_GIT_INSTALL = ["install", "--omit=dev", "--legacy-peer-deps", "--ignore-scripts"];
 		const PNPM_GIT_INSTALL = [
 			"install",
 			"--prod",
 			"--config.auto-install-peers=false",
 			"--config.strict-peer-dependencies=false",
 			"--config.strict-dep-builds=false",
+			"--ignore-scripts",
 		];
 
 		beforeEach(() => {
@@ -915,6 +916,7 @@ process.exit(result.status ?? 1);
 						"--prefix",
 						join(agentDir, "npm"),
 						"--legacy-peer-deps",
+						"--ignore-scripts",
 					],
 				],
 			]);
@@ -940,7 +942,18 @@ process.exit(result.status ?? 1);
 			expect(calls().map(({ tool, args }) => [tool, args])).toEqual([
 				[
 					"mise",
-					["exec", "bun@1", "--", "bun", "install", "@scope/pkg", "--cwd", join(agentDir, "npm"), "--omit=peer"],
+					[
+						"exec",
+						"bun@1",
+						"--",
+						"bun",
+						"install",
+						"@scope/pkg",
+						"--cwd",
+						join(agentDir, "npm"),
+						"--omit=peer",
+						"--ignore-scripts",
+					],
 				],
 			]);
 		});
@@ -975,7 +988,7 @@ process.exit(result.status ?? 1);
 			managerWith();
 
 			await expect(packageManager.install("git:github.com/user/repo")).rejects.toThrow(
-				"npm install --omit=dev --legacy-peer-deps failed with code 1",
+				"npm install --omit=dev --legacy-peer-deps --ignore-scripts failed with code 1",
 			);
 
 			expect(existsSync(gitDir())).toBe(false);
@@ -1055,7 +1068,11 @@ process.exit(result.status ?? 1);
 			expect(readFileSync(join(agentDir, "git", ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
 			expect(existsSync(gitDir("package.json"))).toBe(true);
 			expect(calls("bun")).toEqual([
-				{ tool: "bun", args: ["install", "--omit=dev", "--omit=peer"], cwd: realpathSync(gitDir()) },
+				{
+					tool: "bun",
+					args: ["install", "--omit=dev", "--omit=peer", "--ignore-scripts"],
+					cwd: realpathSync(gitDir()),
+				},
 			]);
 		});
 
@@ -1219,6 +1236,7 @@ if (args[0] === "view") {
 					"--config.auto-install-peers=false",
 					"--config.strict-peer-dependencies=false",
 					"--config.strict-dep-builds=false",
+					"--ignore-scripts",
 				],
 			]);
 			expect(pm.getInstalledPath("npm:pnpm-pkg", "user")).toBe(packagePath);
@@ -1301,7 +1319,7 @@ else process.exit(1);`,
 				{ tool: "npm", args: viewArgs("example@^1.0.0"), cwd: realpathSync(tempDir) },
 				{
 					tool: "npm",
-					args: ["install", "example@^1.0.0", "--prefix", root, "--legacy-peer-deps"],
+					args: ["install", "example@^1.0.0", "--prefix", root, "--legacy-peer-deps", "--ignore-scripts"],
 					cwd: realpathSync(process.cwd()),
 				},
 			]);
@@ -1368,6 +1386,7 @@ else process.exit(1);`,
 				"--prefix",
 				join(agentDir, "npm"),
 				"--legacy-peer-deps",
+				"--ignore-scripts",
 			]);
 			expect(pm.getInstalledPath("npm:legacy-pkg", "user")).toBe(managedPath);
 		});
@@ -1434,8 +1453,24 @@ else process.exit(1);`,
 				.map((entry) => entry.args)
 				.sort((a, b) => a[1].localeCompare(b[1]));
 			expect(installs).toEqual([
-				["install", "project-old@latest", "project-missing@latest", "--prefix", projectRoot, "--legacy-peer-deps"],
-				["install", "user-old@latest", "user-unknown@latest", "--prefix", userRoot, "--legacy-peer-deps"],
+				[
+					"install",
+					"project-old@latest",
+					"project-missing@latest",
+					"--prefix",
+					projectRoot,
+					"--legacy-peer-deps",
+					"--ignore-scripts",
+				],
+				[
+					"install",
+					"user-old@latest",
+					"user-unknown@latest",
+					"--prefix",
+					userRoot,
+					"--legacy-peer-deps",
+					"--ignore-scripts",
+				],
 			]);
 			// Each configured git checkout, the pinned one included, was refreshed once.
 			const fetched = calls("git")
@@ -1529,7 +1564,7 @@ else process.exit(1);`,
 			await packageManager.resolve();
 
 			expect(calls("npm").map((entry) => entry.args)).toEqual([
-				["install", "example@2.0.0", "--prefix", root, "--legacy-peer-deps"],
+				["install", "example@2.0.0", "--prefix", root, "--legacy-peer-deps", "--ignore-scripts"],
 			]);
 		});
 

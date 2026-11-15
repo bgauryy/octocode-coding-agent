@@ -88,7 +88,16 @@ export function routeSummary(route: { model?: string; via?: string; fallback?: s
  * model to suffix (this session has none): the child starts with `--thinking`.
  */
 export type ModelRoute =
-	| { model?: string; thinking?: string; fallback?: string; refusedBy?: string; setting?: string; skipped?: string }
+	| {
+			model?: string;
+			thinking?: string;
+			fallback?: string;
+			refusedBy?: string;
+			setting?: string;
+			skipped?: string;
+			/** `provider/id[:thinking]` of the next routed models on other providers: the child's `retry.fallbackModels`. */
+			fallbackModels?: string[];
+	  }
 	| { error: string };
 
 /** Why a profile's preferred model was not used: `p/m unavailable`, or `p/m: p refused its credential`. */
@@ -261,7 +270,11 @@ function tierRoute(
  * A route with no model (the session has none) carries the level as `thinking`, from a purpose's suffix, the profile's, or the default.
  */
 export function routeModel(input: RouteInput): ModelRoute {
-	const route = routeWithoutThinking(input);
+	return withFallbackModels(input, withThinkingLevel(input, routeWithoutThinking(input)));
+}
+
+/** The route with the child's thinking level (`routeModel`). */
+function withThinkingLevel(input: RouteInput, route: ModelRoute): ModelRoute {
 	if ("error" in route) return route;
 	if (route.model && thinkingSuffix(route.model)) return route;
 	const thinking =
@@ -270,6 +283,32 @@ export function routeModel(input: RouteInput): ModelRoute {
 		(input.thinking ? `:${input.thinking}` : "");
 	if (!thinking) return route;
 	return route.model ? { ...route, model: `${route.model}${thinking}` } : { ...route, thinking: thinking.slice(1) };
+}
+
+/** Models a child may continue on after a refused credential or a limit: at most this many, each on its own provider. */
+const MAX_FALLBACK_MODELS = 2;
+
+/**
+ * The route plus the child's `retry.fallbackModels`: when a purpose (not a named model) chose the model, the next
+ * models the same purpose resolves to among other providers' usable models, so a provider that refuses the child's
+ * credential does not end its turn. A named model, the parent's own and a profile's own model get none.
+ */
+function withFallbackModels(input: RouteInput, route: ModelRoute): ModelRoute {
+	const asked = input.explicit ?? input.preferred;
+	const tier = asked ? tierOf(asked) : undefined;
+	if ("error" in route || !route.model || !tier) return route;
+	const level = thinkingSuffix(route.model);
+	const skip = new Set([route.model.slice(0, route.model.indexOf("/"))]);
+	const usable = usableModels(input.available, input.parent, input.refused);
+	const next: string[] = [];
+	while (next.length < MAX_FALLBACK_MODELS) {
+		const pool = usable.filter((model) => !skip.has(model.provider));
+		const found = resolveTier(tier.tier, pool, input.parent, input.catalog, input.billing);
+		if (!found) break;
+		skip.add(found.provider);
+		next.push(supportedThinking(`${found.provider}/${found.id}${level}`, input.available));
+	}
+	return next.length > 0 ? { ...route, fallbackModels: next } : route;
 }
 
 function routeWithoutThinking(request: RouteInput): ModelRoute {

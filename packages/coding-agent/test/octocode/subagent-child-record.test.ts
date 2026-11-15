@@ -77,7 +77,7 @@ describe("a child's saved session", () => {
 		expect(path.dirname(file!)).toBe(session.dir);
 		expect(path.basename(file!)).toMatch(/_inky-kraken\.jsonl$/);
 		// The compaction summary's recovery note names it: "the transcript has it whole" is then true.
-		expect(transcriptNote(file, false)).toContain(`The full transcript before this summary is ${file}`);
+		expect(transcriptNote(file, false)).toContain(file);
 		// The ephemeral child had none (what `--no-session` builds), and so its summary named nothing.
 		expect(SessionManager.inMemory(cwd, { id: parsed.sessionId! }).getSessionFile()).toBeUndefined();
 		expect(transcriptNote(undefined, false)).toBe("");

@@ -23,4 +23,15 @@ describe("registerFallbackNotice", () => {
 		await select({ source: "fallback", model }, { ...ctx, hasUI: false });
 		expect(notify).toHaveBeenCalledTimes(1);
 	});
+
+	it("names the cause the switch carries: a refused credential is not a usage limit", async () => {
+		const { notify, model, select } = setup();
+		await select({
+			source: "fallback",
+			reason: "refused the credential",
+			model,
+			previousModel: { provider: "openai", id: "a" },
+		});
+		expect(notify.mock.calls[0]?.[0]).toContain("openai/a refused the credential; continuing on anthropic/b");
+	});
 });

@@ -78,6 +78,7 @@ const shutdown = vi.fn(async () => {});
 const CASES: Record<string, Case> = {
 	// Native features.
 	permissions: { check: says(/Permission mode: workspace/) },
+	security: { check: asks(/Security[\s\S]*Not checked[\s\S]*Approved[\s\S]*Denied/) },
 	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run.
 	agents: { check: says(/\(you\) · main[\s\S]*Recent runs/) },
 	plan: {
@@ -102,11 +103,10 @@ const CASES: Record<string, Case> = {
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
 	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
-	// One row per harness comes first: Claude Code, Codex and Cursor are off by default, then Octocode's own group.
+	// The view opens on its Skills section (Octocode's bundled skills, on), with keys to move to MCPs, Hooks, Sources and
+	// Extensions; the harness switches (Claude Code, Codex, Cursor) live in Sources.
 	harness: {
-		check: asks(
-			/\[ \] Claude Code {2}default off[\s\S]*\[ \] Codex {2}default off[\s\S]*\[ \] Cursor {2}default off[\s\S]*Octocode/,
-		),
+		check: asks(/\[x\] octocode-agentic {2}Octocode \(collection\)[\s\S]*ctrl\+←\/→ section/),
 	},
 	jobs: { check: says(/No background bash jobs are running\./) },
 	memory: { check: asks(/memor/i) },
@@ -154,7 +154,7 @@ const CASES: Record<string, Case> = {
 			expect(list.text).toMatch(/no\s+trust\s+decision\s+yet[\s\S]*No\s+trust\s+decisions\s+are\s+stored/);
 		},
 	},
-	providers: { check: asks(/Configured, not verified/) },
+	providers: { check: asks(/Provider credentials are configured, not verified/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},

@@ -15,6 +15,8 @@ import {
 	type RunnerState,
 } from "./runner-status.ts";
 import { adapterArgs, type RunnerBilling, runnerSpec } from "./runners.ts";
+import { runnerLaunchArgs, runnerSessionMeta } from "./runner-isolation.ts";
+import { checkRunnerCommunication, type RunnerCommunication } from "./runner-communication.ts";
 
 /** A runner that streams nothing this long has stalled (a native child's idle limit is the same order). */
 const RUNNER_IDLE_MS = 15 * 60_000;
@@ -25,6 +27,7 @@ const NO_DEADLINE_MS = 2 ** 31 - 1;
 export interface RunnerTurnInput {
 	runner: string;
 	model?: string;
+	communication?: RunnerCommunication;
 	cwd: string;
 	text: string;
 	signal: AbortSignal;
@@ -95,6 +98,7 @@ export interface RunnerTurnDeps {
  */
 export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 	input.signal.throwIfAborted();
+	checkRunnerCommunication(input.runner, input.communication);
 	const launch = await deps.launch(input.runner, input.signal);
 	input.signal.throwIfAborted();
 	const idle = new AbortController();
@@ -123,9 +127,13 @@ export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 		backend = await deps.connect(
 			{
 				command: launch.command,
-				args: launch.args,
+				args: runnerLaunchArgs(input.runner, launch.args, input.communication?.name),
 				vendor: input.runner,
 				cwd: input.cwd,
+				sessionMeta: runnerSessionMeta(input.runner),
+				mcpServers: input.communication
+					? [{ ...input.communication, type: "http", headers: [...input.communication.headers] }]
+					: [],
 				...(input.model ? { model: input.model } : {}),
 			},
 			deps.permission(input.ctx),

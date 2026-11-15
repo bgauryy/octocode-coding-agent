@@ -129,8 +129,8 @@ describe("references in an agent task", () => {
 			expect(referenced).toContain("echo whole task: findings are A and B");
 			expect(referenced).toMatch(/msg#4: Message #4 from agent peer-a at .* \(sha256 [0-9a-f]{12}\)/);
 			expect(referenced).toContain("use the v2 schema");
-			// Identity follows the expanded content: references sit with the parent's task, before `## You`.
-			expect(referenced.lastIndexOf("\n\n## You\n")).toBeGreaterThan(referenced.indexOf("use the v2 schema"));
+			// The child's parent identity follows the expanded reference content.
+			expect(referenced.lastIndexOf(parentId)).toBeGreaterThan(referenced.indexOf("use the v2 schema"));
 			expect(parent.asked).toEqual([4]);
 			expect(parentId).toBeTruthy();
 		} finally {
@@ -147,7 +147,7 @@ describe("references in an agent task", () => {
 			});
 			const result = await t.call({ task: "echo whole task per msg#12", profile: "lean" });
 			const task = childTask(result);
-			expect(task).toContain("## Referenced content");
+
 			expect(task).toContain("constraints: keep the API");
 			expect(task).toContain(PARENT_FENCE_NOTE);
 		} finally {
@@ -172,7 +172,7 @@ describe("references in an agent task", () => {
 		const t = setup();
 		try {
 			const task = childTask(await t.call({ task: "echo whole task: #12, B205 and msg#N are not references" }));
-			expect(task).not.toContain("## Referenced content");
+			expect(task.startsWith("echo whole task: #12, B205 and msg#N are not references\n\n")).toBe(true);
 			expect(t.asked).toEqual([]);
 		} finally {
 			await t.finish();

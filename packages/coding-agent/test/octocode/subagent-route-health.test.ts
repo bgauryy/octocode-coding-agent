@@ -20,7 +20,10 @@ describe("routing and provider health (B347 P2-5)", () => {
 	afterEach(() => vi.useRealTimers());
 
 	it("skips a refused provider for a purpose and for a profile's preferred model", () => {
-		expect(routeModel({ explicit: "small", available, parent })).toEqual({ model: "cheap/tiny" });
+		expect(routeModel({ explicit: "small", available, parent })).toEqual({
+			model: "cheap/tiny",
+			fallbackModels: ["other/mid"],
+		});
 		expect(routeModel({ explicit: "small", available, parent, refused: refusedCheap })).toEqual({ model: "other/mid" });
 		expect(routeModel({ preferred: "cheap/tiny", available, parent, refused: refusedCheap })).toEqual({
 			model: "home/big",
@@ -60,7 +63,10 @@ describe("routing and provider health (B347 P2-5)", () => {
 		expect(health.refused("cheap", "allowed")).toBe(false);
 		expect(health.refused("other", "tiny")).toBe(false);
 		expect(health.refused("cheap")).toBe(false);
-		expect(routeModel({ explicit: "small", available: models, parent, refused })).toEqual({ model: "cheap/allowed" });
+		expect(routeModel({ explicit: "small", available: models, parent, refused })).toEqual({
+			model: "cheap/allowed",
+			fallbackModels: ["other/mid"],
+		});
 		expect(routeModel({ preferred: "cheap/allowed", available: models, parent: available[2], refused })).toEqual({
 			model: "cheap/allowed",
 		});
@@ -87,15 +93,18 @@ describe("routing and provider health (B347 P2-5)", () => {
 		expect(health.refused("other", "tiny")).toBe(false);
 	});
 
-	it("counts only a recent credential refusal, not a timeout or an old refusal", () => {
+	it("counts a credential refusal until it is lifted, a usage limit only while recent, and not a timeout", () => {
 		vi.useFakeTimers({ now: 1_000_000 });
 		const health = new ProviderHealth();
 		health.noteCheck("slow", "no answer within 20 s (the request ended: aborted)");
 		health.noteRun("cheap/tiny", "401 Unauthorized: invalid api key");
+		health.noteRun("other/mid", "429 Monthly usage limit reached");
 		expect(health.refused("slow")).toBe(false);
 		expect(health.refused("cheap")).toBe(true);
+		expect(health.refused("other")).toBe(true);
 		vi.setSystemTime(1_000_000 + 16 * 60_000);
-		expect(health.refused("cheap")).toBe(false);
+		expect(health.refused("cheap")).toBe(true);
+		expect(health.refused("other")).toBe(false);
 		health.noteRun("cheap/tiny", "403 forbidden");
 		health.noteRun("cheap/tiny");
 		expect(health.refused("cheap")).toBe(false);

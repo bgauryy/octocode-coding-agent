@@ -59,7 +59,7 @@ export async function runNpmCommand(
 export function getGitDependencyInstallArgs(host: PackageManagerHost): string[] {
 	switch (getPackageManagerName(host)) {
 		case "bun":
-			return ["install", "--omit=dev", "--omit=peer"];
+			return ["install", "--omit=dev", "--omit=peer", "--ignore-scripts"];
 		case "pnpm":
 			return [
 				"install",
@@ -67,11 +67,12 @@ export function getGitDependencyInstallArgs(host: PackageManagerHost): string[] 
 				"--config.auto-install-peers=false",
 				"--config.strict-peer-dependencies=false",
 				"--config.strict-dep-builds=false",
+				"--ignore-scripts",
 			];
 		case "npm":
-			return ["install", "--omit=dev", "--legacy-peer-deps"];
+			return ["install", "--omit=dev", "--legacy-peer-deps", "--ignore-scripts"];
 		default:
-			return ["install"];
+			return ["install", "--ignore-scripts"];
 	}
 }
 
@@ -87,7 +88,7 @@ export function getNpmInstallArgs(host: PackageManagerHost, specs: string[], ins
 	// equivalent bun/pnpm settings) so package managers do not install or solve host-provided
 	// @octocodeai/octocode-* peers. Stale auto-installed host peers can otherwise block updates.
 	if (packageManagerName === "bun") {
-		return ["install", ...specs, "--cwd", installRoot, "--omit=peer"];
+		return ["install", ...specs, "--cwd", installRoot, "--omit=peer", "--ignore-scripts"];
 	}
 	if (packageManagerName === "pnpm") {
 		return [
@@ -98,9 +99,10 @@ export function getNpmInstallArgs(host: PackageManagerHost, specs: string[], ins
 			"--config.auto-install-peers=false",
 			"--config.strict-peer-dependencies=false",
 			"--config.strict-dep-builds=false",
+			"--ignore-scripts",
 		];
 	}
-	return ["install", ...specs, "--prefix", installRoot, "--legacy-peer-deps"];
+	return ["install", ...specs, "--prefix", installRoot, "--legacy-peer-deps", "--ignore-scripts"];
 }
 
 export async function installNpm(

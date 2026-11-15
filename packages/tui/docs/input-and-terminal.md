@@ -54,7 +54,7 @@ The editor reuses wrapping for unchanged draft lines across repaints and cursor 
 
 - `TuiMainScreen`: the first render writes every line without clearing scrollback. A width change or a change above the viewport clears and redraws everything. Otherwise it moves to the first changed line, clears to the end and writes the changed lines.
 - `TuiAltScreen`: owns a terminal-height viewport and updates changed rows in place. It follows streaming output at the bottom, keeps a manual scroll position while content grows, scrolls by wheel or configurable keys without touching scrollback, jumps between OSC 133 prompts, supports scrollbar hover, drag and track clicks, opens OSC 8 links, and selects text by drag (copied with OSC 52 unless `copyOnSelect` is `false`; edge auto-scroll extends the selection).
-- Both wrap frames in synchronized output (`ESC[?2026h` ... `ESC[?2026l`). See the [render loop](../README.md#render-loop).
+- Both wrap frames in synchronized output (`ESC[?2026h` ... `ESC[?2026l`) when the terminal confirms support.
 
 ### Render pacing
 
@@ -65,14 +65,32 @@ tui.setRenderPacing({ metrics: true }); // or { adaptiveCadence: true, metrics: 
 const stats = tui.getRenderPacingStats();
 ```
 
-| Option            | Default | Effect                                                                             |
-| ----------------- | ------- | ---------------------------------------------------------------------------------- |
-| `outputGate`      | on      | Defer frames while `Terminal.pendingOutputBytes` is above `highWaterBytes`         |
-| `adaptiveCadence` | off     | Space frames by the previous frame's cost, up to 200 ms                            |
-| `metrics`         | off     | Counters: frames, queued bytes, frame time, timer lateness, input-to-paint latency |
-| `highWaterBytes`  | 256 KiB | Gate closes above this                                                             |
-| `lowWaterBytes`   | 128 KiB | Gate reopens at or below this                                                      |
-| `retryMs`         | 10      | Retry interval while gated                                                         |
+| Option            | Default | Effect                                                                           |
+| ----------------- | ------- | -------------------------------------------------------------------------------- |
+| `outputGate`      | on      | Defer frames while `Terminal.pendingOutputBytes` is above `highWaterBytes`       |
+| `adaptiveCadence` | off     | Space frames by the previous frame's cost, up to 200 ms                          |
+| `interactiveFps`  | 60      | Pointer frame target, from 1 to 120; independent of synchronized-output support  |
+| `metrics`         | off     | Frame submission, output queue, CPU, heap, RSS, GC and event-loop delay counters |
+| `highWaterBytes`  | 256 KiB | Gate closes above this                                                           |
+| `lowWaterBytes`   | 128 KiB | Gate reopens at or below this                                                    |
+| `retryMs`         | 10      | Retry interval while gated                                                       |
+
+Synchronized output keeps a frame together; it does not report display refresh rate or GPU availability. Set `interactiveFps: 120` only after checking that the target terminal remains responsive during scrolling and streaming.
+
+Frame time covers Octocode's layout, ANSI generation and write submission. `maxInputToPaintMs` retains its API name but ends at submission, not at visible pixels. `runtime` covers the Node process, with CPU expressed as a percentage of one core and event-loop delay sampled every 20 ms. These counters exclude terminal parsing, DOM layout and GPU presentation. A drained Node output queue does not prove the terminal has displayed the frame. Disabling metrics or stopping the renderer releases its GC observer and loop monitor.
+
+```mermaid
+flowchart LR
+  state[Component state] --> scheduler[Coalesced frame requests]
+  scheduler --> render[Markdown, layout and ANSI]
+  render --> stdout[Node output queue]
+  stdout --> pty[Kernel PTY]
+  pty --> parser[Terminal parsing and layout]
+  parser --> presentation[Terminal CPU or GPU rendering]
+  presentation --> pixels[Displayed frame]
+```
+
+CPU, heap and GC counters describe the Node process on the left of the PTY. Terminal rendering uses a separate process and allocation lifetime. Diagnose a slow display at that boundary: cheap frame submission and an empty local queue can coexist with an overloaded terminal renderer.
 
 The watermarks are unmeasured starting values, not a memory limit. `renderNow()`, terminal restore and final output bypass the gate; a frame may exceed it. Terminals without `pendingOutputBytes` keep the default schedule. On POSIX, `ProcessTerminal` switches stdout to nonblocking TTY writes so a paused consumer cannot freeze the event loop, and switches it again on every `start()`: a child given the terminal with inherited stdio (an external editor, a sign-in CLI) leaves the shared descriptor blocking. Ordinary writes share the stdout queue and retain their order. Forced-exit restoration writes synchronously to the terminal descriptor, bypassing that queue; changing the handle mode alone cannot flush JavaScript's queued writes. Those writes retry a full terminal for at most one second in total, then drop the rest so quitting cannot hang; the descriptor is made blocking again for the shell afterwards. Cleanup hooks remain registered until normal restore output drains. Keyboard repaints also wait for the queue and paint the latest state once it drains. `ProcessTerminal.getOutputTelemetry()` reports bytes, write sizes and writes returning `false`; no text is kept. `node scripts/profile-render-backpressure.mjs --trials 3` (repository root) compares four modes with a simulated consumer, not a live PTY.
 

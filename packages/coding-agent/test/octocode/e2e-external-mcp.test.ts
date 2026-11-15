@@ -1,3 +1,4 @@
+import { approveFixtureMcp } from "./guard-helpers.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -114,6 +115,7 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 		noThemes: true,
 		noContextFiles: true,
 	});
+	approveFixtureMcp(cwd, agentDir);
 	await resourceLoader.reload();
 	const { session: agent } = await createTestSession({
 		cwd,
@@ -255,6 +257,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 		noThemes: true,
 		noContextFiles: true,
 	});
+	approveFixtureMcp(cwd, agentDir);
 	await resourceLoader.reload();
 	const { session: agent } = await createTestSession({
 		cwd,

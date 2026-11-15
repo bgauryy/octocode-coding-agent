@@ -165,15 +165,18 @@ function handleScrollToEndIndicatorMouseEvent(host: AltScreenPointerHost, event:
 	return true;
 }
 
-/** Handle focus reports and mouse sequences. Returns true when the input was a pointer event and is consumed. */
+/**
+ * Handle focus reports and mouse sequences. Returns true when the input was a pointer event and is consumed. Focus
+ * reports are handled but not consumed: later listeners (notifications) need them too.
+ */
 export function handlePointerInput(host: AltScreenPointerHost, data: string): boolean {
 	if (data === FOCUS_OUT) {
 		handlePointerFocusOut(host);
-		return true;
+		return false;
 	}
 	if (data === FOCUS_IN) {
 		host.reassertModes();
-		return true;
+		return false;
 	}
 
 	const wheelEvent = parseWheelEvent(data);

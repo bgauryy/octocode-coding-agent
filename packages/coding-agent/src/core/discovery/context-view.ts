@@ -258,7 +258,8 @@ function mcpEntries(servers: readonly McpEntry[], piRoots: readonly string[]): C
 			name: server.name,
 			path: server.source,
 			...mcpLabel(server, piRoots),
-			state: server.enabled ? "loaded" : "off",
+			// A server the security review withholds is switched on but does not load.
+			state: server.enabled && server.state !== "not checked" ? "loaded" : "off",
 			note,
 		};
 	});

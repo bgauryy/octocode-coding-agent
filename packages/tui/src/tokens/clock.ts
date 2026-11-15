@@ -2,8 +2,12 @@
  * One clock for every animation and live counter. Owners subscribe instead of running their own timers; the clock runs
  * a single unref'd interval at the fastest cadence any subscriber needs, stops when the last one leaves, and in reduced
  * motion stops ticking decoration (spinners, shimmer, glow) while counters (elapsed seconds) keep their 1 s tick.
- * While the user scrolls, decoration holds still too, so its repaints do not compete with the scroll's frames.
+ * While the user scrolls, decoration holds still too, so its repaints do not compete with the scroll's frames. While
+ * the terminal reports that it lost focus, decoration slows to the background spinner cadence; it never stops, so
+ * running work does not look stuck.
  */
+
+import { MOTION } from "./design.ts";
 
 /** `decor` moves for looks and freezes in reduced motion; `info` shows changing information and always ticks. */
 export type AnimationKind = "decor" | "info";
@@ -17,6 +21,9 @@ export interface AnimationSubscription {
 /** A call this close before its due time counts as due: timers and the millisecond clock disagree by a tick or two. */
 const SLACK_MS = 2;
 
+/** No hold lasts longer than this; a hold further ahead of now than this can only come from a wall clock stepped back. */
+const MAX_HOLD_AHEAD_MS = 10_000;
+
 interface Subscriber extends AnimationSubscription {
 	listener: (now: number) => void;
 	/** When the next call is due; advances by `everyMs` so slower subscribers keep their rate on a faster clock. */
@@ -28,6 +35,8 @@ class AnimationClock {
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private cadence = 0;
 	private reduced = false;
+	/** Whether the terminal has focus; terminals without focus reports never leave `true`. */
+	private focused = true;
 	/** Decoration holds still until this time (`Date.now()`), e.g. while the user scrolls. */
 	private heldUntil = 0;
 	/** When the hold in progress began: decoration drawn from the clock shows this moment until the hold ends. */
@@ -58,6 +67,32 @@ class AnimationClock {
 			subscriber.due = now + subscriber.everyMs;
 			this.notify(subscriber, now);
 		}
+	}
+
+	/**
+	 * Record a focus report (`false`: the terminal lost focus). Unfocused, decoration ticks no faster than
+	 * `MOTION.backgroundSpinnerMs`; counters are unchanged. Focus back restores the cadence and repaints decoration once.
+	 */
+	setFocused(focused: boolean): void {
+		if (this.focused === focused) return;
+		this.focused = focused;
+		this.reschedule();
+		if (!focused) return;
+		const now = Date.now();
+		// Callbacks may replace subscriptions; iterate a snapshot.
+		const subscribers = [...this.subscribers];
+		for (const subscriber of subscribers) {
+			if (subscriber.kind !== "decor" || this.reduced || !this.subscribers.has(subscriber)) continue;
+			subscriber.due = now + subscriber.everyMs;
+			this.notify(subscriber, now);
+		}
+	}
+
+	/** The interval a subscriber is called at now: decoration slows while unfocused. */
+	private intervalOf(subscriber: Subscriber): number {
+		return !this.focused && subscriber.kind === "decor"
+			? Math.max(subscriber.everyMs, MOTION.backgroundSpinnerMs)
+			: subscriber.everyMs;
 	}
 
 	isReducedMotion(): boolean {
@@ -94,7 +129,7 @@ class AnimationClock {
 
 	private reschedule(): void {
 		const live = this.ticking();
-		const cadence = live.length === 0 ? 0 : Math.min(...live.map((subscriber) => subscriber.everyMs));
+		const cadence = live.length === 0 ? 0 : Math.min(...live.map((subscriber) => this.intervalOf(subscriber)));
 		if (cadence === this.cadence && (cadence === 0) === (this.timer === undefined)) return;
 		if (this.timer !== undefined) clearInterval(this.timer);
 		this.timer = undefined;
@@ -121,13 +156,19 @@ class AnimationClock {
 		// The clock ticks at the fastest cadence: a call runs on the first tick at or after its due time (never early, so
 		// a counter never shows a second that has not passed), and the next is due `everyMs` after the last due time, not
 		// after the late tick, so a 1 s counter on an 80 ms spinner clock keeps a 1 s average without drifting.
+		// A wall clock stepped back leaves due times and the hold far ahead of now: pull them in so ticks resume within
+		// one interval.
+		if (this.heldUntil - now > MAX_HOLD_AHEAD_MS) this.heldUntil = now;
 		const held = now < this.heldUntil;
 		for (const subscriber of this.ticking()) {
-			if (!this.subscribers.has(subscriber) || now < subscriber.due - SLACK_MS) continue;
+			if (!this.subscribers.has(subscriber)) continue;
+			if (subscriber.due - now > this.intervalOf(subscriber)) subscriber.due = now;
+			if (now < subscriber.due - SLACK_MS) continue;
 			if (held && subscriber.kind === "decor") continue;
-			subscriber.due += subscriber.everyMs;
+			const every = this.intervalOf(subscriber);
+			subscriber.due += every;
 			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
-			if (subscriber.due <= now) subscriber.due = now + subscriber.everyMs;
+			if (subscriber.due <= now) subscriber.due = now + every;
 			this.notify(subscriber, now);
 		}
 	}

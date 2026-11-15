@@ -3,7 +3,7 @@ import { convertTools as convertAnthropicTools } from "@octocodeai/octocode-ai/a
 import { convertTools as convertGoogleTools } from "@octocodeai/octocode-ai/api/google-shared/tools";
 import { sanitizeMoonshotToolParameters } from "@octocodeai/octocode-ai/api/openai-completions/tool-schema-flavor";
 import { afterEach, describe, expect, it } from "vitest";
-import { declaresReason, thinParameters } from "../src/presentation/declaration.ts";
+import { thinParameters } from "../src/presentation/declaration.ts";
 
 // A server may name fields after `Object.prototype` members; `JSON.parse` keeps `__proto__` as an own key.
 const inheritedNames = () =>
@@ -42,7 +42,7 @@ describe("thin MCP declarations of fields named after Object.prototype members",
 		it(`keeps every name with its type (${label})`, () => {
 			const thin = thinParameters(schema()) as { properties: unknown };
 			expectOwnTypedFields(thin.properties);
-			expect(declaresReason(schema())).toBe(false);
+			expect(thin).not.toHaveProperty("properties.reason");
 		});
 	}
 

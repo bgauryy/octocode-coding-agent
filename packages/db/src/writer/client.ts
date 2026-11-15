@@ -12,6 +12,16 @@ import {
 } from "./protocol.ts";
 import { type DbWriterCommand, type DbWriterResult, type DerivedCommand, runWriterCommandWithin } from "./derived.ts";
 import type { TranscriptCommand, TranscriptResult } from "./transcript-mirror.ts";
+import type { HistoryWindows, ArchiveAuditQuery, ArchiveRow } from "../history-archive.ts";
+import type { HousekeepingResult } from "../retention.ts";
+import { stopDbWriter } from "./stop.ts";
+import {
+	DbWriterBusyError,
+	DbWriterUnavailableError,
+	DbWriterCommandError,
+	type DbWriterFallback,
+	type DbWriterStats,
+} from "./status.ts";
 
 /** Unacknowledged commands one writer holds; a submit past it fails at once rather than queueing without bound. */
 export const DB_WRITER_QUEUE_LIMIT = 256;
@@ -24,58 +34,15 @@ const READY_TIMEOUT_MS = 10_000;
 /** How long a process that ends on its own waits for unacknowledged commands before it stops its writers. */
 const EXIT_DRAIN_MS = 1_500;
 
-/** The queue is full; nothing was sent, so the caller decides whether the work is needed later. */
-export class DbWriterBusyError extends Error {
-	readonly code = "DB_WRITER_BUSY";
-}
-
-/** The worker stopped before acknowledging: the command may or may not have committed, and nothing reports it either way. */
-export class DbWriterUnavailableError extends Error {
-	readonly code = "DB_WRITER_UNAVAILABLE";
-}
-
-/** The command failed; a stepped mirror save may have committed a partial copy. `busy` means a lock wait expired. */
-export class DbWriterCommandError extends Error {
-	readonly code = "DB_WRITER_COMMAND";
-	readonly busy: boolean;
-	constructor(message: string, busy: boolean) {
-		super(message);
-		this.busy = busy;
-	}
-}
-
-/**
- * What a rejected `submit` means for its caller: `queue-full` (nothing was sent; try again after `drain`), `unavailable`
- * (the worker stopped before acknowledging), `db-busy` (another connection held the database past the wait) or `failed`
- * (the command ran and failed). Undefined for an error that did not come from a writer.
- */
-export type DbWriterErrorKind = "queue-full" | "unavailable" | "db-busy" | "failed";
-
-/** The kind of a writer error: callers branch on this instead of reading the errors' fields. */
-export function writerErrorKind(error: unknown): DbWriterErrorKind | undefined {
-	if (error instanceof DbWriterBusyError) return "queue-full";
-	if (error instanceof DbWriterUnavailableError) return "unavailable";
-	if (error instanceof DbWriterCommandError) return error.busy ? "db-busy" : "failed";
-	return undefined;
-}
-
-/** Why a writer runs commands on the calling thread. */
-export type DbWriterFallback = "bun" | "start-failed" | "load-failed" | "crashed" | "closed";
-
-/** What a writer did on the calling thread instead of its worker, for status and diagnostics. */
-export interface DbWriterStats {
-	role: DbWriterRole;
-	mode: "worker" | "inline";
-	/** Why it runs inline; absent while its worker serves. */
-	fallback?: DbWriterFallback;
-	/** Commands sent and not yet acknowledged. */
-	pending: number;
-	restarts: number;
-	/** Commands run on the calling thread, their total and longest duration in milliseconds. */
-	inlineRuns: number;
-	inlineMs: number;
-	inlineMaxMs: number;
-}
+export {
+	DbWriterBusyError,
+	DbWriterUnavailableError,
+	DbWriterCommandError,
+	writerErrorKind,
+	type DbWriterErrorKind,
+	type DbWriterFallback,
+	type DbWriterStats,
+} from "./status.ts";
 
 interface Waiting {
 	request: DbWriterRequest;
@@ -91,6 +58,7 @@ interface Waiting {
  */
 export class DbWriter {
 	private worker: Worker | undefined;
+	private stopping = new Int32Array(new SharedArrayBuffer(4));
 	private ready = false;
 	private inline = false;
 	private restarts = 0;
@@ -169,6 +137,14 @@ export class DbWriter {
 	async post(command: DerivedCommand): Promise<void> {
 		await this.send(command);
 	}
+	/** Maintenance requires a worker; the archive is committed before its source rows are deleted. */
+	archive(now: number, windows: HistoryWindows): Promise<HousekeepingResult> {
+		return this.send({ kind: "archive-history", now, windows }) as Promise<HousekeepingResult>;
+	}
+	/** Reads and filters history on the worker; at most 500 rows cross back to the caller. */
+	archivedAudits(query: ArchiveAuditQuery): Promise<ArchiveRow[]> {
+		return this.send({ kind: "archive-audits", query }) as Promise<ArchiveRow[]>;
+	}
 
 	private send(command: DbWriterCommand): Promise<DbWriterResult> {
 		if (this.inline) return this.runInline(command);
@@ -220,12 +196,12 @@ export class DbWriter {
 		this.goInline("closed");
 		live.delete(this);
 		this.fail(new DbWriterUnavailableError("Database writer closed"));
-		void worker?.terminate().catch(() => undefined);
+		stopDbWriter(worker, this.stopping);
 	}
 
 	private runInline(command: DbWriterCommand): Promise<DbWriterResult> {
-		if (command.kind === "save-file")
-			return Promise.reject(new DbWriterUnavailableError("Large transcript rebuild requires the database worker"));
+		if (command.kind === "save-file" || command.kind === "archive-history" || command.kind === "archive-audits")
+			return Promise.reject(new DbWriterUnavailableError("Large database maintenance requires the database worker"));
 		const started = performance.now();
 		try {
 			const agent = sharedDatabase(this.locations);
@@ -245,7 +221,13 @@ export class DbWriter {
 		if (this.worker) return this.worker;
 		let worker: Worker;
 		try {
-			const workerData: DbWriterWorkerData = { worker: DB_WRITER_WORKER, locations: this.locations, role: this.role };
+			this.stopping = new Int32Array(new SharedArrayBuffer(4));
+			const workerData: DbWriterWorkerData = {
+				worker: DB_WRITER_WORKER,
+				locations: this.locations,
+				role: this.role,
+				stopping: this.stopping.buffer,
+			};
 			// Its own output streams: the writer prints nothing, and a piped worker adds `error` listeners to this
 			// process's stdout and stderr for as long as it lives.
 			worker = new Worker(this.entry, { workerData, stdout: true, stderr: true });
@@ -255,7 +237,9 @@ export class DbWriter {
 		}
 		this.worker = worker;
 		this.ready = false;
-		worker.on("message", (message: DbWriterMessage) => this.receive(message));
+		worker.on("message", (message: DbWriterMessage) => {
+			if (this.worker === worker) this.receive(message);
+		});
 		worker.on("error", () => this.lost(worker));
 		worker.on("exit", () => this.lost(worker));
 		const loading = setTimeout(() => {
@@ -271,6 +255,7 @@ export class DbWriter {
 	}
 
 	private receive(message: DbWriterMessage): void {
+		if (message.type === "stopped") return;
 		if (message.type === "ready") {
 			this.ready = true;
 			clearTimeout(this.loading);
@@ -290,7 +275,7 @@ export class DbWriter {
 		this.worker = undefined;
 		clearTimeout(this.loading);
 		this.loading = undefined;
-		void worker.terminate().catch(() => undefined);
+		stopDbWriter(worker, this.stopping);
 		if (!this.ready) {
 			// The worker's code never loaded (a layout without its file): nothing ran, so run what was sent here, in order.
 			this.goInline("load-failed");

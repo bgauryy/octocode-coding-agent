@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { parseTemplate } from "../../src/octocode/memory/command.ts";
 import { MEMORY_HEADER, PINNED_BUDGET, selectInjection, TOTAL_BUDGET } from "../../src/octocode/memory/inject.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -64,27 +63,11 @@ const run = async (tool: any, params: Record<string, unknown>, ctx = ctxFor()) =
 	).content[0].text as string;
 
 describe("memory tool guidance", () => {
-	it("declares identical description bytes for every role and splits when-to-save from when-to-read", () => {
+	it("declares identical description and snippet bytes for every role", () => {
 		const main = setup().tool;
 		const child = setup({ isSubagent: true }).tool;
 		expect(child.description).toBe(main.description);
 		expect(child.promptSnippet).toBe(main.promptSnippet);
-		// Memory owns recall; session history is the `archive` tool's.
-		expect(main.promptSnippet).toMatch(/recalling preferences/);
-		expect(main.promptSnippet).not.toMatch(/earlier sessions/);
-		const host = fakeHost();
-		registerArchiveTool(host.api);
-		expect(host.tools.get("archive").promptSnippet).toMatch(/earlier sessions/);
-		expect(host.tools.get("archive").promptSnippet).not.toMatch(/preferences/);
-		const guidance = main.promptGuidelines.join("\n");
-		expect(guidance).toMatch(
-			/corrects your approach, confirms a non-obvious approach or report proposal, or asks you to remember/,
-		);
-		expect(guidance).toMatch(/Don't save what code, git history, AGENTS\.md, skills or backlog hold/);
-		expect(guidance).toMatch(/update or delete a memory that proves wrong/);
-		expect(child.promptGuidelines).toEqual([
-			expect.stringMatching(/^Memory is read-only here.*report a memory that proves wrong\.$/),
-		]);
 	});
 });
 

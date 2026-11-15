@@ -39,6 +39,28 @@ function stubDaemon() {
 	};
 }
 
+it("preserves save warnings and scopes availability requests without secret-bearing replies", async () => {
+	const response = { saved: true, message: "Saved", warnings: ["Audit recording unavailable"] };
+	const fetch = vi.fn(async (_url: string, options: RequestInit) => ({
+		ok: true,
+		status: 200,
+		json: async () => (options.method === "POST" ? response : { available: false, message: "Open session Settings" }),
+	}));
+	vi.stubGlobal("fetch", fetch);
+	const api = createDaemonApi("token", (route) => `/s/live${route}`);
+	expect(await api.mcpAddStatus("session")).toEqual({ available: false, message: "Open session Settings" });
+	expect(fetch.mock.calls[0][0]).toBe(`/s/live${DAEMON_ROUTES.configMcpAdd}?repoId=session`);
+	expect(
+		await api.addMcp({
+			name: "test",
+			scope: "global",
+			transport: "stdio",
+			command: "node",
+			env: { TOKEN: "private-marker" },
+		}),
+	).toEqual(response);
+});
+
 const READ = { Authorization: "Bearer token" };
 const WRITE = { ...READ, "content-type": "application/json" };
 

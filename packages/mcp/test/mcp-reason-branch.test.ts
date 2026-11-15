@@ -20,7 +20,7 @@ const define = (inputSchema: Record<string, unknown>) =>
 // A `reason` is the server's to declare: the host sends what the model wrote and names `reason` in a call shape only
 // when the server declares it.
 describe("MCP reason argument declared outside the root properties", () => {
-	it("keeps a reason a root alternative declares, and names it in the call shape", () => {
+	it("keeps a reason a root alternative declares without requiring it for another alternative", () => {
 		const tool = define({
 			type: "object",
 			oneOf: [
@@ -30,7 +30,7 @@ describe("MCP reason argument declared outside the root properties", () => {
 		});
 		expect(tool.prepareArguments).toBeUndefined();
 		expect(tool.parameters).toMatchObject({ properties: { reason: { type: "string" } } });
-		expect(tool.validationHint?.({ envelope: true, properties: [] })).toContain('takes only {"reason":"..."}');
+		expect(tool.validationHint?.({ envelope: true, properties: [] })).toBeUndefined();
 	});
 
 	it("keeps a reason declared behind a root $ref", () => {
@@ -42,7 +42,7 @@ describe("MCP reason argument declared outside the root properties", () => {
 		expect(tool.coerceArguments).toBe(false);
 	});
 
-	it("rewrites no Octocode tool's arguments and leaves an undeclared reason out of the call shape", () => {
+	it("rewrites no Octocode tool's arguments and preserves the server's required fields", () => {
 		const catalog = JSON.parse(
 			readFileSync(new URL("fixtures/compact/catalog-research.json", import.meta.url), "utf8"),
 		) as { tools: { name: string; inputSchema: Record<string, unknown> }[] };
@@ -51,9 +51,9 @@ describe("MCP reason argument declared outside the root properties", () => {
 			expect(tool.prepareArguments).toBeUndefined();
 			expect(tool.coerceArguments).toBe(false);
 		}
-		const undeclared = define({ type: "object", properties: { q: { type: "string" } }, required: ["q", "reason"] });
-		expect(undeclared.validationHint?.({ envelope: true, properties: [] })).toBe(
-			'mcp__third__note takes only {"q":"..."} as its arguments, with no other top-level property.',
+		const required = define({ type: "object", properties: { q: { type: "string" } }, required: ["q", "reason"] });
+		expect(required.validationHint?.({ envelope: true, properties: [] })).toBe(
+			'mcp__third__note requires {"q":"...","reason":...} at the top level.',
 		);
 	});
 });
@@ -84,7 +84,7 @@ describe("MCP declared tool sent an undeclared reason", () => {
 		const call = (args: Record<string, unknown>) =>
 			validateToolArguments(tool as never, { type: "toolCall", id: "c", name: tool.name, arguments: args } as never);
 		expect(() => call({ q: "x", reason: "why" })).toThrow(
-			/unexpected property reason[\s\S]*mcp__third__note takes only \{"q":"\.\.\."\} as its arguments, with no other top-level property\./,
+			/unexpected property reason[\s\S]*mcp__third__note requires \{"q":"\.\.\."\} at the top level\./,
 		);
 		expect(call({ q: "x" })).toEqual({ q: "x" });
 	});

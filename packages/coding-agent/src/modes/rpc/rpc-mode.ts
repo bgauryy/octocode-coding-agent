@@ -76,6 +76,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 
 	// Shutdown request flag
 	let shutdownRequested = false;
+	let holdShutdown = false;
 	let shuttingDown = false;
 	let removeSignalHandlers = (): void => {};
 	const initialized = Promise.withResolvers<void>();
@@ -142,7 +143,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		for (const [id, request] of pendingExtensionRequests)
 			request.resolve({ type: "extension_ui_response", id, cancelled: true });
 		pendingExtensionRequests.clear();
-		removeSignalHandlers();
+		// Keep signal cleanup active while disposal waits: a parent-gone signal or second signal must still reap children.
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
 		// Every caller voids this promise: a failed dispose or flush must still detach and exit with a status, not end the
@@ -159,11 +160,12 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		if (signal !== "SIGTERM") {
 			await flushRawStdout().catch(() => undefined);
 		}
+		removeSignalHandlers();
 		process.exit(status);
 	}
 
 	async function checkShutdownRequested(): Promise<void> {
-		if (!shutdownRequested) return;
+		if (!shutdownRequested || holdShutdown) return;
 		await shutdown();
 	}
 
@@ -194,9 +196,13 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			return;
 		}
 		const command = parsed as RpcCommand;
+		// Latch before yielding: abort may settle a run whose extension already requested exit.
+		if (command.type === "abort" && command.holdShutdown) holdShutdown = true;
 		try {
 			if (!acpOwnsSession || command.type !== "abort") await initialized.promise;
 			if (shuttingDown) return;
+			if (holdShutdown && command.type !== "abort")
+				throw new Error("RPC shutdown preparation is terminal; close stdin to finish shutdown.");
 			const response = await handleCommand(command);
 			if (response) {
 				output(response);

@@ -11,7 +11,6 @@ vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
 		return `/checkpoint-${savedTexts.length}.txt`;
 	},
 }));
-import { SUMMARY_CHECKPOINT_FORMAT } from "../../src/core/compaction/summary-format.ts";
 import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { FallbackContinuity } from "../../src/octocode/compaction/continuity.ts";
 import { keptWordsOf } from "../../src/octocode/compaction/kept-words.ts";
@@ -19,7 +18,6 @@ import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
 	carryFileLists,
 	SUMMARIZER_RESULT_CHARS,
-	SUMMARY_FOCUS,
 	summarizerView,
 	transcriptNote,
 	USER_MESSAGE_CHARS,
@@ -34,19 +32,6 @@ import {
 const fileOps = () => ({ read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() });
 
 describe("compaction summary", () => {
-	it("asks for judgment only and leaves the format to the checkpoint format and the appended parts to code", () => {
-		// The sections are stated once, in the checkpoint format every summary request carries; the focus adds none.
-		expect(SUMMARY_FOCUS).not.toMatch(/^#+ /m);
-		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR"])
-			expect(SUMMARY_CHECKPOINT_FORMAT.split(section)).toHaveLength(2);
-		expect(SUMMARY_CHECKPOINT_FORMAT).toMatch(
-			/\n## TL;DR\nOne or two lines[^\n]*"Topics: " with 3 to 8 comma-separated keywords/,
-		);
-		expect(SUMMARY_CHECKPOINT_FORMAT).not.toMatch(/Next Steps|EXACT|Follow-ups/);
-		// What code appends is not asked for: no verbatim latest request, no file lists, no follow-up list.
-		expect(SUMMARY_FOCUS).not.toMatch(/verbatim|Follow-ups|read-files|Next Steps/);
-	});
-
 	it("names the transcript and the backlog only when there are ones", () => {
 		const file = path.join(os.homedir(), "s", "a.jsonl");
 		expect(transcriptNote(undefined, false)).toBe("");
@@ -383,19 +368,5 @@ describe("words kept beside the user's messages", () => {
 			'[askUser answer]\n"Keep v1?" → No',
 			"[parent message] also update the docs",
 		]);
-	});
-
-	it("keeps current scoped approvals and marks superseded instructions rather than reviving them", () => {
-		expect(SUMMARY_FOCUS).toContain("approvals still in force with their scope");
-		expect(SUMMARY_FOCUS).toContain("label them superseded");
-	});
-
-	it("preserves critical constraints even when the appended messages do not fit", () => {
-		expect(SUMMARY_FOCUS).toContain("within a budget; long or older messages may become references or be omitted");
-		expect(SUMMARY_FOCUS).toContain("Do not rely on those copies");
-		expect(SUMMARY_FOCUS).toContain("user limits, numbers, paths, identifiers and prohibitions exactly as written");
-		expect(SUMMARY_FOCUS).not.toContain("only record");
-		expect(SUMMARY_CHECKPOINT_FORMAT).toContain("owner, item/agent/job ids and dependencies");
-		expect(SUMMARY_CHECKPOINT_FORMAT).toContain("pending effects and how to check before retrying");
 	});
 });

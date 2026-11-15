@@ -70,6 +70,10 @@ export const records = (run: Pick<Run, "stdout">) => {
 export const prompt = (run: Run, id: string, message: string) =>
 	run.process.stdin?.write(`${JSON.stringify({ id, type: "prompt", message })}\n`);
 
+/** How many runs this session has finished (`agent_settled`). */
+export const settledRuns = (run: Pick<Run, "stdout">) =>
+	records(run).filter((record) => record.type === "agent_settled").length;
+
 /** The permission dialogs this session has shown, oldest first. */
 export const dialogs = (run: Pick<Run, "stdout">) =>
 	records(run).filter(

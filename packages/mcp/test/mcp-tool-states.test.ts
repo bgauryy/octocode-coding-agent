@@ -1,11 +1,17 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type McpExposure, type McpServerEntry, updateMcpServerConfig } from "../src/config.ts";
 import type { McpServer } from "../src/server.ts";
+import { mcpHost } from "./mcp-host-fixture.ts";
 import { getMcpToolExposure } from "../src/servers.ts";
-import { currentMcpToolStates, mcpToolStates, publishMcpToolStates } from "../src/tool-states.ts";
+import {
+	currentMcpServerNames,
+	currentMcpToolStates,
+	mcpToolStates,
+	publishMcpToolStates,
+} from "../src/tool-states.ts";
 
 const server = (name: string, config: Partial<McpServerEntry["config"]>, tools: string[] | undefined): McpServer =>
 	({
@@ -24,6 +30,39 @@ const source = (servers: McpServer[], setting: unknown, deferred: string[] = [])
 });
 
 describe("mcpToolStates", () => {
+	it("publishes complete names separately from enabled tool rows and invalidates them on shutdown", async () => {
+		const createTransport = vi.fn();
+		const host = mcpHost({ servers: [], presets: [], createTransport });
+		expect(currentMcpServerNames()).toBeUndefined();
+		await host.start();
+		expect(currentMcpServerNames()).toEqual([]);
+		host.state.servers.push({
+			entry: {
+				name: "withheld",
+				config: { command: "never-launch" },
+				source: "fixture",
+				scope: "extension",
+				withheld: true,
+			},
+		});
+		host.api.getMcpServers = () => [
+			{ name: "pending", config: { command: "never-launch", enabled: false }, extensionPath: "fixture" },
+		];
+		expect(currentMcpServerNames()).toEqual(["withheld", "pending"]);
+		expect(currentMcpToolStates()).toEqual([]);
+		expect(createTransport).not.toHaveBeenCalled();
+		await host.close();
+		expect(currentMcpServerNames()).toBeUndefined();
+	});
+	it("keeps legacy readers unavailable rather than asserting an empty complete registry", () => {
+		publishMcpToolStates(
+			() => [],
+			() => ["registered"],
+		);
+		expect(currentMcpServerNames()).toEqual(["registered"]);
+		publishMcpToolStates(() => []);
+		expect(currentMcpServerNames()).toBeUndefined();
+	});
 	it("names what decided each tool: a pin, a pattern, the server, recent use or the default", () => {
 		const docs = server("docs", { toolExposure: { search: "deferred", "admin_*": "hidden" } }, [
 			"search",

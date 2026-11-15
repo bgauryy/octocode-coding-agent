@@ -1,5 +1,5 @@
 import type { Api, AssistantMessage, Model } from "@octocodeai/octocode-ai";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	checkCandidates,
 	checkProviders,
@@ -45,6 +45,70 @@ describe("provider health", () => {
 		expect(detail).not.toContain(key);
 		expect(detail).toContain("[redacted]");
 		expect(detail.endsWith("for details.")).toBe(true);
+	});
+
+	describe("a refusal the credential causes", () => {
+		const INVALID_GRANT = '401 {"error":"invalid_grant","error_description":"Refresh token has been revoked"}';
+		const MINUTE = 60_000;
+		afterEach(() => vi.useRealTimers());
+
+		it("outlives the routing window of a transient refusal until that provider's credential changes", () => {
+			vi.useFakeTimers();
+			const health = new ProviderHealth();
+			health.noteRun("openai/gpt", INVALID_GRANT);
+			expect(health.refused("openai")).toBe(true);
+			vi.advanceTimersByTime(3 * 60 * MINUTE);
+			expect(health.refused("openai")).toBe(true);
+			expect(health.get("openai")).toMatchObject({ ok: false });
+
+			health.credentialChanged("anthropic");
+			expect(health.refused("openai")).toBe(true);
+			health.credentialChanged("openai");
+			expect(health.refused("openai")).toBe(false);
+			expect(health.get("openai")).toBeUndefined();
+		});
+
+		it("also holds for a refusal a check found, and a later success clears it", async () => {
+			vi.useFakeTimers();
+			const health = new ProviderHealth();
+			health.noteCheck("openai", INVALID_GRANT);
+			vi.advanceTimersByTime(60 * MINUTE);
+			expect(health.refused("openai")).toBe(true);
+			health.noteCheck("openai", undefined, "list");
+			expect(health.refused("openai")).toBe(false);
+
+			health.noteRun("openai/gpt", INVALID_GRANT);
+			expect(health.refused("openai")).toBe(true);
+			health.noteRun("openai/gpt");
+			expect(health.refused("openai")).toBe(false);
+		});
+
+		it("is not erased by a later check that failed for another reason", () => {
+			const health = new ProviderHealth();
+			health.noteRun("openai/gpt", INVALID_GRANT);
+			health.noteCheck("openai", "socket hang up");
+			expect(health.refused("openai")).toBe(true);
+		});
+
+		it.each(["429 Monthly usage limit reached", "402 Insufficient account funds"])(
+			"still expires after 15 minutes when the account, not the credential, refused: %s",
+			(error) => {
+				vi.useFakeTimers();
+				const health = new ProviderHealth();
+				health.noteRun("openai/gpt", error);
+				vi.advanceTimersByTime(14 * MINUTE);
+				expect(health.refused("openai")).toBe(true);
+				vi.advanceTimersByTime(2 * MINUTE);
+				expect(health.refused("openai")).toBe(false);
+			},
+		);
+
+		it("clears an account refusal too when the credential changes", () => {
+			const health = new ProviderHealth();
+			health.noteRun("openai/gpt", "429 Monthly usage limit reached");
+			health.credentialChanged("openai");
+			expect(health.refused("openai")).toBe(false);
+		});
 	});
 
 	it("ignores failures that say nothing about the credential and runs on this session's model", () => {

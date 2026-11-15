@@ -32,10 +32,10 @@ export const isBusy = (error: unknown): boolean =>
 
 const nap = new Int32Array(new SharedArrayBuffer(4));
 /** How long a contended `BEGIN IMMEDIATE` sleeps between tries: shorter than a peer's short write transaction. */
-const RETRY_MS = 1;
+export const RETRY_MS = 1;
 
 /** This connection's `busy_timeout`: how long a statement may wait for another connection's lock. */
-const busyTimeout = (db: Sqlite.DatabaseSync): number =>
+export const busyTimeout = (db: Sqlite.DatabaseSync): number =>
 	num((db.prepare("PRAGMA busy_timeout").get() as Row | undefined)?.timeout);
 
 /**
@@ -75,14 +75,15 @@ export function beginImmediate(db: Sqlite.DatabaseSync): void {
 	if (!began) throw failure;
 }
 
-/** Runs `work` with this connection waiting at most `ms` for another process's lock, then restores its wait. */
-export function withBusyTimeout<T>(db: Sqlite.DatabaseSync, ms: number, work: () => T): T {
+/** Runs `work` with a bounded wait. Its callback may restore the original wait early; it is also restored on exit. */
+export function withBusyTimeout<T>(db: Sqlite.DatabaseSync, ms: number, work: (restore: () => void) => T): T {
 	const previous = busyTimeout(db);
+	const restore = () => db.exec(`PRAGMA busy_timeout=${previous}`);
 	db.exec(`PRAGMA busy_timeout=${Math.max(0, Math.floor(ms))}`);
 	try {
-		return work();
+		return work(restore);
 	} finally {
-		db.exec(`PRAGMA busy_timeout=${previous}`);
+		restore();
 	}
 }
 

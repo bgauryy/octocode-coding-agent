@@ -16,6 +16,8 @@ export interface Terminal {
 	 * @param idleMs - Exit early if no input arrives within this time (default: 50ms)
 	 */
 	drainInput(maxMs?: number, idleMs?: number): Promise<void>;
+	/** True while `drainInput` runs: nothing that the terminal answers may be sent then. */
+	readonly inputDraining?: boolean;
 	/** Flush queued output before exit; false after the deadline or a stream error. */
 	drainOutput?(maxMs?: number): Promise<boolean>;
 

@@ -3,6 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
 import * as runs from "./agent-runs.ts";
+import { ensureMailbox } from "./agent-mailbox.ts";
+export { ensureMailbox };
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export interface ProcessIdentity {
@@ -47,10 +49,11 @@ export function refresh(
 	workspace: MemberWorkspace,
 	context?: events.LifecycleContext,
 ): boolean {
+	ensureMailbox(db);
 	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
-			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, cache_write = ?, output = ?, cost = ?, unpriced = ?
+			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, cache_write = ?, output = ?, cost = ?, unpriced = ?, mailbox = ?
          WHERE id = ? AND pid = ? AND started IS ?`,
 		)
 		.run(
@@ -72,6 +75,7 @@ export function refresh(
 			member.output,
 			member.cost,
 			member.unpriced ? 1 : 0,
+			member.mailbox ?? null,
 			member.id,
 			member.pid,
 			member.started ?? null,
@@ -79,7 +83,7 @@ export function refresh(
 	if (changes > 0) {
 		events.registerMember(db, member.id, context, member.updatedAt);
 		const after = events.member(db, member.id)!;
-		const fields = ["task", "model", "session_id", "role", "parent_id", "lifecycle_session_id"];
+		const fields = ["task", "model", "session_id", "role", "parent_id", "lifecycle_session_id", "mailbox"];
 		const changed = fields.filter((key) => before?.[key] !== after[key]);
 		if (before?.registration_id && changed.length)
 			events.recordMember(
@@ -106,10 +110,11 @@ export function insert(
 	member: Member,
 	context?: events.LifecycleContext,
 ): boolean {
+	ensureMailbox(db);
 	const row = db
 		.prepare(
-			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, cache_write, output, cost, unpriced, session_id, cwd, branch, process_title)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, cache_write, output, cost, unpriced, session_id, cwd, branch, process_title, mailbox)
+	         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING RETURNING id`,
 		)
 		.get(
@@ -139,6 +144,7 @@ export function insert(
 			workspace.place?.cwd ?? null,
 			workspace.place?.branch ?? null,
 			workspace.place?.processTitle ?? null,
+			member.mailbox ?? null,
 		);
 	if (row) events.registerMember(db, member.id, context, member.updatedAt);
 	return row !== undefined;
@@ -239,4 +245,12 @@ export function inWorkspace(db: DatabaseSync, workspace: string): Row[] {
 	return db
 		.prepare(`SELECT a.*, w.root AS checkout FROM agents a ${CHECKOUT} WHERE a.workspace_id = ? ORDER BY a.id`)
 		.all(workspace);
+}
+
+export function workspacePage(db: DatabaseSync, workspace: string, after: string, limit: number): Row[] {
+	return db
+		.prepare(
+			`SELECT a.*, w.root AS checkout FROM agents a ${CHECKOUT} WHERE a.workspace_id = ? AND a.id > ? ORDER BY a.id LIMIT ?`,
+		)
+		.all(workspace, after, limit);
 }

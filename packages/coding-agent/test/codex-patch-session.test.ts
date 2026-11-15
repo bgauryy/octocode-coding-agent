@@ -9,6 +9,7 @@ import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
 import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
 import { FileGuard } from "../src/octocode/files/tool/guard.ts";
 
@@ -135,6 +136,7 @@ async function fixture(
 			},
 		],
 	});
+	approveFixtureHooks(harness.tempDir, home);
 	await harness.session.bindExtensions({});
 	return {
 		harness,

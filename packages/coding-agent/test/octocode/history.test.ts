@@ -131,16 +131,19 @@ describe("what reads without asking", () => {
 });
 
 describe("search and read", () => {
-	it("refuses a 64 MiB archive before allocating or reading its contents", () => {
+	it("refuses a 64 MiB archive before allocating or reading its contents", async () => {
 		const file = path.join(tmp(), "oversized.md");
 		const fd = fs.openSync(file, "w");
 		fs.ftruncateSync(fd, 64 * 1024 * 1024);
 		fs.closeSync(fd);
-		const read = vi.spyOn(fs, "readSync");
+		const handle = await fs.promises.open(file, "r");
+		const open = vi.spyOn(fs.promises, "open").mockResolvedValue(handle);
+		const read = vi.spyOn(handle, "read");
 		try {
-			expect(() => readHistory(file)).toThrow("Archive read exceeds 32 MiB");
+			await expect(readHistory(file)).rejects.toThrow("Archive read exceeds 32 MiB");
 			expect(read).not.toHaveBeenCalled();
 		} finally {
+			open.mockRestore();
 			read.mockRestore();
 		}
 	});
@@ -200,14 +203,14 @@ describe("search and read", () => {
 		expect(seen.length).toBe(first.hits);
 	});
 
-	it("reads a window of whole lines and says where the next one starts", () => {
+	it("reads a window of whole lines and says where the next one starts", async () => {
 		const cwd = repo();
 		session("me", { body: Array.from({ length: 300 }, (_, index) => `row ${index}`).join("\n"), cwd });
 		const file = historyFiles(historyScope(cwd)).find((entry) => entry.label.startsWith("segment"))!.file;
-		const read = readHistory(file, 10)!;
+		const read = (await readHistory(file, 10))!;
 		expect(read).toMatchObject({ first: 10, last: 10 + READ_LINES - 1, page: 1, pages: 1 });
 		expect(read.text.split("\n")[0]).toMatch(/^ +10│ /);
-		expect(readHistory(path.join(archiveFolder(), "missing.md"))).toBeUndefined();
+		expect(await readHistory(path.join(archiveFolder(), "missing.md"))).toBeUndefined();
 	});
 
 	it("lists one line per session, with subagent sessions counted on their parent's line", () => {

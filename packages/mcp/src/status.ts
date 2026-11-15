@@ -7,6 +7,8 @@ export interface McpServerStatus {
 	enabled: boolean;
 	state: string;
 	exposure: McpExposure;
+	/** `defaultActive` of the server's configuration; absent counts as true. */
+	defaultActive?: boolean;
 	toolCount: number;
 	source: string;
 	scope?: "global" | "project" | "extension" | "default";

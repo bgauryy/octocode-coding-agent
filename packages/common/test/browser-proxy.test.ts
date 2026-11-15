@@ -290,6 +290,29 @@ describe("filtering proxy: CONNECT", () => {
 		await closed;
 		expect(await accepts(proxy.port)).toBe(false);
 	});
+
+	it("refuses an approved host that resolves to a cloud metadata address, and never dials it", async () => {
+		const onBlocked = vi.fn();
+		const dialed: string[] = [];
+		const connect = (address: string, port: number) => {
+			dialed.push(`${address}:${port}`);
+			return net.connect({ host: "127.0.0.1", port: 9 });
+		};
+		const lookup = resolver({
+			"imds.test": ["169.254.169.254"],
+			"alibaba.test": ["100.100.100.200"],
+			"mixed.test": ["127.0.0.1", "169.254.170.2"],
+		});
+		const proxy = await start({ lookup, connect, onBlocked });
+		for (const host of ["imds.test", "alibaba.test", "mixed.test", "169.254.169.254", "192.0.0.192"])
+			proxy.allow(new URL(`http://${host}:80/`));
+		for (const host of ["imds.test", "alibaba.test", "mixed.test", "169.254.169.254", "192.0.0.192"]) {
+			expect((await connectVia(proxy, `${host}:80`)).status, host).toBe(FORBIDDEN);
+			expect(await getVia(proxy, `http://${host}/latest/meta-data/`), host).toMatch(/^HTTP\/1\.1 403 Forbidden/);
+		}
+		expect(dialed).toEqual([]);
+		expect(onBlocked).toHaveBeenCalledTimes(10);
+	});
 });
 
 describe("filtering proxy: plain HTTP", () => {

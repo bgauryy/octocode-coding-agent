@@ -9,7 +9,7 @@ const argument = (name, fallback) => {
 	if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid ${name}`);
 	return n;
 };
-const durationMs = argument("--duration-ms", 750);
+const durationMs = argument("--duration-ms", 3000);
 const trials = argument("--trials", 3);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const percentile = (values, fraction) => {
@@ -20,7 +20,7 @@ const percentile = (values, fraction) => {
 
 class SlowTerminal {
 	columns = 80;
-	rows = 24;
+	rows = 240;
 	kittyProtocolActive = false;
 	pendingOutputBytes = 0;
 	writtenBytes = 0;
@@ -92,7 +92,7 @@ class MeasuredTui extends TuiMainScreen {
 			this.component.inputAt = undefined;
 		}
 		// Repeatable CPU pressure to exercise adaptive cadence separately from output pressure.
-		const until = performance.now() + 14;
+		const until = performance.now() + 30;
 		while (performance.now() < until) {
 			// Busy-wait on purpose: the CPU pressure is what this trial measures.
 		}
@@ -109,7 +109,7 @@ async function trial(name, config) {
 	const heapBefore = process.memoryUsage().heapUsed;
 	const start = performance.now();
 	let normalDrain = true;
-	const drainTimer = setInterval(() => terminal.drain(normalDrain ? 2048 : 96 * 1024), 10);
+	const drainTimer = setInterval(() => terminal.drain(normalDrain ? 512 : 96 * 1024), 10);
 	try {
 		tui.start();
 		tui.renderNow();
@@ -134,6 +134,7 @@ async function trial(name, config) {
 		while (terminal.pendingOutputBytes > 0 && performance.now() < deadline) await pause(5);
 		return {
 			mode: name,
+			pacing: config,
 			frames: tui.paints,
 			deferredChecks: tui.getRenderPacingStats().deferredFrames,
 			writtenBytes: terminal.writtenBytes,
@@ -152,9 +153,9 @@ async function trial(name, config) {
 }
 
 const modes = [
-	["fixed", {}],
-	["gate", { outputGate: true }],
-	["adaptive", { adaptiveCadence: true }],
+	["fixed", { outputGate: false, adaptiveCadence: false }],
+	["gate", { outputGate: true, adaptiveCadence: false }],
+	["adaptive", { outputGate: false, adaptiveCadence: true }],
 	["both", { outputGate: true, adaptiveCadence: true }],
 ];
 const results = [];
@@ -168,8 +169,8 @@ process.stdout.write(
 			node: process.version,
 			durationMs,
 			trials,
-			consumer: "2048 bytes/10ms during streaming, 96KiB/10ms recovery",
-			component: "240 changed rows/5ms, 14ms synthetic paint cost",
+			consumer: "512 bytes/10ms during streaming, 96KiB/10ms recovery",
+			component: "240 visible changed rows/5ms, 30ms synthetic paint cost",
 			limitations: "simulated output queue; not a PTY, provider run, or end-user latency result",
 			results,
 		},

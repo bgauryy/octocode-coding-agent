@@ -1,6 +1,10 @@
 import type http from "node:http";
+import { handleMcpAddRequest } from "./mcp-add.ts";
 import { Value } from "typebox/value";
 import {
+	type McpAddCommand,
+	type McpAddResult,
+	type McpAddAvailability,
 	ConfigCredentialCommandSchema,
 	ConfigProviderCommandSchema,
 	ConfigSettingCommandSchema,
@@ -27,6 +31,8 @@ import type { LiveTools } from "./session-tools.ts";
 type Repo = { root?: string } | undefined;
 
 export interface ConfigRoutes {
+	addMcp?: (command: McpAddCommand, repo: Repo, live?: LiveTools) => Promise<McpAddResult>;
+	mcpAddStatus?: (repo: Repo, live?: LiveTools) => Promise<McpAddAvailability>;
 	catalog: Pick<RepoCatalog, "resolve">;
 	/** Builds the configuration answer; the caller validates its shape. */
 	config: (repo: Repo) => Promise<unknown>;
@@ -238,6 +244,10 @@ export async function handleConfigRequest(
 		const repo = repoParam ? routes.catalog.resolve(repoParam) : undefined;
 		if (repoParam && !repo) reply(404, { error: "Unknown repository" });
 		else await snapshot(routes, repo, access, reply);
+		return true;
+	}
+	if (url.pathname === DAEMON_ROUTES.configMcpAdd) {
+		await handleMcpAddRequest(req, url, access, routes, reply);
 		return true;
 	}
 	if (url.pathname === DAEMON_ROUTES.configHarness) {

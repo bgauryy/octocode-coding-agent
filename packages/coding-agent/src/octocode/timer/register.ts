@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { formatCost } from "../shared/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
@@ -161,7 +162,11 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			if (!sessionId) return;
 			work.set("timer", timerWorkRows(timers.forSession(db().db, sessionId)));
 			const spent = timers.sessionSpend(db().db, sessionId);
-			current?.ui.setStatus(STATUS.timers, spent > 0 ? `timer judging $${spent.toFixed(3)}` : undefined, "accent");
+			current?.ui.setStatus(
+				STATUS.timers,
+				spent > 0 ? `timer judging ${formatCost({ cost: spent, unpriced: false })}` : undefined,
+				"accent",
+			);
 		} catch {
 			// The session was replaced.
 		}

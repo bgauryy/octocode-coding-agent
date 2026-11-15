@@ -107,24 +107,24 @@ describe("MCP envelope errors", () => {
 		throw new Error("expected a validation failure");
 	};
 
-	it("names the one allowed shape for foreign root properties, without the signature", () => {
+	it("names required fields for foreign root properties, without the signature", () => {
 		const message = fail({ queries: [{ path: "a" }], type: "x", timeout: 5, background: false, verify: false });
 		expect(message).toContain(
-			'mcp__octocode__localFetch takes only {"queries":[...]} or {"cursor":"..."} as its arguments, with no other top-level property.',
+			'mcp__octocode__localFetch requires {"queries":[...]} or {"cursor":"..."} at the top level.',
 		);
-		expect(message).toContain("Optional beside the first form: responseChars.");
+		expect(message).toContain("Other declared fields: responseChars; follow the server's schema for each form.");
 		expect(message).not.toContain("Expected signature");
 		expect(message).not.toContain("declare function");
 	});
 
 	it("names the shape when the root has neither queries nor cursor", () => {
-		expect(fail({ path: "a" })).toContain('takes only {"queries":[...]} or {"cursor":"..."}');
+		expect(fail({ path: "a" })).toContain('requires {"queries":[...]} or {"cursor":"..."}');
 	});
 
 	it("keeps the signature and the batch cap for a failure inside queries", () => {
 		const nested = fail({ queries: [{ path: { a: 1 } }] });
 		expect(nested).toContain("Expected signature (TypeScript):");
-		expect(nested).not.toContain("takes only");
+		expect(nested).not.toContain("at the top level");
 		const long = fail({ queries: Array.from({ length: 6 }, () => ({ path: "a" })) });
 		expect(long).toContain("queries holds at most 5; split into calls of 5 or fewer, run them in the same turn.");
 	});

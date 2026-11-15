@@ -2,16 +2,56 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { parseRef } from "./item.ts";
+import { BacklogBatchAbortedError, type BatchOutcome } from "./batch-outcome.ts";
 
 type Result = { content: unknown; details?: unknown };
 type Batch = ReturnType<typeof textResult>;
+type EntryOutcome = { ok: boolean; text: string };
 
-/** One entry's outcome: its result text, or the reason it was refused. Later entries still run. */
-function attempt(label: string, run: () => Result): { ok: boolean; text: string } {
+async function attemptWrite(label: string, run: () => Result | Promise<Result>, signal?: AbortSignal) {
 	try {
-		return { ok: true, text: contentText(run().content) };
+		signal?.throwIfAborted();
+		return { ok: true, text: contentText((await run()).content) };
 	} catch (error) {
+		signal?.throwIfAborted();
 		return { ok: false, text: `${visibleControls(label)}: refused - ${errorMessage(error)}` };
+	}
+}
+
+async function appendWrite(
+	rows: EntryOutcome[],
+	operation: "add" | "edit",
+	requested: number,
+	label: string,
+	run: () => Result | Promise<Result>,
+	signal?: AbortSignal,
+): Promise<void> {
+	let started = false;
+	try {
+		rows.push(
+			await attemptWrite(
+				label,
+				() => {
+					started = true;
+					return run();
+				},
+				signal,
+			),
+		);
+	} catch (error) {
+		if (!signal?.aborted || (!rows.length && !started)) throw error;
+		const outcomes: BatchOutcome[] = rows.map((row, index) => ({
+			index,
+			status: row.ok ? "applied" : "refused",
+			text: row.text,
+		}));
+		if (started)
+			outcomes.push({
+				index: rows.length,
+				status: "unknown",
+				text: `${visibleControls(label)}: outcome unknown; inspect stored state before retrying.`,
+			});
+		throw new BacklogBatchAbortedError(operation, requested, outcomes);
 	}
 }
 
@@ -25,8 +65,13 @@ function summary(verb: "Added" | "Updated", rows: readonly { ok: boolean; text: 
 }
 
 /** `get` with several comma-separated ids: each item's record, or its own error row (unknown id). */
-export function batchGet(ids: readonly string[], one: (id: string) => Result): Batch {
-	const rows = ids.map((id) => attempt(id, () => one(id)));
+export async function batchGet(
+	ids: readonly string[],
+	one: (id: string) => Result | Promise<Result>,
+	signal?: AbortSignal,
+): Promise<Batch> {
+	const rows: EntryOutcome[] = [];
+	for (const id of ids) rows.push(await attemptWrite(id, () => one(id), signal));
 	return textResult(rows.map((row) => row.text).join("\n\n---\n"));
 }
 
@@ -46,55 +91,79 @@ export function refuseUnknown(
  * `edit` with several `items`: each entry is a full single edit (`one`), applied in order with every store check. A
  * refused entry is reported on its own line, labelled by its id, and the rest still apply.
  */
-export function batchUpdate(
+export async function batchUpdate(
 	entries: readonly Record<string, unknown>[],
 	allowed: readonly string[],
 	name: string,
-	one: (entry: Record<string, unknown>) => Result,
+	one: (entry: Record<string, unknown>) => Result | Promise<Result>,
 	shown?: readonly string[],
-): Batch {
-	const rows = entries.map((entry, index) => {
+	signal?: AbortSignal,
+): Promise<Batch> {
+	const rows: EntryOutcome[] = [];
+	for (const [index, entry] of entries.entries()) {
 		const label = typeof entry.id === "string" && entry.id.trim() ? entry.id : `${name}[${index}]`;
-		return attempt(label, () => {
-			refuseUnknown(entry, allowed, name, shown);
-			return one(entry);
-		});
-	});
+		await appendWrite(
+			rows,
+			"edit",
+			entries.length,
+			label,
+			() => {
+				refuseUnknown(entry, allowed, name, shown);
+				return one(entry);
+			},
+			signal,
+		);
+	}
 	return summary("Updated", rows);
 }
 
-/** Rewrites each `dependsOn` value that is the exact title of an earlier entry of the same add, and not an item id, to that entry's ref. */
-type EarlierTitles = <T extends { dependsOn?: readonly unknown[] }>(params: T) => T;
+/**
+ * Rewrites each `dependsOn` value and the `parentId` that is the exact title of an earlier entry of the same add, and
+ * not an item id, to that entry's ref.
+ */
+type EarlierTitles = <T extends { dependsOn?: readonly unknown[]; parentId?: unknown }>(params: T) => T;
 
 /**
  * `add` with several `items`: each entry is a full single add (`one`), applied in order with every store check. A
  * refused entry is reported on its own line, labelled by its title, and the rest still apply. A later entry's
- * `dependsOn` may name an earlier added entry by its exact title (`one` applies `earlier`), so one add can carry a
- * whole graph: the refs are given on insert and cannot be named in advance.
+ * `dependsOn` and `parentId` may name an earlier added entry by its exact title (`one` applies `earlier`), so one add
+ * can carry a whole graph with its epic: the refs are given on insert and cannot be named in advance.
  */
-export function batchAdd(
+export async function batchAdd(
 	entries: readonly Record<string, unknown>[],
 	allowed: readonly string[],
 	name: string,
-	one: (entry: Record<string, unknown>, earlier: EarlierTitles) => Result,
+	one: (entry: Record<string, unknown>, earlier: EarlierTitles) => Result | Promise<Result>,
 	shown?: readonly string[],
-): Batch {
+	signal?: AbortSignal,
+): Promise<Batch> {
 	const added = new Map<string, string>();
 	// A value that reads as an item id (`B2`, `#2`, `2`) names that item, even when an earlier entry is titled so.
 	const titleRef = (ref: unknown) =>
 		typeof ref === "string" && parseRef(ref) === undefined ? (added.get(ref.trim()) ?? ref) : ref;
-	const earlier: EarlierTitles = (params) =>
-		params.dependsOn ? { ...params, dependsOn: params.dependsOn.map(titleRef) } : params;
-	const rows = entries.map((entry, index) => {
-		const named = [entry.title, entry.goal].find((v): v is string => typeof v === "string" && v.trim() !== "");
-		return attempt(named ? `"${named.trim().slice(0, 60)}"` : `${name}[${index}]`, () => {
-			refuseUnknown(entry, allowed, name, shown);
-			const result = one(entry, earlier);
-			const item = (result.details as { item?: { ref?: unknown; title?: unknown } } | undefined)?.item;
-			if (typeof item?.ref === "string" && typeof item.title === "string" && !added.has(item.title.trim()))
-				added.set(item.title.trim(), item.ref);
-			return result;
-		});
+	const earlier: EarlierTitles = (params) => ({
+		...params,
+		...(params.dependsOn ? { dependsOn: params.dependsOn.map(titleRef) } : {}),
+		...(typeof params.parentId === "string" ? { parentId: titleRef(params.parentId) } : {}),
 	});
+	const rows: EntryOutcome[] = [];
+	for (const [index, entry] of entries.entries()) {
+		const named = [entry.title, entry.goal].find((v): v is string => typeof v === "string" && v.trim() !== "");
+		await appendWrite(
+			rows,
+			"add",
+			entries.length,
+			named ? `"${named.trim().slice(0, 60)}"` : `${name}[${index}]`,
+			async () => {
+				refuseUnknown(entry, allowed, name, shown);
+				const result = await one(entry, earlier);
+				const item = (result.details as { item?: { ref?: unknown; title?: unknown } } | undefined)?.item;
+				if (typeof item?.ref === "string" && typeof item.title === "string" && !added.has(item.title.trim()))
+					added.set(item.title.trim(), item.ref);
+				return result;
+			},
+			signal,
+		);
+	}
 	return summary("Added", rows);
 }

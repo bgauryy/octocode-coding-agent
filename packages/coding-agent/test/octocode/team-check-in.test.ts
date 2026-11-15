@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderInstruction } from "../../src/core/prompt-template.ts";
 import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 import { runForeground } from "../../src/octocode/subagents/run-execution.ts";
 import { CheckIn, checkInConfig, type CheckInConfig } from "../../src/octocode/team/check-in.ts";
@@ -114,22 +115,17 @@ describe("the check-in", () => {
 		expect(notice).toHaveBeenCalledTimes(2);
 	});
 
-	it("words the ping for how the child runs", () => {
+	it("selects the appropriate check-in message for foreground and background delivery", () => {
 		const store = team();
 		const { notice, checkIn: ping } = checkIn();
 		const start = Date.now();
 		ping.begin(start);
 		ping.due(store, "c-1", "p-1", ON, start + 5 * MIN);
 		const background = notice.mock.calls[0][0];
-		expect(background).toContain("Do you need something?");
-		expect(background).toContain("in the last 5m");
-		expect(background).toContain("`agent` type `message` to `parent`");
-		expect(background).toContain("Do not reply to this check-in itself.");
+		expect(background).toBe(renderInstruction("notices/subagents/check-in.md", { interval: "5m", parentWaits: false }));
 		ping.due(store, "c-1", "p-1", { ...ON, parentWaits: true }, start + 10 * MIN);
 		const foreground = notice.mock.calls[1][0];
-		expect(foreground).toContain("reads messages only with it");
-		expect(foreground).toContain("`blocked`");
-		expect(foreground).not.toContain("type `message`");
+		expect(foreground).toBe(renderInstruction("notices/subagents/check-in.md", { interval: "5m", parentWaits: true }));
 	});
 });
 

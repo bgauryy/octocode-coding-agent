@@ -7,6 +7,7 @@ import { Type } from "typebox";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
 
 function fixture(event: string, continueOnBlock = false) {
@@ -63,6 +64,7 @@ it.each([false, true])(
 			],
 		});
 		try {
+			approveFixtureHooks(harness.tempDir, home);
 			await harness.session.bindExtensions({});
 			harness.setResponses([
 				fauxAssistantMessage([fauxToolCall("work", {})], {
@@ -97,6 +99,7 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 		],
 	});
 	try {
+		approveFixtureHooks(harness.tempDir, home);
 		await harness.session.bindExtensions({});
 		harness.setResponses([
 			fauxAssistantMessage("initial completion"),

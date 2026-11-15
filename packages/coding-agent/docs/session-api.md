@@ -105,6 +105,8 @@ Use a unique `--key` per intended message (up to 128 characters). After a lost r
 
 Errors exit nonzero. Protocol errors are JSON on stderr (`error`, `code`, optional `data`; client failures may add `execution`); other CLI errors are plain text. Socket failures carry an OS code such as `(EPERM)` or `(ENOENT)` without paths. A sandboxed process may discover an instance yet lack permission to connect; use its host's scoped authorization or a callback integration (see [Codex](acp.md#connect-to-codex)). Nothing replays a possibly executed prompt automatically.
 
+A socket rejected at the connection limit reports `-32000` with `data.execution: "not-sent"`; no request was dispatched. This connection-level error has a `null` id because the server refuses it before reading a request. Socket clients accept that explicit refusal before a call or subscription; other responses must match their request id.
+
 ## Watch and cancel
 
 ```sh

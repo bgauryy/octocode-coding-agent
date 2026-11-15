@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { agents } from "../../../../../db/src/api.ts";
 import { APP_NAME } from "../../../config.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 
 /** The branch is read again at most this often: it changes by a person's command, not a second at a time. */
 const BRANCH_MS = 5_000;
@@ -64,4 +65,14 @@ export function memberWorkspace(
 			return place.read();
 		},
 	};
+}
+
+/** A hosted pull mailbox works in its runner's directory while the parent owns its process lifetime. */
+export function memberPlacement(workspace: agents.MemberWorkspace, member: Member): agents.MemberWorkspace {
+	return member.mailbox === "pull"
+		? {
+				...workspace,
+				place: { ...workspace.place, cwd: member.cwd, branch: member.branch },
+			}
+		: workspace;
 }

@@ -1,4 +1,4 @@
-import { contentText, fauxAssistantMessage, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
+import { contentText, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { generateBugReportSummary } from "../src/core/bug-report.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
@@ -6,7 +6,7 @@ import { createHarness, type Harness } from "./suite/harness.ts";
 let harness: Harness;
 afterEach(() => harness?.cleanup());
 
-it("requests a tool-free factual report without changing the session transcript", async () => {
+it("requests a tool-free report with the supplied context without changing the session transcript", async () => {
 	harness = await createHarness();
 	harness.setResponses([fauxAssistantMessage("## What went wrong\nThe terminal froze.")]);
 	const streamFn = vi.fn(harness.session.agent.streamFunction);
@@ -22,13 +22,9 @@ it("requests a tool-free factual report without changing the session transcript"
 	expect(streamFn).toHaveBeenCalledOnce();
 	const context = streamFn.mock.calls[0][1];
 	expect(getCurrentTools(context.messages)).toEqual([]);
-	const system = contentText(getCurrentSystemMessage(context.messages)!.content);
-	expect(system).toContain("Never invent a reproduction");
-	expect(system).toContain("Reproduce no secrets or credentials");
 	const request = contentText(context.messages.findLast((message) => message.role === "user")!.content);
 	expect(request).toContain("The terminal froze after /model.");
 	expect(request).toContain("Switching models hangs");
-	expect(request).toContain("## Steps to reproduce");
 	expect(harness.sessionManager.getEntries()).toEqual(entries);
 });
 

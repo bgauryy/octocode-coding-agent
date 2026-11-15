@@ -16,7 +16,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import type { CompactionEntry, SessionEntry } from "../../src/core/session-manager/types.ts";
 import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { IDENTITY_ENTRY } from "../../src/octocode/subagents/identity-reminder.ts";
-import { type Identity, subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { parseArgs } from "../../src/cli/args.ts";
@@ -155,7 +155,7 @@ const childRun = (fx: Fixture) =>
 			goal: "migrate the parser",
 			item: "B7",
 			background: true,
-		} as Identity,
+		},
 		longTask("Migrate the parser."),
 	);
 

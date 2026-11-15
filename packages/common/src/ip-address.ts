@@ -123,8 +123,8 @@ export function isLoopbackIp(ip: string): boolean {
 	);
 }
 
-/** Cloud instance metadata addresses: a request there returns the machine's credentials to whoever asked. */
-const METADATA_ADDRESSES = ["169.254.169.254", "168.63.129.16"];
+/** Cloud instance metadata addresses: a request there returns the machine's credentials to whoever asked. AWS, GCP and Azure IMDS, Azure WireServer, AWS ECS task credentials, Alibaba Cloud and Oracle Cloud. */
+const METADATA_ADDRESSES = ["169.254.169.254", "168.63.129.16", "169.254.170.2", "100.100.100.200", "192.0.0.192"];
 const METADATA_V6 = expandIpv6("fd00:ec2::254")!;
 
 /** Whether `ip` is a cloud metadata address, also spelled inside an IPv6 address (`::ffff:169.254.169.254`). */

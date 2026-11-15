@@ -7,6 +7,7 @@ import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 beforeEach(() => {
 	vi.stubEnv("OCTOCODE_HOME", tmp("octocode-hooks-home-"));
@@ -23,6 +24,7 @@ function project(hook: Hook): string {
 		path.join(dir, ".octocode", "hooks.json"),
 		JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook] }] } }),
 	);
+	approveFixtureHooks(dir);
 	return dir;
 }
 
@@ -166,6 +168,7 @@ describe("observer hook dispatch failures", () => {
 			path.join(cwd, ".octocode", "hooks.json"),
 			JSON.stringify({ hooks: { [event]: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 		);
+		approveFixtureHooks(cwd);
 		const { api, fire } = fakeHost();
 		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		const notify = vi.fn();

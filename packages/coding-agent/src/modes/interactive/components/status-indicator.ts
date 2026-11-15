@@ -16,16 +16,11 @@ import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { hintText, keyText, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
+import { hintText, interruptKey, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
 import { styledLine } from "../../../../../common/src/sanitize.ts";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
 const SHIMMER_MAX_CHARS = 120;
-
-/** The interrupt key as the hints show it: `esc`, not `escape`. */
-function interruptKey(): string {
-	return keyText("app.interrupt").replace(/^escape$/, "esc");
-}
 
 /** Room the detail keeps before the time and hint are given up one by one. */
 const MIN_DETAIL_COLUMNS = 12;
@@ -64,7 +59,8 @@ export class StatusIndicator extends Loader {
 export class WorkingStatusIndicator extends StatusIndicator {
 	private workingMessage: string;
 	private readonly createdAt = Date.now();
-	/** Repaints once a second while the spinner is still, so the run clock advances (an animated spinner repaints anyway). */
+	/** Repaints when the run clock's text changes, independent of the spinner. */
+	private shownElapsed: string;
 	private unsubscribeClock: (() => void) | undefined;
 
 	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions, colorFn?: (text: string) => string) {
@@ -77,9 +73,14 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			indicator,
 		);
 		this.workingMessage = message;
+		this.shownElapsed = this.elapsed();
 		this.unsubscribeClock = animationClock.subscribe(
 			() => {
-				if (!this.isAnimated()) ui.requestRender();
+				// Repaint when the run clock's text changed, even while the spinner animates: a decoration hold stops its ticks.
+				const text = this.elapsed();
+				if (text === this.shownElapsed) return;
+				this.shownElapsed = text;
+				ui.requestRender();
 			},
 			{ everyMs: MOTION.tickMs, kind: "info" },
 		);

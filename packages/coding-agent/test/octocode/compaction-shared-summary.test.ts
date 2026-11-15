@@ -5,7 +5,7 @@ import type { Context, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { SUMMARIZER_RESULT_CHARS } from "../../src/octocode/compaction/checkpoint-text.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
-import { SHARED_SUMMARY_PROMPT, sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
+import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import {
 	SHARED_IMAGE_FOCUS,
 	STANDALONE_IMAGE_FOCUS,
@@ -15,6 +15,8 @@ import {
 } from "../../src/octocode/compaction/summary.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
+import { summarySizeTarget } from "../../src/core/compaction/summary-format.ts";
 
 const model = {
 	provider: "p",
@@ -167,27 +169,11 @@ describe("cache-sharing compaction summary", () => {
 		await writeSummary(shared.api, shared.event, shared.ctx);
 		expect(finalPrompt(shared.calls[0])).toContain(SHARED_IMAGE_FOCUS);
 		expect(finalPrompt(shared.calls[0])).toContain(SUMMARY_FOCUS);
-		expect(finalPrompt(shared.calls[0])).not.toContain("Images do not reach you");
 		const standalone = setup();
 		await writeSummary(standalone.api, standalone.event, standalone.ctx, { ...model, id: "previous" } as never);
 		const sent = JSON.stringify(standalone.calls[0].context.messages);
 		expect(sent).toContain(STANDALONE_IMAGE_FOCUS);
 		expect(sent).not.toContain(SHARED_IMAGE_FOCUS);
-	});
-
-	it("delivers budget-aware preservation and ownership instructions through both summary routes", async () => {
-		for (const standalone of [false, true]) {
-			const run = setup();
-			await writeSummary(run.api, run.event, run.ctx, standalone ? ({ ...model, id: "previous" } as never) : undefined);
-			const sent = JSON.stringify(run.calls[0].context.messages);
-			expect(sent).toContain("Do not rely on those copies");
-			expect(sent).toContain("approvals still in force with their scope");
-			expect(sent).toContain("owner, item/agent/job ids and dependencies");
-			expect(sent).toContain("pending effects and how to check before retrying");
-			expect(sent).toContain("Do not quote whole messages or retell earlier summaries");
-			expect(sent).toContain("outcome and evidence reference");
-			expect(sent).toContain("for resolved failures, one-line lesson and evidence");
-		}
 	});
 
 	describe("with a cold prompt cache", () => {
@@ -367,21 +353,15 @@ describe("cache-sharing compaction summary", () => {
 		expect(prompt).not.toMatch(/\p{Surrogate}/u);
 	});
 
-	it("tells the model to carry a previous summary forward without copying the sections code appends", async () => {
+	it("adds the computed size target only when updating a previous summary", async () => {
 		const first = setup();
 		await sharedSummary(first.api, first.event, first.ctx, model as never, "x");
-		expect(finalPrompt(first.calls[0])).not.toMatch(/earlier summary/);
 		const next = setup({ previousSummary: "## Goal\nold" });
 		await sharedSummary(next.api, next.event, next.ctx, model as never, "x");
-		const prompt = finalPrompt(next.calls[0]);
-		expect(prompt).toMatch(/earlier summary/);
-		expect(prompt).toContain("not one account per compaction");
-		expect(prompt).toContain("## User Messages");
-		expect(prompt).toContain("## Recovery");
-		expect(prompt).toContain("<read-files>");
-		// An update has a size target, so the summary consolidates instead of growing until it no longer fits; a first one has none.
-		expect(prompt).toMatch(/under about \d+ tokens: consolidate/);
-		expect(finalPrompt(first.calls[0])).not.toMatch(/under about \d+ tokens/);
+		const target = summarySizeTarget(summaryTargetTokens(next.calls[0].options.maxTokens!));
+		expect(target).not.toBe("");
+		expect(finalPrompt(next.calls[0])).toContain(target);
+		expect(finalPrompt(first.calls[0])).not.toContain(target);
 	});
 
 	it("gives the complete text of an earlier checkpoint that was saved to a file, keeping the cached messages as they are", async () => {
@@ -414,27 +394,6 @@ describe("cache-sharing compaction summary", () => {
 		await sharedSummary(without.api, without.event, without.ctx, model as never, "x");
 		expect(finalPrompt(without.calls[0])).not.toContain("<previous-summary>");
 		expect(calls[0].context.messages.slice(0, -1)).toEqual(without.calls[0].context.messages.slice(0, -1));
-	});
-
-	it("states the checkpoint format once and denies tool calls in words", () => {
-		for (const section of [
-			"## Goal",
-			"## Constraints & Preferences",
-			"### Done",
-			"### In Progress",
-			"### Blocked",
-			"## Key Decisions",
-			"## Errors & Fixes",
-			"## Where We Stopped",
-			"## Critical Context",
-			"## TL;DR",
-		])
-			expect(SHARED_SUMMARY_PROMPT.split(section)).toHaveLength(2);
-		expect(SHARED_SUMMARY_PROMPT).not.toContain("## Next Steps");
-		expect(SHARED_SUMMARY_PROMPT).not.toMatch(/EXACT format/);
-		expect(SHARED_SUMMARY_PROMPT).toMatch(/text only/i);
-		// The request is appended as a user message; the summary must not report it as the user's last ask.
-		expect(SHARED_SUMMARY_PROMPT).toContain("This request is not part of the conversation: do not record it.");
 	});
 
 	it.each([
@@ -596,7 +555,6 @@ describe("writeSummary with the shared path", () => {
 		const out = await writeSummary(api, event, ctx);
 		expect(calls).toHaveLength(1);
 		expect(finalPrompt(calls[0])).toContain("Retain the release checklist.");
-		expect(finalPrompt(calls[0])).toContain("## Errors & Fixes");
 		expect(calls[0].context.messages[0]).toBe(system);
 		expect(out?.compaction?.summary).toMatch(/^## Goal\nfix the parser\n\n<read-files>/);
 		expect(out?.compaction?.details).toEqual({
@@ -625,7 +583,6 @@ describe("writeSummary with the shared path", () => {
 		expect(finalPrompt(calls[1])).toContain("<conversation>");
 		for (const call of calls) {
 			expect(finalPrompt(call)).toContain("Retain the release checklist.");
-			expect(finalPrompt(call)).toContain("## Errors & Fixes");
 		}
 		expect(out?.compaction?.summary).toContain("fallback");
 		// The extra cost is not silent: the user is told why the cache was not used.

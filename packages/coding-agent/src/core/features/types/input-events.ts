@@ -6,7 +6,7 @@ import type { ImageContent, Model } from "@octocodeai/octocode-ai";
 // Model Events
 // ============================================================================
 
-/** `fallback`: `retry.fallbackModels` replaced a model that hit a usage limit. */
+/** `fallback`: `retry.fallbackModels` replaced a model after a usage limit, a refused credential or an outage. */
 type ModelSelectSource = "set" | "cycle" | "restore" | "fallback";
 
 /** Fired when a new model is selected */
@@ -15,6 +15,8 @@ export interface ModelSelectEvent {
 	model: Model<any>;
 	previousModel: Model<any> | undefined;
 	source: ModelSelectSource;
+	/** `fallback`: why the previous model was replaced (`hit a usage limit`, `refused the credential`, `kept failing after retries`). */
+	reason?: string;
 }
 
 /** Fired when a new thinking level is selected */

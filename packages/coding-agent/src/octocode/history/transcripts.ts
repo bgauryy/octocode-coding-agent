@@ -2,6 +2,7 @@ import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
 import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
 import { HISTORY_BYTES, scanCursor, scanHistory, scanResume } from "./search.ts";
@@ -231,33 +232,52 @@ interface SearchResult extends HistoryPage {
 	files: number;
 }
 
-const readLines = (file: string): string[] | undefined => {
-	let fd: number | undefined;
+async function readLines(file: string, from: number, signal?: AbortSignal) {
+	signal?.throwIfAborted();
+	let handle: fs.promises.FileHandle | undefined;
 	const tooLarge = () =>
 		new Error("Archive read exceeds 32 MiB; split the archive into smaller files before reading it.");
 	try {
-		fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
-		const stat = fs.fstatSync(fd);
+		handle = await fs.promises.open(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+		signal?.throwIfAborted();
+		const stat = await handle.stat();
 		if (!stat.isFile()) return undefined;
 		if (stat.size > HISTORY_BYTES) throw tooLarge();
-		const chunks: Buffer[] = [];
+		const chunk = Buffer.allocUnsafe(65_536);
+		const decoder = new StringDecoder("utf8");
+		const lines: string[] = [];
+		let total = 0;
+		let pending = "";
 		let bytes = 0;
 		for (;;) {
-			const chunk = Buffer.allocUnsafe(Math.min(65_536, HISTORY_BYTES - bytes + 1));
-			const count = fs.readSync(fd, chunk, 0, chunk.length, null);
+			signal?.throwIfAborted();
+			const { bytesRead: count } = await handle.read(chunk, 0, Math.min(chunk.length, HISTORY_BYTES - bytes + 1), null);
+			signal?.throwIfAborted();
 			if (!count) break;
 			bytes += count;
 			if (bytes > HISTORY_BYTES) throw tooLarge();
-			chunks.push(chunk.subarray(0, count));
+			const text = decoder.write(chunk.subarray(0, count));
+			let start = 0;
+			for (let end = text.indexOf("\n"); end >= 0; end = text.indexOf("\n", start)) {
+				total++;
+				if (total >= from && total < from + READ_LINES) lines.push(pending + text.slice(start, end));
+				pending = "";
+				start = end + 1;
+			}
+			pending += text.slice(start);
 		}
-		return Buffer.concat(chunks).toString("utf8").split("\n");
+		total++;
+		const last = pending + decoder.end();
+		if (total >= from && total < from + READ_LINES) lines.push(last);
+		return { lines: lines.length ? lines : [last], first: Math.min(from, total), total };
 	} catch (error) {
+		signal?.throwIfAborted();
 		if (!(error instanceof Error && "code" in error)) throw error;
 		return undefined;
 	} finally {
-		if (fd !== undefined) fs.closeSync(fd);
+		await handle?.close();
 	}
-};
+}
 
 /** Matching lines one search collects before it stops and offers a cursor. */
 const MATCH_BUDGET = 200;
@@ -334,15 +354,18 @@ interface ReadResult extends HistoryPage {
 }
 
 /** Lines `line` to `line + READ_LINES - 1` of `file`, whole, paged; undefined when it cannot be read. */
-export function readHistory(file: string, line = 1, page = 1): ReadResult | undefined {
-	const lines = readLines(file);
-	if (!lines) return undefined;
-	const total = lines.length;
-	const first = Math.min(Math.max(line, 1), total);
+export async function readHistory(
+	file: string,
+	line = 1,
+	page = 1,
+	signal?: AbortSignal,
+): Promise<ReadResult | undefined> {
+	const read = await readLines(file, Math.max(line, 1), signal);
+	signal?.throwIfAborted();
+	if (!read) return undefined;
+	const { lines, first, total } = read;
 	const last = Math.min(first + READ_LINES - 1, total);
-	const pages = paginate([
-		{ lines: lines.slice(first - 1, last).map((text, index) => `${lineLabel(first + index, false)}${text}`) },
-	]);
+	const pages = paginate([{ lines: lines.map((text, index) => `${lineLabel(first + index, false)}${text}`) }]);
 	const index = Math.min(Math.max(page, 1), pages.length);
 	return { text: pages[index - 1] ?? "", page: index, pages: pages.length, first, last, total };
 }

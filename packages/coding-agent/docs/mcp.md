@@ -2,6 +2,8 @@
 
 MCP adds server-hosted tools to Octocode. MCP support is always on (it is not an `extensions` entry); you switch individual servers. The host supports tools only, not MCP resources or prompts. Octocode ships two default servers, `octocode` (code research) and `browser`, which connect like any other server; this page covers how to turn them on or off, never their tools. Details and rarely used options: [MCP reference](mcp-reference.md).
 
+Each server owns its tool schemas and arguments. Octocode adds no required `reason` field to MCP calls: use it only when the tool declares it, with the type and requiredness that server defines. This applies to any configured server.
+
 ```mermaid
 flowchart LR
     C["mcp.json files<br/>user + trusted workspace"] --> S{"Does the agent's tool<br/>selection reach the server?"}
@@ -11,7 +13,28 @@ flowchart LR
     P --> R["Call, checked against the server's schema"]
 ```
 
-## Quick setup
+## Add a server
+
+In the terminal, open `/mcp` and choose **Add MCP**, or run `/mcp add`. The entry is available even when no servers are configured. In the web page opened from the Octocode terminal, open a **running session**, choose **Settings**, then **Add MCP**. Published read-only links cannot save. The form appears only after the session supplies its complete MCP registry; standalone daemon settings, disconnected sessions and older sessions without registry support explain this requirement before asking for credentials. Reconnect or reload the session if its registry is unavailable.
+
+1. Choose **Global** or **Trusted workspace**. For a workspace, select it in web settings first and grant folder trust from the terminal if needed.
+2. Enter a unique server name and choose **Stdio** or **HTTP**.
+3. Enter the transport fields below, then choose **Save MCP**. Cancel leaves configuration unchanged. Validation or save errors keep your input available for correction.
+
+| Transport | Fields                                                                                                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stdio     | An executable name or path, plus a JSON array of argument strings, such as `["--port", "3000"]`. This is not a shell command line. Optional environment variables are a JSON object of strings. |
+| HTTP      | An `http://` or `https://` Streamable HTTP URL. Optional headers are a JSON object of strings, such as `{"Authorization":"Bearer ${TOKEN}"}`.                                                   |
+
+Environment and header values are saved to the configuration file but are not returned in the web save response. On POSIX systems, configuration files and their backups are written owner-only (`0600`), including existing permissive files. Newly created configuration directories are private; existing directory permissions are unchanged. Prefer environment references over literal credentials. Names already present in configuration or the current session's registry—including disabled registrations and equivalent tool namespaces (`my-server` and `my_server`)—are rejected rather than replaced. This checks the current session, not extensions that a different or future session might register.
+
+If audit recording fails after a save, the page still reports **Saved** and shows an audit warning. The definition is on disk; do not retry it as a failed save.
+
+**Saved does not mean applied.** New definitions are saved disabled and unassigned by default. Saving does not launch a process, connect, sign in or approve anything. Run `/reload` in the session that should use the server, review it in `/security` (not checked/off until approved), then enable and assign it separately. The existing server controls remain in `/mcp` and the web Harness panel.
+
+### Command-line configuration
+
+The existing command-line path is also available:
 
 ```bash
 octocode mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
@@ -19,7 +42,7 @@ octocode mcp list
 octocode
 ```
 
-Add `--local` (`-l`) to save to the workspace file `.octocode/mcp.json` instead of your user file; a workspace file loads only in a trusted project (`/trust add`, then `/reload` after editing). `/mcp` opens the manager (servers, tools, errors, sign-in, exposure).
+Add `--local` (`-l`) to save to the workspace file `.octocode/mcp.json` instead of your user file; a workspace file loads only in a trusted project (`/trust add`, then `/reload` after editing). `/mcp` opens the manager (Add MCP, servers, tools, errors, sign-in, exposure).
 
 ## Configure servers
 

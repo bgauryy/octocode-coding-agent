@@ -107,7 +107,13 @@ describe("Claude Code's process and session", () => {
 		expect(sessionMeta("note")).toEqual({
 			systemPrompt: { append: "note" },
 			claudeCode: {
-				options: { tools: [], allowedTools: ["mcp__octocode"], settingSources: [], strictMcpConfig: true },
+				options: {
+					tools: [],
+					allowedTools: ["mcp__octocode"],
+					settingSources: [],
+					strictMcpConfig: true,
+					extraArgs: { "disable-slash-commands": null },
+				},
 			},
 		});
 		const withProject = appendedPrompt(

@@ -2,6 +2,7 @@ import { AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../.
 import { findOnPath } from "../../../../common/src/find-on-path.ts";
 import { acpClientHost } from "../external/acp-host.ts";
 import { agentEnv } from "../external/runner-env.ts";
+import { claudeIsolationOptions } from "../external/runner-isolation.ts";
 import { isConnected, type RunnerState } from "../external/runner-status.ts";
 import { adapterArgs, runnerSpec } from "../external/runners.ts";
 import { CLAUDE_CODE_RUNNER, TOOL_SERVER } from "./models.ts";
@@ -53,8 +54,7 @@ export const sessionMeta = (append: string): Record<string, unknown> => ({
 		options: {
 			tools: [],
 			allowedTools: [`mcp__${TOOL_SERVER}`],
-			settingSources: [],
-			strictMcpConfig: true,
+			...claudeIsolationOptions(),
 		},
 	},
 });

@@ -11,7 +11,6 @@ import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
 import { nonceFile } from "./nonce-file.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
-import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
 import { visibleControls } from "../../../common/src/sanitize.ts";
@@ -323,7 +322,7 @@ describe("agents view", () => {
 		expect(lines[0]).toContain("1 working · 1 idle");
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		expect(lines[1]).toContain("a-0001");
-		expect(lines[2]).toContain("└ ⠋ b-0002");
+		expect(lines[2]).toContain("└ ⠋ 🐙 b-0002");
 		expect(lines[2]).toMatch(/working\s+1m$/);
 		expect(lines[2]).toContain("→ localSearch foo");
 		expect(
@@ -344,7 +343,7 @@ describe("agents view", () => {
 		).toContain("Find where tools register › localSearch x");
 		expect(widgetLines(list, undefined, now, theme, 200)).toEqual([]);
 		// This session is the root row, never one of the agent rows.
-		expect(lines[0]).toMatch(/^ ● main-aaaaaa /);
+		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa /);
 		expect(lines.slice(1).join("\n")).not.toContain("main-aaaaaa");
 		expect(widgetLines([member("main-aaaaaa")], "main-aaaaaa", now, theme, 80)).toEqual([]);
 	});
@@ -393,11 +392,8 @@ describe("agents view", () => {
 	});
 });
 
-describe("collaboration prompt", () => {
-	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
-		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: true })).toContain(
-			"own communication, approvals and integration.",
-		);
+describe("collaboration schema", () => {
+	it("does not expose the removed collaborate field", () => {
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
 			{
@@ -413,10 +409,6 @@ describe("collaboration prompt", () => {
 			},
 		);
 		expect(tools[0].parameters.properties).not.toHaveProperty("collaborate");
-		// A child names its parent generically: its own id and parent arrive in its task.
-		expect(octocodePrompt({ research: undefined, profiles: [], canDelegate: false })).toMatch(
-			/your coordinator[\s\S]*agent[\s\S]*message/,
-		);
 	});
 });
 

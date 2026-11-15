@@ -17,6 +17,7 @@ import { KeyboardProtocol, KITTY_KEYBOARD_PROTOCOL_QUERY } from "./terminal/keyb
 import { TerminalOutput } from "./terminal/output.ts";
 import { ProgramStatusReporter } from "./terminal/program-status-reporter.ts";
 import { ProgressIndicator } from "./terminal/progress.ts";
+import { StatusProbeWatch, waitForQuietInput } from "./terminal/status-probe-watch.ts";
 import { SynchronizedOutputProbe } from "./terminal/synchronized-output.ts";
 import { readTypedLines, typedAheadInput } from "./terminal/typeahead.ts";
 import type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
@@ -41,6 +42,8 @@ function detectsNativeShiftEnter(): boolean {
  */
 export class ProcessTerminal implements Terminal {
 	private readonly output = new TerminalOutput();
+	private readonly statusProbes = new StatusProbeWatch();
+	inputDraining = false;
 	private readonly programStatusReporter = new ProgramStatusReporter();
 	private readonly progress = new ProgressIndicator(() => this.output.allowsDecorativeOutput());
 	private readonly graphicsProbe = new KittyGraphicsProbe();
@@ -166,6 +169,7 @@ export class ProcessTerminal implements Terminal {
 		});
 
 		this.stdinBuffer.on("data", (sequence) => {
+			this.statusProbes.noteInput(sequence);
 			if (this.graphicsProbe.consume(sequence)) return;
 			if (this.programStatusReporter.handleReply(sequence)) return;
 			if (this.synchronizedOutputProbe.handleReply(sequence)) return;
@@ -261,17 +265,11 @@ export class ProcessTerminal implements Terminal {
 		};
 
 		process.stdin.on("data", onData);
-		const endTime = Date.now() + maxMs;
-
+		this.inputDraining = true;
 		try {
-			while (true) {
-				const now = Date.now();
-				const timeLeft = endTime - now;
-				if (timeLeft <= 0) break;
-				if (now - lastDataTime >= idleMs) break;
-				await new Promise((resolve) => setTimeout(resolve, Math.min(idleMs, timeLeft)));
-			}
+			await waitForQuietInput({ maxMs, idleMs, lastDataAt: () => lastDataTime, watch: this.statusProbes });
 		} finally {
+			this.inputDraining = false;
 			process.stdin.removeListener("data", onData);
 			this.inputHandler = previousHandler;
 		}
@@ -328,6 +326,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	write(data: string, kind?: OutputKind): void {
+		this.statusProbes.noteWrite(data);
 		this.output.write(data, kind);
 	}
 

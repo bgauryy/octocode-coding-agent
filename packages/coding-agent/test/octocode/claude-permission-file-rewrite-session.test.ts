@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fixture } from "./permission-session-fixture.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 const decision = (updatedInput: unknown) => ({
@@ -199,6 +200,7 @@ it("PostToolUse receives the effective indexed Write inputs", async () => {
 			},
 		];
 		fs.writeFileSync(config, JSON.stringify(settings));
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		await f.run("file", { queries: [write(original)] });
 		expect(fs.existsSync(original)).toBe(false);
@@ -431,6 +433,7 @@ it("Codex PostToolUse apply_patch projection captures the committed Claude repla
 				},
 			}),
 		);
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		await f.run("file", { queries: [write(original, "ORIGINAL\n")] });
 		expect(fs.existsSync(original)).toBe(false);

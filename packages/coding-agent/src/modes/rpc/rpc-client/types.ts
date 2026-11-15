@@ -25,6 +25,8 @@ export interface RpcClientOptions {
 	provider?: string;
 	model?: string;
 	args?: string[];
+	/** Maximum milliseconds to wait for rpc_ready (default 60,000; integer from 1 to 2,147,483,647). */
+	startupTimeoutMs?: number;
 	/** Own the worker's whole process tree; stop gives native cleanup 10 seconds before killing survivors. */
 	ownProcessTree?: boolean;
 }

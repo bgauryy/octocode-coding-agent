@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as importedModule2 from "../../src/octocode/shared/process.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import * as importedModule3 from "../../src/octocode/team/store.ts";
-import * as importedModule4 from "../../src/octocode/shared/process-table.ts";
+import { refreshProcessTable, resetProcessTable } from "../../src/octocode/shared/process-table.ts";
 import { tmp } from "./helpers.ts";
 
 /** `calls`: `ps` run on the calling thread (`execFileSync`); `async`: `ps` run without blocking (`execFile`). */
@@ -36,7 +36,6 @@ const {
 	VERDICT_TTL_MS,
 } = await Promise.resolve(importedModule2);
 const { TeamStore } = await Promise.resolve(importedModule3);
-const { refreshProcessTable, resetProcessTable } = await Promise.resolve(importedModule4);
 
 const children: ChildProcess[] = [];
 /** A live process other than this one, with the start time a row would record for it. */

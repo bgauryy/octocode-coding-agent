@@ -170,16 +170,21 @@ export function teamBrief(notes: TeamNotes): string[] {
 	];
 }
 
-/** The last user message in `entries` with text, whole, or undefined when there is none. */
-export function latestRequest(entries: readonly unknown[]): string | undefined {
+/** The index of the last user message in `entries` with text, or -1 when there is none. */
+export function latestRequestIndex(entries: readonly unknown[]): number {
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];
 		if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
 		if (entry.message.role !== "user") continue;
-		const text = contentText(entry.message.content);
-		if (flatLine(text)) return text.trim();
+		if (flatLine(contentText(entry.message.content))) return index;
 	}
-	return undefined;
+	return -1;
+}
+
+/** The last user message in `entries` with text, whole, or undefined when there is none. */
+export function latestRequest(entries: readonly unknown[]): string | undefined {
+	const entry = entries[latestRequestIndex(entries)] as { message: { content: unknown } } | undefined;
+	return entry ? contentText(entry.message.content).trim() : undefined;
 }
 
 /**

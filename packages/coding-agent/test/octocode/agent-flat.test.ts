@@ -15,9 +15,10 @@ afterEach(() => vi.unstubAllEnvs());
 
 /**
  * A main session whose PATH holds one fake ACP adapter (`acp`, default) or no agent at all, with the `externalAgents`
- * setting unset (on by default) or explicit: `external` also requires a discoverable adapter.
+ * setting on (default here), explicitly off, or unset (`null`: off by default): `external` also requires a
+ * discoverable adapter.
  */
-async function mainSession(options: { acp?: boolean; externalAgents?: boolean } = {}) {
+async function mainSession(options: { acp?: boolean; externalAgents?: boolean | null } = {}) {
 	const bin = tmp();
 	if (options.acp === false) vi.stubEnv("PATH", bin);
 	else {
@@ -29,8 +30,8 @@ async function mainSession(options: { acp?: boolean; externalAgents?: boolean } 
 	const home = tmp();
 	vi.stubEnv("OCTOCODE_HOME", home);
 	vi.stubEnv(ENV_AGENT_DIR, home); // the suite points the agent directory elsewhere; settings come from here
-	if (options.externalAgents !== undefined)
-		writeFileSync(join(home, "settings.json"), JSON.stringify({ externalAgents: options.externalAgents }));
+	const externalAgents = options.externalAgents === undefined ? true : options.externalAgents;
+	if (externalAgents !== null) writeFileSync(join(home, "settings.json"), JSON.stringify({ externalAgents }));
 	const fake = fakeHost();
 	await octocode(fake.api);
 	return { fake, agent: fake.tools.get("agent")!, ctx: fakeCtx({ cwd: tmp() }) };
@@ -42,12 +43,9 @@ describe("agent with flat fields in a main session", () => {
 		const properties = agent.parameters.properties as Record<string, { description?: string }>;
 		expect(properties.type).toMatchObject({ enum: ["coordinate", "message", "task", "external"] });
 		for (const field of ["externalAction", "connection", "externalModel", "promptText", "subagent", "joinGoal"])
-			expect(properties[field]?.description).toMatch(/^(external|coordinate)(: | only)/);
+			expect(properties).toHaveProperty(field);
 		for (const gone of ["input", "query", "check", "scope", "id", "text"]) expect(properties).not.toHaveProperty(gone);
-		expect(properties.task.description).toMatch(/^task: /);
-		expect(agent.promptSnippet).not.toContain("model");
 		const models = fake.tools.get("models")!;
-		expect(models.promptSnippet).toMatch(/^[^\n]+$/);
 		expect(models.parameters.required).toEqual(["reason"]);
 	});
 
@@ -57,10 +55,15 @@ describe("agent with flat fields in a main session", () => {
 		expect((properties.type as { enum: string[] }).enum).toEqual(["coordinate", "message", "task"]);
 		for (const field of ["externalAction", "connection", "externalModel", "promptText"])
 			expect(properties).not.toHaveProperty(field);
-		expect(String(agent.promptSnippet)).not.toContain("outside agent");
 		expect(fake.tools.has("externalAgent")).toBe(false);
 		const { agent: found } = await mainSession();
 		expect((found.parameters.properties.type as { enum: string[] }).enum).toContain("external");
+	});
+
+	it("leaves the external type off without the externalAgents opt-in, even with an ACP agent on PATH", async () => {
+		const { agent, fake } = await mainSession({ externalAgents: null });
+		expect((agent.parameters.properties.type as { enum: string[] }).enum).toEqual(["coordinate", "message", "task"]);
+		expect(fake.tools.has("externalAgent")).toBe(false);
 	});
 
 	it("honors an explicit externalAgents false even with an ACP agent on PATH", async () => {

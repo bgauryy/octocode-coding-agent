@@ -9,6 +9,7 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createReadTool } from "./fixtures/read-tool.ts";
 import type { InlineExtension } from "../src/core/features/index.ts";
 import { createHarness } from "./suite/harness.ts";
+import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
 
 type Spec = {
 	name: string;
@@ -49,6 +50,15 @@ async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], ex
 	});
 	const template = path.join(root, "from-template.md");
 	fs.writeFileSync(template, "Generated template mentions $beta");
+	approveFixtureSkillFiles(
+		files.map((filePath, index) => ({
+			name: specs[index].name,
+			filePath,
+			// Explicit additionalSkillPaths use global review scope, including inferred Claude documents.
+			category: "global",
+		})),
+		cwd,
+	);
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
@@ -497,6 +507,13 @@ it.each(["disabled", "untrusted"])("cannot select a %s discovery resource by nam
 it("keeps inferred Claude skills on their existing slash route", async () => {
 	const f = await fixture([{ name: "alpha", claude: true }]);
 	try {
+		expect(f.loader.getSkills().skills).toContainEqual(
+			expect.objectContaining({
+				name: "alpha",
+				argumentStyle: "claude",
+				sourceInfo: expect.objectContaining({ scope: "temporary" }),
+			}),
+		);
 		expect((await request(f, "Use $alpha")).text).not.toContain("BODY_alpha_0");
 		expect((await request(f, "/skill:alpha")).text).toContain("BODY_alpha_0");
 	} finally {
@@ -519,6 +536,10 @@ it.each(["portable", "legacy"])("uses qualified plugin mention names and %s prom
 		const prefix = header + "x".repeat(7999 - Buffer.byteLength(header));
 		const full = prefix + "🙂PLUGIN_END";
 		fs.writeFileSync(path.join(skillDir, "SKILL.md"), full);
+		approveFixtureSkillFiles(
+			[{ name: "review-kit:review", filePath: fs.realpathSync(path.join(skillDir, "SKILL.md")), category: "global" }],
+			f.cwd,
+		);
 		const loader = new DefaultResourceLoader({
 			cwd: f.cwd,
 			agentDir: path.join(f.root, "agent"),

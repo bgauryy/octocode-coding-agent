@@ -223,6 +223,8 @@ it("finds an old lifecycle event beyond 50 in one search, since a query tests ev
 	expect(found.text).toContain("events: 1 match in 65 records searched (every record)");
 	// Every record was searched: no cursor promises more.
 	expect(found.cursor).toBeUndefined();
+	const many = await readRecords(root, { source: "events", op: "search", query: "recent", agentId: "agent", limit: 3 });
+	expect(many.text).toContain("events: 3 matches in ");
 	// A listing still pages: 10 of 65, then a cursor.
 	const listed = await readRecords(root, { source: "events", op: "list", agentId: "agent", limit: 10 });
 	expect(listed.hits).toBe(10);
@@ -280,6 +282,10 @@ it("uses the full memory index and summary corpus for keyword search, including 
 	expect(summaries.text).toContain("old cobalt summary");
 	const sessions = await readRecords(root, { source: "sessions", op: "list" });
 	expect(sessions.text).toContain("session:session-a");
+	// The index holds sessions with a compaction, not every session the history part counts: its line says so.
+	expect(sessions.text).toMatch(/^sessions with a compaction: 1 record/);
+	const found = await readRecords(root, { source: "sessions", op: "search", keywords: "session-a" });
+	expect(found.text).toMatch(/^sessions with a compaction: 1 match in 1 record searched/);
 });
 
 it("repairs archive files in their workspace when another home or workspace is active", async () => {

@@ -172,6 +172,8 @@ export function registerTurnSetup(
 		if (prompt.children) event.systemPromptOptions.sections.children = prompt.children;
 	});
 
+	api.on("session_compact", () => routing.compacted());
+
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
 	api.on("turn_end", (_event, ctx) => {
 		if (!coordinates(api.getActiveTools()) || ownsPrompt(ctx)) return;

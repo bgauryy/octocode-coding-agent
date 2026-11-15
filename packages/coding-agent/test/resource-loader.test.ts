@@ -14,6 +14,8 @@ import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
+import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
+import { knownReviews } from "../src/octocode/guard/registry.ts";
 
 /** A hidden built-in feature, as `defaultFeatures` lists them. */
 const builtin = (id: string, register: ExtensionFactory): Feature => ({ id, owner: "builtin", hidden: true, register });
@@ -131,6 +133,10 @@ description: A test skill
 ---
 Skill content here.`,
 			);
+			approveFixtureSkillFiles(
+				[{ name: "test-skill", filePath: join(skillsDir, "test-skill.md"), category: "global" }],
+				cwd,
+			);
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -156,6 +162,10 @@ description: Browser tools
 Skill content here.`,
 			);
 			writeFileSync(join(skillDir, "EFFICIENCY.md"), "No frontmatter here");
+			approveFixtureSkillFiles(
+				[{ name: "browser-tools", filePath: join(skillDir, "SKILL.md"), category: "global" }],
+				cwd,
+			);
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -266,6 +276,13 @@ Project skill`,
 				baseTheme.vars.accent = "#ff00ff";
 			}
 			writeFileSync(projectThemePath, JSON.stringify(baseTheme, null, 2));
+			approveFixtureSkillFiles(
+				[
+					{ name: "collision-skill", filePath: userSkillPath, category: "global" },
+					{ name: "collision-skill", filePath: projectSkillPath, category: "workspace" },
+				],
+				cwd,
+			);
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -700,6 +717,7 @@ Project skill content`,
 				writeFileSync(join(host, name, "SKILL.md"), `---\nname: ${name}\ndescription: Test skill\n---\nBody`);
 			}
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: ["!hidden"] }));
+			approveFixtureSkillFiles([{ name: "kept", filePath: join(host, "kept", "SKILL.md"), category: "global" }], cwd);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
@@ -710,6 +728,11 @@ Project skill content`,
 			loader.extendResources({
 				skillPaths: [{ path: host, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }],
 			});
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("hidden");
 			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["kept"]);
 			expect(loader.getSkills().skills[0]?.sourceInfo.source).toBe("extension:test");
 		});
@@ -723,6 +746,7 @@ Project skill content`,
 				mkdirSync(join(file, ".."), { recursive: true });
 				writeFileSync(file, `---\nname: ${name}\ndescription: Test skill\n---\nInstructions`);
 			}
+			approveFixtureSkillFiles([{ name: "explicit", filePath: explicit, category: "global" }], cwd);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
@@ -740,9 +764,19 @@ Project skill content`,
 				});
 			discover();
 			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("discovered");
 			await loader.reload();
 			discover();
 			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("discovered");
 		});
 
 		it("should load skills and prompts with extension metadata", async () => {
@@ -757,6 +791,7 @@ description: Extra skill
 ---
 Extra content`,
 			);
+			approveFixtureSkillFiles([{ name: "extra-skill", filePath: skillPath, category: "global" }], cwd);
 
 			const extraPromptDir = join(tempDir, "extra-prompts");
 			mkdirSync(extraPromptDir, { recursive: true });
@@ -827,6 +862,7 @@ description: File URL skill
 ---
 Extra content`,
 			);
+			approveFixtureSkillFiles([{ name: "file-url-skill", filePath: skillPath, category: "global" }], cwd);
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -932,6 +968,13 @@ Extension prompt content`,
 				scope: "temporary",
 				origin: "top-level",
 			} as const;
+			approveFixtureSkillFiles(
+				[
+					{ name: "package-skill", filePath: join(packageSkillDir, "SKILL.md"), category: "global" },
+					{ name: "extension-skill", filePath: join(extensionSkillDir, "SKILL.md"), category: "global" },
+				],
+				cwd,
+			);
 			loader.extendResources({
 				skillPaths: [{ path: extensionSkillDir, metadata: extensionMetadata }],
 				promptPaths: [{ path: extensionPromptsDir, metadata: extensionMetadata }],
@@ -970,6 +1013,13 @@ Extension prompt content`,
 			skill(join(agentDir, "skills", "review"), "installed copy");
 			const explicit = join(tempDir, "candidate", "review");
 			skill(explicit, "explicit copy");
+			approveFixtureSkillFiles(
+				[
+					{ name: "review", filePath: join(agentDir, "skills", "review", "SKILL.md"), category: "global" },
+					{ name: "review", filePath: join(explicit, "SKILL.md"), category: "global" },
+				],
+				cwd,
+			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
@@ -995,6 +1045,13 @@ Extension prompt content`,
 			skill(join(cwd, ".octocode", "skills", "review"), "project copy");
 			const sub = join(cwd, "packages", "a");
 			mkdirSync(sub, { recursive: true });
+			approveFixtureSkillFiles(
+				[
+					{ name: "review", filePath: join(agentDir, "skills", "review", "SKILL.md"), category: "global" },
+					{ name: "review", filePath: join(cwd, ".octocode", "skills", "review", "SKILL.md"), category: "workspace" },
+				],
+				sub,
+			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(sub, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
@@ -1045,6 +1102,10 @@ description: Custom skill
 ---
 Content`,
 			);
+			approveFixtureSkillFiles(
+				[{ name: "custom", filePath: join(customSkillDir, "custom.md"), category: "global" }],
+				cwd,
+			);
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
@@ -1063,12 +1124,17 @@ Content`,
 
 	describe("override functions", () => {
 		it("should apply skillsOverride", async () => {
+			const skillDir = join(tempDir, "injected");
+			const skillPath = join(skillDir, "SKILL.md");
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillPath, "---\nname: injected\ndescription: Injected skill\n---\nInstructions");
+			approveFixtureSkillFiles([{ name: "injected", filePath: skillPath, category: "global" }], cwd);
 			const injectedSkill: Skill = {
 				name: "injected",
 				description: "Injected skill",
-				filePath: "/fake/path",
-				baseDir: "/fake",
-				sourceInfo: createSyntheticSourceInfo("/fake/path", { source: "custom" }),
+				filePath: skillPath,
+				baseDir: skillDir,
+				sourceInfo: createSyntheticSourceInfo(skillPath, { source: "custom" }),
 				disableModelInvocation: false,
 			};
 			const loader = new DefaultResourceLoader({

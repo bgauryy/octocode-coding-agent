@@ -71,6 +71,7 @@ export class SessionRunLoop {
 			run: host.run,
 			models: host.models,
 			omitRecoveryAttempt: (message) => host.boundaries.omitRecoveryAttempt(message),
+			isRetryable: (message) => host.retry.isRetryableError(message),
 		});
 	}
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ProfileEvent, ProfileRequest, ProfileTimeline } from "@octocodeai/octocode-contracts/profiler";
 import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
 import { APP_NAME } from "../config.ts";
-import { sharedAgentDb } from "../storage/database.ts";
+import { prepareAgentDb, sharedAgentDb } from "../storage/database.ts";
 import { agentDbPath } from "../storage/state-paths.ts";
 import { createProfiler } from "../octocode/profiler/index.ts";
 import { agentsTable, insightsTable, requestsTable, timelineTable } from "../octocode/profiler/format.ts";
@@ -127,6 +127,7 @@ export async function runProfileCommand(args: string[], io: ProfileCommandIo): P
 	}
 	let profiler: ReturnType<typeof createProfiler> | undefined;
 	try {
+		await prepareAgentDb(env);
 		const db = sharedAgentDb(env).db;
 		profiler = createProfiler(storedProfilerSource({ db, session: findSession(db, io.cwd, options.session) }));
 		const show = <T>(data: T, text: (data: T) => string) =>

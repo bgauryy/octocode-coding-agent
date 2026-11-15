@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 it("normalizes Codex Interrupt timeout, ignores matcher, and retains async and MCP handlers", () => {
 	const home = tmp();
@@ -130,6 +131,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 			}),
 		});
 		try {
+			approveFixtureHooks(ctx.cwd, home);
 			await fake.fire("session_start", { reason: "startup" }, { ...ctx, signal: undefined });
 			const results = await fake.emit(
 				"agent_interrupted",

@@ -125,6 +125,7 @@ export async function refreshStoredOAuthCredential(
 	signal: AbortSignal,
 ): Promise<OAuthCredential | undefined> {
 	let post: Credential | undefined;
+	let rejection: ModelsError | undefined;
 	const lockWait = new AbortController();
 	const cancelLockWait = () => lockWait.abort(signal.reason);
 	signal.addEventListener("abort", cancelLockWait, { once: true });
@@ -137,10 +138,21 @@ export async function refreshStoredOAuthCredential(
 				signal.throwIfAborted();
 				if (current?.type !== "oauth" || current.signedOut) return undefined; // logged out meanwhile
 				if (!needsRefresh(current)) return undefined; // another process/request refreshed
+				const fingerprint = await refreshTokenFingerprint(current.refresh);
+				if (current.refreshRejected?.refreshSha256 === fingerprint) {
+					throw rejectedRefreshError(providerId, current.refreshRejected.at);
+				}
 				try {
-					return await oauth.refresh(current, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS));
+					const refreshed = await oauth.refresh(current, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS));
+					if (!refreshed.refreshRejected) return refreshed;
+					const { refreshRejected: _stale, ...clean } = refreshed;
+					return clean;
 				} catch (error) {
-					throw new ModelsError("oauth", `OAuth refresh failed for ${providerId}`, { cause: error });
+					const failure = new ModelsError("oauth", `OAuth refresh failed for ${providerId}`, { cause: error });
+					if (!isTerminalGrantError(error)) throw failure;
+					// Persist the refusal in the same locked write so later requests skip the doomed request.
+					rejection = failure;
+					return { ...current, refreshRejected: { at: Date.now(), refreshSha256: fingerprint } };
 				}
 			},
 			{ signal: lockWait.signal },
@@ -152,7 +164,40 @@ export async function refreshStoredOAuthCredential(
 	} finally {
 		signal.removeEventListener("abort", cancelLockWait);
 	}
+	if (rejection) throw rejection;
 	return post?.type === "oauth" && !post.signedOut ? post : undefined;
+}
+
+/**
+ * Whether a refresh error says the provider refused the refresh token for good, so retrying it cannot succeed:
+ * the OAuth `invalid_grant` code, Kimi's unauthorized refresh, or a 400/401 from the OpenAI Codex token endpoint.
+ * Providers throw plain errors, so this reads the message and its causes. Network, timeout, abort, 429 and 5xx
+ * failures match nothing and stay retryable.
+ */
+const TERMINAL_GRANT_ERROR =
+	/\binvalid_grant\b|Kimi Code token refresh unauthorized \(status (?:401|403)\)|OpenAI Codex token refresh failed \((?:400|401)\)/;
+
+function isTerminalGrantError(error: unknown): boolean {
+	let current = error;
+	for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth++) {
+		if (!(current instanceof Error)) return typeof current === "string" && TERMINAL_GRANT_ERROR.test(current);
+		if (TERMINAL_GRANT_ERROR.test(current.message)) return true;
+		current = current.cause;
+	}
+	return false;
+}
+
+function rejectedRefreshError(providerId: string, at: number): ModelsError {
+	return new ModelsError(
+		"oauth",
+		`OAuth refresh failed for ${providerId}: the provider rejected this sign-in (invalid_grant) at ${new Date(at).toISOString()}; sign in again, it is not retried until then`,
+	);
+}
+
+/** Hex SHA-256 of a refresh token, so the rejected token is recognised without storing a second copy of it. */
+async function refreshTokenFingerprint(refresh: string): Promise<string> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(refresh));
+	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**

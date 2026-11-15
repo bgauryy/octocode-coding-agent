@@ -103,7 +103,13 @@ function describeServers(
 	const mcps = renderMcpsSection(listings, { declared: state.presentation.declared });
 	if (mcps) options.baseSections[MCPS_SECTION] = mcps;
 	else delete options.baseSections[MCPS_SECTION];
-	const status = renderMcpStatusSection(listings, { canManage: state.api.getActiveTools().includes("mcp") });
+	const status = renderMcpStatusSection(listings, {
+		canManage: state.api.getActiveTools().includes("mcp"),
+		// A server the user switched off is not awaiting approval: only switched-on servers the review holds back are named.
+		withheld: state.servers
+			.filter((server) => server.entry.withheld && server.entry.config.enabled !== false)
+			.map((server) => server.entry.name),
+	});
 	if (status) options.sections[MCP_STATUS_SECTION] = status;
 	else delete options.sections[MCP_STATUS_SECTION];
 }

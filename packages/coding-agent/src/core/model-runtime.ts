@@ -150,6 +150,10 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getProviderIds();
 	}
 
+	hasContextWindowOverride(providerId: string, modelId: string): boolean {
+		return this.layers.hasContextWindowOverride(providerId, modelId);
+	}
+
 	/** models.json fields that load but do nothing (a misspelled key, an `api` no built-in serves), each naming its file. */
 	getConfigWarnings(): readonly string[] {
 		return this.layers.config.getWarnings();

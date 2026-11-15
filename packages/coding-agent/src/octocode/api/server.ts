@@ -66,6 +66,7 @@ export class ApiServer {
 	private unix: net.Server | undefined;
 	private web: http.Server | undefined;
 	private readonly sockets = new Set<net.Socket>();
+	private readonly rejectedSockets = new Set<net.Socket>();
 	private readonly streams = new Set<http.ServerResponse>();
 	socketFile: string | undefined;
 	httpUrl: string | undefined;
@@ -130,12 +131,22 @@ export class ApiServer {
 	}
 
 	private accept(socket: net.Socket): void {
-		if (this.sockets.size >= MAX_CONNECTIONS) {
-			socket.end(`${JSON.stringify(failure(null, ERR.unavailable, "Too many connections"))}\n`);
+		const rejected = this.sockets.size >= MAX_CONNECTIONS;
+		const owned = rejected ? this.rejectedSockets : this.sockets;
+		owned.add(socket);
+		let subscription: { close(): void } | undefined;
+		socket.on("close", () => {
+			subscription?.close();
+			owned.delete(socket);
+		});
+		socket.on("error", () => socket.destroy());
+		if (rejected) {
+			socket.end(
+				`${JSON.stringify(failure(null, ERR.unavailable, "Too many connections", { execution: "not-sent" }))}\n`,
+				() => socket.destroy(),
+			);
 			return;
 		}
-		this.sockets.add(socket);
-		let subscription: { close(): void } | undefined;
 		const write = (value: unknown): void => {
 			if (socket.destroyed) return;
 			if (socket.writableLength > MAX_QUEUED_BYTES) {
@@ -181,12 +192,6 @@ export class ApiServer {
 			}
 			tooLarge(pending);
 		});
-		const done = (): void => {
-			subscription?.close();
-			this.sockets.delete(socket);
-		};
-		socket.on("close", done);
-		socket.on("error", done);
 	}
 
 	private authorized(req: http.IncomingMessage): boolean {
@@ -262,6 +267,7 @@ export class ApiServer {
 
 	async close(): Promise<void> {
 		for (const socket of this.sockets) socket.destroy();
+		for (const socket of this.rejectedSockets) socket.destroy();
 		for (const stream of this.streams) stream.destroy();
 		const closing: Promise<void>[] = [];
 		for (const server of [this.unix, this.web])

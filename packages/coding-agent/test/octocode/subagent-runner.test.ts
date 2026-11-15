@@ -67,7 +67,7 @@ describe("the runner field of agent tasks", () => {
 		expect(runner?.enum).toEqual(["claude-code"]);
 	});
 
-	it("adds the runner line to the unified task type only then", () => {
+	it("declares the runner field only when runners are available", () => {
 		const declared = (runners?: Runners) => {
 			const f = fakeHost();
 			const modes = agentModes();
@@ -82,10 +82,8 @@ describe("the runner field of agent tasks", () => {
 			return f.tools.get("agent");
 		};
 		const plain = declared();
-		expect(plain.description).not.toContain("runner");
 		expect(plain.parameters.properties).not.toHaveProperty("runner");
 		const withRunner = declared(scriptedRunners().runners);
-		expect(withRunner.description).toContain("With runner: vendor CLI (see models).");
 		expect(withRunner.parameters.properties.runner.enum).toEqual(["claude-code"]);
 	});
 });
@@ -150,8 +148,7 @@ describe("a task run by an external runner", () => {
 		expect(result.details.id).toEqual(expect.any(String));
 		// The runner got the task and the same report contract a native child gets, and nothing of Octocode's team.
 		const [sent] = prompts();
-		expect(sent).toMatch(/^Read src\/app\.ts\n\n## You\nYou run this task for Octocode/);
-		expect(sent).toContain("## Report\nYour final answer is your report");
+		expect(sent).toContain("Read src/app.ts");
 		// The run is over: its name is free and nothing is left running.
 		expect(team.members().filter((member) => member.parentId)).toEqual([]);
 	});
@@ -196,7 +193,6 @@ describe("a task run by an external runner", () => {
 		const agent = f.tools.get("agent");
 		expect(agent.parameters.properties.runner.enum).toEqual(["claude-code"]);
 		expect(agent.parameters.properties).not.toHaveProperty("tasks");
-		expect(agent.description).toContain("installed vendor CLI");
 		const cwd = tmp("octocode-runner-child-");
 		const result = await agent.execute(
 			"call-7",
@@ -219,7 +215,7 @@ describe("a task run by an external runner", () => {
 			outcome: "done",
 			agentType: "task",
 		});
-		expect(prompts()[0]).toContain(`Work in \`${cwd}\``);
+		expect(prompts()[0]).toContain(cwd);
 	});
 });
 

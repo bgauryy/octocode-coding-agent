@@ -23,6 +23,7 @@ import { tmp } from "./helpers.ts";
 import { installMcpCorePorts } from "../../src/octocode/mcp-host/core.ts";
 import { createConfiguration, type ConfigLiveHooks } from "../../src/configuration/index.ts";
 import { installOctocodeDiscovery } from "../../src/octocode/discovery/index.ts";
+import type { McpServerStatus } from "../../../mcp/src/api.ts";
 
 beforeAll(() => {
 	installMcpCorePorts();
@@ -386,10 +387,12 @@ describe("/harness terminal list", () => {
 		await vi.waitFor(() => expect(component).toBeDefined());
 		const press = (...keys: string[]) => keys.forEach((key) => component!.handleInput(key));
 		const screen = () => component!.render(200).join("\n");
-		expect(screen()).toContain("(global)");
+		await vi.waitFor(() => expect(screen()).toMatch(/Skills \(\d+\)/));
+		press("\x1b[1;5D", "\x1b[1;5D");
+		expect(screen()).toContain("Switch scope: global");
 		expect(screen()).toMatch(/Harnesses\n> +\[-\] Octocode/);
 		expect(screen()).toMatch(/\[x\] Claude Code  default off\n +\[ \] Claude Code auto memory  default off/);
-		for (let index = 0; index < 8; index++) press("tui.select.down");
+		press("\x1b[1;5D");
 		expect(screen()).toMatch(/Claude Code\n> +\[x\] Hooks from Claude Code/);
 		// Hook files start collapsed: one row per file, not per hook.
 		expect(screen()).toContain("▸ [x] ~/.claude/settings.json");
@@ -402,7 +405,7 @@ describe("/harness terminal list", () => {
 
 		// Project scope cannot reach a user hook file, and says what to do instead.
 		press("tui.select.down", "tui.input.tab", " ");
-		expect(screen()).toContain("(project)");
+		expect(screen()).toContain("Switch scope: project");
 		expect(screen()).toContain("~/.claude/settings.json: not part of this repository: switch it globally.");
 		press("tui.input.tab");
 
@@ -423,7 +426,7 @@ describe("/harness terminal list", () => {
 
 		// Typing filters; a filter with no match says so instead of showing an empty list.
 		press("z", "z", "z");
-		expect(screen()).toContain("Nothing matches the filter.");
+		expect(screen()).toContain("Nothing matches this filter.");
 
 		press("tui.select.cancel");
 		await closed;
@@ -503,7 +506,14 @@ describe("plugin rows", () => {
 				{ path: full, protocol: "codex" as const, enabled: false },
 			],
 		};
-		const octocode = { name: "octocode", enabled: true, state: "connected", toolCount: 1, exposure: "all", source: "" };
+		const octocode = {
+			name: "octocode",
+			enabled: true,
+			state: "connected",
+			toolCount: 1,
+			exposure: "direct" as const,
+			source: "",
+		};
 		const inventory = await buildInventory({
 			cwd: f.cwd,
 			agentDir: f.agentDir,
@@ -529,14 +539,13 @@ describe("plugin rows", () => {
 	it("leads each MCP row with its group, as skill rows name their folder", async () => {
 		const f = fixture();
 		const settings = {};
-		const server = (name: string, scope: string, group: string, source: string) => ({
+		const server = (name: string, scope: McpServerStatus["scope"], source: string): McpServerStatus => ({
 			name,
 			enabled: true,
 			state: "connected",
 			toolCount: 2,
 			exposure: "direct",
 			scope,
-			group,
 			source,
 		});
 		const inventory = await buildInventory({
@@ -547,17 +556,17 @@ describe("plugin rows", () => {
 			projectTrusted: true,
 			home: f.home,
 			mcp: [
-				server("browser", "default", "core", "built-in browser"),
-				server("tracker", "project", "workspace", path.join(f.cwd, ".mcp.json")),
-				server("search", "global", "global", path.join(f.home, ".octocode/mcp.json")),
-				server("kit", "extension", "global", path.join(f.home, "plugins/kit")),
+				server("browser", "default", "built-in browser"),
+				server("tracker", "project", path.join(f.cwd, ".mcp.json")),
+				server("search", "global", path.join(f.home, ".octocode/mcp.json")),
+				server("kit", "extension", path.join(f.home, "plugins/kit")),
 			],
 		});
 		const detail = (name: string) => inventory.items.find((item) => item.id === `mcp:${name}`)?.detail;
-		expect(detail("browser")).toBe("Core · connected · 2 tools · direct · built in");
-		expect(detail("tracker")).toMatch(/^Workspace · connected · 2 tools · direct · .*\.mcp\.json$/);
-		expect(detail("search")).toBe("Global · connected · 2 tools · direct · ~/.octocode/mcp.json");
-		expect(detail("kit")).toBe("Global · connected · 2 tools · direct · plugin ~/plugins/kit");
+		expect(detail("browser")).toBe("Core · connected · 2 tools · direct · every agent · built in");
+		expect(detail("tracker")).toMatch(/^Workspace · connected · 2 tools · direct · every agent · .*\.mcp\.json$/);
+		expect(detail("search")).toBe("Global · connected · 2 tools · direct · every agent · ~/.octocode/mcp.json");
+		expect(detail("kit")).toBe("Global · connected · 2 tools · direct · every agent · plugin ~/plugins/kit");
 	});
 
 	const writeJson = (file: string, value: unknown) => {

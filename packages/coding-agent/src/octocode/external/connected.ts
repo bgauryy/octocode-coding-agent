@@ -4,21 +4,38 @@ import type { AcpPermission } from "../../../../acp/src/client/client.ts";
 import { GLYPH } from "@octocodeai/octocode-tui/text";
 import { listRunners, type RunnerState } from "./runner-status.ts";
 import { headlessAvailable } from "./runner-headless.ts";
+import { runnerSupportsCommunication } from "./runner-communication.ts";
 import { type RunnerTurnInput, runnerTurn, runnerTurnDeps } from "./runner-session.ts";
 
 /**
  * Installed runnable CLIs, read once when the tool is declared. No process starts for discovery;
  * a task checks its selected runner's sign-in before launch, retaining cached account metadata when valid.
  */
-export function connectedRunners(enabled: boolean, permission: (ctx: ExtensionContext) => AcpPermission) {
+export function connectedRunners(
+	enabled: boolean,
+	permission: (ctx: ExtensionContext) => AcpPermission,
+	selected?: readonly string[],
+) {
 	const states = enabled
-		? listRunners().filter((state) => state.cli && (state.adapter || headlessAvailable(state)))
+		? listRunners().filter(
+				(state) =>
+					(selected === undefined || selected.includes(state.id)) &&
+					state.cli &&
+					(state.adapter || headlessAvailable(state)),
+			)
 		: [];
+	const ids = states.map((state) => state.id);
 	const deps = runnerTurnDeps(permission);
 	return {
-		ids: states.map((state) => state.id),
+		ids,
+		communication: ids.filter(runnerSupportsCommunication),
 		states,
-		turn: (input: RunnerTurnInput) => runnerTurn(input, deps),
+		turn: (input: RunnerTurnInput) =>
+			ids.includes(input.runner)
+				? runnerTurn(input, deps)
+				: Promise.reject(
+						new Error(`Runner ${input.runner} is not enabled in this session. Select it in /providers, then /reload.`),
+					),
 	};
 }
 

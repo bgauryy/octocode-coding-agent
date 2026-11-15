@@ -6,6 +6,7 @@ import { Team } from "../../src/octocode/team/session.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -33,6 +34,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
+		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -65,6 +67,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
+		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);
@@ -104,6 +107,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 				},
 			}),
 		);
+		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);

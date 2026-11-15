@@ -1,8 +1,9 @@
-import { type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
+import { type AgentDb, type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
 import { liveProcess, sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { memberPlacement } from "./place.ts";
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export type ProcessIdentity = agents.ProcessIdentity;
@@ -18,6 +19,11 @@ export const rowLive = (row: ProcessIdentity & { seenAt: number }, now: number):
 const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
 	a.pid === b.pid && (a.started ?? null) === (b.started ?? null);
 
+export function ownsMember(db: Db, member: Member): boolean {
+	const held = agents.processOf(db, member.id);
+	return held !== undefined && sameIdentity(held, member);
+}
+
 /**
  * Deletes the row, releases the leases and dead-letters the unread mail of `id`, its read but unanswered
  * `replyRequired` questions, and the relay requests it took but never settled, so their senders are told; the one
@@ -31,29 +37,43 @@ function retire(db: Db, id: string, now: number, reason: string | undefined, end
 	deliveries.deadLetterOf(db, id, now);
 }
 
-/**
- * `join`'s write, run in its transaction: takes the name unless a running process other than this one holds it. A row
- * naming `parent` is one the parent holds for this child with its reservations (`ChildLeases`): the child takes it over
- * and the reservations stay.
- */
+/** Check liveness outside the write lock, then validate that identity before running the mutation once. */
+export function memberTransaction<T>(agent: AgentDb, member: Member | undefined, work: (held: boolean) => T): T {
+	if (member) agents.ensureMailbox(agent.db);
+	if (!member) return agent.transaction(() => work(false));
+	for (;;) {
+		const observed = agents.processOf(agent.db, member.id);
+		const held = !!observed && !sameIdentity(observed, member) && sameProcess(observed.pid, observed.started);
+		const outcome = agent.transaction(() => {
+			const current = agents.processOf(agent.db, member.id);
+			if (current ? !observed || !sameIdentity(current, observed) : observed) return undefined;
+			return { value: work(held) };
+		});
+		if (outcome) return outcome.value;
+	}
+}
+
+/** Claim inside memberTransaction, using its checked process verdict. */
 export function claimMember(
 	db: Db,
 	team: string,
 	workspace: agents.MemberWorkspace,
 	member: Member,
+	held: boolean,
 	context?: agentEvents.LifecycleContext,
 	parent?: ProcessIdentity,
 ): boolean {
-	if (agents.insert(db, team, workspace, member, context) || agents.refresh(db, member, workspace, context))
-		return true;
+	const placed = memberPlacement(workspace, member);
+	if (agents.insert(db, team, placed, member, context) || agents.refresh(db, member, placed, context)) return true;
 	const holder = agents.processOf(db, member.id);
+	// The parent holds this child's name and reservations until the child takes over.
 	if (holder && parent && sameIdentity(holder, parent)) {
 		agents.setProcess(db, member.id, member);
-		return agents.refresh(db, member, workspace, context);
+		return agents.refresh(db, member, placed, context);
 	}
-	if (holder && sameProcess(holder.pid, holder.started)) return false;
+	if (holder && held) return false;
 	retire(db, member.id, Date.now(), undefined, { fallback: "crashed", detail: "replaced dead registration" });
-	return agents.insert(db, team, workspace, member, context);
+	return agents.insert(db, team, placed, member, context);
 }
 
 /** Refresh or restore presence; the caller owns its write transaction. */
@@ -64,7 +84,8 @@ export function saveMember(
 	member: Member,
 	context?: agentEvents.LifecycleContext,
 ): boolean {
-	return agents.refresh(db, member, workspace, context) || agents.insert(db, team, workspace, member, context);
+	const placed = memberPlacement(workspace, member);
+	return agents.refresh(db, member, placed, context) || agents.insert(db, team, placed, member, context);
 }
 
 /** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`), with the leaver's `reason` when it knows one; whether it did. */

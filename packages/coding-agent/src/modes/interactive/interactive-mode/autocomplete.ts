@@ -23,6 +23,7 @@ import {
 	getLoginProviderSearchText,
 	formatLoginProviderCompletionDescription,
 } from "./helpers.ts";
+import { RUNNERS } from "../../../octocode/external/runners.ts";
 import { menuCommands } from "./command-menu.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -169,6 +170,14 @@ export function getSlashCommands(
 				description: "Pi (config) · import credentials and use configured models",
 				searchText: "pi config import credentials models",
 			});
+			// Vendor CLIs are external agents: their own harness and sign-in run the task, not Octocode's.
+			for (const runner of RUNNERS)
+				providers.push({
+					value: `runner:${runner.id}`,
+					label: `runner:${runner.id}`,
+					description: `${runner.name} · external agent (its own CLI and sign-in)`,
+					searchText: `runner:${runner.id} ${runner.name}`,
+				});
 			return createFuzzyAutocompleteItems(
 				providers,
 				prefix,

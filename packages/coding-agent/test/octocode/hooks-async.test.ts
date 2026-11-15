@@ -7,6 +7,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.restoreAllMocks();
@@ -47,6 +48,7 @@ async function fixture() {
 	const fake = fakeHost(HOOK_SETTINGS);
 	const hooks = registerHooks(fake.api, { env: {}, home });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	return { ...fake, hooks, ctx, started, release, script };
 }
@@ -99,6 +101,7 @@ it("cancels async processes on shutdown and drops results from the previous sess
 	const pid = Number(fs.readFileSync(f.started, "utf8"));
 	if (process.platform !== "win32") expect(() => process.kill(pid, 0)).toThrow();
 	fs.writeFileSync(f.release, "late");
+	approveFixtureHooks(f.ctx.cwd, path.dirname(f.script));
 	await f.fire("session_start", { reason: "new" }, f.ctx);
 	expect(JSON.stringify(await f.emit("before_agent_start", {}, f.ctx))).not.toContain("background context");
 	await f.fire("session_shutdown", {}, f.ctx);
@@ -192,6 +195,7 @@ it("keeps notification observers independent of the foreground but cancels them 
 			},
 		}),
 	);
+	approveFixtureHooks(f.ctx.cwd, path.dirname(f.script));
 	await f.fire("session_start", { reason: "new" }, f.ctx);
 	let received!: AbortSignal;
 	vi.spyOn(hookRunner, "runHook").mockImplementation(
@@ -236,6 +240,7 @@ it.each(["stderr", "stdout", "empty"])("wakes the session on asyncRewake exit 2 
 			? "process.exitCode=2;"
 			: `process.${stream}.write('background check failed');process.exitCode=2;`,
 	);
+	approveFixtureHooks(f.ctx.cwd, path.dirname(f.script));
 	await f.fire("session_start", { reason: "new" }, f.ctx);
 	try {
 		expect(

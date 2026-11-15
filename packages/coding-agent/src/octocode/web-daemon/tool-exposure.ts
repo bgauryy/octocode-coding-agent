@@ -19,13 +19,14 @@ import { Value } from "typebox/value";
 import type { AttachToolStates } from "@octocodeai/octocode-contracts/daemon";
 import { recentlyUsed } from "../../../../common/src/recent-use.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
-import { updateMcpServerConfig, isEnabled, currentMcpToolStates } from "../../../../mcp/src/api.ts";
-import { loadMcpServers, switchTarget } from "../../configuration/adapters/mcp.ts";
+import { isEnabled, currentMcpToolStates } from "../../../../mcp/src/api.ts";
+import { loadMcpServers } from "../../configuration/adapters/mcp.ts";
 import { writeSettingsKey } from "../../configuration/settings-write.ts";
 import type { ConfigContext } from "../../configuration/types.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
+import { NEXT_SESSION, pinMcpTool, UnknownMcpServerError } from "../../configuration/adapters/mcp-pins.ts";
 import { ConfigWriteError } from "./config-write.ts";
 
 /** Each MCP server's tool states as a running session reports them. */
@@ -59,7 +60,6 @@ export interface ToolPinOptions extends ToolExposureOptions {
 	audit?: (entry: ConfigAuditEntry) => void;
 }
 
-const NEXT_SESSION = "It applies from the next session; running sessions keep what they declared.";
 const PINNABLE: ReadonlySet<string> = new Set(NATIVE_PINNABLE_TOOLS);
 
 function open(options: ToolExposureOptions) {
@@ -190,17 +190,10 @@ async function apply(command: ToolPinCommand, options: ToolExposureOptions): Pro
 		}
 		return `${done} ${NEXT_SESSION}`;
 	}
-	const loaded = loadMcpServers(ctx);
-	const entry = loaded.servers.find((server) => server.name === command.server);
-	if (!entry) throw new ConfigWriteError(404, "Unknown MCP server.", "unknown");
-	// The whole map is written: an override's `toolExposure` replaces the one of the server it overrides.
-	const pins = { ...entry.config.toolExposure };
-	if (command.pin === null) delete pins[command.tool];
-	else pins[command.tool] = command.pin;
-	const target = switchTarget(entry, loaded, scope, ctx);
 	try {
-		updateMcpServerConfig(target, entry.name, { toolExposure: pins }, { override: target !== entry.source });
-	} catch {
+		pinMcpTool(ctx, scope, command.server, command.tool, command.pin);
+	} catch (error) {
+		if (error instanceof UnknownMcpServerError) throw new ConfigWriteError(404, "Unknown MCP server.", "unknown");
 		// The reason can quote the file, so the reply keeps fixed words.
 		throw new ConfigWriteError(500, "The MCP configuration file could not be written.", "write");
 	}

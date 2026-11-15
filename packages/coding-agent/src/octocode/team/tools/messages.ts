@@ -235,6 +235,7 @@ export function registerSendMessageTool(
 				// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
 				const delivery = result.delivery ?? {};
 				const group = (status: string) => result.sent.filter((recipient) => delivery[recipient] === status);
+				const pull = group("pull");
 				const fate = (who: string[], one: string, many: string) =>
 					who.length === 0 ? "" : `${who.join(", ")} ${who.length > 1 ? many : one}`;
 				const stalled = fate(
@@ -249,7 +250,7 @@ export function registerSendMessageTool(
 						: "";
 				if (params.replyRequired === true)
 					return textResult(
-						`Queued message #${result.id} for ${recipients} as a request: ${recipients} ${result.sent.length > 1 ? "are" : "is"} woken and must answer with replyTo ${result.id}.${departed}${starting}${[
+						`Queued message #${result.id} for ${recipients} as a request: ${pull.length ? `${pull.join(", ")} must fetch their cooperative inbox; no turn is started there` : `${recipients} ${result.sent.length > 1 ? "are" : "is"} woken`} and must answer with replyTo ${result.id}.${departed}${starting}${[
 							pace,
 							stalled,
 						]
@@ -259,6 +260,9 @@ export function registerSendMessageTool(
 						details,
 					);
 				const fates = [
+					pull.length
+						? `${pull.join(", ")} reads it only when it fetches its cooperative runner inbox; this does not wake or resume the task.`
+						: "",
 					fate(
 						group("wake"),
 						"is woken: a turn starts if it is idle, otherwise it reads the message at its next step.",

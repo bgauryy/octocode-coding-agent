@@ -13,10 +13,9 @@ import {
 	presetEntries,
 	browserPreset,
 	recommendedPresets,
-	mcpGroupLabel,
-	mcpServerGroup,
-	mcpServerSource,
-	isEnabled,
+	mcpEntryRowInput,
+	mcpRowFacts,
+	mcpRowSummary,
 	validateMcpServerConfig,
 } from "../../../../mcp/src/api.ts";
 import { applied, closestIds, nameOf, refused } from "../result.ts";
@@ -24,7 +23,7 @@ import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult,
 import { homeTilde } from "../../../../common/src/home-tilde.ts";
 
 /** The configured servers, as a session started in `ctx.cwd` loads them; connects nothing. */
-export const loadMcpServers = (ctx: ConfigContext): LoadedMcpConfig =>
+export const loadMcpServers = (ctx: Pick<ConfigContext, "agentDir" | "cwd" | "projectTrusted">): LoadedMcpConfig =>
 	loadMcpConfig({
 		agentDir: ctx.agentDir,
 		cwd: ctx.cwd,
@@ -97,9 +96,16 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 export const mcpAdapter: ConfigAdapter = {
 	kinds: ["mcp"],
 	async list(ctx) {
+		const session = new Map((ctx.live?.mcpStatus?.() ?? []).map((status) => [status.name, status]));
 		return loadMcpServers(ctx).servers.map((entry): ConfigEntry => {
-			const enabled = isEnabled({ entry });
+			// The switch: a server the security review withholds stays switched on and shows its review state elsewhere.
+			const enabled = entry.config.enabled !== false;
 			const setBy = ownerScope(entry);
+			const status = session.get(entry.name);
+			const facts = mcpRowFacts(
+				mcpEntryRowInput(entry, status && { state: status.state, toolCount: status.toolCount }),
+				(file) => homeTilde(file, ctx.home),
+			);
 			return {
 				id: `mcp:${entry.name}`,
 				kind: "mcp",
@@ -110,8 +116,8 @@ export const mcpAdapter: ConfigAdapter = {
 				setBy,
 				default: true,
 				appliesWhen: ctx.live?.mcpSwitch ? "now" : "next-session",
-				// The same words as the `/harness` row: `Core · built in`, `Global · ~/.octocode/mcp.json`.
-				detail: `${mcpGroupLabel(mcpServerGroup(entry))} · ${mcpServerSource(entry, (file) => homeTilde(file))}`,
+				// The facts and words of the `/harness` and `/mcp list` rows, as `mcpRowFacts` words them.
+				detail: `${facts.group} · ${mcpRowSummary(facts)} · ${facts.source}`,
 			};
 		});
 	},

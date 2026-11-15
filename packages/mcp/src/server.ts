@@ -30,11 +30,12 @@ export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
 };
 
 export function isEnabled(server: Pick<McpServer, "entry">): boolean {
-	return server.entry.config.enabled !== false;
+	return server.entry.config.enabled !== false && !server.entry.withheld;
 }
 
 /** Short state for lists and the startup report. `withError` appends the first line of a failure. */
 export function describeState(server: McpServer, withError = true): string {
+	if (server.entry.withheld) return "not checked: off until you approve it in /security";
 	if (!isEnabled(server)) return "disabled";
 	const connection = server.connection;
 	if (!connection) return server.unselected ? "not selected" : "starting";

@@ -262,7 +262,10 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	archive: {
 		ok: [
 			answers(call("archive", { op: "list", source: "events" }), /events: \d+ records/),
-			answers(call("archive", { op: "search", source: "sessions", keywords: "bash-effect" }), "sessions:"),
+			answers(
+				call("archive", { op: "search", source: "sessions", keywords: "bash-effect" }),
+				"sessions with a compaction:",
+			),
 		],
 		fail: [
 			// Memories were this tool's until `memory` became its own: an old call is refused with the call to make.

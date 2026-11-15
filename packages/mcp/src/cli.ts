@@ -89,6 +89,7 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 			: remove(rest, projectConfig, options, log, error);
 	}
 	// Project definitions and project controls need the folder to be trusted, as in a session.
+	await options.prepareTrust?.();
 	const projectTrusted = hostTrust().folderTrusted(options.cwd);
 	if (command === "config") {
 		const parsed = parseOptions(rest, { json: "flag" }, error);

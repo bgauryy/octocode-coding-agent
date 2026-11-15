@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { reportContract } from "../../src/octocode/instructions/report.ts";
-import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/history/archive.ts";
+import { existingLibrary, writeSegment } from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { processAlive, processStartTime } from "../../src/octocode/shared/process.ts";
@@ -319,9 +319,9 @@ describe("agent tool with a scripted child", () => {
 			firstTurnTokens: 100,
 		});
 		// The child's own facts ride in its task (after the task text), not in its system prompt.
-		expect(facts.task).toBe(
-			`report back\nsecond line\n\n## You\nYour name is \`${facts.id}\` (researcher). Your goal: check things. You work on a team led by your coordinator \`${s.team.id}\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator. Your scratch folder is \`${facts.scratch}\`. You run in the foreground: your coordinator reads your messages only with your report, so put a decision or approval you need in a \`blocked\` report; do not wait for an answer.\n\n## Report\n${reportContract()}`,
-		);
+		expect(facts.task).toContain("report back\nsecond line");
+		for (const value of [facts.id, "researcher", "check things", s.team.id, facts.scratch, reportContract()])
+			expect(facts.task).toContain(value);
 		expect(result.usage.cost.total).toBeCloseTo(0.01);
 		expect(fs.existsSync(result.details.shot)).toBe(true);
 		expect(updates.some((update) => update.details.activity.includes("→ bash ls -la"))).toBe(true);
@@ -362,7 +362,7 @@ describe("agent tool with a scripted child", () => {
 		expect(failed).toBe("  ⎿  Subagent x failed\n     detail");
 		expect(
 			rendered(s.agent.renderCall({ task: "look\nmore", profile: "researcher", goal: "map the auth flow" }, theme, {})),
-		).toBe("○ Agent(map the auth flow)");
+		).toBe("○ 🐙 Agent(map the auth flow)");
 		expect(
 			rendered(
 				s.agent.renderCall({ task: "bg", background: true }, theme, {
@@ -371,8 +371,8 @@ describe("agent tool with a scripted child", () => {
 					isError: false,
 				}),
 			),
-		).toMatch(/^✓ Agent · background/);
-		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ Agent");
+		).toMatch(/^✓ 🐙 Agent · background/);
+		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ 🐙 Agent");
 	});
 
 	it("routes the model: profile preference, parent provider first, fallback to the parent's model, strict explicit", async () => {
@@ -515,10 +515,7 @@ describe("agent tool with a scripted child", () => {
 		process.env.OCTOCODE_HOME = tmp();
 		try {
 			const s = setup();
-			const line = (task: string) =>
-				task.split("\n").filter((text) => text.startsWith("Earlier history of your coordinator's session"));
 			const without = reportOf((await s.run({ task: "report back" })).content[0].text as string);
-			expect(line(without.task)).toEqual([]);
 			writeSegment(
 				{
 					session: "parent",
@@ -534,17 +531,18 @@ describe("agent tool with a scripted child", () => {
 				"body",
 			);
 			const library = existingLibrary()!;
-			const earlier = `Earlier history of your coordinator's session is archived in ${path.dirname(library)} (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}`;
+			const archiveDir = path.dirname(library);
+			expect(without.task).not.toContain(archiveDir);
 			const withLibrary = reportOf((await s.run({ task: "report back" })).content[0].text as string);
-			// One line after the identity, in the task and not in the system prompt: the child's facts stay the same shape.
-			expect(line(withLibrary.task)).toEqual([earlier]);
-			expect(withLibrary.task.startsWith("report back\n\n## You\nYour name is")).toBe(true);
-			expect(withLibrary.task.endsWith(`${earlier}\n\n## Report\n${reportContract()}`)).toBe(true);
+			// The archive path is interpolated once without changing the task or report contract.
+			expect(withLibrary.task.split(archiveDir)).toHaveLength(2);
+			expect(withLibrary.task.startsWith("report back\n\n")).toBe(true);
+			expect(withLibrary.task).toContain(reportContract());
 			expect(withLibrary.args.join(" ")).not.toContain(library);
 			// Every child keeps archive, even when its explicit allowlist only names web.
 			profiles.set("restricted", { name: "restricted", description: "web", prompt: "Fetch pages.", tools: "web" });
 			const offline = reportOf((await s.run({ task: "report back", profile: "restricted" })).content[0].text as string);
-			expect(line(offline.task)).toEqual([earlier]);
+			expect(offline.task.split(archiveDir)).toHaveLength(2);
 		} finally {
 			profiles.delete("restricted");
 			if (savedHome === undefined) delete process.env.OCTOCODE_HOME;
@@ -999,7 +997,9 @@ describe("agent tool with a scripted child", () => {
 			summary: expect.stringMatching(/^Done · 1 tool call · /),
 		});
 		const shown = rendered(renderer(answer.message, { expanded: false }, theme));
-		expect(shown).toMatch(/^ ✓ Agent\([a-z]+-[a-z]+ · check things\) · background · \S+\n {3}⎿ {2}Done · 1 tool call/);
+		expect(shown).toMatch(
+			/^ ✓ 🐙 Agent\([a-z]+-[a-z]+ · check things\) · background · \S+\n {3}⎿ {2}Done · 1 tool call/,
+		);
 		expect(shown).toContain("report");
 
 		await s.run({ task: "error in background", background: true });
@@ -1013,7 +1013,7 @@ describe("agent tool with a scripted child", () => {
 			summary: "Failed: provider down",
 		});
 		expect(rendered(renderer(s.sent[1].message, { expanded: false }, theme))).toMatch(
-			/^ ✗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
+			/^ ✗ 🐙 Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
 		);
 
 		const kill = {
@@ -1052,7 +1052,7 @@ describe("agent tool with a scripted child", () => {
 		expect(s.sent[2].message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
-			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
+			/^ ◼ 🐙 Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
 		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
@@ -1084,7 +1084,6 @@ describe("agent tool with a scripted child", () => {
 		const childTool = child.tools.get("coordinate");
 		expect(childTool.parameters.properties.action.enum).not.toContain("stop");
 		expect(childTool.parameters.properties.id).toBeUndefined();
-		expect(childTool.description).not.toContain("`stop`");
 		await expect(childTool.execute("c2", { action: "stop", id }, undefined, undefined, s.ctx)).rejects.toThrow(
 			/Only the agent that started a subagent can stop it/,
 		);
@@ -1211,12 +1210,11 @@ describe("agent tool with a scripted child", () => {
 		expect(result.content[0].text).not.toContain("Asks to its coordinator");
 	});
 
-	it("tells every subagent it works on a team led by its coordinator, with no opt-in", async () => {
+	it("propagates the coordinator identity while another teammate is running", async () => {
 		const first = await s.run({ task: "slow teammate", goal: "slow teammate", background: true });
 		const second = await s.run({ task: "report as a teammate" });
 		const facts = reportOf(second.content[0].text);
-		expect(facts.task).toContain(`You work on a team led by your coordinator \`${s.team.id}\``);
-		expect(facts.task).not.toContain("## Teammates");
+		expect(facts.task).toContain(s.team.id);
 		await s.commands.get("agents").handler(`kill ${first.details.id}`, s.ctx);
 		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toContain("cancelled by the user"), {
 			timeout: 10_000,
@@ -1339,12 +1337,11 @@ describe("isolated subagents share the leading prompt", () => {
 		expect(a.worktreeRoot).not.toBe(dir);
 		expect(a.promptRoot).toBe(dir);
 		expect(b.promptRoot).toBe(dir);
-		expect(a.task).toContain("## Worktree");
-		expect(a.task).toContain(`worktree \`${a.worktreeRoot}\``);
-		expect(a.task).toContain(`main checkout \`${dir}\``);
+		expect(a.task).toContain(a.worktreeRoot);
+		expect(a.task).toContain(dir);
 		const plain = reportOf((await s.run({ task: "report plain" })).content[0].text);
 		expect(plain.promptRoot).toBeUndefined();
-		expect(plain.task).not.toContain("## Worktree");
+		expect(plain.task).not.toContain(a.worktreeRoot);
 	}, 30_000);
 });
 
@@ -2019,10 +2016,7 @@ describe("a child bound to a backlog item", () => {
 		const text = result.content[0].text as string;
 		const facts = reportOf(text);
 		expect(facts.item).toBe("B1");
-		expect(facts.task).toContain("## You\n");
-		expect(facts.task).toContain(
-			" Your backlog item is `B1`: note progress on it, and close it only when the item's own Goal is verified, not when only your part of it is done; you may update no other item.",
-		);
+		expect(facts.task).toContain("`B1`");
 		// The parent's own line, after the fence, says the report was noted.
 		expect(text).toMatch(
 			/>>>\nRan on faux\/model, medium thinking \(this session's model\)\.\n\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/,

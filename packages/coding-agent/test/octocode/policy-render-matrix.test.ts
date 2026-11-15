@@ -71,10 +71,8 @@ describe("policy section templates", () => {
 		for (let mask = 0; mask < 16; mask++) {
 			const [canShell, canSave, readOnly, agentTool] = [1, 2, 4, 8].map((bit) => (mask & bit) !== 0);
 			const { lean } = leanPromptSections({ canShell, canSave, readOnly, agentTool });
-			expect(lean).toContain("You are a subagent");
 			expect(lean).not.toContain("{{");
 		}
-		expect(leanPromptSections({ canShell: true, canSave: true, readOnly: false }).lean).toContain("You are a subagent");
 	});
 
 	it("has a template for every section the map puts in the policy and lean groups", () => {

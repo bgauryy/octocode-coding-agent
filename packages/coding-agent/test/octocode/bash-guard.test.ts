@@ -80,13 +80,15 @@ describe("destructive commands resolved against the shell folder", () => {
 	it("leaves relative targets inside the project alone, and needs a folder to resolve them", () => {
 		const dir = home();
 		const sub = path.join(dir, "proj");
+		// A sibling stays outside home even when TMPDIR places the test home under /tmp.
+		const elsewhere = path.join(path.dirname(dir), "unrelated");
 		for (const [command, cwd] of [
 			["rm -rf *", sub],
 			["rm -rf ./dist", dir],
 			["rm -rf .", sub],
 			["rm -rf node_modules ../sibling", sub],
 			["cd proj && rm -rf .", dir],
-			["cd /tmp && rm -rf *", sub],
+			[`cd ${JSON.stringify(elsewhere)} && rm -rf *`, sub],
 			// The folder is unknown after `cd $DIR` or `cd -`: variable tricks are out of scope.
 			["cd $DIR && rm -rf *", dir],
 			["cd - && rm -rf *", dir],

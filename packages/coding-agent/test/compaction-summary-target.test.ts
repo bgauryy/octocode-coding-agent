@@ -1,5 +1,7 @@
 import type { AssistantMessage, Model, TranscriptContext } from "@octocodeai/octocode-ai/compat";
 import { describe, expect, it } from "vitest";
+import { inlineSummaryTokens, summaryTargetTokens } from "../src/core/compaction/checkpoint.ts";
+import { summarySizeTarget } from "../src/core/compaction/summary-format.ts";
 import { generateSummaryWithUsage } from "../src/core/compaction/summarization.ts";
 
 const reply = {
@@ -32,12 +34,16 @@ async function promptFor(previousSummary: string | undefined, reserveTokens: num
 
 describe("the standalone summary request's size target", () => {
 	it("is asked of an update, in the request, at half of the inline budget", async () => {
-		// 16,384 reserve: 13,107 tokens fit inline.
-		expect(await promptFor("## Goal\nold", 16_384)).toContain("under about 6553 tokens: consolidate");
+		// 16,384 reserve: 13,107 tokens fit inline, giving a 6,553-token target.
+		const target = summaryTargetTokens(inlineSummaryTokens(16_384));
+		expect(target).toBe(6553);
+		expect(await promptFor("## Goal\nold", 16_384)).toContain(summarySizeTarget(target));
 	});
 
 	it("is not asked of a first summary, or without a reserve to size it by", async () => {
-		expect(await promptFor(undefined, 16_384)).not.toContain("under about");
-		expect(await promptFor("## Goal\nold", undefined)).not.toContain("under about");
+		const target = summarySizeTarget(summaryTargetTokens(inlineSummaryTokens(16_384)));
+		expect(target).not.toBe("");
+		expect(await promptFor(undefined, 16_384)).not.toContain(target);
+		expect(await promptFor("## Goal\nold", undefined)).not.toContain(target);
 	});
 });

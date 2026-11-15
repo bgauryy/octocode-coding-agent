@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
+import { ProviderHealth } from "../../src/octocode/subagents/provider-health.ts";
 import { ROUTING_NOTICE_ID, RoutingWatch } from "../../src/octocode/subagents/routing-watch.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost, meteredBilling } from "./fake-host.ts";
@@ -65,6 +66,20 @@ describe("RoutingWatch", () => {
 		expect(notice).toContain("`models` with `provider` set to an id lists that provider's models.");
 	});
 
+	it("tells a change again after compaction, which drops the notice while the prompt keeps the old facts", () => {
+		const watch = new RoutingWatch();
+		const first = facts(["p", "q"]);
+		watch.prompt(first);
+		const changed = facts(["p"], "p/tiny");
+		expect(watch.notice(changed)).toBeDefined();
+		watch.compacted();
+		expect(watch.notice(changed)).toContain("(no longer available: `q`)");
+		expect(watch.notice(changed)).toBeUndefined();
+		// Facts that match the prompt again need no notice after compaction.
+		watch.compacted();
+		expect(watch.notice(first)).toBeUndefined();
+	});
+
 	it("freezes the prompt's facts per session and tells each later change once", () => {
 		const watch = new RoutingWatch();
 		const first = facts(["p", "q"]);
@@ -83,6 +98,78 @@ describe("RoutingWatch", () => {
 		watch.reset();
 		expect(watch.prompt(changed)).toBe(changed);
 		expect(watch.notice(changed)).toBeUndefined();
+	});
+});
+
+describe("RoutingWatch notice cause", () => {
+	const facts = (providers: string[], small = "p/haiku") => ({
+		sessionModel: "p/opus",
+		providers: providers.map((id) => ({ id, count: 2 })),
+		small,
+		medium: "p/sonnet",
+		profiles: { researcher: `${small}:medium` },
+	});
+
+	it("says the user changed providers when no provider refused", () => {
+		const watch = new RoutingWatch(() => false);
+		watch.prompt(facts(["p", "q"]));
+		const notice = watch.notice(facts(["p"]));
+		expect(notice).toContain("The user changed models or providers");
+		expect(notice).not.toContain("refused");
+	});
+
+	it("names a provider that refused its credential instead of a user change, and again when it recovers", () => {
+		const refused = new Set<string>();
+		const watch = new RoutingWatch((provider) => refused.has(provider));
+		watch.prompt(facts(["p", "q"]));
+
+		refused.add("q");
+		const gone = watch.notice(facts(["p"], "p/tiny"));
+		expect(gone).toContain("`q` refused its credential");
+		expect(gone).not.toContain("The user changed");
+		expect(gone).toContain("(no longer available: `q`)");
+
+		refused.delete("q");
+		const back = watch.notice(facts(["p", "q"]));
+		expect(back).toContain("`q` accepts its credential again");
+		expect(back).not.toContain("The user changed");
+		expect(back).toContain("(added `q`)");
+	});
+
+	it("names both causes when a refusal and a user change arrive together", () => {
+		const watch = new RoutingWatch((provider) => provider === "q");
+		watch.prompt(facts(["p", "q", "r"]));
+		const notice = watch.notice(facts(["p"]));
+		expect(notice).toContain("The user changed models or providers");
+		expect(notice).toContain("`q` refused its credential");
+	});
+
+	it("repeats no notice while a credential refusal outlives the routing window of a transient one", () => {
+		vi.useFakeTimers();
+		try {
+			const health = new ProviderHealth();
+			const routed = () => routingFacts([opus, other], opus, [], undefined, (provider) => health.refused(provider));
+			const watch = new RoutingWatch((provider) => health.refused(provider));
+			expect(routed()?.providers.map((entry) => entry.id)).toEqual(["p", "q"]);
+			watch.prompt(routed());
+			health.noteRun("q/mini", '401 {"error":"invalid_grant"}');
+			expect(watch.notice(routed())).toContain("`q` refused its credential");
+			vi.advanceTimersByTime(60 * 60_000);
+			expect(watch.notice(routed())).toBeUndefined();
+			expect(routed()?.providers.map((entry) => entry.id)).toEqual(["p"]);
+			health.credentialChanged("q");
+			expect(watch.notice(routed())).toContain("`q` accepts its credential again");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("gives a provider the user re-enabled the user's cause, not a recovery", () => {
+		const watch = new RoutingWatch(() => false);
+		watch.prompt(facts(["p"]));
+		const notice = watch.notice(facts(["p", "q"]));
+		expect(notice).toContain("The user changed models or providers");
+		expect(notice).not.toContain("accepts its credential");
 	});
 });
 

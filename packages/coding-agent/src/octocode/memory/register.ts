@@ -3,8 +3,10 @@ import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "../../../../common/src/env.ts";
 import { registerMemoryCommand } from "./command.ts";
-import { MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
+import { type Injection, MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
+import { noteOnlyInjection, sessionNoteLead } from "./session-notes-inject.ts";
+import { sessionNotes } from "./session-notes.ts";
 import { memoryStore } from "./store.ts";
 import { createMemoryTool } from "./tool.ts";
 
@@ -47,11 +49,35 @@ export function registerMemory(
 	const goal = options.isSubagent ? options.goal?.trim() || undefined : undefined;
 	let failedSession: string | undefined;
 
+	/** Memories' recall, with the session's notes the model cannot see in front; either alone makes a message. */
+	const hiddenMessage = (injection: Injection | undefined) =>
+		injection && {
+			message: {
+				customType: MEMORY_MESSAGE_TYPE,
+				content: injection.content,
+				display: false,
+				// Counted as used once the message is committed (`message_end`), not when it is offered: a prompt that never runs
+				// does not use its memories.
+				details: {
+					ids: injection.ids,
+					updated: injection.updated,
+					...(injection.sessionNotes ? { sessionNotes: injection.sessionNotes } : {}),
+				},
+			},
+		};
+
 	api.on("before_agent_start", async (event, ctx) => {
+		// Session notes belong to the session, not to the memory store or its automatic recall: a note the model cannot see
+		// is sent whatever those settings say, and a broken store does not hide it.
+		const lead = sessionNoteLead(sessionNotes(ctx.sessionManager));
+		const lone = () =>
+			lead.lines.length > 0
+				? hiddenMessage(noteOnlyInjection(lead, sessionInjections(ctx.sessionManager).headerInContext))
+				: undefined;
 		try {
-			if (!autoEnv()) return undefined;
+			if (!autoEnv()) return lone();
 			const store = storeFor(ctx);
-			if (!store.autoSetting()) return undefined;
+			if (!store.autoSetting()) return lone();
 			const earlier = sessionInjections(ctx.sessionManager);
 			const injection = selectInjection(store, {
 				query: agentStartQuery(event, goal),
@@ -62,19 +88,10 @@ export function registerMemory(
 				// Owner decision, 2026-11-11: a subagent gets pinned memories of kind `preference` only, within the same
 				// pinned budget; pinned facts, decisions and other kinds stay out, and it reads those with the `memory` tool.
 				...(options.isSubagent ? { pinnedKind: SUBAGENT_PINNED_KIND } : {}),
+				...(lead.lines.length > 0 ? { lead } : {}),
 			});
 			failedSession = undefined;
-			if (!injection) return undefined;
-			// Counted as used once the message is committed (`message_end`), not when it is offered: a prompt that never runs
-			// does not use its memories.
-			return {
-				message: {
-					customType: MEMORY_MESSAGE_TYPE,
-					content: injection.content,
-					display: false,
-					details: { ids: injection.ids, updated: injection.updated },
-				},
-			};
+			return hiddenMessage(injection);
 		} catch {
 			// A broken store never blocks a prompt; notify once until retrieval recovers.
 			const session = ctx.sessionManager.getSessionId();
@@ -87,7 +104,7 @@ export function registerMemory(
 						"warning",
 					);
 			}
-			return undefined;
+			return lone();
 		}
 	});
 
@@ -108,5 +125,11 @@ export function registerMemory(
 	});
 
 	if (!options.isSubagent) registerMemoryCommand(options.commands, { store: storeFor, autoEnv });
-	api.registerTool(createMemoryTool(storeFor, { isSubagent: options.isSubagent, permission: options.permission }));
+	api.registerTool(
+		createMemoryTool(storeFor, {
+			isSubagent: options.isSubagent,
+			permission: options.permission,
+			appendEntry: (type, data) => api.appendEntry(type, data),
+		}),
+	);
 }

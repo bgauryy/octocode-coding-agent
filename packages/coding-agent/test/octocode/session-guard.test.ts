@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -228,6 +229,7 @@ describe("user ! commands and a PreToolUse hook", () => {
 				JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command }] }] } }),
 			);
 		}
+		approveFixtureHooks(cwd);
 		const fake = fakeHost();
 		Object.assign(fake.api, { getSessionName: () => undefined });
 		await octocode(fake.api);

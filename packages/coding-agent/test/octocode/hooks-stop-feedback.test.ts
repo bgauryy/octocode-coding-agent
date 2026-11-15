@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 it("continues Claude Stop feedback under the existing cap and lets termination win", async () => {
@@ -30,6 +31,7 @@ it("continues Claude Stop feedback under the existing cap and lets termination w
 	const fake = fakeHost(HOOK_SETTINGS);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(fake.api, { env: {}, home });
+	approveFixtureHooks(ctx.cwd, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const event = { outcome: "completed", entries: [], context: { llmMessages: [] } };
 	for (let i = 0; i < 8; i++) {
@@ -43,6 +45,7 @@ it("continues Claude Stop feedback under the existing cap and lets termination w
 	}
 	expect((await fake.emit("agent_before_settle", event, ctx)).every((value) => value === undefined)).toBe(true);
 	write(true);
+	approveFixtureHooks(ctx.cwd, home);
 	await fake.fire("session_start", { reason: "reload" }, ctx);
 	await fake.fire("before_agent_start", {}, ctx);
 	expect((await fake.emit("agent_before_settle", event, ctx)).every((value) => value === undefined)).toBe(true);

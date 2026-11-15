@@ -20,6 +20,7 @@ const SCAN = 30;
  * nothing open.
  */
 function backlogDigest(store: BacklogStore, session: string): string | undefined {
+	store.releaseEnded({ id: session });
 	const { todo, backlog: proposed, ongoing: running } = store.counts().items;
 	if (todo + proposed + running === 0) return undefined;
 	const items = store.list({ states: ["ongoing"], limit: SCAN }).items;

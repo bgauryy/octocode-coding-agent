@@ -21,6 +21,8 @@ export interface DbWriterWorkerData {
 	worker: typeof DB_WRITER_WORKER;
 	locations: DbWriterLocations;
 	role: DbWriterRole;
+	/** 0 idle, 1 in an archive pass, 2 stopping; shared so synchronous compression can observe close. */
+	stopping: SharedArrayBuffer;
 }
 
 /** One operation: `id` names it in the reply. */
@@ -32,6 +34,7 @@ export interface DbWriterRequest {
 /** `ready` once the worker's code loaded (before its connection opens); then one reply per request, in request order. */
 export type DbWriterMessage =
 	| { type: "ready" }
+	| { type: "stopped" }
 	| { type: "reply"; id: number; ok: true; result: DbWriterResult }
 	| { type: "reply"; id: number; ok: false; message: string; busy: boolean };
 

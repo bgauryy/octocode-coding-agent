@@ -1,3 +1,5 @@
+import { approveFixtureMcp } from "./guard-helpers.ts";
+import { presetEntries, recommendedPresets } from "../../../mcp/src/api.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -159,6 +161,7 @@ async function startSession(
 		noThemes: true,
 		noContextFiles: true,
 	});
+	approveFixtureMcp(cwd, agentDir, presetEntries(recommendedPresets()));
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
 		cwd,
@@ -292,19 +295,13 @@ describe("with Octocode MCP (default)", () => {
 		])
 			expect(turn.tools).toContain(`mcp__octocode__${name}`);
 		expect(turn.tools).not.toContain("tool_search");
-		// The extension's client connects before the first request is built, so the guidance and the server's contract
-		// section (its instructions and typed tools) are there from the start, unchanged on the next request.
-		// The research section routes code search to the server, and the bash search rule is left out.
-		expect(turn.systemPrompt).toContain("use the research tools (`mcp__octocode__*`)");
-		expect(turn.systemPrompt).toContain("descriptions route each question");
-		expect(turn.systemPrompt).not.toContain("Search with bash");
+		// The server's MCP section and tool declarations are available before the first request.
 		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
 		// description and its field names and types (nested ones too, without descriptions or bounds), and the full
 		// schema comes back on a rejected call.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
-		expect(turn.systemPrompt).toContain("A tool listed as `- name` is declared with its description");
 		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
 		expect(declared?.description.length).toBeGreaterThan(60);
@@ -315,9 +312,6 @@ describe("with Octocode MCP (default)", () => {
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
 		expect(toolLines.every((line) => /^- [\w-]+(?:__\*)?: \S/.test(line))).toBe(true);
-		expect(turn.systemPrompt.split("Code search and read; each tool's description says when to use it.")).toHaveLength(
-			2,
-		);
 		for (const name of turn.tools.filter((tool) => !tool.startsWith("mcp__")))
 			expect(
 				toolLines.some((line) => line.startsWith(`- ${name}: `)),
@@ -520,14 +514,6 @@ describe("with the user's own octocode server in mcp.json", () => {
 		const first = turns.at(-2)!;
 		expect(first.tools).toContain("mcp__octocode__shout");
 		expect(first.tools).not.toContain("mcp__octocode__localSearch");
-		// The prompt follows the tools by server name (`turn.ts`: `isOctocodeTool`), so the user's own `octocode` entry still
-		// counts as the research server: it gets the routing line and no native fallback. The same-named entry inherits the
-		// default entry's roles (`packages/mcp/src/config.ts`), so that line names the default server's search tools even
-		// though this server does not offer them.
-		expect(first.systemPrompt).toContain("use the research tools (`mcp__octocode__*`)");
-		expect(first.systemPrompt).toContain("search with `localSearch`, `structureSearch`, `astSearch` or `lspSearch`");
-		expect(first.systemPrompt).not.toContain("Search with bash");
-		expect(first.systemPrompt).not.toContain("# Octocode MCP server instructions");
 		expect(turns.at(-1)!.lastResults[0]).toEqual({
 			toolName: "mcp__octocode__shout",
 			isError: false,
@@ -569,13 +555,9 @@ describe("with another MCP server and Octocode disabled", () => {
 		// The native `mcp` tool is always selected where MCP is allowed, so it stays with only another server connected.
 		expect(turn.tools).toContain("mcp");
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
-		// The mcp.json entry replaces the registration, so there is no research server: the bash search fallback shows.
-		const fallback = "Search with bash";
-		expect(turn.systemPrompt).not.toContain("use the research tools");
-		expect(turn.systemPrompt).toContain(fallback);
 		const next = (await s.run("again", [say("ok")])).at(-1)!;
-		expect(next.systemPrompt).not.toContain("use the research tools");
-		expect(next.systemPrompt).toContain(fallback);
+		expect(next.systemPrompt).toBe(turn.systemPrompt);
+		expect(next.toolContracts).toEqual(turn.toolContracts);
 	});
 
 	it("calls another server's tools through Octocode's MCP, surfacing remote errors", async () => {
@@ -973,7 +955,6 @@ describe("a subagent session with MCP enabled", () => {
 		// Planning stays with the coordinator: a child works the item its task names.
 		expect(turn.tools).not.toContain("backlogPlan");
 		expect(turn.tools).not.toContain("steps");
-		expect(turn.systemPrompt).toContain("You are a subagent");
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("read", [

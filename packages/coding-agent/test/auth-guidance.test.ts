@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { APP_NAME } from "../src/config.ts";
 import {
 	formatAuthExpiredMessage,
+	formatAuthRefreshFailedMessage,
 	formatNoApiKeyFoundMessage,
 	formatNoModelSelectedMessage,
 	formatNoModelsAvailableMessage,
@@ -21,6 +22,12 @@ describe("auth guidance", () => {
 		expect(message).toContain(`Run \`${APP_NAME}\` and type /providers`);
 		expect(message).toContain("API key environment variable");
 		expect(message).toContain("models.md");
+	});
+
+	it("tells a sign-in that could not be renewed how to sign in again and keeps the reason", () => {
+		expect(formatAuthRefreshFailedMessage("openai", "OAuth refresh failed for openai: (400 invalid_grant)")).toBe(
+			"Sign-in for openai could not be renewed. Type /providers openai to sign in again. (OAuth refresh failed for openai: (400 invalid_grant))",
+		);
 	});
 
 	it("tells an expired sign-in what to do", () => {

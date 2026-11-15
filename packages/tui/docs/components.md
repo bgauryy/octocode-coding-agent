@@ -11,7 +11,7 @@ Part of the [`@octocodeai/octocode-tui` guide](../README.md). To write your own,
 | `Spacer`                                        | `new Spacer(lines = 1)`                                                    | Empty lines                                                                                                     |
 | `Input`                                         | `new Input(options?)`                                                      | Options `secret`, `prompt` (`"> "`), `placeholder`, `placeholderStyle`; `onSubmit`, `setValue`, `getValue`      |
 | `Editor`                                        | `new Editor(tui, theme, options?)`                                         | `tui` is required for height-aware scrolling                                                                    |
-| `Markdown`                                      | `new Markdown(text, paddingX, paddingY, theme, defaultStyle?, options?)`   | `setText`                                                                                                       |
+| `Markdown`                                      | `new Markdown(text, paddingX, paddingY, theme, defaultStyle?, options?)`   | `setText`, `setStreaming`, `dispose`                                                                            |
 | `Loader`                                        | `new Loader(tui, spinnerFn, messageFn, message = "Loading…", indicator?)`  | `start`, `stop`, `setMessage`                                                                                   |
 | `CancellableLoader`                             | Same as `Loader`                                                           | Escape aborts: `signal`, `aborted`, `onAbort`                                                                   |
 | `SelectList`                                    | `new SelectList(items, maxVisible, theme, layout?, options?)`              | `onSelect`, `onCancel`, `onSelectionChange`, `setFilter`                                                        |
@@ -71,6 +71,8 @@ Supports headings, emphasis, code blocks, lists, links, blockquotes, tables (rul
 | `codeBlockLabel?`, `alert?`, `codeBlockIndent?`                      | Language label, GitHub alerts, indent (`"  "`)              |
 
 `MarkdownOptions`: `preserveOrderedListMarkers` (also keeps task lists as source `[ ]`/`[x]`), `preserveBackslashEscapes`, `transform(markdown, availableWidth)`. `DefaultTextStyle`: `color`, `bgColor`, `bold`, `italic`, `strikethrough`, `underline`.
+
+For streamed text, pass `{ streaming: true }` or call `setStreaming(true)`. A parse cache for sources up to 128 Ki UTF-16 code units survives GC so appended text can reuse finished blocks. Call `setStreaming(false)` on completion or `dispose()` when removing the component; larger sources and completed content use reclaimable caches. Owners displaying several blocks should keep only the currently growing block in streaming mode.
 
 ## SelectList and SettingsList
 

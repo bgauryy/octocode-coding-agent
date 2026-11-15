@@ -127,17 +127,18 @@ export function parseMcpAddArgs(
 	return { name, config: validated, project: values.has("local") };
 }
 
-export function add(
+export async function add(
 	args: string[],
 	projectConfig: string,
 	options: McpCommandOptions,
 	log: (line: string) => void,
 	error: (line: string) => void,
-): number {
+): Promise<number> {
 	const parsed = parseMcpAddArgs(args, error);
 	if (!parsed) return 1;
 	const { name, project } = parsed;
 	const validated = parsed.config;
+	if (project) await options.prepareTrust?.();
 
 	const path = project ? projectConfig : globalMcpConfigPath(options.agentDir);
 	const scope = project ? "project" : "global";

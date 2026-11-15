@@ -15,6 +15,8 @@ import type { SaveSetting } from "./SettingEditor.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
 import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
+import { McpPanel, type McpAddStatus } from "./McpPanel.tsx";
+import type { AddMcp } from "./McpAddForm.tsx";
 import { type HarnessApi, HarnessPanel } from "./HarnessPanel.tsx";
 import { type ToolsApi, ToolsPanel } from "./ToolsPanel.tsx";
 import type { SaveCredential } from "./CredentialEditor.tsx";
@@ -210,6 +212,8 @@ export interface ConfigViewProps {
 	saveProvider?: (command: ConfigProviderCommand, repoId?: string) => Promise<ConfigSnapshot>;
 	/** Lists and switches the Harness panel's rows; used only when the host says the connection is `writable`. */
 	harness?: HarnessApi;
+	addMcp?: AddMcp;
+	mcpAddStatus?: McpAddStatus;
 	/** Lists each tool's exposure state and pins one tool; used only when the host says the connection is `writable`. */
 	tools?: ToolsApi;
 	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
@@ -222,7 +226,7 @@ export interface ConfigViewProps {
  * the host; the page only shows its answer and its refusals.
  */
 export function ConfigView(props: ConfigViewProps) {
-	const { load, save, saveCredential, saveProvider, signIn, harness, tools, repos } = props;
+	const { load, save, saveCredential, saveProvider, signIn, harness, addMcp, mcpAddStatus, tools, repos } = props;
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
 	const [repoId, setRepoId] = useState<string | undefined>();
@@ -319,6 +323,13 @@ export function ConfigView(props: ConfigViewProps) {
 				snapshot={snapshot}
 				save={snapshot.writable ? saveSetting : undefined}
 				workspace={repoId && snapshot.workspace ? { id: repoId, trusted: snapshot.workspace.trusted } : undefined}
+			/>
+			<McpPanel
+				key={repoId ?? "global"}
+				add={snapshot.writable && !refreshing ? addMcp : undefined}
+				status={mcpAddStatus}
+				repoId={repoId}
+				trusted={snapshot.workspace?.trusted === true}
 			/>
 			<HarnessPanel api={snapshot.writable ? harness : undefined} repoId={repoId} reloadKey={key} />
 			<ToolsPanel api={snapshot.writable ? tools : undefined} repoId={repoId} reloadKey={key} />

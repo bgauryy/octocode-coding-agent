@@ -2,8 +2,9 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { shellSettings } from "../../files/bash-jobs/shell.ts";
 import { foregroundOperations } from "../../files/bash-run.ts";
 import { readOnlyRoleRefusal } from "../../permission/read-only-role.ts";
-import { shellParserReady } from "../../permission/shell/mutation.ts";
+import { reservationTargets, shellParserReady } from "../../permission/shell/mutation.ts";
 import { planReadOnly } from "../../permission/shell/plan-reads.ts";
+import { reservationPath } from "../../shared/home.ts";
 import { planConstraintActive } from "../../../core/plan-state.ts";
 import { type CheckOutcome, type ConditionSpec, OUTPUT_CAP, capped, text } from "./types.ts";
 
@@ -33,6 +34,11 @@ export const commandSpec: ConditionSpec<Command> = {
 		await shellParserReady();
 		const refusal = readOnlyRoleRefusal({ toolName: "bash", input: { command } }, cwd);
 		if (refusal) return { met: false, exit: null, output: "", refused: refusal };
+		// A path can become reserved after the timer was set or since its last poll.
+		for (const file of reservationTargets(command)) {
+			const held = deps.reservation(reservationPath(cwd, file), file);
+			if (held) return { met: false, exit: null, output: "", refused: held };
+		}
 		// Four UTF-8 bytes per retained character leave enough tail even when a chunk splits a code point.
 		const tail = Buffer.alloc(OUTPUT_CAP * 4);
 		let length = 0;

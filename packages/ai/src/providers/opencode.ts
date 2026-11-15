@@ -12,6 +12,14 @@ import { withOpenCodeSessionHeader } from "./opencode-headers.ts";
 
 type OpenCodeApi = "anthropic-messages" | "google-generative-ai" | "openai-completions" | "openai-responses";
 
+/**
+ * OpenCode serves its free-tier chat models only to the OpenCode app: other clients get 429 `FreeUsageLimitError`
+ * ("Free-tier chat models require OpenCode; use paid models or Go from other clients", OpenCode's Console docs). Those
+ * models stay reachable through the OpenCode external agent. A paid model on a limited-time free price keeps its `after`.
+ */
+const freeTier = (cost: { input: number; output: number; after?: unknown }): boolean =>
+	cost.input === 0 && cost.output === 0 && cost.after === undefined;
+
 export function opencodeProvider(): Provider<OpenCodeApi> {
 	return createProvider<OpenCodeApi>({
 		id: "opencode",
@@ -26,7 +34,10 @@ export function opencodeProvider(): Provider<OpenCodeApi> {
 					verifyByRequest("https://opencode.ai/inference/v1/models", { Authorization: `Bearer ${key}` }, signal),
 			),
 		},
-		models: [...Object.values(OPENCODE_MODELS), ...Object.values(OPENCODE_CLASSIFIER_MODELS)],
+		models: [
+			...Object.values(OPENCODE_MODELS).filter((model) => !freeTier(model.cost)),
+			...Object.values(OPENCODE_CLASSIFIER_MODELS),
+		],
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),
 			"google-generative-ai": withOpenCodeSessionHeader(googleGenerativeAIApi()),

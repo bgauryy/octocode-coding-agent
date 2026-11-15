@@ -1,11 +1,8 @@
 import { storedSecret } from "../../../../common/src/sanitize.ts";
-import { DAY_MS } from "../shared/util.ts";
 import { refuseExportSecrets } from "./export-secrets.ts";
+import { IDLE_MS } from "./release.ts";
 import { refText } from "./row.ts";
 import { BacklogError, type BacklogStore, type Item, priorityName } from "./store.ts";
-
-/** An item idle for longer than this (and not done) is listed under Attention in the page. */
-const IDLE_MS = 7 * DAY_MS;
 
 import { type BacklogTask, isOpenTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contracts/snapshot";

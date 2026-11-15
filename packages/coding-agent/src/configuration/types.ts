@@ -1,4 +1,4 @@
-import type { McpReloadResult, McpSwitch } from "../../../mcp/src/api.ts";
+import type { McpReloadResult, McpServerStatus, McpSwitch } from "../../../mcp/src/api.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 
 /**
@@ -93,6 +93,8 @@ export interface ConfigLiveHooks {
 	mcpSwitch?: McpSwitch;
 	/** The MCP owner's reload (`requestMcpReload(events)`): a harness switch changes which servers its files supply. */
 	mcpReload?: () => Promise<McpReloadResult | undefined>;
+	/** The MCP owner's status snapshot (`getMcpSessionStatus(events)`): the connection state the MCP rows show. */
+	mcpStatus?: () => McpServerStatus[];
 	/** Applies a settings key to the running terminal at once (theme, TUI mode, paddings); true when it did. */
 	applySetting?: (key: string, value: unknown) => boolean;
 }

@@ -1,3 +1,4 @@
+import { approveFixtureMcp } from "./guard-helpers.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -89,6 +90,7 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 		noThemes: true,
 		noContextFiles: true,
 	});
+	approveFixtureMcp(cwd, agentDir);
 	await resourceLoader.reload();
 	const { session: agent } = await createTestSession({
 		cwd,

@@ -76,6 +76,17 @@ function manualAuthorization(
 	return authorizationResult(url, state, selectedClientId);
 }
 
+/** The RFC 6749 `error` code of a failed token response; other body fields are never surfaced. */
+async function oauthErrorCode(response: Response): Promise<string | undefined> {
+	try {
+		const body: unknown = JSON.parse((await response.text()).slice(0, 4096));
+		const code = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
+		return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 async function requestToken(body: URLSearchParams, signal: AbortSignal): Promise<TokenResponse> {
 	const response = await fetch(TOKEN_URL, {
 		method: "POST",
@@ -88,8 +99,9 @@ async function requestToken(body: URLSearchParams, signal: AbortSignal): Promise
 		signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
 	});
 	if (!response.ok) {
-		await response.body?.cancel();
-		throw new Error(`OpenAI OAuth token request failed (${response.status})`);
+		const code = await oauthErrorCode(response);
+		const reason = code === "invalid_grant" ? "; the ChatGPT sign-in expired or was revoked" : "";
+		throw new Error(`OpenAI OAuth token request failed (${response.status}${code ? ` ${code}` : ""})${reason}`);
 	}
 	let data: unknown;
 	try {

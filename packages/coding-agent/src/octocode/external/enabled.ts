@@ -1,17 +1,22 @@
 import { getAgentDir } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 
-/**
- * Whether external agents are available (the global `externalAgents` setting, on by default).
- * Read from the global settings only, the way research roots are: tools are declared before a project is known, and a
- * project file must not be able to switch on reaching outside agents.
- */
-export function externalAgentsEnabled(agentDir: string = getAgentDir()): boolean {
+export interface ExternalAgentSelection {
+	enabled: boolean;
+	runners?: readonly string[];
+}
+
+/** Read the global opt-in and runner selection together; a project cannot enable external agents. */
+export function externalAgentSelection(agentDir: string = getAgentDir()): ExternalAgentSelection {
 	try {
 		const settings = SettingsManager.create(agentDir, agentDir, { projectTrusted: false });
-		if (settings.drainErrors().length) return false;
-		return settings.getExternalAgents();
+		if (settings.drainErrors().length) return { enabled: false, runners: [] };
+		return { enabled: settings.getExternalAgents(), runners: settings.getEnabledExternalAgents() };
 	} catch {
-		return false;
+		return { enabled: false, runners: [] };
 	}
+}
+
+export function externalAgentsEnabled(agentDir: string = getAgentDir()): boolean {
+	return externalAgentSelection(agentDir).enabled;
 }

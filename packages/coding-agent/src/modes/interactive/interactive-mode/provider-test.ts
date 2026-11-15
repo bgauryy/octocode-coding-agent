@@ -8,8 +8,10 @@ import {
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 
 /**
- * The provider page's `Test credential`: the one-request check `/modelsettings check` runs, for this provider only. The
- * result line comes from the same health record, whose error text is already redacted; no key is shown.
+ * The provider page's `Test credential`: the check `/modelsettings check` runs, for this provider only, always as one
+ * small request: a model list can accept a key that inference refuses (OpenCode lists models for any key, then refuses
+ * free-tier chat to other clients). The result line comes from the same health record, whose error text is already
+ * redacted; no key is shown.
  */
 export async function testProviderCredential(
 	host: Pick<ProviderManagerHost, "session" | "showStatus" | "showError" | "showWarning">,
@@ -23,7 +25,9 @@ export async function testProviderCredential(
 		return;
 	}
 	host.showStatus(`Testing ${name}…`);
-	await checkProviders(registry, checkCandidates(available, host.session.model), providerHealth);
+	// Only `streamSimple`: without `getProvider`/`getProviderAuth` the check skips the model-list shortcut.
+	const requestOnly = { streamSimple: registry.streamSimple.bind(registry) };
+	await checkProviders(requestOnly, checkCandidates(available, host.session.model), providerHealth);
 	const status = providerHealth.get(id);
 	if (!status) host.showWarning(`${name}: the check gave no result.`);
 	else if (status.ok) host.showStatus(`${name}:${describeHealth(status)}`);

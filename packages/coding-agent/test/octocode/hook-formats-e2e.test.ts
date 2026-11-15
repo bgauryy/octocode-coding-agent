@@ -10,6 +10,7 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { trustFolder } from "./helpers.ts";
+import { approveFixtureHooks, approveFixtureSkillFiles } from "./guard-helpers.ts";
 import { PROFILE_EVENTS, writeExtensions, writeHookFiles, writePlugins, writeSkills } from "./fixtures/hook-formats.ts";
 
 // Hermetic: a run from inside an Octocode subagent or a customized shell would change discovery.
@@ -48,6 +49,17 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		hookFiles = writeHookFiles(home, cwd, log);
 		plugins = writePlugins(path.join(root, "plugins"), log);
 		skills = writeSkills(home, cwd);
+		approveFixtureSkillFiles(
+			skills.map((name) => {
+				const [format, scope] = name.split("-");
+				return {
+					name,
+					filePath: path.join(scope === "project" ? cwd : home, `.${format}`, "skills", name, "SKILL.md"),
+					category: scope === "project" ? "workspace" : "global",
+				};
+			}),
+			cwd,
+		);
 		const { packageDir } = writeExtensions(agentDir, root, log);
 		// The user trusted this project folder (/trust).
 		trustFolder(cwd);
@@ -58,6 +70,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		);
 		// Enabling a plugin approves its hooks and MCP servers.
 		const reviewed = plugins.map(({ path: pluginPath, protocol }) => ({ path: pluginPath, protocol }));
+		approveFixtureHooks(cwd, home, { plugins: reviewed });
 
 		const faux = createFauxCore({
 			provider: "faux",

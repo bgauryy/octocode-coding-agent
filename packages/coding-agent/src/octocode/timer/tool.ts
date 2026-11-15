@@ -23,7 +23,7 @@ import {
 const parameters = Type.Object(
 	{
 		op: StringEnum(["set", "list", "cancel"] as const),
-		note: Type.Optional(Type.String({ description: "set" })),
+		note: Type.Optional(Type.String({ description: "set: required; what to do when the timer wakes you" })),
 		after: Type.Optional(Type.Number({ description: "set: seconds" })),
 		every: Type.Optional(
 			Type.Number({
@@ -56,7 +56,9 @@ const parameters = Type.Object(
 				{ additionalProperties: false, description: "one trigger, optional check" },
 			),
 		),
-		maxRuns: Type.Optional(Type.Integer({ description: "default 20" })),
+		maxRuns: Type.Optional(
+			Type.Integer({ description: "every only: most wakes, default 20; refused with until or a lone after" }),
+		),
 		deadline: Type.Optional(Type.Number({ description: "seconds; until: 3600" })),
 		id: Type.Optional(Type.Integer({ description: "cancel: set's id" })),
 		all: Type.Optional(Type.Boolean({ description: "list: ended too; cancel: all" })),

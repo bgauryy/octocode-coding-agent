@@ -9,6 +9,8 @@ import type { ReferenceContext } from "../child-sessions/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import { connectAcp } from "./acp-host.ts";
+import { runnerSessionMeta } from "./runner-isolation.ts";
+import { selectedExternalAgent } from "./selection.ts";
 import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { expandPromptRefs } from "./refs.ts";
@@ -25,6 +27,8 @@ function notSent(message: string): Error {
 }
 
 export interface ExternalPolicy {
+	/** Undefined preserves an explicitly enabled legacy/custom ACP setup. */
+	enabledRunners?: readonly string[];
 	authorize(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<void>;
 	beforeSend(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
 	afterReceive(message: MessageEnvelope, ctx: ExtensionContext): Promise<void>;
@@ -95,8 +99,14 @@ export class ExternalAgents {
 	 * started or pruned.
 	 */
 	discoverable(): boolean {
-		if ((this.factories.discover ?? installedAcpAgents)().length > 0) return true;
+		if (this.installed().length > 0) return true;
 		return listInstances(apiDir(), false).some((instance) => instance.pid !== process.pid);
+	}
+
+	private installed(): InstalledAcpAgent[] {
+		return (this.factories.discover ?? installedAcpAgents)().filter((agent) =>
+			selectedExternalAgent(this.policy.enabledRunners, agent.vendor, agent.command),
+		);
 	}
 
 	async call(value: unknown, ctx: ExtensionContext, callerSignal?: AbortSignal): Promise<unknown> {
@@ -121,7 +131,7 @@ export class ExternalAgents {
 					protocol,
 					session,
 				})),
-				acpAgents: (this.factories.discover ?? installedAcpAgents)(),
+				acpAgents: this.installed(),
 			};
 		}
 		if (input.action === "connect") return this.connect(input, ctx, signal);
@@ -233,6 +243,10 @@ export class ExternalAgents {
 		ctx: ExtensionContext,
 		signal: AbortSignal,
 	): Promise<ExternalInfo & { models?: string[]; modelsMore?: number }> {
+		if (input.transport === "acp" && !selectedExternalAgent(this.policy.enabledRunners, input.vendor!, input.command!))
+			throw notSent(
+				`External agent ${input.vendor} is not enabled for this command. Select it in /providers, then /reload.`,
+			);
 		const id = input.id ?? randomUUID();
 		if (this.connections.has(id)) throw new Error(`External connection ${id} already exists.`);
 		if (this.connections.size >= MAX_EXTERNAL_CONNECTIONS)
@@ -265,6 +279,7 @@ export class ExternalAgents {
 								command: input.command!,
 								args: input.args,
 								vendor: input.vendor!,
+								sessionMeta: runnerSessionMeta(input.vendor!),
 								cwd,
 								sessionId: input.sessionId,
 								model: input.model,

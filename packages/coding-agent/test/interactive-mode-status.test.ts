@@ -671,6 +671,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				{ id: "anthropic", name: "Anthropic", authType: "oauth", subscription: true },
 				{ id: "anthropic", name: "Anthropic", authType: "api_key", subscription: true },
 				{ id: "openai", name: "OpenAI", authType: "api_key" },
+				{ id: "openai-codex", name: "OpenAI Codex", authType: "oauth" },
 				{ id: "openrouter", name: "OpenRouter", authType: "oauth", subscription: false },
 			],
 		};
@@ -704,6 +705,26 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 		expect(piSuggestions?.items).toEqual([
 			{ value: "pi", label: "pi", description: "Pi (config) · import credentials and use configured models" },
 		]);
+		const codexLine = "/providers codex";
+		const codexSuggestions = await provider.getSuggestions([codexLine], 0, codexLine.length, {
+			signal: new AbortController().signal,
+		});
+		expect(codexSuggestions?.items.map((item) => item.value)).toEqual(["openai-codex", "runner:codex"]);
+		const runnerLine = "/providers runner:";
+		const runnerSuggestions = await provider.getSuggestions([runnerLine], 0, runnerLine.length, {
+			signal: new AbortController().signal,
+		});
+		expect(runnerSuggestions?.items.map((item) => item.value)).toEqual([
+			"runner:claude-code",
+			"runner:codex",
+			"runner:opencode",
+			"runner:gemini",
+		]);
+		expect(runnerSuggestions?.items.every((item) => item.description?.includes("external agent"))).toBe(true);
+		const runnerItem = codexSuggestions!.items.find((item) => item.value === "runner:codex")!;
+		expect(
+			provider.applyCompletion([codexLine], 0, codexLine.length, runnerItem, codexSuggestions!.prefix).lines,
+		).toEqual(["/providers runner:codex"]);
 	});
 });
 describe("InteractiveMode.showLoadedResources", () => {

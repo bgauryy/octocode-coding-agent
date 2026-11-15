@@ -39,6 +39,10 @@ export class GraphWatch {
 	/** Each planned unstarted item that waits, by ref, with the prerequisites still open at the last read. */
 	private waits = new Map<string, string[]>();
 	private unsubscribe: (() => void) | undefined;
+	private checking: Promise<void> | undefined;
+	private dirty = false;
+	private generation = 0;
+	private stopped = false;
 
 	private readonly host: GraphWatchHost;
 	constructor(host: GraphWatchHost) {
@@ -47,33 +51,58 @@ export class GraphWatch {
 
 	/** Reads what waits now, without telling anything: the session started, or the coordinator ended a turn. */
 	sync(): void {
+		this.generation++;
+		this.stopped = false;
 		const backlog = this.open();
 		this.follow(backlog ? this.read(backlog) : new Map());
 	}
 
 	/** The database moved: tells each prerequisite that an outside change completed since the last read, once. */
-	check(): void {
-		const backlog = this.open();
-		if (!backlog) return;
-		try {
-			const now = this.read(backlog);
-			const ended = new Set<string>();
-			for (const [ref, open] of this.waits) {
-				const still = now.get(ref) ?? (unstarted(backlog, ref) ? [] : open);
-				for (const prerequisite of open) if (!still.includes(prerequisite)) ended.add(prerequisite);
+	check(): Promise<void> {
+		if (this.stopped) return Promise.resolve();
+		this.dirty = true;
+		const settled = () => {
+			this.checking = undefined;
+			if (this.dirty && !this.stopped) return this.check();
+		};
+		this.checking ??= this.scan().then(settled, settled);
+		return this.checking;
+	}
+
+	private async scan(): Promise<void> {
+		while (this.dirty && !this.stopped) {
+			this.dirty = false;
+			const generation = this.generation;
+			const backlog = this.open();
+			if (!backlog) return;
+			try {
+				const now = this.read(backlog);
+				const ended = new Set<string>();
+				for (const [ref, open] of this.waits) {
+					const still = now.get(ref) ?? (unstarted(backlog, ref) ? [] : open);
+					for (const prerequisite of open) if (!still.includes(prerequisite)) ended.add(prerequisite);
+				}
+				const notices: string[] = [];
+				for (const ref of ended) {
+					if (await this.outside(backlog, ref)) {
+						const notice = graphNotice(backlog, ref);
+						if (notice) notices.push(notice);
+					}
+					if (generation !== this.generation) break;
+				}
+				if (generation !== this.generation) continue;
+				this.follow(now);
+				if (notices.length) this.host.tell(notices.join("\n"));
+			} catch {
+				// An unreadable backlog tells nothing; the next change reads it again.
 			}
-			const notices = [...ended]
-				.filter((ref) => this.outside(backlog, ref))
-				.flatMap((ref) => graphNotice(backlog, ref) ?? []);
-			this.follow(now);
-			if (notices.length) this.host.tell(notices.join("\n"));
-		} catch {
-			// An unreadable backlog tells nothing; the next change reads it again.
 		}
 	}
 
 	/** The session ended. */
 	stop(): void {
+		this.generation++;
+		this.stopped = true;
 		this.follow(new Map());
 	}
 
@@ -108,16 +137,17 @@ export class GraphWatch {
 	 * Whether `ref` is done and was ended outside this process: not by this session's own `backlog` tool (its result names
 	 * what became ready) and not on an item a child of this session was started on (the report carries the line).
 	 */
-	private outside(backlog: Backlog, ref: string): boolean {
+	private async outside(backlog: Backlog, ref: string): Promise<boolean> {
 		if (backlog.store.get(ref)?.state !== "done" || this.host.linked(ref)) return false;
-		const actor = backlog.store.audit(ref, 1).at(-1)?.actor;
+		const actor = (await backlog.store.auditAsync(ref, 1)).at(-1)?.actor;
+		if (backlog.store.get(ref)?.state !== "done" || this.host.linked(ref)) return false;
 		return !(actor?.id === backlog.session && actor.surface === "tool");
 	}
 
 	/** Keeps `waits` and follows the database while anything waits. */
 	private follow(waits: Map<string, string[]>): void {
 		this.waits = waits;
-		if (waits.size > 0 && !this.unsubscribe) this.unsubscribe = this.host.subscribe(() => this.check());
+		if (waits.size > 0 && !this.unsubscribe) this.unsubscribe = this.host.subscribe(() => void this.check());
 		if (waits.size === 0 && this.unsubscribe) {
 			this.unsubscribe();
 			this.unsubscribe = undefined;

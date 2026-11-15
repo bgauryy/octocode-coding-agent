@@ -15,6 +15,8 @@ export type { MemoryFilter, ScopeFilter };
 import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";
 import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, terms } from "./query.ts";
+import { checkRevision, MemoryError, noMemory } from "./errors.ts";
+export { MemoryError, noMemory } from "./errors.ts";
 
 /** `reference`: a pointer to something outside the repository (a URL, dashboard or ticket). */
 export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure", "reference"] as const;
@@ -49,13 +51,6 @@ export interface MemoryInput {
 	keywords?: string;
 	pinned?: boolean;
 }
-
-/** A refused write: a secret, a near-duplicate, or a missing/unknown memory. */
-export class MemoryError extends Error {}
-
-/** The refusal for an id that is no memory here: a missing one, or a project memory of another repository. Trust never hides a memory. */
-export const noMemory = (id: number): MemoryError =>
-	new MemoryError(`No memory ${memoryLabel(id)} here (it may belong to another repository).`);
 
 /** Refuses title, body or keywords that look like a secret. Checked on the sanitized text, the form that is stored: an invisible character must not split a token past it. */
 export function refuseMemorySecrets(input: Pick<MemoryInput, "title" | "body" | "keywords">): void {
@@ -227,10 +222,11 @@ export class MemoryStore {
 	set(
 		input: MemoryInput & { id?: number; author: string; sourceSession?: string },
 		now = Date.now(),
+		expectedRevision?: number,
 	): { memory: Memory; created: boolean } {
 		refuseMemorySecrets(input);
 		return this.agentDb.transaction(() =>
-			input.id === undefined ? this.insert(input, now) : this.update(input.id, input, now),
+			input.id === undefined ? this.insert(input, now) : this.update(input.id, input, now, expectedRevision),
 		);
 	}
 
@@ -267,9 +263,11 @@ export class MemoryStore {
 		id: number,
 		input: MemoryInput & { author: string },
 		now: number,
+		expectedRevision: number | undefined,
 	): { memory: Memory; created: boolean } {
 		const current = this.get(id);
 		if (!current) throw noMemory(id);
+		checkRevision(current, expectedRevision);
 		const title = input.title === undefined ? current.title : storedText(input.title);
 		if (!title) throw new MemoryError("A memory needs a title.");
 		const scope = input.scope ?? current.scope;
@@ -309,10 +307,11 @@ export class MemoryStore {
 		);
 	}
 
-	delete(id: number): Memory {
+	delete(id: number, expectedRevision?: number): Memory {
 		return this.agentDb.transaction(() => {
 			const current = this.get(id);
 			if (!current) throw noMemory(id);
+			checkRevision(current, expectedRevision);
 			memories.remove(this.db, id);
 			return current;
 		});

@@ -34,7 +34,7 @@ it("reports fallback capabilities and aggregate rendering counters without inspe
 	expect(text).toContain("Mode: regular");
 	expect(text).toContain("readable text fallback");
 	expect(text).toContain("keyboard: legacy sequences");
-	expect(text).toContain("Output queue: 0 bytes; peak observed: 12 bytes");
+	expect(text).toContain("Node output queue: 0 bytes; peak observed: 12 bytes");
 	expect(text).toContain("zero can mean no sample yet");
 	expect(host.renderer.setRenderPacing).toHaveBeenCalledWith({ metrics: true });
 });

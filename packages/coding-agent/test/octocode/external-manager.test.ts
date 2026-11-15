@@ -36,7 +36,7 @@ function backend(cwd: string, sessionId = "external-session") {
 		close: vi.fn<ExternalBackend["close"]>(async () => undefined),
 	} satisfies ExternalBackend;
 }
-function setup() {
+function setup(enabledRunners?: readonly string[]) {
 	const root = mkdtempSync(join(tmpdir(), "external-manager-"));
 	roots.push(root);
 	const cwd = realpathSync(root);
@@ -48,7 +48,7 @@ function setup() {
 	const permission = vi.fn<ExternalPolicy["permission"]>(() => async () => ({ outcome: { outcome: "cancelled" } }));
 	const acp = vi.fn(async () => owned);
 	const octocode = vi.fn(async () => owned);
-	const policy = { authorize, beforeSend, afterReceive, permission, sender: () => "local-session" };
+	const policy = { enabledRunners, authorize, beforeSend, afterReceive, permission, sender: () => "local-session" };
 	const manager = new ExternalAgents(policy, { acp, octocode } as unknown as ExternalFactories);
 	managers.push(manager);
 	const input = {
@@ -534,4 +534,31 @@ describe("external manager policy and lifecycle", () => {
 			outcome: { outcome: "selected", optionId: "deny" },
 		});
 	}, 10_000);
+});
+
+describe("explicit external selection", () => {
+	it.each([
+		{ vendor: "codex", command: "codex-acp" },
+		{ vendor: "claude-code", command: "codex-acp" },
+		{ vendor: "fixture", command: "codex-acp" },
+		{ vendor: "claude-code", command: "/custom/wrapper" },
+	])("refuses an unselected or mismatched command before approval/spawn: $vendor/$command", async (route) => {
+		const fixture = setup(["claude-code", "fixture"]);
+		await expect(fixture.manager.call({ ...fixture.input, ...route }, fixture.ctx)).rejects.toMatchObject({
+			execution: "not-sent",
+		});
+		expect(fixture.authorize).not.toHaveBeenCalled();
+		expect(fixture.acp).not.toHaveBeenCalled();
+		expect(await fixture.list()).toEqual([]);
+	});
+
+	it.each([
+		{ vendor: "claude-code", command: "/installed/claude-agent-acp" },
+		{ vendor: "fixture", command: "/custom/adapter" },
+	])("allows explicitly selected $vendor through normal authorization", async (route) => {
+		const fixture = setup([route.vendor]);
+		await fixture.manager.call({ ...fixture.input, ...route }, fixture.ctx);
+		expect(fixture.authorize).toHaveBeenCalledTimes(1);
+		expect(fixture.acp).toHaveBeenCalledTimes(1);
+	});
 });

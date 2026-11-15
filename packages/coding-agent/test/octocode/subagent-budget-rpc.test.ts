@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { finalMessage, MAX_REQUESTS_ENV } from "../../src/octocode/subagents/budget.ts";
+import { finalMessage, MAX_REQUESTS_ENV, steerMessage } from "../../src/octocode/subagents/budget.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
@@ -115,11 +115,6 @@ describe("a subagent child over its request budget", () => {
 		expect(resumed.budget).toEqual({ requests: 5, limit: 3 });
 		expect(progress).toEqual([1, 2, 3, 4, 5]);
 		expect(resumed.usage.totalTokens).toBe(600);
-		expect(
-			lines()
-				.filter((line) => line.startsWith("prompt "))
-				.at(-1),
-		).not.toContain("Your coordinator continued you");
 		// Past the hard limit (six saved replies): a whole allowance from there, where it used to return without running.
 		const spawned = vi.fn();
 		const continued: number[] = [];
@@ -251,12 +246,9 @@ describe("a subagent child over its request budget", () => {
 		expect(steers).toHaveLength(2);
 		expect(steers[1]).toBe(`steer ${finalMessage(5)}`);
 		// No parent in this identity: the child cannot be answered, so it is told to say so in its report.
-		expect(steers[0]).toBe(
-			"steer You have used 3 of 3 model requests; the run stops at 5. Finish the check in progress.",
-		);
-		expect(log).toContain(
-			"Your coordinator waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
-		);
+		const expected = steerMessage(3, 3, 5).split("\n");
+		expect(steers[0]).toBe(`steer ${expected[0]}`);
+		for (const line of expected.slice(1)) expect(log).toContain(line);
 		expect(log).toContain("abort");
 		expect(log.indexOf(steers[0])).toBeLessThan(log.indexOf("abort"));
 		expect(outcome.outcome).toBe("partial");

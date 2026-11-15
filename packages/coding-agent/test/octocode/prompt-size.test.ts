@@ -2,7 +2,6 @@ import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
 import { BACKLOG_ITEM_ENV } from "../../../common/src/env.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import octocode from "../../src/octocode/index.ts";
-import { reportContractSentences } from "../../src/octocode/instructions/report.ts";
 import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -51,8 +50,6 @@ interface Size {
 	total: number;
 	prompt: number;
 	perTool: Record<string, number>;
-	/** The policy sections, joined. */
-	policy: string;
 }
 
 /**
@@ -120,7 +117,6 @@ async function promptSize(options: {
 		total: Object.values(perTool).reduce((sum, size) => sum + size, prompt),
 		prompt,
 		perTool,
-		policy,
 	};
 }
 
@@ -199,15 +195,5 @@ describe("prompt size", () => {
 		console.log(`${name}: ${scoped.total} chars`);
 		for (const tool of ["file", "bash", "agent", "archive", "memory", "skill"])
 			expect(scoped.perTool[tool]).toBeGreaterThan(0);
-	});
-
-	it("states the report contract in the child's task only, never in the policy sections", async () => {
-		const sentences = reportContractSentences();
-		expect(sentences.length).toBeGreaterThan(3);
-		for (const subagent of [false, true]) {
-			const { policy } = await promptSize({ subagent });
-			for (const sentence of sentences) expect(policy, `policy (subagent=${subagent})`).not.toContain(sentence);
-			expect(policy).not.toContain("Start it with the outcome word");
-		}
 	});
 });

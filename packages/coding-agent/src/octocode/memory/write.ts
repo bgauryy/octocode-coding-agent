@@ -10,6 +10,7 @@ import {
 	memoryTags,
 	memoryToolLine,
 	refuseMemorySecrets,
+	noMemory,
 } from "./store.ts";
 
 /** The `memory` tool's writes: `set` and `delete`, with the question a global or pinned change asks first. */
@@ -76,6 +77,7 @@ export async function writeMemory({
 		if (!verdict.allowed) throw new MemoryError(verdict.message);
 	};
 	const current = id === undefined ? undefined : store.get(id);
+	if (id !== undefined && !current) throw noMemory(id);
 	if (params.op === "delete") {
 		if (current) {
 			await confirmWide(
@@ -87,7 +89,7 @@ export async function writeMemory({
 		}
 		if (id === undefined) throw new Error("delete needs id.");
 		signal?.throwIfAborted();
-		const removed = store.delete(id);
+		const removed = store.delete(id, current?.updatedAt);
 		return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
 	}
 	if (params.scope === "all") throw new Error("set scope is workspace, project or global.");
@@ -108,17 +110,21 @@ export async function writeMemory({
 		`${current ? "changes" : "saves"} a memory every later session receives`,
 	);
 	signal?.throwIfAborted();
-	const { memory, created } = store.set({
-		...(id !== undefined ? { id } : {}),
-		...(params.scope ? { scope: params.scope } : {}),
-		...(params.kind ? { kind: params.kind } : {}),
-		...(params.title !== undefined ? { title: params.title } : {}),
-		...(params.body !== undefined ? { body: params.body } : {}),
-		...(params.keywords !== undefined ? { keywords: params.keywords } : {}),
-		...(params.pinned !== undefined ? { pinned: params.pinned } : {}),
-		author: "agent",
-		sourceSession: ctx.sessionManager.getSessionId(),
-	});
+	const { memory, created } = store.set(
+		{
+			...(id !== undefined ? { id } : {}),
+			...(params.scope ? { scope: params.scope } : {}),
+			...(params.kind ? { kind: params.kind } : {}),
+			...(params.title !== undefined ? { title: params.title } : {}),
+			...(params.body !== undefined ? { body: params.body } : {}),
+			...(params.keywords !== undefined ? { keywords: params.keywords } : {}),
+			...(params.pinned !== undefined ? { pinned: params.pinned } : {}),
+			author: "agent",
+			sourceSession: ctx.sessionManager.getSessionId(),
+		},
+		undefined,
+		current?.updatedAt,
+	);
 	const long =
 		memory.body.length > BODY_SOFT_MAX
 			? `\nKept, but the body is ${memory.body.length} chars: shorten it to under ${BODY_SOFT_MAX}, the rule and why.`

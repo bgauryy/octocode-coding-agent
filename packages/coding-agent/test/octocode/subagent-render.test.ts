@@ -118,7 +118,7 @@ describe("subagent renderers", () => {
 		const call = rendered(
 			renderAgentCall({ task: "look\nsecond", profile: "researcher", background: true }, theme, ctx()),
 		);
-		expect(call).toMatch(/^. Agent · background/);
+		expect(call).toMatch(/^. 🐙 Agent · background/);
 		expect(call).not.toContain("look");
 		expect(call).not.toContain("researcher");
 		expect(
@@ -126,7 +126,7 @@ describe("subagent renderers", () => {
 				renderAgentCall({ task: "x", profile: "implementer", model: "openai/gpt-5", isolate: true }, theme, ctx()),
 			),
 		).toContain("Agent(openai/gpt-5 · isolated)");
-		expect(rendered(renderAgentCall({ background: true }, theme, ctx()))).toMatch(/^. Agent · background/);
+		expect(rendered(renderAgentCall({ background: true }, theme, ctx()))).toMatch(/^. 🐙 Agent · background/);
 	});
 
 	it("draws a background start, Octocode's native duration and a run without details", () => {

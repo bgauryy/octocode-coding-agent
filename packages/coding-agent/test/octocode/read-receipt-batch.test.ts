@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { approveFixtureMcp } from "./guard-helpers.ts";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
@@ -21,6 +22,7 @@ it("credits a read that follows a `file` edit of the same file in one batch with
 				mcpServers: { reader: { command: process.execPath, args: [server], roles: { reader: ["read_file"] } } },
 			}),
 		);
+		approveFixtureMcp(f.cwd, path.join(f.root, "agent"));
 		await f.restart();
 		await f.session.prompt("/mcp tools reader");
 		await vi.waitFor(

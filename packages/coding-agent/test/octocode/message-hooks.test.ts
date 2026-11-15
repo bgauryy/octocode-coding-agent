@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
@@ -32,6 +33,7 @@ function project(hooks: unknown): string {
 	fs.mkdirSync(path.join(cwd, ".git"));
 	fs.mkdirSync(path.join(cwd, ".octocode"));
 	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
+	approveFixtureHooks(cwd);
 	return cwd;
 }
 

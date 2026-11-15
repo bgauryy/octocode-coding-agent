@@ -1,5 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { Terminal } from "../terminal/types.ts";
+import { LatencyFence, type LatencyFenceConstants } from "./latency-fence.ts";
+import { RenderRuntimeMetrics } from "./runtime-metrics.ts";
 import {
 	assertValidRenderPacing,
 	computeRenderDelayMs,
@@ -15,6 +17,10 @@ export interface RenderSchedulerHost {
 	isStopped(): boolean;
 	/** Produce one frame. */
 	paint(): void;
+	/** Whether the TUI runs on an interactive terminal (default: stdout is a TTY); the latency fence probes only then. */
+	interactive?(): boolean;
+	/** Overrides of the latency fence timings, for tests. */
+	fenceConstants?: Partial<LatencyFenceConstants>;
 }
 
 /**
@@ -23,21 +29,6 @@ export interface RenderSchedulerHost {
  * still paints on its own timer. Keyboard input uses `requestImmediate` and ignores this floor.
  */
 const MIN_RENDER_INTERVAL_MS = 40;
-
-/**
- * Time between the starts of frames a pointer asked for (wheel, scrollbar drag, selection). A wheel sends events a few
- * milliseconds apart and each wants the viewport to follow the hand: at the 40 ms streaming cadence scrolling moved 25
- * times a second, in visible steps. Events inside one interval share a frame, so a fast spin cannot queue more frames
- * than the terminal can show, and the lines of all of them arrive as one scroll.
- *
- * A terminal without synchronized output paints whatever part of a frame it has read when its display refreshes
- * (Terminal.app: 60 Hz, no DECRQM reply). Frames faster than that only add half-painted states, so the period is one
- * 60 Hz refresh. It runs from the start of the last frame, not its end: counted from the end, a 5 ms frame made the
- * period 21.5 ms (46 frames a second), beating against the display. A terminal that confirmed synchronized output
- * shows each frame whole and gets up to 120 frames a second.
- */
-const INTERACTIVE_FRAME_PERIOD_MS = 1000 / 60;
-const SYNCHRONIZED_INTERACTIVE_FRAME_PERIOD_MS = 1000 / 120;
 
 /**
  * The render loop: coalesces render requests into frames, throttles them to a minimum interval,
@@ -60,17 +51,36 @@ export class RenderScheduler {
 	private outputPressureHeld = false;
 	private lifecycle = 0;
 	private running = false;
+	private readonly runtime = new RenderRuntimeMetrics();
+	private readonly fence: LatencyFence;
+	private fenceHoldCounted = false;
 
 	constructor(host: RenderSchedulerHost) {
 		this.host = host;
+		this.fence = new LatencyFence({
+			write: (data) => this.host.terminal().write(data),
+			isActive: () =>
+				this.running &&
+				this.pacing.latencyFence &&
+				!this.host.terminal().inputDraining &&
+				(this.host.interactive?.() ?? process.stdout.isTTY),
+			constants: host.fenceConstants,
+		});
+	}
+
+	/** The terminal answered a latency probe. */
+	fenceReply(): void {
+		this.fence.reply();
 	}
 
 	/** Opt in to output gating and/or adaptive cadence independently; unspecified options keep existing values. */
 	setPacing(options: RenderPacingOptions): void {
 		const next = { ...this.pacing, ...options };
 		assertValidRenderPacing(next);
+		if (next.metrics && !this.pacing.metrics) this.stats = emptyRenderPacingStats();
 		this.pacing = next;
 		this.outputPressureHeld = false;
+		if (!next.latencyFence) this.fence.stop();
 		this.syncTerminalPacing(this.running);
 	}
 
@@ -80,12 +90,15 @@ export class RenderScheduler {
 		const terminal = this.host.terminal();
 		terminal.setDecorativeOutputPressureThreshold?.(running && outputGate ? highWaterBytes : undefined);
 		terminal.setOutputTelemetryEnabled?.(running && metrics);
+		this.runtime.setEnabled(running && metrics);
 	}
 
 	getStats(): Readonly<RenderPacingStats> {
 		const terminal = this.host.terminal();
 		return {
 			...this.stats,
+			...(this.pacing.metrics ? { runtime: this.runtime.snapshot() } : {}),
+			...(this.pacing.metrics && this.pacing.latencyFence ? { fence: this.fence.stats() } : {}),
 			...(this.pacing.metrics && terminal.getOutputTelemetry ? { output: terminal.getOutputTelemetry() } : {}),
 		};
 	}
@@ -143,6 +156,7 @@ export class RenderScheduler {
 
 	start(): void {
 		this.resetLifecycle();
+		if (this.pacing.metrics) this.stats = emptyRenderPacingStats();
 		this.running = true;
 		this.syncTerminalPacing(true);
 	}
@@ -150,10 +164,11 @@ export class RenderScheduler {
 	stop(): void {
 		this.resetLifecycle();
 		this.running = false;
+		this.fence.stop();
 		this.syncTerminalPacing(false);
 	}
 
-	/** Note keyboard input so the next frame's input-to-paint latency can be measured. */
+	/** Note keyboard input so the next frame's input-to-submission latency can be measured. */
 	noteInput(): void {
 		if (this.pacing.metrics) this.lastInputAt = performance.now();
 	}
@@ -179,6 +194,8 @@ export class RenderScheduler {
 		// The streaming interval runs from the end of this frame's write: a slow frame followed by a fast one must not
 		// reach the terminal closer together than the interval. Pointer frames keep the display's period from their start.
 		this.lastRenderAt = performance.now();
+		this.fenceHoldCounted = false;
+		this.fence.noteFrame();
 	}
 
 	/** Ask for a frame on the throttled cadence, one per tick no matter how often it is called. */
@@ -210,7 +227,8 @@ export class RenderScheduler {
 			// A previously queued schedule() can create a timer before this
 			// callback runs. User input must preempt that throttled frame.
 			this.cancelTimer();
-			if (this.frameIsHeld()) {
+			// A keyboard frame is the user's echo: the latency fence never holds it.
+			if (this.frameIsHeld(true)) {
 				if (this.pacing.metrics) this.stats.deferredFrames++;
 				this.schedule();
 				return;
@@ -220,10 +238,9 @@ export class RenderScheduler {
 		});
 	}
 
+	/** Pointer events share a frame period; synchronized output says nothing about display throughput. */
 	private interactivePeriod(): number {
-		return this.host.terminal().synchronizedOutput === true
-			? SYNCHRONIZED_INTERACTIVE_FRAME_PERIOD_MS
-			: INTERACTIVE_FRAME_PERIOD_MS;
+		return 1000 / this.pacing.interactiveFps;
 	}
 
 	/**
@@ -231,13 +248,21 @@ export class RenderScheduler {
 	 * pointer frame is small and is what the user is waiting for: it waits only once the queue reached the frame cap,
 	 * where the terminal would drop it (or at the gate when the terminal drops no frames).
 	 */
-	private frameIsHeld(): boolean {
-		if (!this.pointerFrame) return this.outputIsPressured();
+	private frameIsHeld(keyboard = false): boolean {
+		if (!this.pointerFrame) return this.outputIsPressured() || (!keyboard && this.fenceHoldsFrame());
 		const terminal = this.host.terminal();
 		const cap = terminal.frameOutputCap;
 		if (cap === undefined || !this.pacing.outputGate) return this.outputIsPressured();
 		const pending = terminal.pendingOutputBytes;
 		return pending !== undefined && Number.isFinite(pending) && pending >= cap;
+	}
+
+	/** Whether the latency fence holds the pending streaming frame; counts each held frame once. */
+	private fenceHoldsFrame(): boolean {
+		if (!this.fence.holdsFrame()) return false;
+		if (this.pacing.metrics && !this.fenceHoldCounted) this.fence.countHeldFrame();
+		this.fenceHoldCounted = true;
+		return true;
 	}
 
 	/**

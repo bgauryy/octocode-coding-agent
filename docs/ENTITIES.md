@@ -108,6 +108,8 @@ Example: `{ "summary": "Added searchable columns", "files": [{ "path": "src/boar
 
 Completions are immutable history: reopening keeps earlier results and a correction appends a replacement. Failed attempts live in runs, reports and notes.
 
+`backlogPlan` applies each entry of an `add` or `edit` batch separately. Cancelling the batch keeps earlier commits and reports applied, refused, uncertain and unattempted entries. Inspect applied and uncertain entries before retrying; replaying the whole batch can create duplicate items.
+
 ### Checklist steps
 
 A step (`T12`) belongs to an item or a session and stores its goal, state and result. People add, reorder, move or drop steps on the backlog board. An agent reports a completed step with `backlog` using `op: "step"`, its task `id` and a `note` describing the result and checks. Session and item ownership still apply; retrying the same result changes no history. Finishing a step updates progress without completing its item. Dropped steps remain separate from done steps in progress displays.

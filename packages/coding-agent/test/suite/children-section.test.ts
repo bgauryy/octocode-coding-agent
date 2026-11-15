@@ -20,7 +20,7 @@ import { createHarness, type Harness } from "./harness.ts";
  */
 it("sends the run-and-report rules with the first delegating call and keeps them, without rewriting the first prompt", async () => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-children-"));
-	const HEADING = "## Run children and use reports";
+	const HEADING = "<children>";
 	const requests: Array<{ prompt: string; initial: string }> = [];
 	const capture = (context: { messages: Parameters<typeof getCurrentSystemPrompt>[0] }) => {
 		const initial = getInitialSystemMessage(context.messages);
@@ -91,7 +91,7 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		expect(requests).toHaveLength(3);
 		// Before any delegating call, and after a `coordinate` call: the delegation policy without the rules.
 		for (const request of requests.slice(0, 2)) {
-			expect(request.prompt).toContain("## Write the task");
+			expect(request.prompt).toContain("<delegation>");
 			expect(request.prompt).not.toContain(HEADING);
 		}
 		// The request that reads the message call's result has them, and the first prompt it was cached under is unchanged.

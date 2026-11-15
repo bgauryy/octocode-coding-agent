@@ -7,6 +7,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { loadHooks } from "../src/octocode/hooks/config.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { commandsFor } from "../src/octocode/hooks/config/calls.ts";
+import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
 const dirs: string[] = [];
 function fixture(protocol: "claude" | "codex") {
 	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "plugin-runtime-")));
@@ -34,6 +35,10 @@ describe("configured plugin skill activation", () => {
 		async (protocol) => {
 			const f = fixture(protocol);
 			fs.writeFileSync(path.join(f.plugin, "index.ts"), 'throw new Error("plugin index must not execute")');
+			approveFixtureSkillFiles(
+				[{ name: "review-kit:review", filePath: path.join(f.plugin, "skills/review/SKILL.md"), category: "global" }],
+				f.cwd,
+			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 				...f,
@@ -57,6 +62,10 @@ describe("configured plugin skill activation", () => {
 			fs.writeFileSync(
 				path.join(f.plugin, "skills/review/SKILL.md"),
 				"---\nuser-invocable: OFF\ndisable-model-invocation: YES\n---\nReview the staged changes.\nMore detail.",
+			);
+			approveFixtureSkillFiles(
+				[{ name: "review-kit:review", filePath: path.join(f.plugin, "skills/review/SKILL.md"), category: "global" }],
+				f.cwd,
 			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
@@ -232,6 +241,10 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 	fs.writeFileSync(path.join(f.plugin, "commands/data.md"), "${CLAUDE_PLUGIN_DATA} | $0");
 	const entry = f.settings.plugins[0];
 	fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify({ plugins: [entry] }));
+	approveFixtureSkillFiles(
+		[{ name: "review-kit:review", filePath: path.join(f.plugin, "skills/review/SKILL.md"), category: "global" }],
+		f.cwd,
+	);
 	const loader = new DefaultResourceLoader({
 		settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 		...f,

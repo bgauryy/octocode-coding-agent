@@ -172,14 +172,12 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	/** Whether the fullscreen viewport has a non-empty active text selection. */
 	hasActiveSelection(): boolean {
-		return this.selection.getActiveSelectionText() !== undefined;
+		return this.selection.hasActiveSelection();
 	}
 
 	/** Copy the active fullscreen text selection, if any, using the configured selection clipboard path. */
 	async copyActiveSelectionToClipboard(): Promise<boolean> {
-		const text = this.selection.getActiveSelectionText();
-		if (!text) return false;
-		return this.selection.copyTextToClipboard(text);
+		return this.selection.copySelectionToClipboard();
 	}
 
 	/** Drop the text selection and multi-click history, e.g. before the host replaces the transcript. */

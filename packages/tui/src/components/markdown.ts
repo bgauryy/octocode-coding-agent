@@ -15,6 +15,7 @@ import type {
 } from "./markdown/types.ts";
 
 let nextMarkdownId = 0;
+const MAX_STREAMING_CACHE_CHARS = 128 * 1024;
 
 /** One top-level block's rendered rows at a content width, and the same rows framed to the component's width. */
 interface BlockRows {
@@ -40,6 +41,7 @@ export class Markdown implements Component {
 	// about ten times the size of its source, and every message of a long transcript keeps a Markdown component. The
 	// tokens survive a burst of re-renders, such as a theme preview, and are collected afterwards.
 	private cachedTokens?: WeakRef<LexedMarkdown>;
+	private streamingTokens?: LexedMarkdown;
 	// Rendered and wrapped rows of each top-level token, so a streamed update re-renders only the blocks it changed.
 	// Rows depend on the theme, the default style and the width: `invalidate` clears them, a new width replaces them.
 	// `framed` holds the same rows padded to the full width, so an update pads only the rows of blocks it changed: padding
@@ -66,8 +68,20 @@ export class Markdown implements Component {
 
 	setText(text: string): void {
 		this.text = text;
+		if (text.length > MAX_STREAMING_CACHE_CHARS || !text) this.streamingTokens = undefined;
 		this.clearOutput();
 		renderChanged(this);
+	}
+
+	/** Keep the active stream's small parse tree alive across GC; historical content remains reclaimable. */
+	setStreaming(streaming: boolean): void {
+		this.options.streaming = streaming;
+		const tokens = streaming ? this.cachedTokens?.deref() : undefined;
+		this.streamingTokens = tokens && tokens.source.length <= MAX_STREAMING_CACHE_CHARS ? tokens : undefined;
+	}
+
+	dispose(): void {
+		this.setStreaming(false);
 	}
 
 	invalidate(): void {
@@ -93,6 +107,7 @@ export class Markdown implements Component {
 
 		// Don't render anything if there's no actual text
 		if (!text || text.trim() === "") {
+			this.streamingTokens = undefined;
 			const result: string[] = [];
 			this.cachedText = this.text;
 			this.cachedWidth = width;
@@ -104,9 +119,11 @@ export class Markdown implements Component {
 		const normalizedText = text.replace(/\t/g, "   ");
 
 		// Parse markdown to tokens, keeping those of blocks that an appended update cannot change
-		const previous = this.cachedTokens?.deref();
+		const previous = this.streamingTokens ?? this.cachedTokens?.deref();
 		const lexed = previous?.source === normalizedText ? previous : lexMarkdown(normalizedText, previous);
 		this.cachedTokens = new WeakRef(lexed);
+		this.streamingTokens =
+			this.options.streaming && normalizedText.length <= MAX_STREAMING_CACHE_CHARS ? lexed : undefined;
 		const tokens = lexed.tokens;
 
 		// Convert tokens to styled terminal output, then wrap (NO padding, NO background yet)

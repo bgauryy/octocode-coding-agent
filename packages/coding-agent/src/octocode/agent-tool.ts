@@ -6,7 +6,7 @@ import { type TSchema, Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, LEAN_ENV } from "../../../common/src/env.ts";
-import { TASKS_FIELD, batchCallText, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
+import { TASKS_FIELD, batchCallText, batchGoals, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
 import { AGENT_FIELD_RENAMES, agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";
 import { maxSubagents } from "./subagents/claim.ts";
@@ -31,11 +31,12 @@ const LINES: Record<Mode, string> = {
 };
 
 /** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */
-const RUNNER_LINE = " With runner: vendor CLI (see models).";
+const RUNNER_LINE =
+	" With runner: vendor CLI (see models); supported routes have a cooperative team inbox, with no native wake or resume.";
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =
-	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle recipient.";
+	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle native recipient. Runner mail waits for its cooperative inbox.";
 
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
@@ -168,9 +169,7 @@ export function agentModes() {
 				display(input) {
 					const tasks = batchOf(input.args);
 					if (tasks) {
-						const goals = tasks.map(
-							(entry, index) => `${index + 1}. ${typeof entry.goal === "string" ? entry.goal : "(no goal)"}`,
-						);
+						const goals = batchGoals(input.args).map((goal, index) => `${index + 1}. ${goal}`);
 						return textResultDisplay(
 							{ title: "Agent", summary: `task ×${tasks.length}`, subjects: goals, kind: "agent", blocks: [] },
 							input,
@@ -198,7 +197,7 @@ export function agentModes() {
 				},
 				renderResult(result, options, theme, context) {
 					const call = agentCall(context?.args);
-					const batch = isRecord(result.details) && Array.isArray(result.details.batch);
+					const batch = batchOf(context?.args) ?? (isRecord(result.details) && Array.isArray(result.details.batch));
 					// A thrown error has no agentType in its details; the call's own type still names the mode.
 					const type = (isRecord(result.details) ? result.details.agentType : undefined) ?? call.type;
 					return (

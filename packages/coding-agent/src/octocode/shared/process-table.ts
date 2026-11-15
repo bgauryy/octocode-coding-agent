@@ -25,7 +25,7 @@ export interface ProcessTable {
 }
 
 /** `ps` bound: a hung `ps` must not leave a sweep waiting forever. */
-const PS_TIMEOUT_MS = 2000;
+export const PS_TIMEOUT_MS = 2000;
 
 /**
  * A recorded start time as seconds since the epoch: the decimal form `processStartTime` writes, or an older record's

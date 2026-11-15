@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { steerMessage } from "../../src/octocode/subagents/budget.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -75,7 +76,6 @@ async function runToEnd(box: Sandbox, steps: readonly Step[]): Promise<void> {
 	run.process.stdin?.write(`${JSON.stringify({ id: "p", type: "prompt", message: script(steps) })}\n`);
 	await until(() => requestsOf(steps).length >= steps.length, "the parent's last step");
 }
-const nextSteer = /You have used (\d+) of (\d+) model requests; the run stops at (\d+)/;
 
 describe("a child that asks its parent for more requests", () => {
 	it("sees its budget, asks, is granted more while it runs, and goes past the old hard limit", async () => {
@@ -100,18 +100,16 @@ describe("a child that asks its parent for more requests", () => {
 		await runToEnd(box, parent);
 
 		const childRequests = requestsOf(child);
-		// The steer joined the request after the reply that reached the limit, and it names the numbers and how to ask.
-		const steer = childRequests[6].messages.findLast((message) => nextSteer.test(message.text))!.text;
-		expect(steer).toContain("You have used 6 of 6 model requests; the run stops at 9");
-		expect(steer).toContain("`parent`");
-		expect(steer).toContain("how many");
-		expect(steer).not.toContain("only with your report");
+		// The current steer joins the first request after the reply that reached the soft limit.
+		const steer = steerMessage(6, 6, 9, { ask: true });
+		expect(childRequests[5].messages.some((message) => message.text.includes(steer))).toBe(false);
+		expect(childRequests[6].messages.some((message) => message.text.includes(steer))).toBe(true);
 		// Past the hard limit of 9, and it finished on its own.
 		expect(childRequests).toHaveLength(14);
 		expect(says(childRequests.at(-1), "granted 6 more model requests")).toBe(true);
 		expect(says(childRequests.at(-1), "the run now stops at 15")).toBe(true);
 		// A second check at the new soft limit, so it can ask again.
-		expect(says(childRequests[12], "You have used 12 of 12 model requests; the run stops at 15")).toBe(true);
+		expect(says(childRequests[12], steerMessage(12, 12, 15, { ask: true }))).toBe(true);
 
 		const parentRequests = requestsOf(parent);
 		const results = parentRequests.at(-1)!.toolResults;

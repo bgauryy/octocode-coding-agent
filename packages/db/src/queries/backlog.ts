@@ -1,4 +1,5 @@
 import type { ItemType } from "@octocodeai/octocode-contracts/backlogs";
+import type { NoteKind } from "@octocodeai/octocode-contracts/snapshot";
 import type { DatabaseSync } from "node:sqlite";
 import { allRows, num } from "../rows.ts";
 
@@ -30,19 +31,27 @@ export function notesPage(
 	rowId: number,
 	limit: number,
 	offset: number,
+	kind?: NoteKind,
 ): Array<{ at: number; author: string; kind: string; text: string }> {
 	return allRows<{ at: number; author: string; kind: string; text: string }>(
 		db.prepare(
-			"SELECT at, author, kind, text FROM backlog_notes WHERE item = ? ORDER BY at DESC, id DESC LIMIT ? OFFSET ?",
+			`SELECT at, author, kind, text FROM backlog_notes WHERE item = ?${kind ? " AND kind = ?" : ""} ORDER BY at DESC, id DESC LIMIT ? OFFSET ?`,
 		),
 		rowId,
+		...(kind ? [kind] : []),
 		limit,
 		offset,
 	);
 }
 
-export function noteCount(db: DatabaseSync, rowId: number): number {
-	return num((db.prepare("SELECT COUNT(*) AS n FROM backlog_notes WHERE item = ?").get(rowId) as { n: number }).n);
+export function noteCount(db: DatabaseSync, rowId: number, kind?: NoteKind): number {
+	return num(
+		(
+			db
+				.prepare(`SELECT COUNT(*) AS n FROM backlog_notes WHERE item = ?${kind ? " AND kind = ?" : ""}`)
+				.get(rowId, ...(kind ? [kind] : [])) as { n: number }
+		).n,
+	);
 }
 
 /** An item's comments, oldest first. */

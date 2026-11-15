@@ -1,15 +1,16 @@
-import { CLAUDE_MEMORY_TOGGLE_ID } from "../../core/discovery/vendors/index.ts";
 import { buildInventory } from "../../octocode/harness/inventory.ts";
+import { withReviewState } from "../../octocode/harness/review-state.ts";
 import type { Inventory, InventoryItem } from "../../core/extensibility/inventory-types.ts";
-import { switchItem, vendorSwitchTarget } from "../../core/extensibility/switch.ts";
+import { switchItem } from "../../core/extensibility/switch.ts";
+import { switchHarness, switchOnPreview } from "../../octocode/harness/vendor-items.ts";
 import { applied, closestIds, kindOf, refused } from "../result.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult } from "../types.ts";
 
 const KINDS = ["harness", "plugin", "hook", "hooks", "installed"] as const;
 
 /** The inventory `/harness` shows, from the same loaders; nothing is installed or executed. */
-function loadInventory(ctx: ConfigContext): Promise<Inventory> {
-	return buildInventory({
+async function loadInventory(ctx: ConfigContext): Promise<Inventory> {
+	const inventory = await buildInventory({
 		cwd: ctx.cwd,
 		agentDir: ctx.agentDir,
 		settings: ctx.settings.getSettings(),
@@ -17,6 +18,8 @@ function loadInventory(ctx: ConfigContext): Promise<Inventory> {
 		projectTrusted: ctx.projectTrusted,
 		...(ctx.home ? { home: ctx.home } : {}),
 	});
+	// The security review's badge leads each reviewed row's detail, as on /security.
+	return { ...inventory, items: withReviewState(inventory.items) };
 }
 
 const toggleKeyOf = (id: string) => id;
@@ -39,16 +42,21 @@ function toEntry(item: InventoryItem, ctx: ConfigContext): ConfigEntry {
 	};
 }
 
-/** What `/harness` does for a harness row: the vendor key through `switchItem`, or Claude's global-only memory key. */
-function switchHarness(item: InventoryItem, on: boolean, scope: "global" | "project", ctx: ConfigContext): string {
-	if (item.id === CLAUDE_MEMORY_TOGGLE_ID) {
-		if (scope === "project") throw new Error("Claude Code auto memory is switched globally: run it without --project.");
-		ctx.settings.setToggle("global", CLAUDE_MEMORY_TOGGLE_ID, on ? true : undefined);
-		return `Claude Code auto memory switched ${on ? "on" : "off"} globally.`;
-	}
-	const target = vendorSwitchTarget(item.name ?? "");
-	if (!target) throw new Error(`${item.label} has no switch.`);
-	return switchItem(target, on, scope, ctx.settings, { cwd: ctx.cwd, agentDir: ctx.agentDir });
+/**
+ * What switching a harness on brings, each item scanned now (static; nothing runs), as the lines printed before the switch.
+ * Switching off prints nothing. Items stay off until approved in `/security`.
+ */
+function onPreview(item: InventoryItem, on: boolean, ctx: ConfigContext): string[] {
+	if (!on || item.kind !== "harness") return [];
+	return (
+		switchOnPreview(item, {
+			cwd: ctx.cwd,
+			agentDir: ctx.agentDir,
+			projectTrusted: ctx.projectTrusted,
+			settings: ctx.settings.getSettings(),
+			...(ctx.home ? { home: ctx.home } : {}),
+		}) ?? []
+	);
 }
 
 async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigResult> {
@@ -74,13 +82,21 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 				op,
 				`${item.label} is a gate hook that denies when it fails; it cannot be switched off for one run.`,
 			);
+		const preview = item ? onPreview(item, on, ctx) : [];
 		ctx.settings.applyOverrides({ toggles: { [toggleKeyOf(op.id)]: on } }, { durable: true });
-		return applied(op, "next-session", `${op.id} switched ${on ? "on" : "off"} for this run only.`);
+		return applied(
+			op,
+			"next-session",
+			[...preview, `${op.id} switched ${on ? "on" : "off"} for this run only.`].join("\n"),
+		);
 	}
 	try {
+		const preview = item ? onPreview(item, on, ctx) : [];
 		const message = item
 			? item.kind === "harness"
-				? switchHarness(item, on, scope, ctx)
+				? [...preview, switchHarness(item, on, scope, ctx.settings, { cwd: ctx.cwd, agentDir: ctx.agentDir })].join(
+						"\n",
+					)
 				: switchItem(item, on, scope, ctx.settings, {
 						cwd: ctx.cwd,
 						agentDir: ctx.agentDir,

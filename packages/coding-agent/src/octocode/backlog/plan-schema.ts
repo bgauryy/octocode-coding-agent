@@ -23,7 +23,10 @@ const ITEM = {
 	goal: text("Definition of Done, checkable; add needs it"),
 	why: text("why it matters; add needs it"),
 	type: { type: "string", enum: [...ITEM_TYPES], description: "default feature; epic groups work" },
-	parentId: { anyOf: [{ type: "string" }, { type: "null" }], description: "parent epic id; null clears" },
+	parentId: {
+		anyOf: [{ type: "string" }, { type: "null" }],
+		description: "parent epic id, or an earlier entry's exact title; null clears",
+	},
 	dependsOn: list("prerequisite item ids, or an earlier entry's exact title; [] clears"),
 	paths: list("files, dirs or components affected"),
 	evidence: list("observations with source (path:line, command)"),

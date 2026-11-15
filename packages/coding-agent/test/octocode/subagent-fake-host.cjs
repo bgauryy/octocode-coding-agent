@@ -114,7 +114,13 @@ async function run() {
 }
 
 async function scenario() {
-	// The identity block the agent tool appends (`## You …`, with the goal) is not part of the scenario text.
+	// A continuation carries its command after the parent's mail/follow-up header. Role instructions never select a scenario.
+	const scenarioText = task.split("\n\n## You")[0];
+	const command = scenarioText
+		.replace(/^Follow-up from (?:your coordinator|the user):\n/, "")
+		.replace(/^Message #[^\n]*:\n/, "")
+		.replace(/^<<<untrusted-[^\n]*\n/, "")
+		.split("\n")[0];
 	if (task.startsWith("structured valid")) {
 		emit(say(`done.\n${"body ".repeat(1700)}\nStructured result:\n\`\`\`json\n{"verdict":"pass"}\n\`\`\``));
 	} else if (task.startsWith("structured abort")) {
@@ -123,11 +129,11 @@ async function scenario() {
 		end = "hold";
 	} else if (task.startsWith("structured invalid")) {
 		emit(say('done.\nStructured result:\n```json\n{"verdict":"unknown"}\n```'));
-	} else if (task.split("\n\n## You")[0].includes("linger")) {
-		// The `## Report` contract names every outcome, so only the scenario text decides.
+	} else if (command.includes("linger")) {
+		// Only the fixture command selects the outcome.
 		emit(
 			say(
-				`${task.split("\n\n## You")[0].includes("blocked") ? "blocked: " : ""}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""} mcp=${process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE ? Object.keys(JSON.parse(fs.readFileSync(process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE, "utf8")).servers).join(",") : ""} ${process.argv.slice(2).join(" ")} ${task}`,
+				`${command.includes("blocked") ? "blocked: " : ""}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""} mcp=${process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE ? Object.keys(JSON.parse(fs.readFileSync(process.env.OCTOCODE_MCP_SESSION_SERVERS_FILE, "utf8")).servers).join(",") : ""} ${process.argv.slice(2).join(" ")} ${task}`,
 			),
 		);
 	} else if (task.startsWith("think aloud")) {
@@ -471,7 +477,7 @@ async function scenario() {
 			// `startup until <n>`: crashes while loading on its first n-1 starts, then reports the task it was given.
 			if (attempts < Number(task.split(/\s+/)[2])) syntax();
 			promptTaken();
-			emit(say(`RECOVERED on start ${attempts}: ${task.split("\n\n## You")[0]}`));
+			emit(say(`RECOVERED on start ${attempts}: ${scenarioText}`));
 		} else if (task.startsWith("startup crash")) syntax();
 		else if (task.startsWith("startup plain")) {
 			process.stderr.write("No API key for provider\n");

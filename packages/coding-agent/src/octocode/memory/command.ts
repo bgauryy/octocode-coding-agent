@@ -6,6 +6,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { lastInjection } from "./inject.ts";
 import { ADD_ROW, memoryDetailPage, memoryListPage, sectionOf } from "./page.ts";
 import { memoryLabel } from "./query.ts";
+import { MemoryChangedError } from "./errors.ts";
 import {
 	MEMORY_KINDS,
 	describeMemory,
@@ -224,7 +225,11 @@ async function editUntilValid<T>(
 			return save(edited);
 		} catch (error) {
 			if (!(error instanceof MemoryError)) throw error;
-			say(ctx, `memory: ${error.message} Fix it and save again, or cancel.`, "warning");
+			const next =
+				error instanceof MemoryChangedError
+					? "Cancel this editor, read the memory again, and reapply your draft. Your draft is kept below."
+					: "Fix it and save again, or cancel.";
+			say(ctx, `memory: ${error.message} ${next}`, "warning");
 			text = edited;
 		}
 	}
@@ -288,7 +293,7 @@ async function act(
 	if (action === "Delete") {
 		const question = `Delete ${label}?\n${memory.title}`;
 		if (!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Delete"]))) return memory;
-		store.delete(memory.id);
+		store.delete(memory.id, memory.updatedAt);
 		say(ctx, successNotice("Deleted", label, "Other memories are unchanged."), "info");
 		return undefined;
 	}
@@ -298,7 +303,8 @@ async function act(
 			ctx,
 			`Edit ${label}`,
 			memoryTemplate(memory),
-			(edited) => store.set({ ...parseTemplate(edited), id: memory.id, author: USER_AUTHOR }).memory,
+			(edited) =>
+				store.set({ ...parseTemplate(edited), id: memory.id, author: USER_AUTHOR }, undefined, memory.updatedAt).memory,
 		);
 		if (!updated) return memory;
 	} else {
@@ -306,7 +312,7 @@ async function act(
 			action === "Pin" || action === "Unpin"
 				? { pinned: action === "Pin" }
 				: { scope: memory.scope !== "global" ? "global" : "workspace" };
-		updated = store.set({ ...input, id: memory.id, author: USER_AUTHOR }).memory;
+		updated = store.set({ ...input, id: memory.id, author: USER_AUTHOR }, undefined, memory.updatedAt).memory;
 	}
 	say(ctx, `Updated ${memoryLine(updated, 60)}`, "info");
 	return updated;

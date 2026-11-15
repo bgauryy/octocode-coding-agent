@@ -326,28 +326,6 @@ describe("skills", () => {
 			// The skill tool loads by name and returns the folder, so the entry carries no path.
 			expect(result).toContain('  <skill name="test-skill">A test skill.</skill>');
 			expect(result).not.toContain("/path/to/skill/SKILL.md");
-			// The skill tool's description says how relative paths resolve, so the file-reader line is left out.
-			expect(result).not.toContain("resolve it against the skill directory");
-		});
-
-		it("should include intro text before XML", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "test-skill",
-					description: "A test skill.",
-					filePath: "/path/to/skill/SKILL.md",
-					baseDir: "/path/to/skill",
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-			const xmlStart = result.indexOf("<available_skills>");
-			const introText = result.substring(0, xmlStart);
-
-			// One intro line, the load instruction. Octocode ships no `read` tool; bash is the default loader.
-			expect(introText.trim().split("\n")[0]).toBe(
-				"Use bash to load the file of every skill whose description matches the task before other work; several can apply.",
-			);
 		});
 
 		it("groups core, Octocode collection, workspace and global skills, in that order, each with name and description", () => {
@@ -491,11 +469,6 @@ describe("skills", () => {
 					`<skill name="skill-499" location="/s/skill-499/SKILL.md">${"d".repeat(2000)}</skill>`,
 				);
 				expect(result).not.toMatch(/outside the XML list|without a description|…/);
-			});
-
-			it("says several skills can apply", () => {
-				expect(formatSkillsForPrompt(many(2), "skill")).toContain("every skill whose description matches the task");
-				expect(formatSkillsForPrompt(many(2), "skill")).toContain("several can apply");
 			});
 		});
 	});

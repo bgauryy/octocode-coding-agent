@@ -1,3 +1,5 @@
+import { approveFixtureHooks } from "./guard-helpers.ts";
+import { openSandboxDb } from "./e2e-helpers/seed-trust.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -45,6 +47,16 @@ function writeProject(box: Sandbox, dir: string, file: string, content: unknown)
 const bashThenDone: Step[] = [{ tool: "bash", args: { command: "echo hooked" } }, { text: "all done" }];
 
 async function run(box: Sandbox, steps: Step[]): Promise<string> {
+	const db = openSandboxDb(box);
+	try {
+		// Approve the exact fixture even when its harness is off: the test must isolate harness gating.
+		approveFixtureHooks(box.project, box.home, {
+			toggles: { "harness:claude": true, "harness:codex": true },
+			guard: { db },
+		});
+	} finally {
+		db.close();
+	}
 	const process = box.start(["-p", script(steps)]);
 	const { code } = await process.exited;
 	const output = `${process.stdout()}\n${process.stderr()}`;

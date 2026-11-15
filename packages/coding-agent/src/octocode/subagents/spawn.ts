@@ -12,7 +12,7 @@ import { type AgentRuns, claimRun, planRun, type Run } from "./claim.ts";
 import type { Lingering } from "./linger.ts";
 import { runSubagent } from "./process.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
-import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
+import { buildRouteArgs, type ChildSession, childSession } from "./process/session.ts";
 import { type AgentProfile, askSpawn } from "./profiles.ts";
 import { startGate } from "./rate-gate.ts";
 import { type StaggerTurn, staggeredLaunch } from "./stagger.ts";
@@ -263,7 +263,7 @@ export async function spawnAgent(
 		// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 		// A runner's conversation lives in its own CLI, so a runner run never lingers for a resume.
 		const lingers = !runner && params.background === true && !params.isolate;
-		const args = buildAgentArgs(run.profile, run.route.model, session, [], run.route.thinking, run.identity.mcpNamed);
+		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 		const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
@@ -301,6 +301,7 @@ export async function spawnAgent(
 						onProgress: progress,
 						onSpawn,
 						ctx,
+						team: runs.team,
 					});
 					details.billing = outcome.billing;
 					return outcome;

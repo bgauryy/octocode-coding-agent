@@ -7,7 +7,7 @@ import { findSession, ProfileSessionError, storedProfilerSource } from "../profi
 
 /** What a profile read asks: `source: "profile"` of the archive tool. */
 export interface ProfileQuery {
-	/** The stored session (an id or unique prefix); omitted: the current one, else the latest of the folder. */
+	/** The stored session (an id or unique prefix); omitted or `current`: the current one, else the latest of the folder. */
 	sessionId?: string;
 	/** One agent's requests instead of the session overview. */
 	agentId?: string;
@@ -52,12 +52,14 @@ function allRequests(profiler: ReturnType<typeof createProfiler>, agentId: strin
  */
 export function readProfile(cwd: string, query: ProfileQuery): ProfileText {
 	const db = sharedAgentDb().db;
-	const wanted = query.sessionId?.trim() || currentSessionId();
+	// `current`, as the tool's sessionId field offers, is this session: the same as leaving it out.
+	const given = query.sessionId?.trim() === "current" ? undefined : query.sessionId?.trim();
+	const wanted = given || currentSessionId();
 	let session;
 	try {
 		session = findSession(db, cwd, wanted);
 	} catch (error) {
-		if (!(error instanceof ProfileSessionError) || query.sessionId?.trim()) throw error;
+		if (!(error instanceof ProfileSessionError) || given) throw error;
 		session = findSession(db, cwd);
 	}
 	const profiler = createProfiler(storedProfilerSource({ db, session }));

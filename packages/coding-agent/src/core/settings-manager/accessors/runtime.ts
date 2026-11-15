@@ -61,7 +61,7 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		};
 	}
 
-	/** `retry.fallbackModels`: `provider/id[:thinking]` selectors to continue on after a usage-limit failure, in order. */
+	/** `retry.fallbackModels`: `provider/id[:thinking]` selectors to continue on after a failure the retry did not clear, in order. */
 	getRetryFallbackModels(): string[] {
 		const models = this.settings.retry?.fallbackModels;
 		return Array.isArray(models) ? models.filter((model) => typeof model === "string" && model.trim() !== "") : [];

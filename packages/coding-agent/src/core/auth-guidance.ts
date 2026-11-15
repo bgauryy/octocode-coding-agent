@@ -31,6 +31,11 @@ export function formatNoApiKeyFoundMessage(provider: string): string {
 	return `No usable credentials for ${providerDisplay}. Type /providers to sign in or configure credentials, then /model to pick a model.\n${getDocsLine()}`;
 }
 
+/** The stored OAuth sign-in could not be renewed; `reason` is the provider's failure, kept for diagnosis. */
+export function formatAuthRefreshFailedMessage(provider: string, reason: string): string {
+	return `Sign-in for ${provider} could not be renewed. Type /providers ${provider} to sign in again. (${reason})`;
+}
+
 /** The provider uses OAuth and its sign-in no longer works: expired credentials, or the network is down. */
 export function formatAuthExpiredMessage(provider: string): string {
 	return `Sign-in for ${provider} failed: the credentials may have expired, or the network is down. Type /providers ${provider} to sign in again.`;

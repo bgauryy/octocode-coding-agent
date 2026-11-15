@@ -1,1 +1,1 @@
-[Resume] These subagents were running when this session last stopped. They ended with it, and no report of theirs will arrive: {{children}}. To continue one, call `agent` type `task` with `resume` set to its id.
+[Resume] These subagents were running when this session last stopped. They ended with it, and no report of theirs will arrive: {{children}}. To continue a non-isolated child, call `agent` type `task` with `resume` set to its id. For an isolated child, start a new task with the context it needs; its removed worktree cannot be resumed.

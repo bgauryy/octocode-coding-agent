@@ -17,8 +17,12 @@ export function needsYou(members: Member[], traffic: Traffic[], selfId: string |
 			(known.message.at > message.at || (known.message.at === message.at && known.message.id > message.id));
 		needs.set(message.from, { kind: "ask", message: newest ? known.message : message, count: (known?.count ?? 0) + 1 });
 	}
-	for (const member of members)
-		if (member.waiting && !needs.has(member.id))
-			needs.set(member.id, { kind: member.waiting === "approval" ? "approval" : "ask", count: 1 });
+	for (const member of members) {
+		if (!member.waiting) continue;
+		const known = needs.get(member.id);
+		// An approval dialog outranks a question; the question's message and count stay.
+		if (!known) needs.set(member.id, { kind: member.waiting === "approval" ? "approval" : "ask", count: 1 });
+		else if (member.waiting === "approval") known.kind = "approval";
+	}
 	return needs;
 }

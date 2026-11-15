@@ -33,6 +33,12 @@ export interface OAuthCredential extends OAuthCredentials {
 	type: "oauth";
 	/** Registration metadata retained after logout; access and refresh must be empty. */
 	signedOut?: boolean;
+	/**
+	 * Set when the provider refused this credential's refresh token for good (`invalid_grant`, revoked or expired).
+	 * `refreshSha256` is the hex SHA-256 of the refused token, never the token: a credential whose refresh token
+	 * differs is a new sign-in and ignores the marker. While it matches, no refresh request is sent.
+	 */
+	refreshRejected?: { at: number; refreshSha256: string };
 }
 
 /** One type-tagged credential per provider — the shape of today's auth.json. */

@@ -5,6 +5,7 @@ import { getMcpSessionStatus, getMcpSwitch, requestMcpReload } from "../../../..
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { createConfiguration } from "../../configuration/index.ts";
 import { buildInventory, type InventoryItem, renderInventory } from "./inventory.ts";
+import { withReviewState } from "./review-state.ts";
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
@@ -15,8 +16,10 @@ import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { homeTilde } from "../../../../common/src/home-tilde.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
+import { createMcpToolsSource } from "./mcp-tools.ts";
 import { HarnessPicker } from "./picker.ts";
-import { switchHarness } from "./vendor-items.ts";
+import { HARNESS_SECTIONS, type HarnessSection, sectionOf } from "./sections.ts";
+import { switchHarness, switchOnPreview } from "./vendor-items.ts";
 
 /** `/harness list <section>` filters: each names the rows it keeps. */
 const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
@@ -25,18 +28,27 @@ const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
 	skills: (item) => item.kind === "skill",
 	mcp: (item) => item.kind === "mcp",
 	extensions: (item) => item.kind === "extension",
+	sources: (item) => sectionOf(item) === "sources",
 };
+/** `/harness <section>` opens the picker on that section; outside the terminal it prints it. */
+const PICKER_SECTIONS = Object.keys(HARNESS_SECTIONS);
 const MARKETPLACE_ACTIONS = ["install", "update", "remove"];
 const SUBCOMMANDS: Array<[string, string]> = [
+	["overview", "Open the picker on the Overview"],
+	["skills", "Open the picker on Skills"],
+	["mcp", "Open the picker on MCPs"],
+	["sources", "Open the picker on Sources"],
+	["extensions", "Open the picker on Extensions"],
 	["list", "Print the inventory, or one section"],
 	["install", "Install a marketplace plugin"],
 	["update", "Update a marketplace plugin"],
 	["remove", "Remove a marketplace plugin"],
-	["hooks", "Loaded hooks, timing and diagnostics"],
+	["hooks", "Hooks section; `hooks events|test` inspects them"],
 	["config", "Loaded config and where it came from"],
 ];
 const USAGE = [
-	"Usage: /harness opens the switch list (text outside the terminal)",
+	"Usage: /harness opens the switch list on its Overview (text outside the terminal)",
+	`  /harness <${PICKER_SECTIONS.join("|")}>  open that section`,
 	`  /harness list [${Object.keys(SECTIONS).join("|")}|<text>]`,
 	"  /harness install|update|remove <plugin@marketplace> [--yes]",
 	"  /harness hooks [events|test <Event> [<tool or matcher> [<json>]]]",
@@ -124,6 +136,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			projectTrusted: ctx.isProjectTrusted(),
 			mcp: getMcpSessionStatus(api.events),
 		});
+		inventory.items = withReviewState(inventory.items);
 		return { agentDir, manager, inventory };
 	}
 
@@ -190,13 +203,45 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		);
 	}
 
-	async function picker(ctx: ExtensionCommandContext): Promise<void> {
-		const { agentDir, manager, inventory } = await load(ctx);
-		const before = savedSettings(manager);
+	async function picker(ctx: ExtensionCommandContext, section: HarnessSection = "overview"): Promise<void> {
+		let loaded: Awaited<ReturnType<typeof load>> | undefined;
+		let before = "";
+		let closed = false;
+		let loading = false;
+		let view: HarnessPicker;
+		const beginLoad = () => {
+			if (loading) return;
+			loading = true;
+			void load(ctx)
+				.then((result) => {
+					if (closed) return;
+					loaded = result;
+					before = savedSettings(result.manager);
+					const { inventory } = result;
+					view.loaded(
+						inventory.items,
+						[
+							inventory.stale.length ? `${inventory.stale.length} stale switches` : "",
+							inventory.ignored.length ? `${inventory.ignored.length} ignored project switches` : "",
+							inventory.notes.length ? `${inventory.notes.length} diagnostics` : "",
+						]
+							.filter(Boolean)
+							.join(" · "),
+					);
+				})
+				.catch((error) => {
+					if (!closed) view.failed(errorMessage(error));
+				})
+				.finally(() => {
+					loading = false;
+				});
+		};
 		// MCP switches wait for the list to close: a row toggled back and forth costs nothing, and each server switches once.
 		const pending = new Map<string, { item: InventoryItem; on: boolean; scope: SwitchScope; was: boolean }>();
 		let harnessSwitched = false;
 		const apply = (item: InventoryItem, on: boolean, scope: SwitchScope, force: boolean): string => {
+			if (!loaded) throw new Error("Harness inventory is not ready.");
+			const { manager, agentDir } = loaded;
 			if (item.kind === "harness") {
 				harnessSwitched = true;
 				return switchHarness(item, on, scope, manager, { cwd: ctx.cwd, agentDir });
@@ -206,33 +251,56 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			pending.set(item.id, { item, on, scope, was: pending.get(item.id)?.was ?? item.on });
 			return `${item.label} switches ${on ? "on" : "off"} ${where(scope)} when this list closes.`;
 		};
-		const count = (n: number, noun: string) => n && `${n} ${noun}${n === 1 ? "" : "es"}`;
-		await ctx.ui.custom<boolean>(
-			(tui, theme, keybindings, done) =>
-				new HarnessPicker(
+		try {
+			await ctx.ui.custom<boolean>((tui, theme, keybindings, done) => {
+				view = new HarnessPicker(
 					{
-						items: inventory.items,
+						items: [],
+						state: "loading",
+						section,
+						retry: beginLoad,
 						apply,
+						preview: (item) =>
+							loaded &&
+							switchOnPreview(item, {
+								cwd: ctx.cwd,
+								agentDir: loaded.agentDir,
+								projectTrusted: ctx.isProjectTrusted(),
+								settings: api.getSettings(),
+							}),
+						mcpTools: createMcpToolsSource({
+							ctx: () => {
+								if (!loaded) throw new Error("Harness inventory is not ready.");
+								return {
+									cwd: ctx.cwd,
+									agentDir: loaded.agentDir,
+									settings: loaded.manager,
+									projectTrusted: ctx.isProjectTrusted(),
+								};
+							},
+						}),
 						paths: {
-							global: `${homeTilde(path.join(agentDir, "settings.json"))} (MCP: its mcp.json)`,
+							global: `${homeTilde(path.join(getAgentDir(), "settings.json"))} (MCP: its mcp.json)`,
 							project: `${path.join(CONFIG_DIR_NAME, "settings.json")} (MCP: ${path.join(CONFIG_DIR_NAME, "mcp.json")})`,
 						},
-						height: process.stdout.rows ?? 24,
-						summary: [
-							count(inventory.stale.length, "stale switch"),
-							count(inventory.ignored.length, "ignored project switch"),
-							inventory.notes.length &&
-								`${inventory.notes.length} diagnostic${inventory.notes.length === 1 ? "" : "s"}`,
-						]
-							.filter(Boolean)
-							.join(" · "),
-						done,
+						height: () => Math.max(8, (process.stdout.rows ?? 24) - 4),
+						done: (changed) => {
+							closed = true;
+							done(changed);
+						},
 						requestRender: () => tui.requestRender(),
 					},
 					theme,
 					keybindings,
-				),
-		);
+				);
+				beginLoad();
+				return view;
+			});
+		} finally {
+			closed = true;
+		}
+		if (!loaded) return;
+		const { manager } = loaded;
 		await manager.flush();
 		const settingsChanged = savedSettings(manager) !== before;
 		const mcpChanges = [...pending.values()]
@@ -254,7 +322,9 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 
 	commands.add("harness", {
 		description: "Other agents' skills, MCPs, hooks and plugins",
-		argumentHint: "[list|install|update|remove|hooks|config]",
+		argumentHint: "[overview|skills|mcp|hooks|sources|extensions|list|install|update|remove|config]",
+		// `enable` and `disable` stay so their moved-to-/configuration hint still shows.
+		argumentWords: [...SUBCOMMANDS.map(([name]) => name), "enable", "disable"],
 		dialog: "interaction",
 		complete: (prefix): AutocompleteItem[] | null => {
 			const match = /^(\S+)\s+(.*)$/s.exec(prefix);
@@ -279,6 +349,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				return say(ctx, await switchMoved(action, words, catalog), "warning");
 			}
 			if (MARKETPLACE_ACTIONS.includes(action)) return marketplace([action, ...words], ctx);
+			if (action === "hooks" && !words.length && ctx.mode === "tui" && ctx.hasUI) return picker(ctx, "hooks");
 			if (action === "hooks") {
 				if (words[0] === "events" && words.length === 1) return say(ctx, hookEventsReport());
 				if (words[0] === "test") return say(ctx, await hooks.testRun(ctx, words.slice(1)));
@@ -303,9 +374,14 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				);
 				return say(ctx, renderInventory(inventory, rows));
 			}
-			if (action) return say(ctx, USAGE, "warning");
-			if (ctx.mode !== "tui" || !ctx.hasUI) return say(ctx, renderInventory((await load(ctx)).inventory));
-			return picker(ctx);
+			const section = PICKER_SECTIONS.includes(action) && !words.length ? (action as HarnessSection) : undefined;
+			if (action && !section) return say(ctx, USAGE, "warning");
+			if (ctx.mode !== "tui" || !ctx.hasUI) {
+				const { inventory } = await load(ctx);
+				const keep = section && SECTIONS[section];
+				return say(ctx, renderInventory(inventory, keep ? inventory.items.filter(keep) : undefined));
+			}
+			return picker(ctx, section);
 		},
 	});
 }

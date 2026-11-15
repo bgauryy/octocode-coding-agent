@@ -179,13 +179,15 @@ describe("agents panel", () => {
 	it("roots the list at this session's totals, then model, state, age, tokens, tools and what each agent is doing now, working first", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 200);
 		const squash = (line: string | undefined) => line!.replace(/ +/g, " ");
-		expect(squash(lines[0])).toBe(" ● main-aaaaaa main 2 working · 1 idle · 20k tok · ≈$0.04");
+		expect(squash(lines[0])).toBe(" 🦑 main-aaaaaa 2 working · 1 idle · 20k tok · ≈$0.04");
 		expect(squash(lines[1])).toBe(
-			" ├ ⠋ researcher-3fa9 Find where tools register › localSearch registerTool claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04",
+			" ├ ⠋ 🐙 researcher-3fa9 Find where tools register › localSearch registerTool claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04",
 		);
 		// A grandchild sits under its parent with the tree line beside it; no goal or usage leaves those cells empty.
-		expect(squash(lines[2])).toBe(" │ └ ⠋ general-77aa bash yarn test claude-haiku-4-5 working 5s 1 tool call");
-		expect(squash(lines[3])).toBe(" └ ○ reviewer-a1b2 Review the diff ✉ 1 · 1 lock gpt-5 idle 45s 5k tok 3 tool calls");
+		expect(squash(lines[2])).toBe(" │ └ ⠋ 🐙 general-77aa bash yarn test claude-haiku-4-5 working 5s 1 tool call");
+		expect(squash(lines[3])).toBe(
+			" └ ○ 🐙 reviewer-a1b2 Review the diff ✉ 1 · 1 lock gpt-5 idle 45s 5k tok 3 tool calls",
+		);
 		// A role the id already starts with (`researcher-3fa9`) is not repeated.
 		expect(lines.slice(1).join("\n")).not.toMatch(/ (researcher|reviewer|general) /);
 		// Provider prefixes stay out of the panel.
@@ -197,7 +199,7 @@ describe("agents panel", () => {
 		expect(medium.every((line) => visibleWidth(line) <= 120)).toBe(true);
 		expect(medium[1]).not.toContain("$0.04");
 		expect(medium[1]).not.toContain("12 tool calls");
-		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok", "› localSearch registerTool"])
+		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok", "› localSearch registerTo"])
 			expect(medium[1]).toContain(kept);
 		expect(medium[1]).toMatch(/Find where[^›]*… ›/);
 		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 90);
@@ -242,9 +244,9 @@ describe("agents panel", () => {
 			{ ...live, updatedAt: at },
 		];
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
-		expect(lines[0]).toBe(" ● main-aaaaaa  main  1 working · 1 left");
+		expect(lines[0]).toBe(" 🦑 main-aaaaaa    1 working · 1 left");
 		expect(lines[1]).toContain("wobbly-siphon");
-		expect(lines[2]).toMatch(/^ └ ○ sly-crab +left +15s/);
+		expect(lines[2]).toMatch(/^ └ ○ 🐙 sly-crab +left +15s/);
 		expect(lines[2]).not.toContain("working");
 		// The elapsed time stays the run's length while the row is shown (`FINISHED_MS` after it left, inclusive).
 		const later = widgetLines(beat(lastShown), "main-aaaaaa", lastShown, theme, 120, [], undefined, finished);
@@ -291,9 +293,9 @@ describe("agents panel", () => {
 		const lines = widgetLines([member("main-aaaaaa"), priced, free], "main-aaaaaa", NOW, theme, 200).map((line) =>
 			line.replace(/ +/g, " "),
 		);
-		expect(lines[0]).toBe(" ● main-aaaaaa main 2 idle · 1.2M tok · ≈$2.28 + n/a");
-		expect(lines[1]).toBe(" ├ ○ researcher-3fa9 idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
-		expect(lines[2]).toBe(" └ ○ general-77aa idle 1m 4.5k tok 1 tool call cost n/a");
+		expect(lines[0]).toBe(" 🦑 main-aaaaaa 2 idle · 1.2M tok · ≈$2.28 + n/a");
+		expect(lines[1]).toBe(" ├ ○ 🐙 researcher-3fa9 idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
+		expect(lines[2]).toBe(" └ ○ 🐙 general-77aa idle 1m 4.5k tok 1 tool call cost n/a");
 	});
 
 	it('keeps every line within a narrow width, the "+N more" line too', () => {
@@ -428,7 +430,7 @@ describe("background subagents in the footer", () => {
 		const view = new AgentsView(team);
 		view.start(ctx);
 		view.setBackground(["general-1a2b", "general-3c4d"]);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("2 agents");
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 2 agents");
 		view.setBackground([]);
 		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
 		view.setBackground(["general-1a2b"]);

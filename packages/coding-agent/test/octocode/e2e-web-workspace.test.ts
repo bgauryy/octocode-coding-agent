@@ -228,7 +228,7 @@ describe("a dialog answered from the web workspace", () => {
 		const workspace = await openWorkspace();
 		const marker = path.join(workspace.box.root, "ran-after-view.txt");
 		workspace.prompt([
-			{ tool: "bash", args: { command: `touch ${marker} && echo view-only-output` } },
+			{ tool: "bash", args: { command: `touch ${marker} && printf '%s-%s-%s\\n' view only output` } },
 			{ text: "the command finished" },
 		]);
 		const awaiting = await waitingOn(workspace, "the bash ask in the web stream");

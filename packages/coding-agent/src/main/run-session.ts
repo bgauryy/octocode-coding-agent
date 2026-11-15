@@ -17,6 +17,7 @@ import { normalizeSessionName, parseArgs, printHelp } from "../cli/args.ts";
 import { listModels } from "../cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "../cli/startup-ui.ts";
 import { ENV_SESSION_DIR, VERSION } from "../config.ts";
+import { prepareAgentDb } from "../storage/database.ts";
 import { createAgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
 import { exportFromFile } from "../core/export-html/index.ts";
@@ -85,6 +86,7 @@ export async function runSession(args: string[], { cwd, agentDir, offlineMode }:
 			return;
 		}
 		prepareAcpTrust(parsed);
+		await prepareAgentDb();
 		await (await import("./acp-host.ts")).runAcpMain(args, parsed);
 		return;
 	}
@@ -116,6 +118,7 @@ export async function runSession(args: string[], { cwd, agentDir, offlineMode }:
 
 	validateForkFlags(parsed);
 	validateSessionIdFlags(parsed);
+	if (!isPlainRuntimeMetadataCommand(parsed)) await prepareAgentDb();
 
 	const startupSettingsManager = SettingsManager.createForStartup(cwd, agentDir, folderTrust(cwd).state === "trusted");
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);

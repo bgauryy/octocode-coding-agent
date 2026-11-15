@@ -2,6 +2,7 @@ import http from "node:http";
 import net from "node:net";
 import type { Duplex } from "node:stream";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { isMetadataIp } from "./ip-address.ts";
 import { bareHostname, classifyHost, defaultLookup, type HostLookup } from "./web-guard.ts";
 import { hostKey, portOf } from "./browser-network.ts";
 
@@ -233,10 +234,13 @@ export async function startFilteringProxy(options: FilteringProxyOptions = {}): 
 			return records;
 		});
 		if (host.kind === "public") return { ok: true, addresses: host.addresses, local: false };
-		if (host.kind === "private")
-			return approved(hostname, port)
-				? { ok: true, addresses: net.isIP(hostname) ? [hostname] : resolved, local: true }
+		if (host.kind === "private") {
+			const addresses = net.isIP(hostname) ? [hostname] : resolved;
+			// Cloud metadata hands out the machine's credentials: opening a host never covers one that reaches it.
+			return approved(hostname, port) && !addresses.some(isMetadataIp)
+				? { ok: true, addresses, local: true }
 				: { ok: false, reason: "private" };
+		}
 		// Not resolvable here. Only an upstream proxy may know it, and only for a host the agent opened.
 		return approved(hostname, port) && connectUpstream
 			? { ok: true, addresses: [], local: false }

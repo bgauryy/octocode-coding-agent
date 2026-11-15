@@ -4,6 +4,7 @@ import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-t
 import {
 	memoTable,
 	type ProcessTable,
+	type ProcessRow,
 	PS_UTC_ENV,
 	psAsync,
 	readProcessTable,
@@ -12,6 +13,7 @@ import {
 	TABLE_TTL_MS,
 	utcSeconds,
 } from "./process-table.ts";
+import { descendantRows } from "./process-descendants.ts";
 
 // The tree primitives live in utils/ so core's shell can use them too; the hosted ACP workspace reaches them through
 // this file, the one process module its host import baseline lists.
@@ -282,23 +284,7 @@ const STOP_POLL_MS = 25;
  * job or taskkill /T ends the whole tree) or when `ps` fails.
  */
 export async function descendantPids(pid: number | undefined): Promise<number[]> {
-	if (!validPid(pid) || process.platform === "win32") return [];
-	const table = await readProcessTable();
-	if (!table) return [];
-	const children = new Map<number, number[]>();
-	for (const row of table.rows.values()) {
-		if (!row.pid || !row.ppid) continue;
-		children.set(row.ppid, [...(children.get(row.ppid) ?? []), row.pid]);
-	}
-	const found: number[] = [];
-	for (let queue = [pid]; queue.length > 0;) {
-		const next = queue
-			.flatMap((each) => children.get(each) ?? [])
-			.filter((each) => !found.includes(each) && each !== pid);
-		found.push(...next);
-		queue = next;
-	}
-	return found;
+	return (await descendantRows(pid)).map((row) => row.pid);
 }
 
 /** The tree rooted at `pid`, as taken when the stop began: its group plus every descendant seen then. */
@@ -316,11 +302,18 @@ function killRest(pid: number, descendants: readonly number[]): void {
  * SIGTERM to the tree, then SIGKILL to whatever is left after `graceMs`; resolves once the group is gone (a killed
  * leader stays a zombie until Node reaps it) or another `graceMs` passed. For shutdown, where the unref'd timer of
  * `killTree` would never fire because the process exits first.
+ * `retained` names descendants seen before graceful RPC shutdown; every captured start time is checked before escalation.
  */
-export async function stopTree(pid: number | undefined, graceMs = KILL_GRACE_MS): Promise<void> {
+export async function stopTree(
+	pid: number | undefined,
+	graceMs = KILL_GRACE_MS,
+	retained: readonly ProcessRow[] = [],
+): Promise<void> {
 	if (!validPid(pid)) return;
 	// Taken before the signal: once the root exits, its detached descendants belong to init and no longer show as its.
-	const descendants = await descendantPids(pid);
+	const family = await descendantRows(pid, true);
+	const identities = new Map([...family, ...retained].map((row) => [row.pid, row]));
+	const descendants = [...identities.keys()].filter((each) => each !== pid);
 	const settle = async (ms: number): Promise<void> => {
 		const deadline = Date.now() + ms;
 		while (treeAlive(pid, descendants) && Date.now() < deadline)
@@ -339,7 +332,19 @@ export async function stopTree(pid: number | undefined, graceMs = KILL_GRACE_MS)
 	signalTree(pid, "SIGTERM");
 	await settle(graceMs);
 	if (!treeAlive(pid, descendants)) return;
-	killRest(pid, descendants);
+	// Every captured PID can exit and be reused during the grace, including the original group leader.
+	const table = identities.size ? await readProcessTable() : undefined;
+	const same = (row: ProcessRow) => row.started !== undefined && table?.rows.get(row.pid)?.started === row.started;
+	const safe = [...identities.values()].filter(same);
+	// A surviving original member proves the group still belongs to this tree. Do not fall back to the root PID.
+	if (safe.some((row) => row.pgid === pid && table?.rows.get(row.pid)?.pgid === pid)) {
+		try {
+			process.kill(-pid, "SIGKILL");
+		} catch {
+			/* The group already exited. */
+		}
+	}
+	for (const row of safe) if (processAlive(row.pid)) signalTree(row.pid, "SIGKILL");
 	await settle(graceMs);
 }
 

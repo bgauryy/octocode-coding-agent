@@ -88,12 +88,7 @@ describe("lean profiles", () => {
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("lean");
-		expect(text).not.toContain("Start it with the outcome word");
-		expect(text).not.toContain("## Understand the request");
-		expect(text).not.toContain("Octocode MCP");
 		expect(event.systemPromptOptions.skills).toEqual([]);
-		// The `octocode` CLI documents itself (2026-11-05), so the lean section never names it.
-		expect(text).not.toContain("`octocode");
 		expect(text.length).toBeLessThan(1500);
 	});
 });

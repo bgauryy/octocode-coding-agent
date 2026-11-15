@@ -9,6 +9,7 @@ import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts"
 import { listHarness, switchHarness } from "../../src/octocode/web-daemon/harness-config.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
+import { approveFixtureMcp } from "./guard-helpers.ts";
 
 let root: string;
 let home: string;
@@ -52,6 +53,7 @@ describe("Harness panel rows", () => {
 		expect(row(before, "mcp:claude-mcp")).toBeUndefined();
 		const claudeFile = fs.readFileSync(path.join(home, ".claude.json"), "utf8");
 
+		approveFixtureMcp(root, agentDir);
 		const after = await switchHarness({ id: "harness:claude", on: true, scope: "global" }, options());
 		expect(Value.Check(HarnessListSchema, after)).toBe(true);
 		expect(row(after, "harness:claude")).toMatchObject({ on: true, setBy: "global" });

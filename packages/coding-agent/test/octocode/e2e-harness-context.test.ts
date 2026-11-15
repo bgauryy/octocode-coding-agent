@@ -1,3 +1,5 @@
+import { approveFixtureSkillFiles } from "./guard-helpers.ts";
+import { openSandboxDb } from "./e2e-helpers/seed-trust.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -40,9 +42,15 @@ function write(file: string, text: string): void {
 	fs.writeFileSync(file, text);
 }
 
-const skillFile = (root: string, dir: string, name: string): string => {
-	const file = path.join(root, dir, "skills", name, "SKILL.md");
+const skillFile = (box: ReturnType<typeof sandbox>, dir: string, name: string): string => {
+	const file = path.join(box.project, dir, "skills", name, "SKILL.md");
 	write(file, `---\nname: ${name}\ndescription: Use for ${name} work in this test.\n---\n# ${name}\n\nBODY-${name}\n`);
+	const db = openSandboxDb(box);
+	try {
+		approveFixtureSkillFiles([{ name, filePath: file, category: "workspace" }], box.project, { db });
+	} finally {
+		db.close();
+	}
 	return file;
 };
 
@@ -106,8 +114,8 @@ describe("harness context in the first model request", () => {
 
 	it("2: a .agents skill is listed by name (the skill tool loads it); a .claude skill only once harness:claude is on (global toggle)", async () => {
 		const box = sandbox(endpoint);
-		const agentsSkill = skillFile(box.project, ".agents", "agents-demo");
-		skillFile(box.project, ".claude", "claude-demo");
+		const agentsSkill = skillFile(box, ".agents", "agents-demo");
+		skillFile(box, ".claude", "claude-demo");
 
 		const off = await firstRequest(box);
 		const offSkills = section(off.system, "skills");
@@ -125,7 +133,7 @@ describe("harness context in the first model request", () => {
 
 	it("2b: a project-level harness:claude toggle in .octocode/settings.json also lists the project's .claude skill", async () => {
 		const box = sandbox(endpoint);
-		skillFile(box.project, ".claude", "claude-demo");
+		skillFile(box, ".claude", "claude-demo");
 		write(
 			path.join(box.project, ".octocode", "settings.json"),
 			JSON.stringify({ toggles: { "harness:claude": true } }),
@@ -158,8 +166,8 @@ describe("harness context in the first model request", () => {
 
 	it("4: a subagent's first request carries the same skills list and no harnesses line", async () => {
 		const box = sandbox(endpoint);
-		skillFile(box.project, ".agents", "agents-demo");
-		skillFile(box.project, ".claude", "claude-demo");
+		skillFile(box, ".agents", "agents-demo");
+		skillFile(box, ".claude", "claude-demo");
 		enableHarnesses(box, "codex");
 		const child: Step[] = [{ text: "child done" }];
 		const steps: Step[] = [
@@ -174,7 +182,6 @@ describe("harness context in the first model request", () => {
 		const kid = endpoint.requests.find((request) => request.script === childSource);
 		expect(parent, "parent request").toBeDefined();
 		expect(kid, "the subagent sent a model request").toBeDefined();
-		expect(kid!.system).toContain("You are a subagent");
 		expect(section(kid!.system, "skills")).toBe(section(parent!.system, "skills"));
 		expect(section(kid!.system, "skills")).toContain("agents-demo");
 		expect(kid!.system).not.toContain("claude-demo");

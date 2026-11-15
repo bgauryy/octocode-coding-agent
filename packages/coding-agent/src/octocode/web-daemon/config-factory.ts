@@ -3,6 +3,7 @@ import { ConfigSnapshotSchema, HarnessListSchema, ToolExposureListSchema } from 
 import { configAudits } from "../../../../db/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { addWebMcp, mcpAddAvailability } from "./mcp-add.ts";
 import { writeConfigSetting } from "./config-write.ts";
 import type { ConfigRoutes } from "./config-routes.ts";
 import { buildConfigSnapshot } from "./config-status.ts";
@@ -48,6 +49,15 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 			if (!Value.Check(ConfigSnapshotSchema, snapshot)) throw new Error("The configuration snapshot is invalid.");
 			return snapshot;
 		},
+		mcpAddStatus: async (_repo, live) => mcpAddAvailability(live?.mcpServerNames),
+		addMcp: async (command, repo, live) =>
+			addWebMcp(command, {
+				agentDir: getAgentDir(),
+				cwd: repo?.root,
+				actor: actor(),
+				audit,
+				mcpServerNames: live?.mcpServerNames,
+			}),
 		writeSetting: (command, repo) => writeConfigSetting(command, { agentDir: getAgentDir(), cwd: repo?.root }),
 		writeCredential: (command) =>
 			writeConfigCredential(command, { agentDir: getAgentDir(), env, actor: actor(), audit }),

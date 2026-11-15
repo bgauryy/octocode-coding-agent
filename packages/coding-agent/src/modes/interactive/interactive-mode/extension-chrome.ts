@@ -6,7 +6,7 @@
 import { type Component, Container, SEPARATOR, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import type { EditorFactory, ExtensionWidgetOptions } from "../../../core/features/index.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { hintText, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { getEditorTheme, type Theme, theme } from "../../../theme/theme.ts";
 import { closeExtensionOverlays } from "./extension-dialogs.ts";
@@ -191,7 +191,7 @@ export function resetExtensionUI(host: ExtensionChromeHost): void {
 	host.setWorkingIndicator();
 	if (host.activeStatusIndicator?.kind === "working") {
 		host.activeStatusIndicator.setMessage(
-			`${host.defaultWorkingMessage}${SEPARATOR}${hintText([[keyText("app.interrupt"), "interrupt"]])}`,
+			`${host.defaultWorkingMessage}${SEPARATOR}${hintText([[interruptKey(), "interrupt"]])}`,
 		);
 	}
 	host.setHiddenThinkingLabel();

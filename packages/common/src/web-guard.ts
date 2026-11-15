@@ -4,16 +4,13 @@ import net from "node:net";
 import { pipeline, Readable, type Transform } from "node:stream";
 import zlib from "node:zlib";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { abortedOr, defaultLookup, type HostLookup, lookupWithin } from "./host-lookup.ts";
 import { isBlockedIp, isMetadataIp } from "./ip-address.ts";
+
+export { defaultLookup, type HostLookup, lookupWithin };
 
 /** Redirect hops `web` follows; each target is checked before it is fetched. */
 const MAX_REDIRECTS = 10;
-
-export type HostLookup = (hostname: string) => Promise<Array<{ address: string }>>;
-
-/** Resolves through the system resolver, loaded on first use so importing the guard costs no resolver setup. */
-export const defaultLookup: HostLookup = async (hostname) =>
-	(await import("node:dns/promises")).lookup(hostname, { all: true, order: "verbatim" });
 
 /** What a URL's host reaches: only public addresses (listed), any non-public one, or nothing that resolves here. */
 export type HostClass =
@@ -93,28 +90,43 @@ export interface PublicFetchInit {
  * only, and a host that resolves only to public addresses. The connection goes to the checked addresses, so a DNS
  * answer that changes after the check (rebinding) cannot point it somewhere private. `firstHopPrivate` lets the first
  * request (the URL the user approved as a `net.private` ask) reach a private address; every redirect target is still
- * checked, so a redirect never leads there. That first request is resolved once too: it is refused when any address
- * is a cloud metadata address, and the connection goes to those addresses only.
+ * checked, so a redirect never leads to another private address. That first request is resolved once too: it is
+ * refused when any address is a cloud metadata address, and the connection goes to those addresses only. When it is a
+ * private page, a redirect that stays on its origin (same scheme, host and port: the page's own login path, say) is
+ * followed over those same addresses; a redirect to another host or port is checked as usual.
  */
 export async function publicFetch(
 	url: string,
 	init: PublicFetchInit,
-	options: { lookup?: HostLookup; sameHost?: boolean; firstHopPrivate?: boolean } = {},
+	options: {
+		lookup?: HostLookup;
+		sameHost?: boolean;
+		firstHopPrivate?: boolean;
+		/** Addresses the caller already resolved for the first URL's host: the first hop is checked and connected to these, not resolved again. */
+		firstHopAddresses?: string[];
+	} = {},
 ): Promise<Response> {
 	if (init.body !== undefined && init.redirect !== "error")
 		throw new Error("a request with a body must use redirect: 'error'");
 	let target = new URL(url);
+	const lookup = lookupWithin(options.lookup, init.signal);
+	const supplied = options.firstHopAddresses;
+	const firstLookup: HostLookup = supplied ? async () => supplied.map((address) => ({ address })) : lookup;
+	// The approved private page: its origin and the addresses checked for it, which a redirect inside it reuses.
+	let approvedPrivate: { origin: string; addresses: string[] } | undefined;
 	for (let hop = 0; ; hop += 1) {
 		if (!isHttpUrl(target)) throw new Error(`web fetches http(s) URLs only, not ${target.protocol}`);
-		const response = await send(
-			target,
-			init,
-			hop === 0 && options.firstHopPrivate
-				? await checkedAddresses(target, options.lookup, (address) =>
-						isMetadataIp(address) ? metadataRefusal(target.host) : undefined,
-					)
-				: await publicAddresses(target, options.lookup),
-		);
+		let addresses: string[];
+		if (approvedPrivate?.origin === target.origin) addresses = approvedPrivate.addresses;
+		else if (hop === 0 && options.firstHopPrivate) {
+			addresses = await abortedOr(init.signal, () =>
+				checkedAddresses(target, firstLookup, (address) =>
+					isMetadataIp(address) ? metadataRefusal(target.host) : undefined,
+				),
+			);
+			if (addresses.some(isBlockedIp)) approvedPrivate = { origin: target.origin, addresses };
+		} else addresses = await abortedOr(init.signal, () => publicAddresses(target, hop === 0 ? firstLookup : lookup));
+		const response = await send(target, init, addresses);
 		const location = response.headers.get("location");
 		if (response.status < 300 || response.status >= 400 || location === null) return response;
 		await discardBody(response);
@@ -133,7 +145,7 @@ async function publicAddresses(url: URL, lookup?: HostLookup): Promise<string[]>
 	if (host.kind === "unresolved") throw new Error(`Could not resolve ${url.hostname}: ${errorMessage(host.error)}`);
 	if (host.kind === "private")
 		throw new Error(
-			`Blocked private or non-public address: ${url.host}. Do not retry it. A redirect is never followed to a private address; a local page the user wants read is a \`web\` URL of its own (the user is asked first), or use \`browser\`.`,
+			`Blocked private or non-public address: ${url.host}. Do not retry it. A redirect is followed to a private address only within the host and port the user approved; a local page the user wants read is a \`web\` URL of its own (the user is asked first), or use \`browser\`.`,
 		);
 	return host.addresses;
 }
@@ -151,7 +163,8 @@ export async function pinnedFetch(
 ): Promise<Response> {
 	const target = new URL(url);
 	if (!isHttpUrl(target)) throw new Error(`only http(s) URLs are requested, not ${target.protocol}`);
-	return send(target, init, await checkedAddresses(target, options.lookup, options.refuse));
+	const lookup = lookupWithin(options.lookup, init.signal);
+	return send(target, init, await abortedOr(init.signal, () => checkedAddresses(target, lookup, options.refuse)));
 }
 
 /** Every address `url`'s host is, or resolves to (once), after `refuse` accepted each; throws on the first refusal or when it does not resolve. */

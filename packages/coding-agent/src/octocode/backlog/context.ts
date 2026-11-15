@@ -2,10 +2,10 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
 import { historyWindows } from "../../storage/retention.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { registeredWorkspace, registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
 import { type Actor, BacklogStore } from "./store.ts";
-import { scheduleHistoryArchive } from "../../../../db/src/api.ts";
+import { type AgentDb, type WorkspaceIdentity, scheduleHistoryArchive } from "../../../../db/src/api.ts";
 
 export interface BacklogOptions {
 	isSubagent: boolean;
@@ -30,6 +30,29 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 	const agent = sharedAgentDb(env);
 	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
 	const workspace = registeredWorkspace(cwd, agent);
+	return backlogContext(ctx, options, agent, workspace);
+}
+
+/** Native tools can wait for first-time workspace metadata without holding the event loop. */
+export async function openBacklogWhenReady(
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	options: BacklogOptions,
+	signal?: AbortSignal,
+): Promise<Backlog> {
+	const env = options.env ?? process.env;
+	const agent = sharedAgentDb(env);
+	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
+	const workspace = await registeredWorkspaceWhenReady(cwd, agent, signal);
+	return backlogContext(ctx, options, agent, workspace);
+}
+
+function backlogContext(
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	options: BacklogOptions,
+	agent: AgentDb,
+	workspace: WorkspaceIdentity,
+): Backlog {
+	const env = options.env ?? process.env;
 	const store = new BacklogStore(() => agent, workspace.id);
 	const session = ctx.sessionManager.getSessionId();
 	if (!options.isSubagent) {

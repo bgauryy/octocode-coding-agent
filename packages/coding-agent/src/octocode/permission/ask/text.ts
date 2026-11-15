@@ -58,8 +58,7 @@ export const bypassMergeLine = (mode: PermissionMode): string =>
 export function modeSummary(mode: PermissionMode): string {
 	if (mode === "bypass")
 		return `nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves, reads of other tools' credential stores), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse. ${bypassMergeLine(mode)}`;
-	if (mode === "full")
-		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/permissions log); a run with no UI has only the log. Invariants and hook denies still refuse.";
+	if (mode === "full") return renderInstruction("notices/permission-full.md");
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits, credential-store reads and profile permissions also ask.`;
 }
 
@@ -71,11 +70,11 @@ export const revertedNotice = (mode: PermissionMode, chosen: PermissionMode): st
 const startFlag = (mode: PermissionMode): string =>
 	mode === "bypass" ? "--dangerously-skip-permissions" : `--permission-mode ${mode}`;
 
-/** The stderr line a run whose mode raises no asks prints at start, given its session file; undefined in a mode that asks. */
+/** The stderr notice for modes that normally run without asking, given their session file. */
 export const unaskedRunLine = (mode: PermissionMode): ((file: string | undefined) => string) | undefined =>
 	runsUnasked(mode)
 		? (file) =>
-				`octocode: permission mode ${mode}: every action runs without asking and is recorded in ${file ?? "this session (not saved to a file)"}; /permissions log lists them.${mode === "bypass" ? ` ${bypassMergeLine(mode)}` : ""}\n`
+				`octocode: permission mode ${mode}: ${mode === "bypass" ? "every action runs without asking" : "most actions run without asking; browser cookies and other explicit approval requirements still apply"}. Actions are recorded in ${file ?? "this session (not saved to a file)"}; /permissions log lists them.${mode === "bypass" ? ` ${bypassMergeLine(mode)}` : ""}\n`
 		: undefined;
 
 /** Reasons on this call that force an ask in the current mode. A reason only tightens. */

@@ -16,6 +16,7 @@ import { resultBlock, toolHeader } from "../render/tool.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { ENTITY } from "../shared/entity.ts";
 import { noticeText } from "./notices.ts";
 import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../render/row-mark.ts";
 import { shareWorktree, sharedWorktree } from "./render-worktree.ts";
@@ -197,6 +198,8 @@ function promptPreface(theme: Theme, task: string | undefined, next: string | un
 
 /** Characters of the goal a row shows. */
 const GOAL_ROW_CHARS = 60;
+/** A subagent's row title: the subagent mark, as in the team panel, then the tool's name. */
+const AGENT_TITLE = `${ENTITY.subagent} Agent`;
 
 /**
  * `audit auth token refresh · claude-haiku-5-5:low · isolated`: what the row says about the run, never the prompt or the
@@ -220,9 +223,9 @@ export function renderAgentCall(args: AgentArgs, theme: Theme, context: RenderCo
 	const state = sharedRowState(context);
 	const mark = state ? { state } : {};
 	const label = runLabel(args, sharedRowModel(context), sharedWorktree(context));
-	if (!args.background) return toolHeader(theme, context, "Agent", label, mark);
+	if (!args.background) return toolHeader(theme, context, AGENT_TITLE, label, mark);
 	const quick = context.durationMs !== undefined && context.durationMs < LAUNCH_SHOWN_MS;
-	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, "Agent", label, {
+	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, AGENT_TITLE, label, {
 		meta: "background",
 		...mark,
 	});
@@ -363,7 +366,7 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 		toolHeader(
 			theme,
 			context,
-			"Agent",
+			AGENT_TITLE,
 			[details.id ?? "background", details.goal && clip(details.goal, GOAL_ROW_CHARS)].filter(Boolean).join(" · "),
 			{
 				meta: "background",

@@ -58,8 +58,23 @@ it("does not relax default uniqueness or context-evicted read guards", async () 
 	const f = setup();
 	await expect(f.edit(false)).rejects.toThrow(/unique/);
 	f.guard.forget(f.file);
-	await expect(f.edit()).rejects.toThrow(/context/);
+	// A dropped read no longer blocks an edit: its exact match decides, and a non-matching oldText is refused.
+	await expect(
+		f.tool.execute(
+			"edit-absent",
+			{
+				queries: [
+					{ type: "edit", path: f.file, reason: "test", edits: [{ oldText: "Z", newText: "B", replaceAll: true }] },
+				],
+			},
+			undefined,
+			undefined,
+			f.ctx,
+		),
+	).rejects.toThrow(/oldText was not found/);
 	expect(fs.readFileSync(f.file, "utf8")).toBe("A\nA\n");
+	await f.edit();
+	expect(fs.readFileSync(f.file, "utf8")).toBe("B\nB\n");
 });
 it("retains checkpoint and cancellation semantics after an all-occurrence commit", async () => {
 	const f = setup();

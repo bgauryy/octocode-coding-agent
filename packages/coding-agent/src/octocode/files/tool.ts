@@ -1,4 +1,6 @@
 import { fileDisplay } from "./display.ts";
+import { KILL_GRACE_MS } from "../shared/process.ts";
+import { PS_TIMEOUT_MS } from "../shared/process-table.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
@@ -37,6 +39,12 @@ import { runQuery } from "./tool/run.ts";
 export { projectEditHunk } from "./tool/patch-projection.ts";
 
 /**
+ * Batch review may cancel a command hook: allow its two bounded POSIX snapshots and TERM/KILL settle phases,
+ * plus result delivery. Current Windows command hooks use taskkill without a job-helper RPC wait.
+ */
+const FILE_ABORT_GRACE_MS = 2 * PS_TIMEOUT_MS + 2 * KILL_GRACE_MS + 500;
+
+/**
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
  * reason line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
  * whitespace/punctuation fallback, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
@@ -67,6 +75,7 @@ export function registerFileTool(
 		timedTool(
 			{
 				name: "file",
+				abortGraceMs: FILE_ABORT_GRACE_MS,
 				label: "File",
 				promptSnippet: renderInstruction("tools/file/snippet.md"),
 				description:

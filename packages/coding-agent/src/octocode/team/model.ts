@@ -40,7 +40,7 @@ export interface SendOptions {
  * How a sent message meets one recipient: woken to act now, read at its next step, quietly on its next turn, or held for a
  * recipient whose process runs but has not been seen for over a minute (`stalled`).
  */
-export type DeliveryStatus = "wake" | "next-step" | "queued-quiet" | "stalled";
+export type DeliveryStatus = "wake" | "next-step" | "queued-quiet" | "stalled" | "pull";
 
 /**
  * What a team message carries in Octocode's `details`: the messages it puts in front of the model, oldest first. A team
@@ -111,6 +111,7 @@ export function toMember(row: Row): Member {
 	return {
 		id: String(row.id),
 		role: String(row.role),
+		...(row.mailbox === "pull" ? { mailbox: "pull" as const } : {}),
 		...(parentId ? { parentId } : {}),
 		pid: num(row.pid),
 		...(started ? { started } : {}),

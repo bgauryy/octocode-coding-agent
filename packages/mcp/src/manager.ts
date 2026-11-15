@@ -1,10 +1,12 @@
 /** The `/mcp` manager in the TUI: server list, server actions, tools, exposure and sign-in screens. */
 
+import { addMcpWithUi } from "./add-ui.ts";
 import type { SelectItem } from "@octocodeai/octocode-tui";
 import { firstLine } from "../../common/src/clip.ts";
 import type { McpContext } from "./host/types.ts";
+import { hostPaths } from "./host.ts";
 import type { McpExposure } from "./config.ts";
-import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
+import { reconnect, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
 import { formatMcpTool, toolCatalog } from "./inspection.ts";
 
@@ -44,35 +46,32 @@ function stateTone(server: McpServer): McpMenuItem["tone"] {
 	}
 }
 
-function serversMenu(state: McpExtensionState, ctx: McpContext): McpMenu {
+function serversMenu(state: McpExtensionState): McpMenu {
 	const { projectTrusted } = state;
 	return {
-		title: "MCP servers — connect, enable or disable, manage tools",
+		title: "MCP servers — connect, sign in, inspect tools, add",
 		heading: "Servers",
-		details: `Global: ${state.configLocations().globalWrite}\nWorkspace: ${state.configLocations().projectWrite}${projectTrusted ? "" : " (requires trust)"}\n/mcp config shows read order; /mcp tools lists tools.`,
+		details: `Global: ${state.configLocations().globalWrite}\nWorkspace: ${state.configLocations().projectWrite}${projectTrusted ? "" : " (requires trust)"}\n/mcp add saves a new server; /mcp config shows read order; /mcp tools lists tools.`,
 		error: notices(state).join("\n") || undefined,
-		items: [...state.servers]
-			.sort((a, b) => attentionRank(a) - attentionRank(b) || a.entry.name.localeCompare(b.entry.name))
-			.map((server) => ({
-				value: server.entry.name,
-				label: server.entry.name,
-				description: `${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
-				badge: describeState(server, false),
-				tone: stateTone(server),
-			})),
+		items: [
+			...[...state.servers]
+				.sort((a, b) => attentionRank(a) - attentionRank(b) || a.entry.name.localeCompare(b.entry.name))
+				.map((server) => ({
+					value: server.entry.name,
+					label: server.entry.name,
+					description: `${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
+					badge: describeState(server, false),
+					tone: stateTone(server),
+				})),
+			{ value: "@add", label: "Add MCP", description: "Save a new stdio or HTTP definition, off until reviewed" },
+		],
 		empty: `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`,
 		confirmLabel: "open",
 		cancelLabel: "close",
-		keys: [{ key: "e", label: "enable/disable" }],
-		onKey: (_key, name) => {
-			const server = state.findServer(name);
-			if (server) runInBackground(state, ctx, server, () => setEnabled(state, server, !isEnabled(server), false));
-		},
 	};
 }
 
 function serverMenu(state: McpExtensionState, name: string): McpMenu {
-	const { projectConfig } = state;
 	const server = state.findServer(name);
 	if (!server) {
 		return {
@@ -84,20 +83,8 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 		};
 	}
 	const { entry, connection } = server;
-	const saved = entry.scope === "extension" ? "for this session" : `saved to ${state.configPath(entry)}`;
-	// Global servers without an override can be turned on or off for the trusted project alone.
-	const inProject =
-		(entry.scope === "global" || entry.scope === "default") &&
-		(!entry.override || entry.overrideScope === "global") &&
-		projectConfig !== undefined;
-	const inProjectSaved = `saved to ${projectConfig}`;
 	const items: SelectItem[] = [];
-	if (!isEnabled(server)) {
-		items.push({ value: "enable", label: "Enable", description: saved });
-		if (inProject) {
-			items.push({ value: "enable-project", label: "Enable in this project", description: inProjectSaved });
-		}
-	} else {
+	if (isEnabled(server)) {
 		const connectionState = connection?.state;
 		if (connectionState === "needs-auth")
 			items.push({ value: "signin", label: "Sign in", description: "opens the browser" });
@@ -115,17 +102,13 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 		if (connectionState === "connected" && connection?.oauthUrl) {
 			items.push({ value: "signout", label: "Sign out", description: "deletes the stored credentials" });
 		}
-		items.push({ value: "disable", label: "Disable", description: saved });
-		if (inProject) {
-			items.push({ value: "disable-project", label: "Disable in this project", description: inProjectSaved });
-		}
 	}
 	items.push({ value: "exposure", label: "Exposure", description: exposureOf(entry) });
 	const facts = [
 		{ label: "Transport", value: describeTransport(entry) },
 		{ label: entry.scope ?? "config", value: entry.source },
 		...(entry.override ? [{ label: `${entry.overrideScope ?? "project"} override`, value: entry.override }] : []),
-		{ label: "State", value: describeState(server, false) },
+		{ label: "State", value: isEnabled(server) ? describeState(server, false) : "Off · turn on in /harness mcp" },
 		// What the server last warned about and the last protocol error, which otherwise only reach mcp.log.
 		...(connection?.serverWarning ? [{ label: "Server log", value: connection.serverWarning }] : []),
 		...(connection?.clientError ? [{ label: "Client error", value: connection.clientError }] : []),
@@ -295,14 +278,6 @@ async function runAction(
 		case "exposure":
 			message = await chooseExposure(state, ui, server);
 			break;
-		case "enable":
-		case "disable":
-		case "enable-project":
-		case "disable-project": {
-			const enable = action.startsWith("enable");
-			runInBackground(state, ctx, server, () => setEnabled(state, server, enable, action.endsWith("-project")));
-			break;
-		}
 	}
 	// The session ended meanwhile (for example during a sign-in), which made ctx stale.
 	if (signal.aborted) return;
@@ -312,8 +287,12 @@ async function runAction(
 
 export async function manage(state: McpExtensionState, ui: McpUi, ctx: McpContext): Promise<void> {
 	for (;;) {
-		const name = await ui.menu(() => serversMenu(state, ctx), state.subscribe);
+		const name = await ui.menu(() => serversMenu(state), state.subscribe);
 		if (!name) return;
+		if (name === "@add") {
+			await addMcpWithUi(state, ui, { docsPath: hostPaths().mcpDocsPath?.() });
+			continue;
+		}
 		for (;;) {
 			const action = await ui.menu(() => serverMenu(state, name), state.subscribe);
 			const server = state.findServer(name);

@@ -156,7 +156,7 @@ export function judgeChange(
 function rereadRefusal(display: string, reader: Reader): string {
 	const again =
 		reader === BASH_READER ? `bash ${BASH_PRINT(display)}` : `\`${reader.name}\` or bash ${BASH_PRINT(display)}`;
-	return `${display}: your earlier read of it is no longer in your context (a compaction dropped it). Read it again first: ${again}.`;
+	return `${display}: your earlier read of it is no longer in your context (a compaction dropped it). Read it again first: ${again}. ${PIPE_NOTE}`;
 }
 
 export class FileGuard {
@@ -330,8 +330,10 @@ export class FileGuard {
 		const real = canonicalPath(file);
 		const current = statOf(real);
 		if (!current) return mode === "edit" || mode === "delete" ? { refusal: `${display} does not exist.` } : {};
-		if (this.#reread.has(real)) return { refusal: rereadRefusal(display, this.reader) };
 		const edit = mode === "edit";
+		// A dropped read is like no read: an edit goes on only when every oldText matches exactly; a write or delete needs the read.
+		if (this.#reread.has(real))
+			return edit ? { current, stale: true, unread: true } : { refusal: rereadRefusal(display, this.reader) };
 		if (this.#changed.has(real)) {
 			const by = this.modifierNote(file);
 			return edit

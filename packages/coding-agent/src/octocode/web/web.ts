@@ -13,8 +13,15 @@ import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "..
 import { capChars, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
-import { type FetchedImage, pageFetcher } from "./fetch.ts";
-import { classifyHost, metadataRefusal, reachesMetadata } from "../../../../common/src/web-guard.ts";
+import { type FetchedImage, pageFetcher, TIMEOUT_MS } from "./fetch.ts";
+import { deadline } from "../../../../common/src/deadline.ts";
+import {
+	classifyHost,
+	type HostLookup,
+	lookupWithin,
+	metadataRefusal,
+	reachesMetadata,
+} from "../../../../common/src/web-guard.ts";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { search } from "./search.ts";
@@ -102,26 +109,48 @@ function unsavedHint(length: number, max: number): string {
  * private or local one (one prompt that also names the web reason). Resolves with whether the first request may reach
  * a private address; throws the refusal when the user said no or no one could be asked.
  */
-async function approveFetch(
+export async function approveFetch(
 	permission: Permission,
 	ctx: ExtensionContext,
 	toolCallId: string,
 	url: string,
 	signal: AbortSignal | undefined,
-): Promise<{ private: boolean }> {
+	options: { lookup?: HostLookup; timeoutMs?: number } = {},
+): Promise<{ private: boolean; addresses?: string[] }> {
 	let target: URL;
 	try {
 		target = new URL(url);
 	} catch {
 		return { private: false };
 	}
+	// The host is resolved once for both checks, within the fetch's own time limit. The permission prompt waits on the
+	// user and is outside it.
+	const limitMs = options.timeoutMs ?? TIMEOUT_MS;
+	const limit = deadline(limitMs, signal);
+	let answer: Promise<Array<{ address: string }>> | undefined;
+	const resolve = lookupWithin(options.lookup, limit.signal);
+	const lookup: HostLookup = (name) => (answer ??= resolve(name));
+	let metadata: boolean;
+	let privateHost: boolean;
+	let addresses: string[] | undefined;
+	try {
+		metadata = await reachesMetadata(target, lookup);
+		privateHost = (await classifyHost(target, lookup)).kind === "private";
+		limit.signal.throwIfAborted();
+		addresses = (await answer?.catch(() => undefined))?.map(({ address }) => address);
+	} catch (error) {
+		if (signal?.aborted) throw signal.reason;
+		if (limit.signal.aborted) throw new Error(`Timed out after ${limitMs / 1000}s fetching ${url}`, { cause: error });
+		throw error;
+	} finally {
+		limit.clear();
+	}
 	// An invariant, like the state folder: `net.private` runs in `full`, and this request returns the machine's credentials.
-	if (await reachesMetadata(target)) {
+	if (metadata) {
 		const refusal = metadataRefusal(target.host);
 		permission.refused([`web ${url}`], refusal, "web");
 		throw new Error(refusal);
 	}
-	const privateHost = (await classifyHost(target)).kind === "private";
 	const grant = { key: target.host, label: target.host };
 	const verdict = await permission.check(ctx, {
 		action: privateHost ? "net.private" : "web",
@@ -134,7 +163,7 @@ async function approveFetch(
 		...(signal ? { signal } : {}),
 	});
 	if (!verdict.allowed) throw new Error(verdict.message);
-	return { private: privateHost };
+	return { private: privateHost, ...(addresses && { addresses }) };
 }
 
 export function registerWebTool(api: ExtensionAPI, permission: Permission): void {

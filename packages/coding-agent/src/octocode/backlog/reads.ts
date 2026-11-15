@@ -8,6 +8,7 @@ import {
 	LIST_STATES,
 	type State,
 	type Note,
+	type NoteKind,
 	type BacklogComment,
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
@@ -140,8 +141,8 @@ export function counts(db: Db, repo: string): BacklogCounts {
 }
 
 /** The newest `limit` notes after skipping `offset` of them, oldest first; a negative `limit` is every note. */
-export function notes(db: Db, item: Item, limit = 10, offset = 0): Note[] {
-	const rows = backlog.notesPage(db, item.rowId, limit, offset) as unknown as Note[];
+export function notes(db: Db, item: Item, limit = 10, offset = 0, kind?: NoteKind): Note[] {
+	const rows = backlog.notesPage(db, item.rowId, limit, offset, kind) as unknown as Note[];
 	return rows.reverse().map((row) => ({ at: row.at, author: row.author, kind: row.kind, text: row.text }));
 }
 
@@ -164,9 +165,10 @@ export function audit(
 	limit = 500,
 	before?: number,
 	archived: ReadonlyArray<Record<string, string | number | null>> = [],
+	current?: ReturnType<typeof backlog.auditRows>,
 ): BacklogAudit[] {
 	const size = Math.max(1, Math.min(500, Math.floor(limit)));
-	const rows = backlog.auditRows(db, repo, ref, before, size);
+	const rows = current ?? backlog.auditRows(db, repo, ref, before, size);
 	const stored = new Set(rows.map((row) => Number(row.id)));
 	const merged = [...rows, ...archived.filter((row) => !stored.has(Number(row.id)))]
 		.sort((a, b) => Number(b.id) - Number(a.id))
@@ -185,8 +187,8 @@ export function audit(
 	);
 }
 
-export function noteCount(db: Db, item: Item): number {
-	return backlog.noteCount(db, item.rowId);
+export function noteCount(db: Db, item: Item, kind?: NoteKind): number {
+	return backlog.noteCount(db, item.rowId, kind);
 }
 
 /** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */

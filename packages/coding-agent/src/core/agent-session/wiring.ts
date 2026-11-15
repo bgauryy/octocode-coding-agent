@@ -201,7 +201,15 @@ export function createSessionCollaborators(
 			runAutoCompaction: seams.runAutoCompaction,
 			prewarmCompaction: (tokens, model, thinking) => compaction.prewarm(tokens, model, thinking),
 		},
-		agentEvents: { ...base, inputs, retry, boundaries, toolCalls, emitExtensionEvent: seams.emitExtensionEvent },
+		agentEvents: {
+			...base,
+			inputs,
+			retry,
+			boundaries,
+			toolCalls,
+			emitExtensionEvent: seams.emitExtensionEvent,
+			observeContextCapacity: (message) => models.observeContextCapacity(message),
+		},
 		compactionCheck: {
 			...base,
 			modelForMessage: (message) => models.modelForMessage(message),

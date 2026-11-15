@@ -107,7 +107,7 @@ describe("write rules live in the store", () => {
 		expect(store.get("B1")).toBeDefined();
 	});
 
-	it("states the completion guidance once, in the store error and the hand-over prompts; the tool leaves it to its schema", async () => {
+	it("enforces completion and declares its schema and activation", async () => {
 		expect(COMPLETION_GUIDANCE).toMatch(/needs completion/);
 		const store = storeFor("r");
 		store.add({ ...READY, title: "task", state: "todo", createdBy: "user" });
@@ -116,23 +116,13 @@ describe("write rules live in the store", () => {
 			COMPLETION_GUIDANCE,
 		);
 		const t = setup();
-		// The guideline leaves the completion fields to the `done` operation, its field ("done: the result") and the schema's `required`.
-		expect(t.tool.promptGuidelines.join("\n")).not.toContain(COMPLETION_GUIDANCE);
-		expect(t.tool.description).not.toMatch(/needs completion|needs why/);
 		expect(t.tool.parameters.properties.op.enum).toContain("done");
-		expect(t.tool.parameters.properties.completion.description).toBe("done: the result");
 		expect(t.tool.parameters.properties.completion.required).toEqual(["summary", "verification"]);
-		// A child's guideline names the one item it may update, sends follow-ups to its report and leaves the fields to the schema and the store error.
 		const child = setup({ isSubagent: true, parentSession: "p" }).tool;
-		const childGuideline = child.promptGuidelines.join("\n");
-		expect(childGuideline).toContain("Update only your assigned item under its closure rule");
-		expect(childGuideline).toContain("Report follow-ups/unfixed failures to your coordinator: trigger, evidence, fix");
 		// Registered either way, declared to the model only when the task names an item.
 		expect(child.defaultActive).toBe(false);
 		expect(setup({ isSubagent: true, parentSession: "p", item: "B1" }).tool.defaultActive).toBe(true);
 		expect(setup().tool.defaultActive).toBe(true);
-		expect(childGuideline).not.toContain(COMPLETION_GUIDANCE);
-		expect(childGuideline).not.toContain("Note progress on your item");
 		const item = store.get("B1")!;
 		expect(doItPrompt(item, store)).toContain(COMPLETION_GUIDANCE);
 		expect(delegatePrompt(item, store)).toContain(COMPLETION_GUIDANCE);

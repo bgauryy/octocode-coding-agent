@@ -66,6 +66,8 @@ export interface ToolCall {
 }
 
 export interface Usage {
+	/** Context capacity observed during this response, when the provider reports it; not a catalog guarantee. */
+	contextWindow?: number;
 	input: number;
 	output: number;
 	cacheRead: number;

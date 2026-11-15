@@ -162,6 +162,14 @@ describe("archive tool, source profile", () => {
 		setCurrentSession(undefined);
 	});
 
+	it("reads sessionId current as this session, like an omitted one", async () => {
+		setCurrentSession("sess-kid");
+		expect(await profile({ sessionId: "current" })).toContain("Session sess-kid:");
+		setCurrentSession("not-stored");
+		expect(await profile({ sessionId: "current" })).toContain("Session sess-main:");
+		setCurrentSession(undefined);
+	});
+
 	it("falls back to the latest session of the folder and honours sessionId and limit", async () => {
 		setCurrentSession("not-stored");
 		expect(await profile({})).toContain("Session sess-main:");

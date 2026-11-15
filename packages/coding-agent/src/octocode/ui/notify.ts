@@ -8,6 +8,7 @@ import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../../../../common/src/env.ts";
 import { promptTitle } from "../shared/locks.ts";
+import { runningWorkOf } from "../shared/running-work.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { terminalTitle, type TitleState, TitleTracker } from "./terminal-title.ts";
@@ -18,9 +19,8 @@ import { registerPresentWarming } from "./present-warming.ts";
  * the bell). The terminal title carries the session state: `✻` thinking, `◐` running a tool, `◇` waiting for the user,
  * then `✓` finished or `✗` failed until the user is back (focus returns or a key is pressed).
  *
- * Octocode enables focus reports (CSI ?1004) only in fullscreen mode, and that mode consumes them. So in the regular TUI this
- * enables them itself and reads `ESC [ I` / `ESC [ O`; without focus reports (fullscreen) it falls back to idleness: a
- * run that took long while the user typed nothing.
+ * This enables focus reports (CSI ?1004) and reads `ESC [ I` / `ESC [ O` in both TUI modes. A terminal without focus
+ * reports leaves focus unknown; then it falls back to idleness: a run that took long while the user typed nothing.
  *
  * The terminal signals are the TUI's own. The Notification hooks (user scripts) fire in any mode with a UI, RPC
  * included, where a client shows the dialogs.
@@ -154,6 +154,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	let lastInputAt = Date.now();
 	let lastNoticeAt = 0;
 	const title = new TitleTracker();
+	const work = runningWorkOf(api);
 	let shown: { state: TitleState; text: string } | undefined;
 	let titleTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Outcome of the latest response, applied to the title when the run settles. */
@@ -176,7 +177,8 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		titleTimer = undefined;
 		if (!tui(ctx)) return;
 		const state = title.state;
-		const text = terminalTitle(state, api.getSessionName(), ctx.cwd);
+		const agents = state === "idle" ? 0 : (work.agents() ?? work.background().length);
+		const text = terminalTitle(state, api.getSessionName(), ctx.cwd, agents);
 		if (!force && shown?.text === text) return;
 		shown = { state, text };
 		ctx.ui.setTitle(text);
@@ -220,6 +222,12 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		write(notificationSequence(notifyMethod(env), notice.title, notice.message, env));
 	};
 
+	// Background subagents and jobs outlive the run: the tab says finished only once the last of them ends.
+	work.subscribe(() => {
+		title.setBackground(work.busy());
+		paintTitle();
+	});
+
 	api.on("session_start", async (_event, current) => {
 		unsubscribe?.();
 		unsubscribe = undefined;
@@ -258,6 +266,8 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		if (tui(ctx) && condition !== "off") write(FOCUS_OFF);
 		clearTitleTimer();
 		title.reset();
+		// Work still running after exit is no longer this tab's: leave the plain title.
+		title.setBackground(0);
 		if (shown?.state !== "idle") paintTitle(true);
 		ctx = undefined;
 	});
@@ -316,17 +326,18 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		settleRun(Date.now(), next.hasPendingMessages() && !event.aborted);
 	});
 	api.on("ui_prompt_end", async (event) => {
-		if (event.nested) return;
-		title.promptEnd();
+		title.promptEnd(event.id);
 		paintTitle();
 	});
 	api.on("ui_prompt_start", async (event) => {
-		// A dialog over another is the same wait: one title change, one notification.
-		if (event.nested) return;
-		title.promptStart();
+		const firstBlocking = title.promptStart(event.id, event.blocking === true);
 		paintTitle();
-		// Only the agent's dialogs: one the user opened (such as a `/permissions` picker) needs no call back.
-		if (getRunClock() === undefined) return;
+		// A dialog over another is the same wait: one notification. A blocking one over a dialog the user opened (such as
+		// the `/permissions` picker) is a new wait.
+		if (event.nested && !firstBlocking) return;
+		// Only the agent's dialogs: one the user opened (such as a `/permissions` picker) needs no call back. A blocking
+		// one (a background subagent's approval) still matters after the run settled.
+		if (getRunClock() === undefined && event.blocking !== true) return;
 		const type: NoticeType = event.approval === true ? "permission_prompt" : "elicitation_dialog";
 		fire(
 			{ type, title: "Octocode: waiting for you", message: promptTitle(event) ?? "A question needs your answer" },

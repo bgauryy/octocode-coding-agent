@@ -215,6 +215,8 @@ export function DaemonShell({ access }: { access: string }) {
 						saveCredential={api.saveCredential}
 						saveProvider={api.saveProvider}
 						signIn={api.signIn}
+						addMcp={api.addMcp}
+						mcpAddStatus={api.mcpAddStatus}
 						harness={harnessApi}
 						tools={toolsApi}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}

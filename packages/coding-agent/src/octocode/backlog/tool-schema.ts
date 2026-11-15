@@ -102,7 +102,8 @@ export function completionField(description: string) {
 				summary: { type: "string" },
 				verification: {
 					type: "string",
-					description: "Start passed, failed, not run or not applicable; name the check",
+					description:
+						"Close only after a check passed or does not apply: start `passed` or `not applicable`, then name the check. A failed or unrun check is refused: keep the item ongoing and add a note saying what failed",
 				},
 				files: { type: "array", items: { type: "string" } },
 				lesson: { type: "string" },

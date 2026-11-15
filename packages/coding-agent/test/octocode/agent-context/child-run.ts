@@ -47,7 +47,7 @@ export function messageText(message: unknown): string {
 
 /** The parent's side of one run: the assignment as `tool.ts` renders it, and the task it sends. */
 export function assign(
-	identity: Identity,
+	identity: Identity & ChildIdentity,
 	task: string,
 	resultContract?: ResultContract,
 ): { identity: Identity; assigned: ChildIdentity; task: string } {

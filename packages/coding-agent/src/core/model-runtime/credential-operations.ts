@@ -24,6 +24,18 @@ export interface CredentialOperationsHost {
 	readonly availability: ModelAvailability;
 }
 
+const credentialListeners = new Set<(providerId: string) => void>();
+
+/**
+ * Calls `listener` with the provider id after any `ModelRuntime` in this process saved, replaced or removed that
+ * provider's credential (login, logout, import, runtime API key). A token the runtime refreshes itself, or a change
+ * another process makes, is not announced. Listeners run inside the change and must not throw. Returns the stop function.
+ */
+export function onCredentialChange(listener: (providerId: string) => void): () => void {
+	credentialListeners.add(listener);
+	return () => void credentialListeners.delete(listener);
+}
+
 /**
  * Credential changes (login, logout, runtime API keys), serialized per provider. Each change is followed by
  * recomposing the provider and refreshing its models and availability.
@@ -63,6 +75,7 @@ export class CredentialOperations {
 		signal: AbortSignal,
 	): Promise<void> {
 		const { models, layers, availability } = this.host;
+		for (const listener of credentialListeners) listener(providerId);
 		try {
 			signal.throwIfAborted();
 			layers.recomposeProvider(providerId);

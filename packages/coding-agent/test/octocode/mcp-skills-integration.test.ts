@@ -25,6 +25,7 @@ import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
+import { approveFixtureSkillFiles } from "./guard-helpers.ts";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -108,6 +109,13 @@ describe("installed MCP and skills through the native SDK", () => {
 				api.on("resources_discover", () => ({ skillPaths: [discoveredSkill] }));
 			};
 			const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+			approveFixtureSkillFiles(
+				[
+					{ name: "integration-skill", filePath: path.join(externalSkill, "SKILL.md"), category: "global" },
+					{ name: "discovered-skill", filePath: path.join(discoveredSkill, "SKILL.md"), category: "global" },
+				],
+				cwd,
+			);
 			const resourceLoader = new DefaultResourceLoader({
 				cwd,
 				agentDir,

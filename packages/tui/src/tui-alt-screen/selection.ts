@@ -12,6 +12,8 @@ import type { SelectionPoint, SelectionRange } from "./types.ts";
 // so mirror common terminal word-selection behavior by keeping paths and kebab-case tokens whole.
 const TERMINAL_WORD_SELECTION_JOINERS = new Set(["/", "-"]);
 const wordSegmenter = getWordSegmenter();
+/** A trailing zero-width grapheme can fall beyond the last selected cell; keep the slicer for that tail. */
+const COPY_NEEDS_COLUMNS = /[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]/v;
 
 export function getWordSelection(sourceLine: string, point: SelectionPoint): SelectionRange | undefined {
 	const line = stripTerminalSequences(sourceLine);
@@ -115,31 +117,41 @@ export function scrollScrollbarToPointer(
 	scrollView.scrollToFraction(maxThumbOffset === 0 ? 0 : thumbOffset / maxThumbOffset);
 }
 
+/** Selected plain-text rows, so a bounded clipboard can stop before reading the rest of a selection. */
+export function* selectedTextLines(
+	selection: { start: SelectionPoint; end: SelectionPoint } | undefined,
+	previousScreen: readonly string[],
+	currentLayout: LayoutFrame | undefined,
+): Generator<string> {
+	if (!selection) return;
+	let sourceLines: readonly string[] = previousScreen;
+	if (selection.start.scrollView) {
+		if (!currentLayout) return;
+		const box = getScrollViewBox(currentLayout, selection.start.scrollView);
+		if (!box?.scrollContentLines) return;
+		sourceLines = box.scrollContentLines;
+	}
+	for (let row = selection.start.row; row <= selection.end.row; row++) {
+		const line = sourceLines[row] ?? "";
+		const plain = stripTerminalSequences(line);
+		if (row > selection.start.row && row < selection.end.row && !COPY_NEEDS_COLUMNS.test(plain.slice(-2))) {
+			yield plain.trimEnd();
+			continue;
+		}
+		const columns = getSelectionColumns(line, row, selection);
+		yield stripTerminalSequences(
+			sliceByColumn(line, columns.start, Math.max(0, columns.end - columns.start), true),
+		).trimEnd();
+	}
+}
+
 /** The plain text of a selection, read from scroll content or from the last rendered frame. */
 export function getSelectionText(
 	selection: { start: SelectionPoint; end: SelectionPoint } | undefined,
 	previousScreen: readonly string[],
 	currentLayout: LayoutFrame | undefined,
 ): string | undefined {
-	if (!selection) return undefined;
-	let sourceLines: readonly string[] = previousScreen;
-	if (selection.start.scrollView) {
-		if (!currentLayout) return undefined;
-		const box = getScrollViewBox(currentLayout, selection.start.scrollView);
-		if (!box?.scrollContentLines) return undefined;
-		sourceLines = box.scrollContentLines;
-	}
-	const lines: string[] = [];
-	for (let row = selection.start.row; row <= selection.end.row; row++) {
-		const line = sourceLines[row] ?? "";
-		const columns = getSelectionColumns(line, row, selection);
-		lines.push(
-			stripTerminalSequences(
-				sliceByColumn(line, columns.start, Math.max(0, columns.end - columns.start), true),
-			).trimEnd(),
-		);
-	}
-	const text = lines.join("\n");
+	const text = [...selectedTextLines(selection, previousScreen, currentLayout)].join("\n");
 	return text.length === 0 ? undefined : text;
 }
 

@@ -149,10 +149,14 @@ describe("browser MCP calls that leave the isolated browser", () => {
 		expect(found("open", { args: ["--headless", "--port", "9333"] })).toEqual([]);
 		expect(found("cookies", { args: ["--chrome-path", "/x"] })).toEqual(["control"]);
 		expect(found("step", { step: { op: "cdp", method: "Storage.getCookies" } })).toEqual(["cookies"]);
-		expect(found("cdp", { method: "Target.sendMessageToTarget", params: { message: "{}" } })).toEqual(["control"]);
-		expect(found("cdp", { method: "Page.setDownloadBehavior", params: { behavior: "deny" } })).toEqual([]);
-		expect(found("cdp", { method: "Runtime.evaluate", params: { expression: "1" } })).toEqual([]);
+		expect(found("cdp", { method: "Target.sendMessageToTarget", params: { message: "{}" } })).toEqual([
+			"cookies",
+			"control",
+		]);
+		expect(found("cdp", { method: "Page.setDownloadBehavior", params: { behavior: "deny" } })).toEqual(["cookies"]);
+		expect(found("cdp", { method: "Runtime.evaluate", params: { expression: "1" } })).toEqual(["cookies"]);
 		expect(found("cdp", { method: "DOM.setFileInputFiles", params: { files: ["/a", "b"] } })).toEqual([
+			"cookies",
 			"upload:/a",
 			"upload:b",
 		]);
@@ -249,7 +253,7 @@ describe("browser MCP calls that leave the isolated browser", () => {
 			gate({ type: "tool_call", toolCallId: `r-${tool}`, toolName: browserTool(tool), input }, ctx);
 		for (const [gap, { tool, input }] of Object.entries(GAPS))
 			if (gap !== "cookies") expect((await call(tool, input))?.reason, gap).toMatch(/read-only role/);
-		expect(await call("script", { args: ["probe.mjs"] })).toBeUndefined();
+		expect((await call("script", { args: ["probe.mjs"] }))?.block).toBe(true);
 		expect(await call("open", { args: ["--headless"] })).toBeUndefined();
 	});
 

@@ -296,12 +296,15 @@ function apiExecutable(box: Sandbox): string {
 	return file;
 }
 
-const records = (run: { stdout(): string }) =>
-	run
-		.stdout()
+// Polled while the process writes: a last line without its newline is still being written, so only whole lines parse.
+const records = (run: { stdout(): string }) => {
+	const out = run.stdout();
+	return out
+		.slice(0, out.lastIndexOf("\n") + 1)
 		.split("\n")
 		.filter(Boolean)
 		.map((line) => JSON.parse(line) as Record<string, any>);
+};
 
 const rpcPrompt = (run: { process: { stdin: NodeJS.WritableStream | null } }, id: string, message: string) =>
 	run.process.stdin?.write(`${JSON.stringify({ id, type: "prompt", message })}\n`);

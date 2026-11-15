@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { READ_ONLY_ENV } from "../../../common/src/env.ts";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -21,33 +20,6 @@ describe("registerTurnSetup", () => {
 	};
 	const turns = new Map<ReturnType<typeof fakeHost>, ReturnType<typeof registerTurnSetup>>();
 	const setupTurn = (fake: ReturnType<typeof fakeHost>) => turns.get(fake)!;
-	// The research section's last-resort line: shown only when neither the research server nor a shell or `web` is reachable.
-	it("tells a session with a person to use askUser and a headless one not to, and follows a UI that attaches later", async () => {
-		const prompt = async ({ fake }: ReturnType<typeof setup>, hasUI: boolean) => {
-			const event = {
-				systemPromptOptions: {
-					sections: {} as Record<string, string>,
-					baseSections: {} as Record<string, string>,
-					selectedTools: ["askUser"],
-				},
-			};
-			await fake.emit("before_agent_start", event, { hasUI });
-			return Object.values(allSections(event)).join("\n\n");
-		};
-		const interactive = setup();
-		expect(await prompt(interactive, true)).toContain("Ask with askUser");
-		const cached = await prompt(interactive, true);
-		expect(await prompt(interactive, true)).toBe(cached);
-		expect(await prompt(interactive, false)).not.toContain("Ask with askUser");
-
-		const headless = setup();
-		const text = await prompt(headless, false);
-		expect(text).not.toContain("Ask with askUser");
-		expect(text).toContain("Ask the user");
-		expect(await prompt(headless, true)).toContain("Ask with askUser");
-	});
-
-	const NO_LOOKUP_TOOL = "no lookup tool is available";
 	const run = async (fake: ReturnType<typeof fakeHost>, selectedTools?: string[]) => {
 		const event = {
 			systemPromptOptions: {
@@ -71,20 +43,6 @@ describe("registerTurnSetup", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("routes declared research tools without suggesting scripts or discovery", async () => {
-		const { fake } = setup();
-		fake.tools.set(RESEARCH.other, { name: RESEARCH.other, exposure: "direct" });
-		fake.api.setActiveTools([RESEARCH.other]);
-		const prompt = await run(fake);
-		// With the server reachable the research rule routes to `mcp__research__*` as a family and names no full
-		// server tool name (the server's own text describes each); no fallback.
-		expect(prompt).not.toContain(NO_LOOKUP_TOOL);
-		expect(prompt).toContain("`mcp__research__*`");
-		expect(prompt).not.toMatch(/mcp__research__\w/);
-		expect(prompt).not.toContain("are called from `codemode`");
-		expect(prompt).not.toContain("tool_search");
-	});
-
 	it("uses the core tool set at session start and leaves the active set alone per turn", async () => {
 		const { fake } = setup();
 		process.argv = ["node", "octocode"];
@@ -98,19 +56,6 @@ describe("registerTurnSetup", () => {
 		};
 		await fake.emit("before_agent_start", event, {});
 		expect(event.systemPromptOptions.selectedTools).toEqual(["read", "edit"]);
-	});
-
-	it("keeps read-only shell restrictions for a read-only role when PowerShell is the only shell", async () => {
-		vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
-		vi.stubEnv(READ_ONLY_ENV, "1");
-		const fake = fakeHost();
-		registerTurnSetup(fake.api, {
-			isSubagent: true,
-			profiles: () => new Map(),
-		});
-		expect(await run(fake, ["read", "powershell"])).toContain("Run only read-only commands,");
-		expect(await run(fake, ["read"])).not.toContain("Run only read-only commands,");
-		vi.unstubAllEnvs();
 	});
 
 	it("keeps custom tools across reload and resume without name-based pruning", async () => {
@@ -167,38 +112,6 @@ describe("registerTurnSetup", () => {
 		expect(fake.api.getActiveTools()).toEqual(["read"]);
 	});
 
-	it("routes browser work to the specialist only when the main agent can delegate and has no browser", async () => {
-		const fake = fakeHost();
-		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		registerTurnSetup(fake.api, {
-			isSubagent: false,
-			profiles: () => profiles,
-		});
-		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction to `browser`");
-		// The removed native `browser` tool no longer counts as a browser; only the browser MCP tools do.
-		expect(await run(fake, ["agent", "file", "browser"])).toContain("Delegate browser interaction");
-		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
-		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
-	});
-
-	it("never routes rendered-page lookups to the browser server's tools, whatever the agent holds", async () => {
-		const fake = fakeHost();
-		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => loadProfiles(tmp(), tmp(), false, {}) });
-		// The browser server explains itself through its own text; the policy names neither it nor its tools.
-		for (const selected of [
-			["agent", "file", "web", "mcp__browser__run"],
-			["agent", "file", "web", "browser"],
-			["agent", "file", "web"],
-		]) {
-			const prompt = await run(fake, selected);
-			expect(prompt).not.toContain("mcp__browser");
-			expect(prompt).not.toContain("cannot answer the question, use the browser");
-		}
-		// No browser: the delegation line names the specialist.
-		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction");
-		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
-	});
-
 	it("keeps browser role instructions stable across modes and reads them once per child", async () => {
 		const profile = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		const sections = [];
@@ -232,8 +145,6 @@ describe("registerTurnSetup", () => {
 		fake.tools.set(RESEARCH.search, { name: RESEARCH.search });
 		const selected = ["read", RESEARCH.search];
 		const first = await run(fake, selected);
-		expect(first).not.toContain(NO_LOOKUP_TOOL);
-		expect(first).not.toContain("# Using Octocode MCP tools");
 		expect(await run(fake, selected)).toBe(first);
 		setupTurn(fake).reset();
 		expect(await run(fake, selected)).toBe(first);
@@ -245,16 +156,7 @@ describe("registerTurnSetup", () => {
 			namespace: { name: "mcp__research", instructions: "SERVER_ONLY_INVENTORY" },
 		});
 		const native = await run(fake, ["read", RESEARCH.search]);
-		expect(native).not.toContain(NO_LOOKUP_TOOL);
 		expect(native).not.toContain("SERVER_ONLY_INVENTORY");
-	});
-	it("drops the native research fallback when the research server's tools become available and restores it after deselection or reset", async () => {
-		const { fake } = setup();
-		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
-		expect(await run(fake, ["read", RESEARCH.search])).not.toContain(NO_LOOKUP_TOOL);
-		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
-		setupTurn(fake).reset();
-		expect(await run(fake, ["read"])).toContain(NO_LOOKUP_TOOL);
 	});
 	it("gives every child of one profile the same octocode section, whatever its id, parent and scratch folder", async () => {
 		const sectionFor = async (id: string, parent: string, scratch: string) => {

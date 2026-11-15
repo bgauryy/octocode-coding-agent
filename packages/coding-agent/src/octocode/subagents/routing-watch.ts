@@ -3,6 +3,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import { type Catalog, readCatalog } from "./catalog.ts";
 import { registryBilling } from "./model.ts";
 import { type RoutingFacts, routingFacts } from "./models-command.ts";
+import { providerHealth } from "./provider-health.ts";
 import { providerCount } from "../instructions/policy.ts";
 import type { AgentProfile } from "./profiles.ts";
 
@@ -40,7 +41,8 @@ const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
  * The coordinator's prompt states routing once per session: the first reading after a reset (session start, resume,
  * reload) is kept, so the cached prefix does not change mid-session. A later change made through a command (a provider
  * enabled, disabled or signed in, a model switch) reaches the running agent as one short hidden notice instead; the
- * next reload states the new facts in the prompt. A models.dev index saved since (the refresh each session starts)
+ * next reload states the new facts in the prompt. A notice names its cause: a provider that refused its credential or
+ * accepts it again (`isRefused`, the provider health the routing read), otherwise the user. A models.dev index saved since (the refresh each session starts)
  * changes no fact on its own: the agent hears of it only with a change of the registry.
  */
 export class RoutingWatch {
@@ -50,6 +52,13 @@ export class RoutingWatch {
 	#told = "";
 	/** The models.dev index of that reading. */
 	#catalog: Catalog | undefined;
+	readonly #isRefused: (provider: string) => boolean;
+	/** Providers the agent was told left because they refused their credential. */
+	#refusedOff = new Set<string>();
+
+	constructor(isRefused: (provider: string) => boolean = (provider) => providerHealth.refused(provider)) {
+		this.#isRefused = isRefused;
+	}
 
 	/** The facts this session's prompt states: frozen at the first call after a reset. */
 	prompt(current: RoutingFacts | undefined, catalog?: Catalog): RoutingFacts | undefined {
@@ -85,8 +94,19 @@ export class RoutingWatch {
 		const now = current.providers.map((provider) => provider.id);
 		const off = was.filter((provider) => !now.includes(provider));
 		const on = now.filter((provider) => !was.includes(provider));
+		const refused = off.filter(this.#isRefused);
+		const recovered = on.filter((provider) => this.#refusedOff.has(provider));
+		const user =
+			off.length + on.length === 0 ||
+			refused.length < off.length ||
+			recovered.length < on.length ||
+			before?.sessionModel !== current.sessionModel;
+		this.#refusedOff = new Set([...this.#refusedOff, ...refused].filter((provider) => !now.includes(provider)));
 		return renderInstruction("notices/routing-changed.md", {
 			id: ROUTING_NOTICE_ID,
+			user,
+			refused: refused.map(quote).join(", "),
+			recovered: recovered.map(quote).join(", "),
 			sessionModel: quote(current.sessionModel),
 			providers: current.providers.map(providerCount).join(", "),
 			on: on.map(quote).join(", "),
@@ -99,10 +119,19 @@ export class RoutingWatch {
 		});
 	}
 
+	/**
+	 * Compaction summarized the notices away while the prompt still states the frozen facts: the agent now knows only
+	 * those, so a change since is told again.
+	 */
+	compacted(): void {
+		if (this.#frozen) this.#told = JSON.stringify(this.#prompted ?? null);
+	}
+
 	reset(): void {
 		this.#frozen = false;
 		this.#prompted = undefined;
 		this.#told = "";
 		this.#catalog = undefined;
+		this.#refusedOff = new Set();
 	}
 }

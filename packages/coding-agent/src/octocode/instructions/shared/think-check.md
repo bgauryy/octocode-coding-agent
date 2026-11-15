@@ -1,2 +1,2 @@
-- Define done by checked outcomes, not activity or proxies. Compare results to expectations; keep, adjust or revert.
-- Scale checks to risk and uncertainty: missing constraints, downstream effects and severe failures; prefer simple, reversible probes.
+- Loop: set goal and check (an outcome, not activity), act, verify, report; keep, adjust or revert by the result.
+- Scale checks to risk: missing constraints, downstream effects, severe failures. Prefer reversible steps.

@@ -1,3 +1,5 @@
+import { createStore } from "zustand/vanilla";
+import { ENTITY } from "./entity.ts";
 import { plural } from "./text.ts";
 
 /** What the running-work view lists, in the order it groups them. */
@@ -32,30 +34,71 @@ const sameRow = (a: WorkRow, b: WorkRow) =>
 	a.startedAt === b.startedAt &&
 	a.dueAt === b.dueAt;
 
-/** The rows of every kind that runs now, and who wants to know when they change. */
-export class RunningWork {
-	private readonly byKind = new Map<WorkKind, readonly WorkRow[]>();
-	private readonly listeners = new Set<() => void>();
+interface WorkState {
+	byKind: Readonly<Partial<Record<WorkKind, readonly WorkRow[]>>>;
+	/** Background subagents this session runs now, by name, whether or not the team lists them yet. */
+	background: readonly string[];
+	/** The agents the footer counts (live team subagents plus unlisted background ones), once a view publishes it. */
+	agents: number | undefined;
+}
 
-	/** Replaces the rows of `kind`; listeners hear of it only when something differs. */
+/** Kinds that keep the session busy; a timer only waits to wake it. */
+const BUSY_KINDS: readonly WorkKind[] = ["bash", "external"];
+
+/**
+ * The rows of every kind that runs now and the background subagents, in one zustand store, and who wants to know when
+ * they change. Listeners hear of a change only when something differs.
+ */
+export class RunningWork {
+	private readonly store = createStore<WorkState>()(() => ({ byKind: {}, background: [], agents: undefined }));
+
+	/** Replaces the rows of `kind`. */
 	set(kind: WorkKind, rows: readonly WorkRow[]): void {
-		const before = this.byKind.get(kind) ?? [];
+		const { byKind } = this.store.getState();
+		const before = byKind[kind] ?? [];
 		if (before.length === rows.length && before.every((row, index) => sameRow(row, rows[index]))) return;
-		if (rows.length === 0) this.byKind.delete(kind);
-		else this.byKind.set(kind, rows);
-		for (const listener of Array.from(this.listeners)) listener();
+		const next = { ...byKind };
+		if (rows.length === 0) delete next[kind];
+		else next[kind] = rows;
+		this.store.setState({ byKind: next });
+	}
+
+	/** Replaces the background subagents this session runs now. */
+	setBackground(names: readonly string[]): void {
+		const before = this.store.getState().background;
+		if (before.length === names.length && before.every((name, index) => name === names[index])) return;
+		this.store.setState({ background: [...names] });
+	}
+
+	/** Publishes the agent count the footer shows, so the tab title counts the same agents; `undefined` withdraws it. */
+	setAgents(count: number | undefined): void {
+		if (this.store.getState().agents === count) return;
+		this.store.setState({ agents: count });
+	}
+
+	/** The footer's agent count, or `undefined` when no view publishes one. */
+	agents(): number | undefined {
+		return this.store.getState().agents;
+	}
+
+	background(): readonly string[] {
+		return this.store.getState().background;
 	}
 
 	/** Every row, grouped by kind in `KIND_ORDER`, each group in its owner's order. */
 	all(): WorkRow[] {
-		return KIND_ORDER.flatMap((kind) => this.byKind.get(kind) ?? []);
+		const { byKind } = this.store.getState();
+		return KIND_ORDER.flatMap((kind) => byKind[kind] ?? []);
+	}
+
+	/** How many things still work after the main run settled: background subagents, bash jobs, external work. */
+	busy(): number {
+		const { byKind, background } = this.store.getState();
+		return background.length + BUSY_KINDS.reduce((sum, kind) => sum + (byKind[kind]?.length ?? 0), 0);
 	}
 
 	subscribe(listener: () => void): () => void {
-		this.listeners.add(listener);
-		return () => {
-			this.listeners.delete(listener);
-		};
+		return this.store.subscribe(() => listener());
 	}
 }
 
@@ -78,7 +121,7 @@ export function workCounts(agents: number, rows: readonly WorkRow[]): string {
 	const count = (kind: WorkKind) => rows.filter((row) => row.kind === kind).length;
 	const [bash, timers, external] = [count("bash"), count("timer"), count("external")];
 	return [
-		...(agents > 0 ? [plural(agents, "agent")] : []),
+		...(agents > 0 ? [`${ENTITY.subagent} ${plural(agents, "agent")}`] : []),
 		...(bash > 0 ? [`${bash} bash`] : []),
 		...(timers > 0 ? [plural(timers, "timer")] : []),
 		...(external > 0 ? [`${external} external`] : []),

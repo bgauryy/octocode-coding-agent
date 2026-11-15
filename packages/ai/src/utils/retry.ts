@@ -10,6 +10,7 @@ export {
 	isTerminalProviderLimitError,
 	isUsageLimitError,
 } from "./retry-classes.ts";
+export { isCredentialError } from "./credential-errors.ts";
 
 /** A failure that clears by waiting gets at least this many retries, because a token bucket refills meanwhile and an outage ends. */
 export const RATE_LIMIT_MIN_RETRIES = 6;

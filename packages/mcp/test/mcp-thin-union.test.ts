@@ -3,7 +3,7 @@ import { type Tool, validateToolArguments } from "@octocodeai/octocode-ai";
 import { convertTools as convertAnthropicTools } from "@octocodeai/octocode-ai/api/anthropic-messages/tools";
 import { convertTools as convertGoogleTools } from "@octocodeai/octocode-ai/api/google-shared/tools";
 import { describe, expect, it } from "vitest";
-import { declaresReason, thinParameters } from "../src/presentation/declaration.ts";
+import { thinParameters } from "../src/presentation/declaration.ts";
 import { createMcpToolDefinition } from "../src/tool-definition.ts";
 
 const open = (properties: Record<string, unknown>) => ({ type: "object", properties, additionalProperties: true });
@@ -112,7 +112,7 @@ describe("thin MCP declarations of union inputs", () => {
 		for (const keyword of ["anyOf", "oneOf", "allOf"]) {
 			const schema = { [keyword]: [{ $ref: "#" }, known] };
 			expect(thinParameters(schema), keyword).toEqual(expected);
-			expect(declaresReason(schema), keyword).toBe(true);
+			expect(thinParameters(schema), keyword).toHaveProperty("properties.reason");
 		}
 		const branches = {
 			oneOf: [{ $ref: "#/$defs/A" }, { $ref: "#/$defs/B" }],
@@ -122,16 +122,16 @@ describe("thin MCP declarations of union inputs", () => {
 			},
 		};
 		expect(thinParameters(branches)).toEqual(open({ a: { type: "string" }, b: { type: "integer" } }));
-		expect(declaresReason(branches)).toBe(false);
+		expect(thinParameters(branches)).not.toHaveProperty("properties.reason");
 		const selfRef = { $ref: "#" };
 		expect(thinParameters(selfRef)).toEqual({ type: "object", additionalProperties: true });
-		expect(declaresReason(selfRef)).toBe(false);
+		expect(thinParameters(selfRef)).not.toHaveProperty("properties.reason");
 		const mixed = {
 			anyOf: [{ $ref: "#" }, { properties: { tree: { $ref: "#/$defs/Node" }, reason: { type: "string" } } }],
 			$defs: { Node: { anyOf: [{ type: "string" }, { $ref: "#/$defs/Node" }] } },
 		};
 		expect(thinParameters(mixed)).toEqual(open({ tree: {}, reason: { type: "string" } }));
-		expect(declaresReason(mixed)).toBe(true);
+		expect(thinParameters(mixed)).toHaveProperty("properties.reason");
 	});
 
 	it("keeps the fields of a root $ref target beside sibling properties", () => {
@@ -140,7 +140,7 @@ describe("thin MCP declarations of union inputs", () => {
 		expect(JSON.stringify(thinParameters(beside))).toBe(
 			JSON.stringify(open({ reason: { type: "string" }, value: { type: "string" }, local: { type: "number" } })),
 		);
-		expect(declaresReason(beside)).toBe(true);
+		expect(thinParameters(beside)).toHaveProperty("properties.reason");
 		const conflicting = { $ref: "#/$defs/Args", properties: { value: { type: "number" } }, $defs: { Args: args } };
 		expect(thinParameters(conflicting)).toEqual(open({ reason: { type: "string" }, value: stringOrNumber }));
 	});

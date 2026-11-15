@@ -15,6 +15,8 @@ import {
 } from "../history/transcripts.ts";
 import { findErrors, renderErrors, sinceTime } from "../history/errors.ts";
 import { rankHistory } from "../history/rank.ts";
+import { focusedSessionIds } from "../history/focus.ts";
+import { currentSessionId } from "../shared/home.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { clip, plural } from "../shared/text.ts";
@@ -77,14 +79,9 @@ export function pattern(query: string): RegExp {
 	}
 }
 
-/** `files` limited to the session named by `sessionId` (`current`: this one) and to those changed since `since`. */
+/** `files` limited to those changed since `since`; session selection happens before files are collected. */
 function narrowFiles(files: HistoryFile[], params: ArchiveParams): HistoryFile[] {
-	const session = params.sessionId?.trim();
 	let kept = files;
-	if (session)
-		kept = kept.filter((file) =>
-			session === "current" ? file.session.relation === "this session" : file.session.id === session,
-		);
 	if (params.since?.trim() && !params.errors) {
 		const from = Date.parse(sinceTime(params.since.trim()));
 		kept = kept.filter((file) => {
@@ -149,6 +146,8 @@ export function createHistoryTool() {
 			if (!reason) throw new Error("archive needs reason (why history is needed, not the code).");
 			const page = Math.max(1, Math.floor(params.page ?? 1));
 			const scope = historyScope(ctx.cwd);
+			const ids = focusedSessionIds(scope, params.sessionId, currentSessionId());
+			const selected = ids ? scope.filter((session) => ids.includes(session.id)) : scope;
 			const why = { reason };
 			const query = params.query?.trim() ? pattern(params.query.trim()) : undefined;
 			const keywords = params.keywords?.trim() || undefined;
@@ -172,8 +171,8 @@ export function createHistoryTool() {
 				const since = params.since?.trim() ? sinceTime(params.since.trim()) : undefined;
 				const sessions =
 					target === undefined
-						? scope
-						: scope.filter((session) => {
+						? selected
+						: selected.filter((session) => {
 								const folder = canonicalPath(session.folder);
 								return folder === target || isWithin(target, folder);
 							});
@@ -204,7 +203,7 @@ export function createHistoryTool() {
 				);
 			}
 			if (!query && !keywords) {
-				const read = readHistory(target!, params.line ?? 1, page);
+				const read = await readHistory(target!, params.line ?? 1, page, signal);
 				if (!read)
 					throw new Error(`${params.file} cannot be read (missing, or a folder: list it, or search it with query).`);
 				const more =
@@ -220,23 +219,31 @@ export function createHistoryTool() {
 					pages: read.pages,
 				} satisfies ArchiveDetails);
 			}
-			let files: HistoryFile[] = narrowFiles(historyFiles(scope), params);
+			let files: HistoryFile[] = narrowFiles(historyFiles(selected), params);
 			if (target !== undefined) {
 				const under = filesUnder(files, target);
+				const inScope =
+					!params.sessionId?.trim() ||
+					selected.some((session) => {
+						const folder = canonicalPath(session.folder);
+						return target === folder || isWithin(target, folder);
+					});
 				// A readable file outside the listed ones (a `LIBRARY.md`) is searched on its own.
 				files =
 					under.length > 0
 						? under
-						: [
-								{
-									file: target,
-									session: {
-										id: path.basename(path.dirname(path.dirname(target))),
-										relation: "same repository",
+						: !inScope
+							? []
+							: [
+									{
+										file: target,
+										session: {
+											id: path.basename(path.dirname(path.dirname(target))),
+											relation: "same repository",
+										},
+										label: path.basename(target),
 									},
-									label: path.basename(target),
-								},
-							];
+								];
 			}
 			if (keywords) {
 				const ranked = await rankHistory(files, keywords, page, query, signal);

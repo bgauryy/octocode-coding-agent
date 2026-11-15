@@ -300,9 +300,10 @@ describe("item 7: a prerequisite completed outside this process wakes the coordi
 		backlog.store.add({ ...PLANNED, title: "ui", state: "todo", dependsOn: ["B1"] });
 		const told: string[] = [];
 		const linked = new Set<string>();
+		let current = backlog;
 		let poke: (() => void) | undefined;
 		const watch = new GraphWatch({
-			backlog: () => backlog,
+			backlog: () => current,
 			linked: (ref) => linked.has(ref),
 			tell: (notice) => told.push(notice),
 			subscribe: (listener) => {
@@ -313,42 +314,138 @@ describe("item 7: a prerequisite completed outside this process wakes the coordi
 			},
 		});
 		watch.sync();
-		return { backlog, told, linked, watch, poke: () => poke?.(), listening: () => poke !== undefined };
+		return {
+			backlog,
+			told,
+			linked,
+			watch,
+			poke: () => {
+				poke?.();
+				return watch.check();
+			},
+			listening: () => poke !== undefined,
+			rebind: (next: typeof backlog) => {
+				current = next;
+				watch.sync();
+			},
+		};
 	}
 	const other = { id: "other-session", surface: "tool" as const };
+	const heldAudit = (w: ReturnType<typeof watched>) => {
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const audit = w.backlog.store.auditAsync.bind(w.backlog.store);
+		const read = vi.spyOn(w.backlog.store, "auditAsync").mockImplementation(async (...args) => {
+			await pending;
+			return audit(...args);
+		});
+		w.backlog.store.update("B1", { close: { kind: "obsolete", text: "elsewhere" } }, other);
+		return { release, read };
+	};
 
-	it("tells the coordinator once when another session completes a prerequisite of an item it planned", () => {
+	it("coalesces repeated changes while an archive read is pending and tells the completion once", async () => {
+		const w = watched();
+		const held = heldAudit(w);
+		const checks = Array.from({ length: 100 }, () => w.poke());
+		expect(held.read).toHaveBeenCalledTimes(1);
+		held.release();
+		await Promise.all(checks);
+		expect(held.read).toHaveBeenCalledTimes(1);
+		expect(w.told).toEqual(["B1 is closed; B2 is now ready."]);
+	});
+
+	it("does not lose a completion arriving as a scan with no ended prerequisite is settling", async () => {
+		const w = watched();
+		w.backlog.store.update("B1", { state: "ongoing" }, other);
+		const first = w.poke();
+		w.backlog.store.update("B1", { close: { kind: "obsolete", text: "elsewhere" } }, other);
+		const second = w.poke();
+		await Promise.all([first, second]);
+		expect(w.told).toEqual(["B1 is closed; B2 is now ready."]);
+	});
+
+	it("does not tell or resubscribe after stop while an archive read is pending", async () => {
+		const w = watched();
+		const held = heldAudit(w);
+		const pending = w.poke();
+		w.watch.stop();
+		held.release();
+		await pending;
+		expect(w.told).toEqual([]);
+		expect(w.listening()).toBe(false);
+	});
+
+	it("discards an earlier scan when the session resynchronizes while its archive read is pending", async () => {
+		const w = watched();
+		const held = heldAudit(w);
+		const pending = w.poke();
+		w.watch.sync();
+		held.release();
+		await pending;
+		expect(w.told).toEqual([]);
+		expect(w.listening()).toBe(false);
+	});
+
+	it("does not apply an earlier session's pending completion after rebinding to a different backlog", async () => {
+		const w = watched();
+		const held = heldAudit(w);
+		const pending = w.poke();
+		const next = watched();
+		w.rebind(next.backlog);
+		held.release();
+		await pending;
+		expect(w.told).toEqual([]);
+		expect(w.listening()).toBe(true);
+		w.watch.stop();
+		next.watch.stop();
+	});
+
+	it("keeps the previous wait after an archive worker failure and retries the actor decision on the next change", async () => {
+		const w = watched();
+		w.backlog.store.update("B1", { close: { kind: "obsolete", text: "elsewhere" } }, other);
+		const read = vi.spyOn(w.backlog.store, "auditAsync").mockRejectedValue(new Error("worker unavailable"));
+		await w.poke();
+		expect(w.told).toEqual([]);
+		expect(w.listening()).toBe(true);
+		read.mockRestore();
+		await w.poke();
+		expect(w.told).toEqual(["B1 is closed; B2 is now ready."]);
+	});
+
+	it("tells the coordinator once when another session completes a prerequisite of an item it planned", async () => {
 		const w = watched();
 		expect(w.listening()).toBe(true);
 		w.backlog.store.update("B1", { state: "ongoing" }, other);
 		w.backlog.store.update("B1", { state: "done", completion: passed("other-1") }, other);
-		w.poke();
+		await w.poke();
 		expect(w.told).toEqual(["B2 is ready to start: B1 was its last open prerequisite."]);
-		w.poke();
+		await w.poke();
 		expect(w.told).toHaveLength(1);
 		// Nothing it planned waits any more: it stops following the database.
 		expect(w.listening()).toBe(false);
 	});
 
-	it("tells it when the user closes a prerequisite on the web board", () => {
+	it("tells it when the user closes a prerequisite on the web board", async () => {
 		const w = watched();
 		w.backlog.store.update(
 			"B1",
 			{ close: { kind: "obsolete", text: "dropped" } },
 			{ id: "session-test", kind: "human", surface: "web" },
 		);
-		w.poke();
+		await w.poke();
 		expect(w.told).toEqual(["B1 is closed; B2 is now ready."]);
 	});
 
-	it("stays quiet for its own backlog tool and for a child's item: their results carry the line", () => {
+	it("stays quiet for its own backlog tool and for a child's item: their results carry the line", async () => {
 		const own = watched();
 		own.backlog.store.update(
 			"B1",
 			{ close: { kind: "obsolete", text: "mine" } },
 			{ id: "session-test", surface: "tool" },
 		);
-		own.poke();
+		await own.poke();
 		expect(own.told).toEqual([]);
 		const child = watched();
 		child.linked.add("B1");
@@ -357,7 +454,7 @@ describe("item 7: a prerequisite completed outside this process wakes the coordi
 			{ close: { kind: "wont_do", text: "child" } },
 			{ id: "worker-1", surface: "tool" },
 		);
-		child.poke();
+		await child.poke();
 		expect(child.told).toEqual([]);
 	});
 

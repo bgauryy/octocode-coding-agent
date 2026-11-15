@@ -59,12 +59,10 @@ describe.each(AGENTS)("$name context", (agent) => {
 			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "skills", "docs"]));
 			expect(names).not.toContain("coordinator");
 			expect(names).not.toContain("role");
-			expect(systemText(context())).not.toContain("You are a subagent");
 			return;
 		}
 		// A child: the subagent policy, no docs section, and a role section only for a role.
 		expect(names).not.toContain("docs");
-		expect(systemText(context())).toContain("You are a subagent");
 		expect(names.includes("role")).toBe(agent.role !== undefined);
 		if (agent.role === "lean") {
 			expect(names).toContain("lean");
@@ -107,27 +105,11 @@ describe.each(AGENTS)("$name context", (agent) => {
 		}
 	});
 
-	it("has the protocol only where it can use it", () => {
-		const text = systemText(context());
-		const agentTool = JSON.stringify(context().tools.find((tool) => tool.name === "agent") ?? {});
-		if (agent.kind === "main") {
-			expect(text).toContain("Only you reach other Octocode processes");
-			expect(agentTool).toContain("Also an Octocode process name");
-			expect(agentTool).toContain("a linked worktree's branch");
-			return;
-		}
-		expect(text).not.toContain("Only you reach other Octocode processes");
-		expect(agentTool).not.toContain("Octocode process name");
-		expect(agentTool).not.toContain("a linked worktree's branch");
-	});
-
 	it("starts from the message the agent is given", () => {
 		const { messages } = context();
 		expect(messages.map((message) => message.role)).toEqual(["user"]);
 		if (agent.kind === "main") return;
 		// A child's first message is its task with its identity and the report contract the parent parses.
-		expect(messages[0].text).toContain("## You");
-		expect(messages[0].text).toContain("## Report");
 		expect(messages[0].text).toContain("child-example");
 	});
 

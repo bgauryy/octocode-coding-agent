@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { grantFolder } from "../../coding-agent/src/octocode/trust/grants.ts";
+import { approveFixtureMcp } from "../../coding-agent/test/octocode/guard-helpers.ts";
 import { runMcpCommand } from "../src/cli.ts";
+import { presetEntries } from "../src/preset.ts";
 import type { McpServerPreset } from "../src/preset.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
@@ -27,6 +29,8 @@ describe("octocode mcp", () => {
 		const agentDir = dir ?? mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
 		if (!dir) dirs.push(agentDir);
 		if (servers) writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: servers }));
+		// The user approved these servers in the security review; unapproved ones stay off.
+		if (servers) approveFixtureMcp(agentDir, agentDir, presetEntries(presets));
 		const output: string[] = [];
 		const exitCode = await runMcpCommand(args, {
 			presets,

@@ -3,7 +3,7 @@ import net from "node:net";
 import { constants } from "node:os";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { type ApiEvent, CLIENT_MARGIN_MS, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
+import { type ApiEvent, CLIENT_MARGIN_MS, ERR, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
 import type { InstanceRecord } from "./registry.ts";
 
 /** A call refused before any byte left this process: it can be retried unchanged once its cause is fixed. */
@@ -35,6 +35,22 @@ function rpcError(value: unknown, token?: string): ApiCallError {
 		? (JSON.parse(JSON.stringify(value).replaceAll(token, "[redacted]")) as Record<string, unknown>)
 		: value;
 	return new ApiCallError(safe.message as string, safe.code as number, safe.data);
+}
+
+/** A socket refused before its request was read has no request id; only this explicit non-delivery error is uncorrelated. */
+function admissionRefusal(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		value.jsonrpc === "2.0" &&
+		value.id === null &&
+		!Object.hasOwn(value, "result") &&
+		!Object.hasOwn(value, "method") &&
+		isRecord(value.error) &&
+		value.error.code === ERR.unavailable &&
+		typeof value.error.message === "string" &&
+		isRecord(value.error.data) &&
+		value.error.data.execution === "not-sent"
+	);
 }
 
 /** A `tool.start`/`tool.end` for a call another tool made (it carries `parentId`). */
@@ -71,7 +87,11 @@ export class ApiClient {
 		const response = this.instance.socket
 			? await this.overSocket(payload, { ...options, timeoutMs })
 			: await this.overHttp(payload, { ...options, timeoutMs });
-		if (!isRecord(response) || response.jsonrpc !== "2.0" || response.id !== request.id)
+		if (
+			!isRecord(response) ||
+			response.jsonrpc !== "2.0" ||
+			(response.id !== request.id && !(this.instance.socket && admissionRefusal(response)))
+		)
 			throw new Error("Invalid API response identity");
 		const result = Object.hasOwn(response, "result");
 		const failed = Object.hasOwn(response, "error");
@@ -262,6 +282,7 @@ export class ApiClient {
 							throw new Error("Invalid API event JSON");
 						}
 						if (!isRecord(message) || message.jsonrpc !== "2.0") throw new Error("Invalid API event frame");
+						if (!subscribed && admissionRefusal(message)) throw rpcError(message.error, this.instance.http?.token);
 						if (message.method === "event") {
 							const event = message.params;
 							if (

@@ -113,7 +113,7 @@ export const SettingsSchema = Type.Object(
 		externalAgents: Type.Optional(
 			Type.Boolean({
 				description:
-					"Allow agent tasks in installed vendor CLIs and the `external` type for ACP agents and other Octocode instances. On by default; an explicit false disables both for new sessions. Only installed runnable CLIs are offered; the selected runner is checked when used, without starting CLIs during discovery. The external type is declared only while a known ACP agent is on PATH or another Octocode instance runs. Read from global settings only; project files cannot change it. Manage sign-in and the switch in /providers.",
+					"Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
 				default: SETTINGS_DEFAULTS.externalAgents,
 			}),
 		),
@@ -314,6 +314,20 @@ export const SettingsSchema = Type.Object(
 							description:
 								'Publish a link of that access ("view" or "control") when a session starts and print it. A project settings file can set "off" but never turn it on; the global value stands.',
 							default: SETTINGS_DEFAULTS.remote.autoStart,
+						}),
+					),
+				},
+				{ additionalProperties: false },
+			),
+		),
+		security: Type.Optional(
+			Type.Object(
+				{
+					enforce: Type.Optional(
+						Type.Array(Type.Union([Type.Literal("hooks"), Type.Literal("mcp"), Type.Literal("skills")]), {
+							description:
+								"The kinds that stay off until you check and approve them in /security: hooks, MCP servers and skills Octocode did not ship. A kind left out is still rated but loads unchecked. Global only.",
+							default: SETTINGS_DEFAULTS.security.enforce,
 						}),
 					),
 				},

@@ -6,14 +6,17 @@ import type { ExternalUsage } from "@octocodeai/octocode-contracts/external";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/text.ts";
-import { adoptTree, prepareTree, stopTree } from "../shared/process.ts";
+import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
+import { descendantRows } from "../shared/process-descendants.ts";
 import { agentEnv } from "./runner-env.ts";
 import type { RunnerBilling } from "./runners.ts";
+import { CLAUDE_ISOLATION_ARGS } from "./runner-isolation.ts";
+import { checkRunnerCommunication, type RunnerCommunication, withCommunicationConfig } from "./runner-communication.ts";
 
 /**
  * Alternative D of the subscriptions RFC: when Claude Code is installed and signed in but its ACP adapter
  * (`claude-agent-acp`) is not, a task runs in `claude -p` instead and its JSON event stream is read as the ACP turn
- * would be. Every flag below is in `claude --help` of Claude Code 2.1.322 (checked 2026-11-10).
+ * would be. Every flag below is in `claude --help` of Claude Code 2.1.325 (checked 2026-11-15).
  */
 
 /** The `/providers` runner row's word for this route. */
@@ -44,9 +47,17 @@ export const runnerRoute = (state: RouteState): string | undefined =>
 /**
  * The fixed part of the command: `-p` prints and exits (no prompt argument: the task comes on stdin, so its length and
  * any secret in it never reach argv), and `--output-format stream-json` streams one JSON event per line, which needs
- * `--verbose` with `-p`.
+ * `--verbose` with `-p`. Streaming input delivers the task without ending the process's input channel.
  */
-export const HEADLESS_ARGS: readonly string[] = ["-p", "--output-format", "stream-json", "--verbose"];
+export const HEADLESS_ARGS: readonly string[] = [
+	"-p",
+	"--input-format",
+	"stream-json",
+	"--output-format",
+	"stream-json",
+	"--verbose",
+	...CLAUDE_ISOLATION_ARGS,
+];
 
 /**
  * Permissions, since headless mode sends no ACP permission request Octocode could answer. `--permission-prompts none`
@@ -66,6 +77,7 @@ interface HeadlessTurnInput {
 	args: readonly string[];
 	billing?: RunnerBilling;
 	model?: string;
+	communication?: RunnerCommunication;
 	cwd: string;
 	/** The session's own folder: a task elsewhere runs in its worktree. */
 	sessionCwd: string;
@@ -217,10 +229,19 @@ const abortError = (signal: AbortSignal): Error =>
 
 /**
  * One task's turn in `claude -p`: started in the task's folder with the cleaned environment (`agentEnv`), as the leader
- * of its own process tree; the task text goes on stdin. A stop or the caller's idle limit ends the whole tree, and the
- * tree is ended after every turn, so nothing it started outlives the task.
+ * of its own process group. Keep streaming input open until the result's descendants are retained, then send EOF.
+ * Cleanup stops the remaining group and retained descendants. Foreign helpers that reparent before the result or
+ * detach during shutdown are not guaranteed on POSIX; this protocol is cooperative, not OS containment.
  */
 export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply> {
+	input.signal.throwIfAborted();
+	checkRunnerCommunication(input.runner, input.communication);
+	return withCommunicationConfig(input.communication, (args) =>
+		runHeadlessTurn({ ...input, args: [...input.args, ...args] }),
+	);
+}
+
+async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply> {
 	if (input.signal.aborted) throw abortError(input.signal);
 	const args = [
 		...input.args,
@@ -228,6 +249,7 @@ export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessRe
 		...(input.model ? ["--model", input.model] : []),
 	];
 	await prepareTree();
+	if (input.signal.aborted) throw abortError(input.signal);
 	const child = spawn(input.command, args, {
 		cwd: input.cwd,
 		env: agentEnv(input.runner),
@@ -238,24 +260,30 @@ export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessRe
 	adoptTree(child.pid);
 	const reader = new StreamReader(input);
 	let stderr = "";
+	let retained: ReturnType<typeof descendantRows> | undefined;
+	let onAbort: (() => void) | undefined;
 	try {
 		return await new Promise<HeadlessReply>((resolve, reject) => {
-			const onAbort = () => reject(abortError(input.signal));
+			onAbort = () => reject(abortError(input.signal));
 			input.signal.addEventListener("abort", onAbort, { once: true });
-			if (input.signal.aborted) onAbort(); // Stopped while the tree was being prepared.
+			if (input.signal.aborted) onAbort();
 			child.once("spawn", () => {
 				if (child.pid !== undefined) input.onStart?.(child.pid);
 			});
 			child.on("error", reject);
 			child.stdin.on("error", () => undefined); // An early exit closes stdin; its exit code says why.
-			child.stdin.end(input.text);
+			child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: input.text } })}\n`);
 			child.stderr.on("data", (chunk: Buffer) => {
 				stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_TAIL);
 			});
 			const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-			lines.on("line", (line) => reader.line(line));
+			lines.on("line", (line) => {
+				reader.line(line);
+				if (!reader.result || retained) return;
+				retained = descendantRows(child.pid).catch(() => []);
+				void retained.then(() => child.stdin.end());
+			});
 			child.once("close", (code) => {
-				input.signal.removeEventListener("abort", onAbort);
 				try {
 					resolve(reader.reply(code, stderr));
 				} catch (error) {
@@ -264,6 +292,8 @@ export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessRe
 			});
 		});
 	} finally {
-		await stopTree(child.pid);
+		if (onAbort) input.signal.removeEventListener("abort", onAbort);
+		await stopTree(child.pid, KILL_GRACE_MS, await retained);
+		child.stdin.destroy();
 	}
 }

@@ -1,12 +1,23 @@
 import type { PathMatch } from "@octocodeai/octocode-contracts/backlogs";
+import { untilAborted } from "../../../../common/src/abort.ts";
 import {
 	type Note,
+	type NoteKind,
 	type BacklogComment,
 	type BacklogAudit,
 	type State,
 	deriveEpicState,
 } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, type AgentRun, agentRuns, backlog, dbStamp, archivedAudits } from "../../../../db/src/api.ts";
+import {
+	type AgentDb,
+	type AgentRun,
+	agentRuns,
+	backlog,
+	dbStamp,
+	archivedAudits,
+	transactionWhenReady,
+	sharedDbWriter,
+} from "../../../../db/src/api.ts";
 import { historyWindows } from "../../storage/retention.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
@@ -25,6 +36,7 @@ import {
 import { type RankInput, rankItem } from "./rank.ts";
 import { addItem, COMPLETION_GUIDANCE, updateItem } from "./writes.ts";
 import { type ItemMarks, itemMarks, reviewNeeded } from "./marks.ts";
+import { RELEASE_AFTER_MS, releasable } from "./release.ts";
 import type { BacklogCounts } from "./counts.ts";
 
 export { BacklogError, COMPLETION_GUIDANCE, PRIORITIES, parseRef, priorityName };
@@ -61,6 +73,11 @@ export class BacklogStore {
 		this.repo = repo;
 		this.now = now;
 		this.tasks = new TaskStore(agentDb, repo, now);
+	}
+
+	/** Admit one synchronous store mutation without waiting on the calling thread for a peer's write lock. */
+	transactionWhenReady<T>(write: () => T, signal?: AbortSignal): Promise<T> {
+		return transactionWhenReady(this.agentDb(), write, signal);
 	}
 
 	/**
@@ -125,8 +142,8 @@ export class BacklogStore {
 	}
 
 	/** The newest `limit` notes after skipping `offset` of them, oldest first; a negative `limit` is every note. */
-	notes(item: Item, limit = 10, offset = 0): Note[] {
-		return itemNotes(this.db, item, limit, offset);
+	notes(item: Item, limit = 10, offset = 0, kind?: NoteKind): Note[] {
+		return itemNotes(this.db, item, limit, offset, kind);
 	}
 
 	/** Claims `ref` as ongoing and hands the claimed item to `deliver`, in one transaction; `fields` are set in the same update. */
@@ -159,13 +176,29 @@ export class BacklogStore {
 		return auditTrail(agentDb.db, this.repo, ref, limit, before, archived);
 	}
 
+	/** Reads archived history off the calling thread, preserving live rows captured before asynchronous housekeeping. */
+	async auditAsync(ref?: string, limit = 500, before?: number, signal?: AbortSignal): Promise<BacklogAudit[]> {
+		signal?.throwIfAborted();
+		const agent = this.agentDb();
+		const size = Math.max(1, Math.min(500, Math.floor(limit)));
+		const current = backlog.auditRows(agent.db, this.repo, ref, before, size);
+		const request = sharedDbWriter({
+			file: agent.file,
+			mirrorFile: agent.mirrorFile,
+			archiveDir: agent.archiveDir,
+			privateParent: false,
+		}).archivedAudits({ now: this.now(), repo: this.repo, ref, before, limit: size, windows: historyWindows() });
+		const archived = await untilAborted(request, signal);
+		return auditTrail(agent.db, this.repo, ref, size, before, archived, current);
+	}
+
 	comment(ref: string, text: string, actor: Actor, version?: number): Item {
 		if (!text.trim()) throw new BacklogError("Write a comment before sending.");
 		return this.update(ref, { note: text, version }, actor);
 	}
 
-	noteCount(item: Item): number {
-		return countNotes(this.db, item);
+	noteCount(item: Item, kind?: NoteKind): number {
+		return countNotes(this.db, item, kind);
 	}
 
 	add(input: AddInput, actor: Actor = { id: input.createdBy }): Item {
@@ -184,6 +217,34 @@ export class BacklogStore {
 
 	update(ref: string, input: UpdateInput, actor: Actor): Item {
 		return updateItem(this.agentDb(), this.repo, this.now, ref, input, actor);
+	}
+
+	/**
+	 * Returns to todo, with a note naming the ended holder, each ongoing item whose holder session ended without a graceful
+	 * exit, that no child run works on and that sat idle for the window (`RELEASE_AFTER_MS`). Claims of `actor` and of its
+	 * coordinators are never taken. Returns the refs released.
+	 */
+	releaseEnded(actor: Actor): string[] {
+		const items = this.list({ states: ["ongoing"] }).items;
+		const hours = Math.round(RELEASE_AFTER_MS / 3_600_000);
+		const released: string[] = [];
+		for (const item of releasable(items, this.marks(items, actor.id, actor.owners), this.now())) {
+			try {
+				this.update(
+					item.ref,
+					{
+						state: "todo",
+						note: `Returned to todo: holder ${item.assignee} ended and the claim sat idle for over ${hours} hours.`,
+					},
+					actor,
+				);
+				released.push(item.ref);
+			} catch (error) {
+				// Another session changed or claimed the item meanwhile: its claim stands.
+				if (!(error instanceof BacklogError)) throw error;
+			}
+		}
+		return released;
 	}
 
 	/** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */

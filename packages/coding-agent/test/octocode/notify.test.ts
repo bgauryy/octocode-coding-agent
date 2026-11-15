@@ -2,6 +2,7 @@ import { resetMultiplexerCache } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type FakeTmux, installFakeTmux } from "../../../tui/test/helpers/fake-tmux.ts";
 import { titledDialog } from "../../src/octocode/shared/locks.ts";
+import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import {
 	type Notice,
 	notificationSequence,
@@ -237,6 +238,56 @@ describe("registerNotify", () => {
 		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
 	});
 
+	it("signals a blocking dialog that opens while no run is active, and shows waiting in the tab", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "always" });
+		await s.fake.fire("session_start", {}, s.ctx);
+		await run(s);
+		vi.advanceTimersByTime(3_000);
+		const before = s.writes.length;
+		await s.fake.fire("ui_prompt_start", { kind: "select", title: "Run it?", approval: true, blocking: true }, s.ctx);
+		expect(s.writes.length).toBe(before + 1);
+		expect(s.notices.at(-1)).toMatchObject({ type: "permission_prompt", message: "Run it?" });
+		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
+		await s.fake.fire("ui_prompt_end", { kind: "select" }, s.ctx);
+		expect(s.ctx.ui.title).not.toContain("◇");
+	});
+
+	it("signals a blocking dialog nested over a dialog the user opened, and keeps waiting when that one closes first", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "always" });
+		await s.fake.fire("session_start", {}, s.ctx);
+		await run(s);
+		vi.advanceTimersByTime(3_000);
+		await s.fake.fire("ui_prompt_start", { id: "picker", kind: "select", title: "Permission mode" }, s.ctx);
+		const before = s.notices.length;
+		await s.fake.fire(
+			"ui_prompt_start",
+			{ id: "approval", kind: "select", title: "Run it?", approval: true, blocking: true, nested: true },
+			s.ctx,
+		);
+		expect(s.notices.slice(before)).toEqual([
+			expect.objectContaining({ type: "permission_prompt", message: "Run it?" }),
+		]);
+		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
+		await s.fake.fire("ui_prompt_end", { id: "picker", kind: "select" }, s.ctx);
+		expect(s.ctx.ui.title).toBe("◇ Octocode · repo");
+		await s.fake.fire("ui_prompt_end", { id: "approval", kind: "select", nested: true }, s.ctx);
+		expect(s.ctx.ui.title).not.toContain("◇");
+	});
+
+	it("counts in the tab the agents the footer counts", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		const work = runningWorkOf(s.fake.api);
+		await s.fake.fire("session_start", {}, s.ctx);
+		await s.fake.fire("agent_start", {}, s.ctx);
+		work.setBackground(["general-1a2b"]);
+		work.setAgents(3);
+		vi.advanceTimersByTime(300);
+		expect(s.ctx.ui.title).toBe("✻ 🐙3 Octocode · repo");
+	});
+
 	it("shows thinking, a running tool, and the outcome until a keypress; coalesces quick tool swaps", async () => {
 		vi.useFakeTimers({ now: 1_000_000 });
 		const s = setup({ OCTOCODE_NOTIFY: "off" });
@@ -272,6 +323,37 @@ describe("registerNotify", () => {
 		await s.fake.fire("ui_prompt_start", { kind: "select" }, s.ctx);
 		expect(s.ctx.ui.title).toBe("Octocode · repo");
 		await s.fake.fire("ui_prompt_end", { kind: "select" }, s.ctx);
+	});
+
+	it("keeps the tab busy while background subagents or jobs run after the main run, then shows the outcome", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		const work = runningWorkOf(s.fake.api);
+		await s.fake.fire("session_start", {}, s.ctx);
+		await s.fake.fire("agent_start", {}, s.ctx);
+		work.setBackground(["general-1a2b"]);
+		await s.fake.fire("agent_end", answer("Started a child"), s.ctx);
+		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
+		vi.advanceTimersByTime(300); // busy to busy is coalesced
+		expect(s.ctx.ui.title).toBe("◐ 🐙 Octocode · repo");
+		s.type("k"); // seeing the tab does not end the work
+		work.set("bash", [{ kind: "bash", id: "bash-1", title: "build" }]);
+		work.setBackground([]);
+		vi.advanceTimersByTime(300);
+		expect(s.ctx.ui.title).toBe("◐ Octocode · repo");
+		work.set("bash", []);
+		expect(s.ctx.ui.title).toBe("✓ Octocode · repo");
+		s.type("k");
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
+	});
+
+	it("leaves no busy mark on the tab after shutdown while background work still runs", async () => {
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		await s.fake.fire("session_start", {}, s.ctx);
+		runningWorkOf(s.fake.api).set("bash", [{ kind: "bash", id: "bash-1", title: "dev server" }]);
+		expect(s.ctx.ui.title).toBe("◐ Octocode · repo");
+		await s.fake.fire("session_shutdown", {}, s.ctx);
+		expect(s.ctx.ui.title).toBe("Octocode · repo");
 	});
 
 	it("fires the idle_prompt hook after a minute without input, and none after a keypress", async () => {

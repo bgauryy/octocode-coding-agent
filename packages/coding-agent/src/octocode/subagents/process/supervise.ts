@@ -1,10 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { stopTree } from "../../shared/process.ts";
 import { adoptTree } from "../../../utils/process-tree.ts";
 import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
-import { settleWithin } from "../../shared/util.ts";
 import { SHELL_GROUPS_FILE_ENV, stopShellGroups } from "../../shared/shell-groups.ts";
 import { type ChildEffect, newChildState, parseEvent, reduceEvent } from "../events.ts";
 import { RequestBudget } from "../budget.ts";
@@ -14,7 +12,6 @@ import { ReportTracker } from "../report.ts";
 import { subagentProcessEnv } from "./env.ts";
 import type { ChildResourceFiles } from "./handoff-files.ts";
 import {
-	ABORT_SETTLE_MS,
 	EXIT_GRACE_MS,
 	MAX_EVENT_BYTES,
 	SUBAGENT_STOP_GRACE_MS,
@@ -30,6 +27,8 @@ import { type ChildRun, RunPhase } from "./run-phase.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
 import { ChildWatchdog } from "./watchdog.ts";
+import { ChildShutdown } from "./shutdown.ts";
+import { hint } from "./caller-hint.ts";
 
 /** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
 const INTERRUPT_FOLLOW_UP_MS = 1_500;
@@ -44,15 +43,6 @@ interface PreparedChild {
 	nonceFile: string | undefined;
 	rolePromptFile: string | undefined;
 	resources: ChildResourceFiles;
-}
-
-/** Calls a hook of the run's caller (`settled`, `exited`): they only tune waits, so a throw there never ends the run. */
-function hint(hook: (() => void) | undefined): void {
-	try {
-		hook?.();
-	} catch {
-		// The report and the cleanup do not depend on it.
-	}
 }
 
 /** Spawns the child and supervises it to its report (`runChild` owns the files around it). */
@@ -136,21 +126,25 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		const exitEvent = new Promise<void>((resolve) => {
 			onExit = resolve;
 		});
-		const stopTreeNow = () => stopTree(child.pid, SUBAGENT_STOP_GRACE_MS);
+		const shutdown = new ChildShutdown({
+			pid: child.pid,
+			closeInput,
+			abort: () => state.running && send({ type: "abort", holdShutdown: true }),
+			settled: () => state.settledSeen,
+			settledEvent,
+			exitEvent,
+		});
+		const stopTreeNow = () => shutdown.stopTree(SUBAGENT_STOP_GRACE_MS);
 		/**
 		 * A settled child told to leave exits within `SETTLED_EXIT_MS`, or its process tree is stopped and its report
 		 * delivered: its own busy deadline (25 minutes or more) is for a child that has not answered.
 		 */
 		const leave = () => {
-			closeInput();
-			phase.leave(report.hasReport ? SETTLED_EXIT_MS : undefined, () => phase.stop(stopTreeNow));
-		};
-		const stop = async (graceMs: number): Promise<void> => {
-			if (state.running && send({ type: "abort" })) await settleWithin(settledEvent, ABORT_SETTLE_MS);
-			closeInput();
-			// A child that settled leaves on its own once its input is closed; one that did not gets the signals at once.
-			if (state.settledSeen) await settleWithin(exitEvent, graceMs);
-			await stopTree(child.pid, graceMs);
+			phase.cleanup(
+				shutdown.closeInput().then(() => {
+					phase.leave(report.hasReport ? SETTLED_EXIT_MS : undefined, () => phase.stop(stopTreeNow));
+				}),
+			);
 		};
 		// One stop per run. The run settles only after it: the SIGKILL of a tree that ignored SIGTERM (and of detached
 		// helpers like a Chrome the child launched) then happens before the parent can exit, not on a timer lost with it.
@@ -159,7 +153,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			hint(run.workingChanged);
 			host?.budgets?.remove(identity.id, budget);
 			relay.cancelAll();
-			phase.stop(() => stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS));
+			phase.stop(() => shutdown.stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS));
 		};
 		// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then the same
 		// stop as above (0: off).
@@ -265,7 +259,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 					onSettled();
 					return leave();
 				case "incoming":
-					return report.incoming(effect.role, effect.job, effect.quiet);
+					return report.incoming(effect.role, effect.job, effect.quiet, effect.reminder);
 				case "answer":
 					return report.answer(effect.text, effect.stopReason, effect.errorMessage, effect.waiting, effect.reminder);
 				case "request":
@@ -328,8 +322,8 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			// Judged with one asynchronous `ps`: an exit never waits for it on the thread that draws the screen. The run
 			// settles only after this cleanup, which may end after the run concluded: the stop then starts on its own.
 			phase.cleanup(
-				leftBehind(child.pid).then((left) => {
-					if (!left) return undefined;
+				Promise.all([leftBehind(child.pid), shutdown.hasDescendants()]).then(([left, retained]) => {
+					if (!left && !retained) return undefined;
 					phase.stop(stopTreeNow);
 					return phase.stopping ?? stopTreeNow();
 				}),

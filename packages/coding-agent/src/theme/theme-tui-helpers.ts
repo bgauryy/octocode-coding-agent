@@ -280,6 +280,11 @@ export function keyText(keybinding: Keybinding): string {
 	return formatKeys(getKeybindings().getKeys(keybinding));
 }
 
+/** The interrupt key as every hint shows it: `esc`, not `escape`. */
+export function interruptKey(): string {
+	return keyText("app.interrupt").replace(/^escape$/, "esc");
+}
+
 export function keyHint(keybinding: Keybinding, description: string): string {
 	return theme.fg("dim", keyText(keybinding)) + theme.fg("muted", ` ${description}`);
 }

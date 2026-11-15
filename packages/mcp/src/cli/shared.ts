@@ -17,6 +17,8 @@ export interface McpCommandOptions {
 	presets?: readonly McpServerPreset[];
 	cwd: string;
 	agentDir: string;
+	/** Prepare the host's trust store before a command reads folder trust. Standalone hosts may omit this. */
+	prepareTrust?: () => Promise<void>;
 	/** Defaults to `mcp-auth.json` in the agent directory. */
 	credentials?: McpOAuthCredentialStore;
 	/** Defaults to the platform browser. */

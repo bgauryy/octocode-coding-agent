@@ -381,12 +381,17 @@ describe("permission gate", () => {
 		expect(workspace.asked.every((title) => !title.includes("for this session"))).toBe(true);
 	});
 
-	it("runs a browser MCP script in full, and asks in workspace with no grant to offer", async () => {
-		const full = setup("full");
+	it("asks for a browser MCP script in full and workspace with no session grant to offer", async () => {
+		const full = setup("full", { selects: ["Allow once"] });
 		expect(await full.gate(call("mcp__browser__script", { code: "document.cookie" }), full.ctx)).toBeUndefined();
 		expect(full.fake.entries.map((entry) => entry.data)).toEqual([
-			expect.objectContaining({ action: "browser.control", allowed: true, via: "mode" }),
+			expect.objectContaining({ action: "browser.control", allowed: true, via: "user" }),
 		]);
+		expect(full.fake.entries[0].data).toMatchObject({
+			what: expect.arrayContaining([expect.stringContaining("arbitrary browser code")]),
+		});
+		expect(full.asked).toHaveLength(1);
+		expect(await full.gate(call("mcp__browser__script", { code: "1" }), full.ctx)).toMatchObject({ block: true });
 		const choices: string[][] = [];
 		const workspace = setup("workspace");
 		workspace.ctx.ui.select = async (_title: string, options: string[]) => {

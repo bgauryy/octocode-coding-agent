@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { getAgentDir, getLegacyProviderDirs } from "../config.ts";
+import { prepareAgentDb } from "../storage/database.ts";
 import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
 import { resolvePath } from "../../../common/src/paths.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -65,6 +66,7 @@ export interface AgentSessionServices {
 export async function createAgentSessionServices(
 	options: CreateAgentSessionServicesOptions,
 ): Promise<AgentSessionServices> {
+	await prepareAgentDb(process.env, options.modelRuntimeSignal);
 	const cwd = resolvePath(options.cwd);
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getAgentDir();
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);

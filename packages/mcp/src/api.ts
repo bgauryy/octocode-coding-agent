@@ -12,6 +12,7 @@ export { hostTrust, installMcpHost, type McpAuthBackend, type McpHostPorts, type
 export { loadMcpCommand } from "./cli.lazy.ts";
 export { MCP_COMMANDS } from "./cli/commands.ts";
 export { parseMcpAddArgs } from "./cli/edit.ts";
+export { saveMcpDefinition, McpAddError } from "./add.ts";
 export { withPluginServers } from "./cli/plugins.ts";
 
 // Configuration, presets and server records.
@@ -23,12 +24,14 @@ export {
 	type McpServerEntry,
 } from "./config.ts";
 export { addMcpServerConfig, removeMcpServerConfig, updateMcpServerConfig } from "./config-write.ts";
+export { listVendorMcpServers, type McpFileServer } from "./file-servers.ts";
 export { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 export { presetEntries } from "./preset.ts";
 export { browserPreset } from "./presets/browser/index.ts";
 export { recommendedPresets } from "./recommended/index.ts";
-export { mcpGroupLabel, mcpServerGroup, mcpServerSource } from "./group.ts";
+export { mcpGroupLabel, mcpServerSource } from "./group.ts";
 export { isEnabled } from "./server.ts";
+export { mcpEntryRowInput, mcpRowFacts, mcpRowSummary } from "./row.ts";
 export { MCP_EXPOSURES, McpServerRegistry, validateMcpServerConfig } from "./servers.ts";
 export { mcpLaunchIdentity } from "./launch-identity.ts";
 export { generatedDir, readGenerated } from "./compact/index.ts";
@@ -37,7 +40,7 @@ export { generatedDir, readGenerated } from "./compact/index.ts";
 export { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "./status.ts";
 export { getMcpSwitch, requestMcpReload, type McpReloadResult, type McpSwitch } from "./switch.ts";
 export { currentToolRoles, publishToolRoles, resolveToolRoles, type ResolvedRoles } from "./roles.ts";
-export { currentMcpToolStates, type McpServerToolStates } from "./tool-states.ts";
+export { currentMcpToolStates, currentMcpServerNames, type McpServerToolStates } from "./tool-states.ts";
 export {
 	getMcpSessionHandoff,
 	planTaskMcpServers,

@@ -151,8 +151,8 @@ it("runs native tools and releases team resources across a real session reload",
 			expect(harness.getPendingResponseCount()).toBe(0);
 			// The delegation policy is present; the rules for running children arrive with the first child or message, and
 			// `coordinate` calls alone do not send them (`children-section.test.ts`).
-			expect(prompts.at(-1)).toContain("## Write the task");
-			expect(prompts.at(-1)).not.toContain("## Run children and use reports");
+			expect(prompts.at(-1)).toContain("<delegation>");
+			expect(prompts.at(-1)).not.toContain("<children>");
 			expect(getToolResult(harness, "file").isError).not.toBe(true);
 			expect(readFileSync(join(harness.tempDir, `run-${run}.txt`), "utf8")).toBe(`updated ${run}`);
 			expect(store.list()).toHaveLength(1);

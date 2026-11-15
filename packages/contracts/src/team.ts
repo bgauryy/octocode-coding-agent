@@ -8,6 +8,8 @@ export interface Member {
 	/** When the process `pid` names started (`processStartTime`), absent where unknown: with the pid it names one process, which a later one that got the pid is not. */
 	started?: string;
 	status: "idle" | "working";
+	/** Explicit cooperative runner mailbox; absent for legacy/native push delivery. */
+	mailbox?: "pull";
 	/** What it works on, any length (`checkGoal` in `identity.ts` refuses only a missing one). Stored in the `task` column. */
 	goal?: string;
 	/** The tool it is running right now. */

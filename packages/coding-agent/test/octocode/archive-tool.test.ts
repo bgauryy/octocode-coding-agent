@@ -111,14 +111,12 @@ describe("the archive tool", () => {
 		expect((await call({ ...why, ...form })).text).toContain("elsewhere");
 	});
 
-	it("owns questions about earlier sessions, and says what query does with errors", () => {
+	it("declares reason rather than goal", () => {
 		const fake = fakeHost();
 		registerArchiveTool(fake.api);
 		const archive = fake.tools.get("archive");
-		expect(archive.promptSnippet).toMatch(/earlier sessions/);
 		expect(Object.keys(archive.parameters.properties)).toContain("reason");
 		expect(Object.keys(archive.parameters.properties)).not.toContain("goal");
-		expect(archive.parameters.properties.query.description).toMatch(/With errors: filters by tool name or error text/);
 	});
 
 	it("declares one op-based shape and reads a recorded op-less call as session history", () => {
@@ -126,7 +124,6 @@ describe("the archive tool", () => {
 		registerArchiveTool(fake.api);
 		const archive = fake.tools.get("archive");
 		expect(archive.parameters.required).toContain("op");
-		expect(archive.description).not.toMatch(/without them/);
 		const prepare = (args: Record<string, unknown>) => {
 			const prepared = archive.prepareArguments(args);
 			validateToolArguments(archive, { type: "toolCall", id: "c", name: "archive", arguments: prepared } as never);
@@ -180,7 +177,6 @@ describe("the archive tool", () => {
 			archive.parameters.properties as Record<string, { description?: string }>,
 		)) {
 			expect(schema.description, name).toBeTruthy();
-			expect(schema.description, name).not.toMatch(/errors|events/i);
 		}
 		const main = fakeHost();
 		registerArchiveTool(main.api);

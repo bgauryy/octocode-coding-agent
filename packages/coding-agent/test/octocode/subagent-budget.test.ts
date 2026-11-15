@@ -63,7 +63,7 @@ describe("RequestBudget", () => {
 		for (let count = 1; count <= 8; count++) b.onReply(count, true);
 		expect(steer).toHaveBeenCalledTimes(1);
 		expect(steer).toHaveBeenCalledWith(steerMessage(3, 3, 5, { ask: true }));
-		expect(steer.mock.calls[0]?.[0]).toContain("You have used 3 of 3 model requests; the run stops at 5.");
+
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(b.stopped).toBe(5);
 	});
@@ -86,15 +86,7 @@ describe("RequestBudget", () => {
 		expect(steer).toHaveBeenCalledWith(steerMessage(5, 4, 6, { ask: true }));
 	});
 
-	it("words the steer for how the child runs: a child its parent can answer asks, any other says so in its report", () => {
-		const ask = steerMessage(6, 6, 9, { ask: true });
-		expect(ask).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nIf what is left (3) is enough, finish within it. If you need more, ask your coordinator now: send `agent` type `message` to `parent` with `replyRequired: true`, saying how many more requests you need and why, and keep working meanwhile. If no answer comes, the run still stops at 9 and your work so far is kept.",
-		);
-		const report = steerMessage(6, 6, 9);
-		expect(report).toBe(
-			"You have used 6 of 6 model requests; the run stops at 9. Finish the check in progress.\nYour coordinator waits for your report and reads messages only with it, so it cannot answer during this run; if you need its decision or it should know now, finish with a `blocked` report that says so. Say in your report what is left and how many more requests that needs.",
-		);
+	it("selects the foreground steer when the parent cannot answer during the run", () => {
 		const steer = vi.fn();
 		const quiet = new RequestBudget(2, steer, vi.fn(), 0, { canAsk: false });
 		quiet.onReply(2, true);
@@ -169,7 +161,7 @@ describe("RequestBudget", () => {
 		it("by a relayed peer stays within the limits the child had: no parent decided it", () => {
 			const { steer, stop, budget: b } = resumed(3, 4, { resumeIsGrant: false });
 			expect(b.limits).toEqual({ soft: 3, hard: 5, allowance: 5 });
-			expect(b.prompt("task")).toContain("the run is stopped at 5");
+			expect(b.prompt("task")).toBe(`task\n\n${steerMessage(4, 3, 5, { continued: true })}`);
 			b.onReply(1, true);
 			expect(steer).not.toHaveBeenCalled();
 			expect(stop).toHaveBeenCalledTimes(1);

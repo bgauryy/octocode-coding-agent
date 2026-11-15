@@ -123,6 +123,7 @@ export function tracker(
 			thinking,
 			usage,
 			reply,
+			ran,
 			image,
 			denied,
 			waiting,
@@ -161,6 +162,7 @@ export function tracker(
 			if (compactions) details.compactions = compactions;
 			if (notices) details.notices = notices;
 			if (requests !== undefined) details.requests = requests;
+			if (ran) details.ran = ran;
 			if (denied) details.denied = (details.denied ?? 0) + 1;
 			if (line) details.toolCalls += 1;
 			const entry = line ?? step;

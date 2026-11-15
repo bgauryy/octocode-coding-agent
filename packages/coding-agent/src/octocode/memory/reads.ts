@@ -118,7 +118,7 @@ export async function readMemories(
 				...(ranked ? { offset: offset + i + 1 } : {}),
 			};
 			// Without the index, a keyword search keeps the rows that hold a word, scored by how many.
-			const lower = !ranked && words.length > 0 ? texts[i].toLowerCase() : undefined;
+			const lower = !ranked && words.length > 0 ? `${row.title} ${row.keywords} ${row.body}`.toLowerCase() : undefined;
 			const overlap = lower === undefined ? undefined : words.filter((word) => lower.includes(word)).length;
 			if ((matched && !matched.has(i)) || overlap === 0) continue;
 			const score = row.score ?? overlap;

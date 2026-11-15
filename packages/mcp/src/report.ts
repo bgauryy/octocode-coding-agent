@@ -1,8 +1,16 @@
 /** Plain-text status of the servers: the startup report and `/mcp list` outside the TUI. */
 
 import type { McpContext } from "./host/types.ts";
-import { exposureOf } from "./exposure.ts";
-import { describeState, isEnabled, type McpServer } from "./server.ts";
+import { homeTilde } from "../../common/src/home-tilde.ts";
+import {
+	mcpEntryRowInput,
+	mcpRowFacts,
+	mcpRowOrigin,
+	mcpRowSummary,
+	mcpServerState,
+	mcpServerToolCount,
+} from "./row.ts";
+import { describeState, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 
 /**
@@ -30,20 +38,23 @@ export function formatStatus(state: McpExtensionState): string {
 	}
 	const lines = servers.map((server) => {
 		const { name } = server.entry;
-		const exposure = exposureOf(server.entry);
 		const connection = server.connection;
-		if (connection?.state === "needs-auth") return `${name}: needs sign-in, run /mcp login ${name} (${exposure})`;
+		const facts = mcpRowFacts(
+			mcpEntryRowInput(server.entry, { state: mcpServerState(server), toolCount: mcpServerToolCount(server) }),
+			(file) => homeTilde(file),
+		);
+		const next =
+			connection?.state === "needs-auth"
+				? ` — run /mcp login ${name}`
+				: server.entry.withheld
+					? " — approve it in /security"
+					: "";
 		// The full error follows on its own lines.
-		const label = connection?.isStopped
-			? "stopped"
-			: connection?.state === "disconnected" && isEnabled(server)
-				? "disconnected, reconnects on next call"
-				: describeState(server, false);
 		const error =
 			connection?.error && connection.state !== "connected"
 				? `\n    ${connection.error.split("\n").join("\n    ")}`
 				: "";
-		return `${name}: ${isEnabled(server) ? "enabled · " : ""}${label} (${exposure})${error}`;
+		return `${name}: ${facts.on ? "enabled · " : ""}${mcpRowSummary(facts)} · ${mcpRowOrigin(facts)}${next}${error}`;
 	});
 	for (const error of configErrors) lines.push(`config error: ${error}`);
 	for (const line of overridden) lines.push(`overridden: ${line}`);

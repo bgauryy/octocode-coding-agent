@@ -143,4 +143,36 @@ Run `/debug terminal` to see the selected mode, colors, links, images, keyboard 
 | A component fails to draw                                       | The chat shows `Display failed: <Component> could not render: <error>` once per failure; the rest keeps working       |
 | You need the raw terminal output                                | `OCTOCODE_TUI_WRITE_LOG` copies everything written; `OCTOCODE_TUI_DEBUG=1`, `OCTOCODE_TUI_DEBUG_REDRAW=1` log renders |
 
+### VS Code terminal
+
+VS Code draws its terminal with a WebGL renderer, or a DOM renderer when WebGL fails. The DOM renderer is [much slower](https://code.visualstudio.com/docs/terminal/appearance#_gpu-acceleration), which shows as lag when Octocode repaints.
+
+| Check or setting                              | Effect                                                                                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VS Code `terminal.integrated.gpuAcceleration` | Keep the default `auto`. `"off"` forces the slow DOM renderer; use it only to work around GPU glyph bugs such as a coloured triangle or black block. |
+| Octocode `terminal.reduceMotion`              | `true` freezes spinners and shimmer, so there is less to repaint. `"auto"` (default) follows `OCTOCODE_REDUCE_MOTION`.                               |
+| Octocode `tuiMode`                            | `"fullscreen"` (default) or `"regular"`; try `regular` if fullscreen repaints lag.                                                                   |
+
+Values and defaults: [settings](settings.md).
+
+Octocode adapts to any terminal on its own:
+
+- When the terminal falls behind drawing (measured from its replies, above the normal delay of an SSH or mosh link), spinners and shimmer pause and streaming text repaints once per reply; keystrokes always repaint at once. A terminal that does not answer is paced as before. Inside tmux, Zellij or mosh the multiplexer answers, so pacing follows the multiplexer rather than the terminal around it.
+- While the terminal window is not focused, animation runs slower; a focus report or any keystroke returns it to normal speed.
+
+The tab title shows Octocode's state: `✻` thinking, `◐` running, including background subagents and jobs after the answer, `◇` waiting for you, then `✓` or `✗` once everything has finished. While background subagents run, the subagent mark follows the state mark, with their number when more than one runs: `◐ 🐙3 Octocode · repo`.
+
+Octocode marks who is working the same way everywhere: 🦑 is the main agent (your session), 🐙 a subagent it started.
+
+| Where                         | Main agent                 | Subagents                                                                                          |
+| ----------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| Agents panel under the editor | its top row: `🦑 name`     | each row, from 120 columns wide: `├ ⠋ 🐙 name`; narrower rows keep the room for the goal and state |
+| Footer                        | `🦑 name`                  | the running count: `🐙 2 agents`                                                                   |
+| Transcript                    |                            | `🐙 Agent(goal)` rows and background reports                                                       |
+| `/processes`                  | main, RPC and ACP sessions | every subagent process                                                                             | VS Code shows the process name on tabs by default; set `terminal.integrated.tabs.title` to `${sequence}` to see this title. |
+
+| Symptom of a frozen session                                                                                                                                                                                                                          | Recovery                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| No response to keys, Ctrl+C does nothing, 0% CPU, after VS Code stopped reading the terminal (window reload, detached terminal). Older Octocode versions wait on such a terminal forever; current ones keep running and repaint when it reads again. | Close the terminal tab or end the process, then run `octocode --continue` in the same folder to resume the conversation ([CLI](cli.md)). |
+
 Other front ends: [web workspace](web-workspace.md), [remote](remote.md), [RPC](rpc.md), [ACP](acp.md), [local session API](session-api.md).

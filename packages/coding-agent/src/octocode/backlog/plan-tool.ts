@@ -3,7 +3,7 @@ import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { timedTool } from "../render/rows.ts";
 import { withReason } from "../shared/reason.ts";
-import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
+import { type Backlog, type BacklogOptions, openBacklogWhenReady } from "./context.ts";
 import {
 	ADD_ENTRY_FIELDS,
 	EDIT_ENTRY_FIELDS,
@@ -21,6 +21,7 @@ import { backlogRenderers } from "./tool-render.ts";
 import { type RunParams, runBacklog } from "./tool-run.ts";
 import { checkedEntry, type LinkArgument, linkInput } from "./tool-schema.ts";
 import { oneWrite } from "./tool-support.ts";
+import { BacklogBatchAbortedError } from "./batch-outcome.ts";
 import { backlogPlanPrompt } from "./tool-text.ts";
 
 type Write = "add" | "edit";
@@ -70,12 +71,28 @@ export function registerBacklogPlanTool(
 				const given = Object.entries(args)
 					.filter(([key, value]) => key !== "op" && value !== undefined)
 					.map(([key]) => key);
-				if (args.op === "list") return list(openBacklog(ctx, options), args, given);
+				if (args.op === "list") return list(await openBacklogWhenReady(ctx, options, signal), args, given);
 				const op = args.op;
-				const result = await oneWrite(async () => {
-					signal?.throwIfAborted();
-					return written(openBacklog(ctx, options), args, op, given);
-				});
+				let result;
+				try {
+					result = await oneWrite(async () => {
+						signal?.throwIfAborted();
+						return written(await openBacklogWhenReady(ctx, options, signal), args, op, given, signal);
+					});
+				} catch (error) {
+					if (
+						error instanceof BacklogBatchAbortedError &&
+						(error.result.details.applied || error.result.details.uncertain)
+					) {
+						// A view notification must not erase the durable partial-write receipt.
+						try {
+							options.changed?.(ctx);
+						} catch {
+							// The write receipt remains authoritative if its view observer fails.
+						}
+					}
+					throw error;
+				}
 				options.changed?.(ctx);
 				return result;
 			},
@@ -100,7 +117,7 @@ export function registerBacklogPlanTool(
 	 * `add` or `edit`: each entry of `items` is one store write with every store check. One entry answers as that
 	 * write does; several answer with a line each, and a refused one does not stop the rest.
 	 */
-	function written(backlog: Backlog, args: Params, op: Write, given: readonly string[]) {
+	async function written(backlog: Backlog, args: Params, op: Write, given: readonly string[], signal?: AbortSignal) {
 		const beside = given.filter((key) => key !== "items");
 		const filters = beside.filter((key) => ALL_FILTERS.includes(key));
 		if (filters.length) throw new Error(`${op} does not take ${filters.join(", ")}: list filters.`);
@@ -124,11 +141,26 @@ export function registerBacklogPlanTool(
 			checkedEntry(entryAccepted, parseJsonStrings({ ...defaults, ...fields })) as Entry;
 		if (items.length === 1) {
 			refuseUnknown(items[0], allowed, "items", SHOWN[op]);
-			return write(backlog, op, entry(items[0]));
+			return backlog.store.transactionWhenReady(() => write(backlog, op, entry(items[0])), signal);
 		}
 		return op === "add"
-			? batchAdd(items, allowed, "items", (fields, earlier) => write(backlog, op, earlier(entry(fields))), SHOWN[op])
-			: batchUpdate(items, allowed, "items", (fields) => write(backlog, op, entry(fields)), SHOWN[op]);
+			? batchAdd(
+					items,
+					allowed,
+					"items",
+					(fields, earlier) =>
+						backlog.store.transactionWhenReady(() => write(backlog, op, earlier(entry(fields))), signal),
+					SHOWN[op],
+					signal,
+				)
+			: batchUpdate(
+					items,
+					allowed,
+					"items",
+					(fields) => backlog.store.transactionWhenReady(() => write(backlog, op, entry(fields)), signal),
+					SHOWN[op],
+					signal,
+				);
 	}
 
 	/** One entry as the store write it is; the fields `backlog` owns are refused with its operation. */

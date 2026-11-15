@@ -6,8 +6,17 @@ import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { getOsc8LinkAtColumn } from "../utils/columns.ts";
 import { COPY_ERROR_FLASH_DURATION_MS, DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
-import { applySelectionToScreen, getSelectionBounds, getSelectionText, getWordSelection } from "./selection.ts";
+import {
+	applySelectionToScreen,
+	getSelectionBounds,
+	getSelectionText,
+	getWordSelection,
+	selectedTextLines,
+} from "./selection.ts";
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
+
+/** 100,000 base64 characters: the fallback terminal clipboard's existing transfer limit. */
+const TERMINAL_CLIPBOARD_BYTES = 75_000;
 
 /** Alternate-screen state and operations the text selection reads and calls live. */
 export interface AltScreenSelectionHost {
@@ -315,8 +324,34 @@ export class AltScreenSelection {
 		return getSelectionText(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout());
 	}
 
-	private async copySelectionToClipboard(): Promise<boolean> {
-		const text = this.getActiveSelectionText();
+	hasActiveSelection(): boolean {
+		let rows = 0;
+		for (const line of selectedTextLines(
+			this.getSelectionBounds(),
+			this.host.getPreviousScreen(),
+			this.host.getCurrentLayout(),
+		)) {
+			if (++rows > 1 || line.length > 0) return true;
+		}
+		return false;
+	}
+
+	async copySelectionToClipboard(): Promise<boolean> {
+		const lines: string[] = [];
+		let bytes = 0;
+		for (const line of selectedTextLines(
+			this.getSelectionBounds(),
+			this.host.getPreviousScreen(),
+			this.host.getCurrentLayout(),
+		)) {
+			bytes += Buffer.byteLength(line) + (lines.length > 0 ? 1 : 0);
+			if (!this.host.copySelection && bytes > TERMINAL_CLIPBOARD_BYTES) {
+				this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
+				return false;
+			}
+			lines.push(line);
+		}
+		const text = lines.join("\n");
 		if (!text) return false;
 		return this.copyTextToClipboard(text);
 	}
@@ -340,7 +375,7 @@ export class AltScreenSelection {
 			);
 			return ok;
 		}
-		if (Math.ceil(Buffer.byteLength(text) / 3) * 4 > 100_000) {
+		if (Buffer.byteLength(text) > TERMINAL_CLIPBOARD_BYTES) {
 			this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
 			return false;
 		}

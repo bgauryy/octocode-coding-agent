@@ -3,9 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AgentDb, closeSharedAgentDb, commands, configAudits, archiveHistory } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/storage/database.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	type AgentDb,
+	closeSharedAgentDb,
+	commands,
+	configAudits,
+	archiveHistory,
+	DbWriter,
+} from "../../../db/src/api.ts";
+import { openAgentDb, agentDbWriter } from "../../src/storage/database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
@@ -32,6 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	for (const db of open.splice(0)) db.close();
 	closeSharedAgentDb();
 	for (const [key, value] of Object.entries(saved))
@@ -247,8 +255,9 @@ describe("history archive housekeeping", () => {
 		db.close();
 		const ctx = fakeCtx({ cwd: tmp });
 		openBacklog(ctx, { isSubagent: false });
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await new Promise((resolve) => setImmediate(resolve));
 		const shared = openDb();
+		expect(await agentDbWriter(shared).drain(5000)).toBe(true);
 		expect(ids(shared, "backlog_audits")).not.toContain(String(old));
 		const next = audit(shared, Date.now() - 20 * DAY_MS);
 		openBacklog(ctx, { isSubagent: false });
@@ -258,7 +267,45 @@ describe("history archive housekeeping", () => {
 });
 
 describe("archived history readers", () => {
-	it("pages the store's audit trail across the table and the archive, newest first", () => {
+	it("cancels an audit wait promptly while the bounded worker read remains pending", async () => {
+		const db = openDb();
+		const id = audit(db, NOW - 2 * DAY_MS);
+		const store = fixtureBacklog(
+			() => db,
+			"repo",
+			() => NOW,
+		);
+		let finish!: (rows: []) => void;
+		const pending = new Promise<[]>((resolve) => {
+			finish = resolve;
+		});
+		vi.spyOn(DbWriter.prototype, "archivedAudits").mockReturnValue(pending);
+		const controller = new AbortController();
+		const read = store.auditAsync(undefined, 500, undefined, controller.signal);
+		controller.abort(new Error("stop audit wait"));
+		await expect(read).rejects.toThrow("stop audit wait");
+		expect(ids(db, "backlog_audits")).toEqual([String(id)]);
+		finish([]);
+	});
+
+	it("preserves live rows if housekeeping moves them after the asynchronous archive read was requested", async () => {
+		const db = openDb();
+		const id = audit(db, NOW - 20 * DAY_MS);
+		const store = fixtureBacklog(
+			() => db,
+			"repo",
+			() => NOW,
+		);
+		vi.spyOn(DbWriter.prototype, "archivedAudits").mockImplementation(async () => {
+			// This response represents the archive snapshot just before a concurrent archiver committed.
+			archiveHistory(db, NOW);
+			return [];
+		});
+		expect((await store.auditAsync()).map((row) => row.id)).toEqual([id]);
+		expect(ids(db, "backlog_audits")).toEqual([]);
+	});
+
+	it("pages the store's audit trail across the table and the archive, newest first", async () => {
 		const db = openDb();
 		audit(db, NOW - 35 * DAY_MS);
 		const archived = [audit(db, NOW - 25 * DAY_MS), audit(db, NOW - 20 * DAY_MS, "B2"), audit(db, NOW - 15 * DAY_MS)];
@@ -280,6 +327,11 @@ describe("archived history readers", () => {
 		expect(store.audit("B1").map((event) => event.id)).toEqual([archived[0], archived[2], live]);
 		expect(store.audit(undefined, 2).map((event) => event.id)).toEqual([archived[2], live]);
 		expect(store.audit(undefined, 2, archived[2]).map((event) => event.id)).toEqual([archived[0], archived[1]]);
+		expect(await store.auditAsync()).toEqual(store.audit());
+		expect(await later.auditAsync()).toEqual(later.audit());
+		expect(await store.auditAsync("B1")).toEqual(store.audit("B1"));
+		expect(await store.auditAsync(undefined, 2)).toEqual(store.audit(undefined, 2));
+		expect(await store.auditAsync(undefined, 2, archived[2])).toEqual(store.audit(undefined, 2, archived[2]));
 		// The board snapshot carries no audit rows (a large backlog's history made it too big to send): the page reads an
 		// item's history, archived rows included, from the audit route below.
 		store.add({ title: "B1 now", createdBy: "user" });

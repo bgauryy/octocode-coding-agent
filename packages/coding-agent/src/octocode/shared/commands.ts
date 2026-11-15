@@ -35,6 +35,8 @@ export interface Subcommand {
 	description: string;
 	/** Usage after the command name, such as `[all|<query>]`. */
 	argumentHint?: string;
+	/** The only first words accepted (see `RegisteredCommand.argumentWords`); omit when free text is valid. */
+	argumentWords?: readonly string[];
 	dialog?: "handler" | "interaction";
 	handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 	complete?(prefix: string): AutocompleteItem[] | null;
@@ -110,6 +112,7 @@ export class Subcommands {
 			api.registerCommand(name, {
 				description: command.description,
 				...(command.argumentHint && { argumentHint: command.argumentHint }),
+				...(command.argumentWords && { argumentWords: command.argumentWords }),
 				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
 				handler: async (args, ctx) =>
 					command.dialog === "interaction"

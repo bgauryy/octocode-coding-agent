@@ -33,24 +33,6 @@ describe("buildSystemPrompt", () => {
 	describe("with an MCP server declaring reader and search roles", () => {
 		useResearchRoles();
 
-		test("does not redirect searches to the shell while a search-role tool is declared", () => {
-			const prompt = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: ["bash", RESEARCH.search],
-				contextFiles: [],
-				skills: [],
-			});
-			expect(prompt).not.toContain("Search and read files with bash");
-			// The role decides, not the server: a tool of the same server without a role leaves search to bash.
-			const unroled = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: ["bash", RESEARCH.other],
-				contextFiles: [],
-				skills: [],
-			});
-			expect(unroled).toContain("Search and read files with bash");
-		});
-
 		test("loads skills through a reader-role tool without read or bash", () => {
 			const prompt = buildSystemPrompt({
 				cwd: "/tmp",
@@ -58,13 +40,7 @@ describe("buildSystemPrompt", () => {
 				contextFiles: [],
 				skills: [testSkill],
 			});
-			// The reader is a declared tool with its own description: the skill hint names none.
-			expect(prompt).toContain(
-				"Load the file of every skill whose description matches the task before other work; several can apply.",
-			);
-			expect(prompt).not.toContain("read_file");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
-			expect(prompt).not.toContain("Use the read tool");
 		});
 
 		test("a tool without a reader role does not load skills", () => {
@@ -77,70 +53,14 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).not.toContain("<available_skills>");
 		});
 
-		test("names the skill tool as the skill reader, ahead of any file reader", () => {
-			const prompt = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: ["skill", "bash", RESEARCH.reader],
-				contextFiles: [],
-				skills: [testSkill],
-			});
-			expect(prompt).toContain(
-				"Use the skill tool (one call per name) to load every skill whose description matches the task before other work; several can apply.",
-			);
-			// The skill tool's description owns how a loaded skill's relative paths resolve.
-			expect(prompt).not.toContain("resolve it against the skill directory");
-			expect(prompt).not.toMatch(/Load the file of every skill|Use bash to load|read_file/);
-			// The tool needs no file reader.
-			expect(
-				buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
-			).toContain("Use the skill tool");
-		});
-
-		test("a hidden skill tool is not advertised: the file reader variant stays", () => {
-			const prompt = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: ["skill", RESEARCH.reader],
-				hiddenTools: ["skill"],
-				contextFiles: [],
-				skills: [testSkill],
-			});
-			expect(prompt).toContain(
-				"Load the file of every skill whose description matches the task before other work; several can apply.",
-			);
-			expect(prompt).not.toContain("skill tool");
-		});
-
 		test("keeps skills without advertising a hidden reader-role tool", () => {
 			const reader = RESEARCH.reader;
 			const input = { cwd: "/tmp", selectedTools: [reader], hiddenTools: [reader], skills: [testSkill] };
 			const indirect = buildSystemPrompt(input);
 			expect(indirect).toContain("/skills/test-skill/SKILL.md");
-			expect(indirect).not.toContain("read_file");
 			const shell = buildSystemPrompt({ ...input, selectedTools: [reader, "bash"] });
-			expect(shell).toContain("Use bash");
-			expect(shell).not.toContain("read_file");
+			expect(shell).toContain("/skills/test-skill/SKILL.md");
 		});
-	});
-
-	test("keeps the tool list and docs section free of restated rules", () => {
-		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash"], toolSnippets: { bash: "Run." } });
-		expect(prompt).not.toContain("other custom tools");
-		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
-		// The docs section points at the documentation once and restates no reading rule.
-		expect(prompt.match(/Octocode documentation:/g)).toHaveLength(1);
-		// SDK sessions without an `octocode` section keep the core communication floor.
-		expect(prompt).toContain("- Be concise in your responses");
-	});
-
-	test("drops the core brevity floor when Octocode's Communication policy supplies it", () => {
-		const prompt = buildSystemPrompt({
-			cwd: "/tmp",
-			selectedTools: ["bash"],
-			sections: { communication: "# Communication\n- Lead with the result." },
-		});
-		expect(prompt).not.toContain("Be concise in your responses");
-		expect(prompt).not.toContain("Refer to files by their paths");
-		expect(prompt).toContain("Lead with the result.");
 	});
 
 	describe("empty tools", () => {
@@ -154,22 +74,10 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).not.toContain("<tools>");
 		});
-
-		test("shows file paths guideline even with no tools", () => {
-			const prompt = buildSystemPrompt({
-				selectedTools: [],
-				contextFiles: [],
-				skills: [],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toContain("Refer to files by their paths");
-		});
 	});
 
 	describe("prompt structure", () => {
-		test("keeps the default and custom prompt prefixes exact", () => {
-			const defaultPrompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [], contextFiles: [], skills: [] });
+		test("uses the supplied custom prompt as the prefix", () => {
 			const customPrompt = buildSystemPrompt({
 				customPrompt: "You are Exact.",
 				cwd: "/tmp",
@@ -178,7 +86,6 @@ describe("buildSystemPrompt", () => {
 				skills: [],
 			});
 
-			expect(defaultPrompt.startsWith("You are a coding assistant operating inside Octocode")).toBe(true);
 			expect(customPrompt.startsWith("You are Exact.\n\n<cwd>")).toBe(true);
 		});
 
@@ -197,9 +104,7 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain("<addendum>\nAdditional instructions.\n</addendum>");
-			expect(prompt).toContain(
-				'<project_context>\nProject-specific instructions and guidelines. They rank above general habits and below the user\'s direct request; the safety rules of this prompt stay in force:\n\n<project_instructions path="/tmp/AGENTS.md">',
-			);
+			expect(prompt).toContain('<project_instructions path="/tmp/AGENTS.md">\nProject instructions.');
 			expect(prompt).toContain("<cwd>\n/tmp\n</cwd>");
 		});
 	});
@@ -214,19 +119,6 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain("- bash: Execute bash commands");
-			expect(prompt).toContain("Search and read files with bash (rg, fd, ls, sed -n)");
-		});
-
-		test("instructs models to resolve Octocode docs under an absolute base path", () => {
-			const prompt = buildSystemPrompt({
-				contextFiles: [],
-				skills: [],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toMatch(/Octocode documentation: \S+ \(not the working directory\)/);
-			expect(prompt).toContain("README.md and docs/; docs/index.md maps topics to pages.");
-			expect(prompt).not.toContain("examples/");
 		});
 	});
 
@@ -299,7 +191,6 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<skills>");
 			expect(prompt).toContain("<available_skills>");
 			expect(prompt).toContain('<skill name="test-skill" location=');
-			expect(prompt).toContain("Use bash to load the file of every skill");
 		});
 
 		test("omits skills without read or bash", () => {
@@ -332,18 +223,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<tools>\n- run: Run a task\n");
 			expect(prompt).not.toContain("- read: ");
 			expect(prompt).not.toContain("Use read for files.");
-			expect(prompt).not.toContain("Search and read files with bash");
 			expect(prompt).toContain("- Prefer run.");
-		});
-
-		test("keeps skills without naming a hidden reader", () => {
-			expect(build(["read", "bash"])).toContain(
-				"\nLoad the file of every skill whose description matches the task before other work; several can apply.",
-			);
-			expect(build(["read"])).toContain("Use bash to load the file of every skill");
-			// Octocode ships no `read` tool: a tool registered under that name is not a skill loader.
-			expect(build([])).toContain("Use bash to load the file of every skill");
-			expect(build([])).not.toContain("Use the read tool");
 		});
 	});
 

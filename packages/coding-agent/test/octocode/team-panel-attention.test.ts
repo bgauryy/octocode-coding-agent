@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { FINISHED_MS } from "../../src/octocode/team/panel/compact.ts";
 import { FinishedTracker } from "../../src/octocode/team/panel/finished.ts";
+import { needsYou } from "../../src/octocode/team/panel/attention.ts";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { panelState } from "../../src/octocode/team/panel/state.ts";
 import { theme } from "./fake-host.ts";
@@ -51,7 +52,7 @@ describe("agents panel: the agent that needs you", () => {
 		expect(out[0]).toContain("1 working");
 		expect(out[0]).toContain("1 idle");
 		expect(out[0].indexOf("needs you")).toBeLessThan(out[0].indexOf("working"));
-		expect(out[1]).toMatch(/^ [├└] ◇ plucky-otter .*needs you/);
+		expect(out[1]).toMatch(/^ [├└] ◇ 🐙 plucky-otter .*needs you/);
 		// The ready command (the one `/agents tell` accepts) answers that very question.
 		expect(out[2]).toContain("↳");
 		expect(out[2]).toContain("/agents tell plucky-otter #11 <reply>");
@@ -62,9 +63,18 @@ describe("agents panel: the agent that needs you", () => {
 	it("treats a member waiting for an approval as needing the user", () => {
 		const out = lines([member("calm-heron", { waiting: "approval" }), member("swift-lynx")]);
 		expect(out[0]).toContain("◇ 1 needs you");
-		expect(out[1]).toContain("◇ calm-heron");
+		expect(out[1]).toContain("◇ 🐙 calm-heron");
 		expect(out[1]).toContain("needs you");
 		expect(out[2]).toContain("waiting for your approval");
+	});
+
+	it("reports approval, with the question's message and count, when a member waits for both", () => {
+		const needs = needsYou(
+			[main, member("calm-heron", { waiting: "approval" })],
+			[ask("calm-heron", 3), ask("calm-heron", 4)],
+			ME,
+		);
+		expect(needs.get("calm-heron")).toMatchObject({ kind: "approval", count: 2, message: { id: 4 } });
 	});
 
 	it("hoists a branch whose grandchild needs you above its quiet siblings", () => {
@@ -96,7 +106,7 @@ describe("agents panel: the agent that needs you", () => {
 					(line) =>
 						line.includes("researcher-f") ||
 						line.includes("research…") ||
-						(/◇ .*needs you/.test(line) && !line.includes("●")),
+						(/◇ .*needs you/.test(line) && !line.includes("🦑")),
 				);
 				expect(row, `${width}x${rows}`).toBeDefined();
 				expect(row).toContain("◇");
@@ -179,18 +189,18 @@ describe("agents panel: finished rows", () => {
 
 	it("shows the outcome, a headline and the tally; unknown outcomes stay neutral", () => {
 		const done = lines([], [], 120, undefined, finished("done", "## 3 gaps found; fix plan in report") as never);
-		expect(done[1]).toMatch(/✓ old-gecko.* done +1m39s/);
+		expect(done[1]).toMatch(/✓ 🐙 old-gecko.* done +1m39s/);
 		expect(done[2]).toContain('↳ "3 gaps found; fix plan in report"');
 		expect(done[0]).toContain("✓ 1 done");
 		const failed = lines([], [], 120, undefined, finished("failed", "vitest: 4 failures") as never);
-		expect(failed[1]).toMatch(/✗ old-gecko.* failed/);
+		expect(failed[1]).toMatch(/✗ 🐙 old-gecko.* failed/);
 		expect(failed[0]).toContain("✗ 1 failed");
-		expect(lines([], [], 120, undefined, finished("stopped") as never)[1]).toMatch(/◼ old-gecko.* stopped/);
+		expect(lines([], [], 120, undefined, finished("stopped") as never)[1]).toMatch(/◼ 🐙 old-gecko.* stopped/);
 		const blocked = lines([], [], 120, undefined, finished("blocked", "needs a decision") as never);
 		expect(blocked[0]).toContain("◇ 1 needs you");
-		expect(blocked[1]).toMatch(/◇ old-gecko.* blocked/);
+		expect(blocked[1]).toMatch(/◇ 🐙 old-gecko.* blocked/);
 		const unknown = lines([], [], 120, undefined, [{ member: gone, at: NOW - 1_000 }] as never);
-		expect(unknown[1]).toMatch(/○ old-gecko.* left/);
+		expect(unknown[1]).toMatch(/○ 🐙 old-gecko.* left/);
 	});
 
 	it("keeps the outcome the host reports after the row left, for FINISHED_MS", () => {

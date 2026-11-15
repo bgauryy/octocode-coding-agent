@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
+import { renderInstruction } from "../../src/core/prompt-template.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerIdleItems } from "../../src/octocode/subagents/idle-items.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -10,7 +11,7 @@ import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
-const NOTICE = "is ongoing with no agent on it and its paths are free: start it or move it back to todo.";
+const notice = (ref: string) => renderInstruction("notices/subagents/idle-item.md", { ref }).trim();
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -38,8 +39,9 @@ function setup(realTeam = false) {
 		? new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp, "team.sqlite") })
 		: { reserved: (absolute: string) => reserved.has(absolute) };
 	const runs = { running: new Map<string, undefined>(), items: new Map<string, string>() };
+	const lingering = new Map<string, string>();
 	if (realTeam) registerCollab(fake.api, team as Team, {});
-	registerIdleItems(fake.api, team as unknown as Team, runs);
+	registerIdleItems(fake.api, team as unknown as Team, runs, { onItem: (ref) => lingering.get(ref) });
 	const backlog = openBacklog(ctx, { isSubagent: false });
 	const hold = (title: string, paths: string[] = []) => {
 		const item = backlog.store.add({ ...READY, title, state: "todo", createdBy: "user", paths });
@@ -48,7 +50,7 @@ function setup(realTeam = false) {
 	const settle = async () => {
 		await fake.emit("agent_settled", { aborted: false }, ctx);
 	};
-	return { fake, cwd, runs, reserved, hold, settle, team: team as Team };
+	return { fake, cwd, runs, reserved, lingering, hold, settle, team: team as Team };
 }
 
 describe("idle item notice", () => {
@@ -59,7 +61,7 @@ describe("idle item notice", () => {
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(1);
 		expect(s.fake.sent[0]).toMatchObject({
-			message: { content: `${first} ${NOTICE}` },
+			message: { content: notice(first) },
 			options: { triggerTurn: true },
 		});
 		await s.settle();
@@ -67,7 +69,17 @@ describe("idle item notice", () => {
 		const second = s.hold("second");
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(2);
-		expect(s.fake.sent[1].message.content).toBe(`${second} ${NOTICE}`);
+		expect(s.fake.sent[1].message.content).toBe(notice(second));
+	});
+
+	it("does not name an item whose reported child can still be resumed", async () => {
+		const s = setup();
+		const reported = s.hold("reported");
+		const free = s.hold("free");
+		s.lingering.set(reported, "reported-child");
+		s.runs.running.set("other", undefined);
+		await s.settle();
+		expect(s.fake.sent.map((entry) => entry.message.content)).toEqual([notice(free)]);
 	});
 
 	it("tells the same item again after the wait ended", async () => {

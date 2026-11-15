@@ -46,13 +46,13 @@ function setup(isSubagent = false) {
 		fake.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, ctx) as Promise<
 			{ message: { customType: string; content: string; display: boolean } } | undefined
 		>;
-	/** An ongoing item whose holder session does not exist (it ended). */
+	/** An ongoing item whose holder session does not exist (it ended), touched just now: inside the window before its claim is returned. */
 	const abandoned = (seq: number, title: string) =>
 		sharedAgentDb()
 			.db.prepare(
-				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, 'ongoing', 'ended-session', 'user', 0, 0)",
+				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, 'ongoing', 'ended-session', 'user', 0, ?)",
 			)
-			.run(registeredWorkspace(cwd).id, seq, title);
+			.run(registeredWorkspace(cwd).id, seq, title, Date.now());
 	return { backlog, start, prompt, abandoned };
 }
 

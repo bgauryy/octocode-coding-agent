@@ -8,7 +8,7 @@ Each line on stdin is one JSON command, and each line on stdout is one JSON reco
 
 ## Protocol
 
-The first record of every session is `{"type":"rpc_ready","protocolVersion":1,"version":"…","sessionId":"…"}`. `protocolVersion` changes only when a change would break an existing driver; `version` is the Octocode version. `get_state` repeats both. Commands sent before startup finishes are held, so a driver need not wait for this record. The `RpcClient` passes it to its `onReady` option, and its `start()` resolves when this record arrives, or rejects when the process exits or fails to start first.
+The first record of every session is `{"type":"rpc_ready","protocolVersion":1,"version":"…","sessionId":"…"}`. `protocolVersion` changes only when a change would break an existing driver; `version` is the Octocode version. `get_state` repeats both. Commands sent before startup finishes are held, so a driver need not wait for this record. The `RpcClient` passes it to its `onReady` option, and its `start()` resolves when this record arrives. It rejects if the process exits, fails to start, is stopped, or exceeds `startupTimeoutMs` (default 60,000 ms; an integer from 1 to 2,147,483,647). On a startup timeout, it stops the worker before rejecting and includes the bounded stderr tail in the error.
 
 Every command has a `type` and an optional string `id`. A response repeats the `id` and names the `command` it answers:
 
@@ -28,7 +28,7 @@ A dialog blocks its run until it is answered, with no timeout. A driver that ans
 
 The process exits when stdin closes, on `SIGINT` (exit 130), `SIGTERM` (143) or `SIGHUP` (129; `SIGHUP` is not available on Windows), or after an extension requests shutdown. Pending extension requests are cancelled first. These do not wait for a run: closing stdin aborts the current run and exits 0, even if a command sent just before it never ran, so a driver that needs the result keeps stdin open until `agent_settled` or the `waitForCompletion` answer arrives. A requested shutdown waits for the current run to settle.
 
-If a write to stdout fails because the driver closed its end, the session is released and the process exits 1 with one line on stderr; a closed stdout is noticed at the next write. In the default `full` permission mode the process says on stderr at session start that every action runs without asking, and where the record is.
+If a write to stdout fails because the driver closed its end, the session is released and the process exits 1 with one line on stderr; a closed stdout is noticed at the next write. In the default `full` permission mode the process says on stderr at session start that most actions run without asking, that browser cookies and other explicit approval requirements still apply, and where actions are recorded.
 
 ## Commands
 
@@ -37,7 +37,7 @@ If a write to stdout fails because the driver closed its end, the session is rel
 | `prompt` | `message`: string<br>`images?`: object[]<br>`streamingBehavior?`: "steer" \| "followUp"<br>`waitForCompletion?`: boolean<br>`dispatchId?`: string | Send a message. During a run, `streamingBehavior` queues it as `steer` or `followUp`. `dispatchId` correlates extension-dispatched work when `waitForCompletion` is set. |
 | `steer` | `message`: string<br>`images?`: object[]<br>`toolChoice?`: "none" | Queue a message delivered while the agent is running. On an idle session it still answers `queued` and starts nothing: it waits for the next prompt. To avoid that race at the end of a run, send `prompt` with `streamingBehavior`. |
 | `follow_up` | `message`: string<br>`images?`: object[] | Queue a message for after the agent stops. On an idle session it answers `queued` and starts nothing, as `steer` does. |
-| `abort` |  | Stop the current run. |
+| `abort` | `holdShutdown?`: true | Stop the current run. For terminal shutdown preparation, `holdShutdown: true` keeps extension-requested graceful exit pending until stdin closes, so the caller can capture descendant ownership after work stops. This cannot be undone: later commands other than `abort` are rejected; pending responses and extension UI replies still complete. EOF, termination signals and parent-loss cleanup remain active. Omit the field for ordinary abort. |
 | `clear_queue` |  | Drop all queued steering and follow-up messages; returns what was dropped. |
 | `get_queue` |  | List queued inputs with their `queueId` values. |
 | `edit_queued` | `queueId`: string<br>`text`: string | Replace the text of a queued input; `data.outcome` is `replaced`, `removed` or `missing`. |

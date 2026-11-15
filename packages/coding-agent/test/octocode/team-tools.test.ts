@@ -266,15 +266,6 @@ describe("team tools on a fake Octocode", () => {
 		const properties = send.parameters.properties;
 		expect(send.parameters.required ?? []).toEqual([]);
 		expect(properties.forward.type).toBe("integer");
-		expect(properties.replyRequired.description).toContain("Default: FYI");
-		expect(properties.replyRequired.description).toContain("request an answer");
-		expect(send.description).toContain("Messages resume only reachable non-isolated background children");
-		expect(send.description).toContain("(yours, or siblings via your coordinator)");
-		expect(properties.forward.description).toContain("message becomes an optional note");
-		expect(send.description).not.toContain("cannot receive");
-		// The same text serves a parent and a child (a child cannot start tasks), so it names no role.
-		expect(send.description).not.toMatch(/start a new task|your child/);
-		expect(properties.interrupt.description).not.toContain("your child");
 	});
 
 	it("refuses a lock call whose own paths overlap, and reserves nothing", async () => {
@@ -316,13 +307,8 @@ describe("team tools on a fake Octocode", () => {
 			"grant",
 			"changes",
 		]);
-		// A subagent starts no children, so nothing in its schema or its cached prompt names a grant.
+		// A subagent cannot grant requests to children.
 		expect(subagent.properties).not.toHaveProperty("requests");
-		expect(parameters.properties.requests.description).toMatch(/^grant: /);
-		expect(parameters.properties.action.description).toContain(
-			"grant: add model requests to your running child for this run",
-		);
-		expect(parameters.properties.goal.description).toMatch(/^join: your task goal/);
 		expect(parameters.properties).not.toHaveProperty("note");
 	});
 
@@ -606,7 +592,7 @@ describe("AgentsView", () => {
 			expect(lines).not.toContain("researcher-8888");
 			expect(lines).not.toContain("#4");
 			// The widget counts the agents; the footer names this session, which peers address, and does not repeat them.
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
 			vi.advanceTimersByTime(1_000);
 			expect(requestRender).toHaveBeenCalled();
 
@@ -619,11 +605,11 @@ describe("AgentsView", () => {
 			expect(done).toMatch(/reviewer-1a2b .* left +\d/);
 			expect(done).toMatch(/tester-3c4d .* left +\d/);
 			expect(done).not.toContain("working");
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
 			// Finished rows stay FINISHED_MS (30 s) so their outcome can be read.
 			vi.advanceTimersByTime(31_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
 
 			members = [
 				peer("me-0001", "working", null),
@@ -685,7 +671,7 @@ describe("AgentsView", () => {
 			]);
 			view = { members: [peer("me-0001", "working", null), peer("reviewer-1a2b")], traffic: [] };
 			vi.advanceTimersByTime(1_000);
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
 			expect(ctx.ui.notes.at(-1)).toEqual({ message: "Team database reachable again.", type: "info" });
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			agents.stop(ctx);

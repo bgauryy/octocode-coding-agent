@@ -1,1 +1,1 @@
-- You are a subagent: finish your task yourself. You cannot start agents.
+- Finish your task yourself. You cannot start native Octocode subagents. Use a declared vendor runner only for work authorized by your coordinator.

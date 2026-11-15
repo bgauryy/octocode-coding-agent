@@ -43,6 +43,17 @@ export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptio
 	registerMcpManageTool(state);
 	registerMcpCommand(state);
 	// What a settings view shows of each tool; read on request, never on a session event.
-	publishMcpToolStates(() => mcpToolStates(state));
+	publishMcpToolStates(
+		() => mcpToolStates(state),
+		() =>
+			state.session.signal.aborted
+				? undefined
+				: [
+						...new Set([
+							...state.servers.map((server) => server.entry.name),
+							...api.getMcpServers().map((server) => server.name),
+						]),
+					],
+	);
 	return state;
 }

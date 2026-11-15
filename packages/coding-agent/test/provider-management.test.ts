@@ -80,6 +80,7 @@ function manager() {
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
 				getExternalAgents: () => true,
+				getEnabledExternalAgents: (): string[] | undefined => undefined,
 				setDisabledProviders: vi.fn((ids: string[]) => {
 					disabled = ids;
 				}),
@@ -500,7 +501,7 @@ describe("provider setup flow", () => {
 
 			const detail = showProviderManager(host, "local", { sourceEnvironment: sourceEnvironment() });
 			const page = await pageAt(value, 2);
-			expect(textOf(page, 320)).toContain(`Edit definition — Octocode models.json: ${join(dir, "models.json")}`);
+			expect(textOf(page, 320)).toContain(`Show definition file — Octocode models.json: ${join(dir, "models.json")}`);
 			page.handleInput(ESC);
 			await detail;
 		} finally {
@@ -520,6 +521,29 @@ describe("provider setup flow", () => {
 		expect(textOf(page)).toMatch(/gone-gateway +saved credential · provider definition missing.*unavailable/);
 		expect(textOf(page)).not.toContain("Signed in");
 		page.handleInput(ESC);
+		await run;
+	});
+
+	it("the sign-in picker lists vendor CLIs as external agents and opens the chosen one's page", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "+ Add a provider");
+		const picker = await pageAt(value, 1);
+		for (const key of "claude") picker.handleInput(key);
+		// A Claude subscription is offered only as the Claude Code external agent.
+		expect(rows(picker).filter((line) => line.includes("Claude Code"))).toEqual([
+			expect.stringMatching(/Claude Code · external agent · its own harness · Claude Pro\/Max subscription/),
+		]);
+		for (let index = 0; index < "claude".length; index++) picker.handleInput("\x7f");
+		for (const key of "gemini") picker.handleInput(key);
+		expect(textOf(picker)).toMatch(/Gemini CLI · external agent · its own harness · Google AI Pro\/Ultra subscription/);
+		choose(picker, "Gemini CLI");
+		const page = await pageAt(value, 2);
+		expect(textOf(page)).toContain("Gemini CLI — not connected");
+		expect(textOf(page)).toMatch(/external agent: its own harness runs each task/);
+		expect(value.showLoginDialog).not.toHaveBeenCalled();
+		page.handleInput(ESC);
+		(await pageAt(value, 3)).handleInput(ESC);
 		await run;
 	});
 
@@ -630,10 +654,12 @@ describe("provider setup flow", () => {
 		mkdirSync(sourceEnvironment().agentDir, { recursive: true });
 		const { host, value } = manager();
 		const setExternalAgents = vi.fn();
+		const setEnabledExternalAgents = vi.fn();
 		// The user turned the setting off before: connecting the runner leaves that choice alone.
 		Object.assign(value.session.settingsManager, {
 			getExternalAgents: () => false,
 			getGlobalSettings: () => ({ externalAgents: false }),
+			setEnabledExternalAgents,
 			setExternalAgents,
 		});
 		const environment = { ...sourceEnvironment(), env: { PATH: join(home, "bin") } };
@@ -667,8 +693,9 @@ describe("provider setup flow", () => {
 		);
 		expect(setExternalAgents).not.toHaveBeenCalled();
 		again.handleInput(ENTER);
-		choose(await pageAt(value, 3), "Run agent tasks in installed external agents");
+		choose(await pageAt(value, 3), "Enable this CLI for agent tasks");
 		await vi.waitFor(() => expect(setExternalAgents).toHaveBeenCalledWith(true));
+		expect(setEnabledExternalAgents).toHaveBeenCalledWith(["claude-code"]);
 		(await pageAt(value, 4)).handleInput(ESC);
 		await run;
 	});
@@ -699,7 +726,7 @@ describe("provider setup flow", () => {
 				externalAgents = enabled;
 			});
 			Object.assign(value.session.settingsManager, {
-				getExternalAgents: () => externalAgents !== false,
+				getExternalAgents: () => externalAgents === true,
 				getGlobalSettings: globalSettings,
 				setExternalAgents,
 			});
@@ -718,9 +745,7 @@ describe("provider setup flow", () => {
 			const again = await pageAt(value, 2);
 			for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
 			expect(textOf(again)).toMatch(
-				initial === false
-					? /Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/
-					: /Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected$/m,
+				/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
 			);
 			again.handleInput(ESC);
 			await run;
@@ -793,5 +818,40 @@ describe("provider setup flow", () => {
 		// Login dialogs call onBack synchronously and never await it.
 		back();
 		await vi.waitFor(() => expect(value.showError).toHaveBeenCalled());
+	});
+
+	it.each(["codex", "runner:opencode"])("opens the external CLI directly with /providers %s", async (query) => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, query, { sourceEnvironment: sourceEnvironment() });
+		const page = await pageAt(value, 0);
+		expect(textOf(page)).toContain(query === "codex" ? "Codex CLI —" : "OpenCode —");
+		expect(textOf(page)).toContain("own tools and sign-in");
+		page.handleInput(ESC);
+		await run;
+		expect(value.showLoginDialog).not.toHaveBeenCalled();
+	});
+
+	it("enables one CLI through its page without changing the default model or other selections", async () => {
+		const { host, value } = manager();
+		let selected = ["custom"];
+		let enabled = false;
+		Object.assign(value.session.settingsManager, {
+			getExternalAgents: () => enabled,
+			getEnabledExternalAgents: () => selected,
+			setEnabledExternalAgents: (ids: string[]) => {
+				selected = ids;
+			},
+			setExternalAgents: (next: boolean) => {
+				enabled = next;
+			},
+		});
+		const run = showProviderManager(host, "codex", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "Enable this CLI for agent tasks");
+		await run;
+		expect(selected).toEqual(["custom", "codex"]);
+		expect(enabled).toBe(true);
+		expect(value.session.model).toEqual({ provider: "openai", id: "one" });
+		expect(value.showModelSelector).not.toHaveBeenCalled();
+		expect(value.showStatus).toHaveBeenCalledWith(expect.stringContaining("/reload"));
 	});
 });

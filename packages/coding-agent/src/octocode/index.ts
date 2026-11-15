@@ -27,7 +27,7 @@ import { registerClaudeCode } from "./claude-code/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { connectedRunners, runnerRows } from "./external/connected.ts";
 import { externalListing } from "./external/describe.ts";
-import { externalAgentsEnabled } from "./external/enabled.ts";
+import { externalAgentSelection } from "./external/enabled.ts";
 import { externalPermission } from "./external/permission-dialog.ts";
 import { Peers } from "./external/peers.ts";
 import { externalIdentity, registerExternal } from "./external/register.ts";
@@ -57,6 +57,8 @@ import { Subcommands } from "./shared/commands.ts";
 import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
 import { setCurrentSession } from "./shared/home.ts";
 import { registerTrustCommand } from "./trust/command.ts";
+import { registerSecurityCommand } from "./guard/command.ts";
+import "./guard/install.ts";
 import { registerSkills } from "./skills.ts";
 import { registerPromptOptimization } from "./prompt-optimization/register.ts";
 import { registerTerminal } from "./terminal/register.ts";
@@ -142,10 +144,10 @@ export default function octocode(host: ExtensionAPI): void {
 	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
 	// Vendor CLIs using their own sign-in run `agent` tasks over ACP (`external/connected.ts`).
-	const runners = connectedRunners(externalAgentsEnabled(), externalPermission(permission));
+	const externalAccess = externalAgentSelection();
+	const runners = connectedRunners(externalAccess.enabled, externalPermission(permission), externalAccess.runners);
 	// With Claude Code connected on its plan, its models run this session's turns with Octocode's tools over MCP.
 	registerClaudeCode(api, runners.states);
-
 	api.on("session_start", async (event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
 		setCurrentSession(ctx.sessionManager.getSessionId(), ctx.cwd, ctx.sessionManager);
@@ -248,6 +250,7 @@ export default function octocode(host: ExtensionAPI): void {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
 		registerEditor(api, permission);
 		registerTrustCommand(commands);
+		registerSecurityCommand(commands);
 		registerOctocodeCli(api, commands, permission.typed.bind(permission));
 		registerWorktrees(
 			api,
@@ -275,10 +278,10 @@ export default function octocode(host: ExtensionAPI): void {
 			() => profiles,
 			async (ctx, _signal, filters) => [
 				...runnerRows(runners.states, filters),
-				...(externalAgentsEnabled() ? await externalListing(external, ctx, filters) : []),
+				...(externalAccess.enabled ? await externalListing(external, ctx, filters) : []),
 			],
 		);
-	} else if (runners.ids.length > 0) registerChildRunnerTask(runners, permission, agentTool.collect);
+	} else if (runners.ids.length > 0) registerChildRunnerTask(runners, permission, agentTool.collect, team);
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);
@@ -329,13 +332,14 @@ export default function octocode(host: ExtensionAPI): void {
 			commands,
 			{
 				...externalIdentity(team),
+				enabledRunners: externalAccess.runners,
 				beforeSend: messaging.beforeMessage,
 				afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
 				authorize: messaging.authorizeExternal,
 				permission: externalPermission(permission),
 			},
 			// Opt-in: without the `externalAgents` setting the `agent` tool does not declare `external` (`/agents external` stays).
-			externalAgentsEnabled() ? agentTool.collect : () => undefined,
+			externalAccess.enabled ? agentTool.collect : () => undefined,
 		);
 		permission.onRevoke(() => void external?.reset());
 	}

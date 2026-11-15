@@ -209,7 +209,7 @@ describe("file restore after compaction", () => {
 			"f5.txt",
 		]);
 		expect(restored.content).toMatch(
-			/^\[After compaction\] The files you were working on, read again from disk just now\. They count as read/,
+			/^\[After compaction\] The files you were working on, read again from disk just now\./,
 		);
 		expect(restored.content).toContain('<file path="f0.txt">\ncontent of f0.txt\n</file>');
 		expect(restored.files[0]).toMatchObject({ whole: true, size: "content of f0.txt\n".length });

@@ -1,5 +1,5 @@
 import type { CloseInput, EntityInput } from "@octocodeai/octocode-contracts/backlogs";
-import type { State } from "@octocodeai/octocode-contracts/snapshot";
+import type { State, BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
@@ -39,6 +39,7 @@ interface RunOptions {
 	subagent: boolean;
 	/** The operation as the caller named it (`claim`, `edit`), for messages; the store operation otherwise. */
 	word?: string;
+	audits?: BacklogAudit[];
 }
 
 /** The descriptive fields a call sets, only those it names. */
@@ -126,7 +127,7 @@ export function runBacklog(backlog: Backlog, args: RunParams, options: RunOption
 				? "edit takes one id: use items for several, e.g. items [{id, priority}, ...]."
 				: `${word} takes one id: call it once per item.`,
 		);
-	if (params.op === "get") return getResult(backlog, { ...params, id: params.id });
+	if (params.op === "get") return getResult(backlog, { ...params, id: params.id }, options.audits);
 	const fields = {
 		type: params.type,
 		parentId: params.parentId,

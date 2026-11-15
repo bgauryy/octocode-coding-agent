@@ -51,7 +51,7 @@ export const SETTINGS_DEFAULTS = {
 	subagents: {
 		checkInSeconds: 300,
 	},
-	externalAgents: true,
+	externalAgents: false,
 	sessionApi: true,
 	sessionApiTurnPermission: "session",
 	mcpPresentation: "declared",
@@ -92,6 +92,7 @@ export const SETTINGS_DEFAULTS = {
 	optimizePrompts: false,
 	remote: { transport: "ssh", autoStart: "off" },
 	sessions: { autoTitle: true },
+	security: { enforce: ["hooks", "mcp", "skills"] },
 	cacheRetention: "long",
 	instructionCacheRetention: "long",
 	tuiMode: "fullscreen",

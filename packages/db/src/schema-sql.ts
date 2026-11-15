@@ -1,9 +1,26 @@
+/** Additive on schema10 files; legacy rows and writers leave the capability unset. */
+export const AGENT_MAILBOX_COLUMN = "mailbox TEXT CHECK(mailbox IS NULL OR mailbox = 'pull')";
+
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `
 CREATE TABLE shell_history (
   cwd TEXT NOT NULL, command TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_at INTEGER NOT NULL, last_exit INTEGER,
   PRIMARY KEY (cwd, command));
 CREATE INDEX shell_history_recent ON shell_history(last_at);
+`;
+
+/**
+ * `item_reviews`: the user's review decisions about hooks, MCP servers and skills that Octocode did not ship, one row
+ * per item and scope (`queries/guard.ts`). Written with IF NOT EXISTS so a file created before the table existed gains
+ * it at first use (`guard.ensure`) without a schema version change, which would set the whole file aside.
+ */
+export const ITEM_REVIEWS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS item_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, identity TEXT NOT NULL, scope TEXT NOT NULL,
+  content_hash TEXT NOT NULL, decision TEXT NOT NULL CHECK(decision IN ('approved','denied','seen')),
+  rating TEXT NOT NULL, findings TEXT NOT NULL DEFAULT '[]', label TEXT NOT NULL, path TEXT NOT NULL,
+  decided_at INTEGER NOT NULL, decided_via TEXT NOT NULL, absent_at INTEGER,
+  UNIQUE(kind, identity, scope));
 `;
 
 /** The audit table of agent runs and its indexes. */
@@ -261,7 +278,7 @@ CREATE TABLE agents (
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, lease_workspace_id TEXT REFERENCES workspaces(id) CHECK(lease_workspace_id <> workspace_id), tmux_pane TEXT, session_id TEXT,
   registration_id TEXT, persist_events INTEGER NOT NULL DEFAULT 0, activation_id TEXT, lifecycle_session_id TEXT, parent_registration_id TEXT, end_hint TEXT,
-  cwd TEXT, branch TEXT, process_title TEXT, cache_write INTEGER NOT NULL DEFAULT 0);
+  cwd TEXT, branch TEXT, process_title TEXT, cache_write INTEGER NOT NULL DEFAULT 0, ${AGENT_MAILBOX_COLUMN});
 CREATE INDEX agents_scope ON agents(team, joined_at);
 CREATE INDEX agents_workspace ON agents(workspace_id);
 CREATE TABLE agent_events (
@@ -306,6 +323,7 @@ CREATE TABLE session_forks (
   parent_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   child_file TEXT NOT NULL, CHECK(child_id <> parent_id));
 CREATE INDEX session_forks_parent ON session_forks(parent_id);
+${ITEM_REVIEWS_SCHEMA}
 ${SHELL_HISTORY_SCHEMA}
 `;
 

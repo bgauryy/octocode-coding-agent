@@ -8,6 +8,7 @@ import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 
@@ -145,6 +146,7 @@ describe("documented hook discovery and controls", () => {
 		const off = loadHooks(cwd, true, home, { toggles: {} });
 		expect(off.config.SessionStart).toEqual([]);
 		expect(off.switchedOff).toBe(2);
+		approveFixtureHooks(cwd, home);
 		const start = async (settings: Record<string, unknown>) => {
 			const fake = fakeHost(settings);
 			registerHooks(fake.api, { env: {}, home });

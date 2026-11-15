@@ -338,7 +338,7 @@ async function modelListing(
 }
 
 export const CREDENTIAL_MARKS =
-	"Credential marks come from this process's subagent runs and checks; no mark means not yet tried.";
+	"Credential marks come from subagent runs and checks; a refused credential stays marked, across sessions, until it is replaced or a check passes. No mark means not yet tried.";
 
 /** The models.dev index unless it is turned off, and a line saying where capabilities and prices come from. */
 export async function modelCatalog(fetching?: () => void): Promise<{ catalog: Catalog | undefined; source: string }> {

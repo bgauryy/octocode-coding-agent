@@ -6,7 +6,10 @@ import { DEFAULT_MCP_EXPOSURE } from "./servers.ts";
 import type { McpExposure, McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
 import { stripBom } from "../../common/src/text.ts";
+import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
+import { canonicalPath } from "../../common/src/canonical-path.ts";
+import { withFileLockSync } from "../../common/src/file-write-lock.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Whether an entry overrides a server defined elsewhere instead of defining one. */
@@ -79,14 +82,22 @@ export function updateMcpServerConfig(
 
 /**
  * Add a server to an `mcp.json`, creating the file when missing. An existing entry with the same
- * name is replaced. Returns true when an entry was replaced.
+ * name is replaced unless `replace: false` refuses it (including equivalent tool namespaces). Returns true when replaced.
  */
-export function addMcpServerConfig(path: string, name: string, config: McpServerConfig): boolean {
+export function addMcpServerConfig(
+	path: string,
+	name: string,
+	config: McpServerConfig,
+	options: { replace?: boolean } = {},
+): boolean {
 	let replaced = false;
 	editMcpServers(path, (servers, parsed) => {
 		const target = servers ?? {};
-		replaced = target[name] !== undefined;
-		target[name] = config;
+		replaced = Object.hasOwn(target, name);
+		if (options.replace === false && Object.keys(target).some((key) => mcpNamespace(key) === mcpNamespace(name))) {
+			throw new Error("An MCP server with this name already exists. Choose another name.");
+		}
+		Object.defineProperty(target, name, { value: config, enumerable: true, configurable: true, writable: true });
 		parsed.mcpServers = target;
 		return true;
 	});
@@ -115,15 +126,23 @@ function editMcpServers(
 	path: string,
 	edit: (servers: Record<string, unknown> | undefined, parsed: Record<string, unknown>) => boolean,
 ): void {
-	const text = existsSync(path) ? readFileSync(path, "utf8") : undefined;
-	const parsed: unknown = text === undefined ? {} : JSON.parse(stripJsonComments(stripBom(text)));
-	if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
-		throw new Error(`${path}: expected an object with an "mcpServers" object`);
-	}
-	const servers = isRecord(parsed.mcpServers) ? parsed.mcpServers : undefined;
-	if (!edit(servers, parsed)) return;
-	const indent = (text && /^([ \t]+)\S/m.exec(text)?.[1]) || "  ";
-	mkdirSync(dirname(path), { recursive: true });
-	if (text && hasJsonComments(text)) atomicWriteFileSync(`${path}.bak`, text);
-	atomicWriteFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`);
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+	const lockTarget = canonicalPath(path);
+	mkdirSync(dirname(lockTarget), { recursive: true, mode: 0o700 });
+	withFileLockSync(lockTarget, (assertHeld) => {
+		const text = existsSync(path) ? readFileSync(path, "utf8") : undefined;
+		const parsed: unknown = text === undefined ? {} : JSON.parse(stripJsonComments(stripBom(text)));
+		if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
+			throw new Error(`${path}: expected an object with an "mcpServers" object`);
+		}
+		const servers = isRecord(parsed.mcpServers) ? parsed.mcpServers : undefined;
+		if (!edit(servers, parsed)) return;
+		const indent = (text && /^([ \t]+)\S/m.exec(text)?.[1]) || "  ";
+		const backup = `${path}.bak`;
+		const options = { mode: 0o600, beforeCommit: assertHeld };
+		// Backups can contain credentials too, including an older backup retained for uncommented input.
+		if (text && hasJsonComments(text)) atomicWriteFileSync(backup, text, options);
+		else if (existsSync(backup)) atomicWriteFileSync(backup, readFileSync(backup, "utf8"), options);
+		atomicWriteFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`, options);
+	});
 }

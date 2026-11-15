@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
 import type { ConfigItem } from "../../src/core/discovery/types.ts";
+import { approveFixtureSkillFiles } from "../octocode/guard-helpers.ts";
 import {
 	byText,
 	createLoader,
@@ -29,11 +30,21 @@ const loadedPaths = (items: ConfigItem[]): string[] =>
 
 describe("ConfigDiscovery agrees with the resource loader", () => {
 	it("lists the skills, prompts and themes the loader loads, with provenance", async () => {
-		skillFile(join(sandbox.agentDir, "skills"), "global-skill");
-		skillFile(join(sandbox.home, ".agents", "skills"), "agents-skill");
-		skillFile(join(sandbox.cwd, ".octocode", "skills"), "project-skill");
-		skillFile(join(sandbox.cwd, ".agents", "skills"), "project-agents-skill");
-		skillFile(join(sandbox.piAgentDir, "skills"), "pi-skill");
+		const global = skillFile(join(sandbox.agentDir, "skills"), "global-skill");
+		const agents = skillFile(join(sandbox.home, ".agents", "skills"), "agents-skill");
+		const projectSkill = skillFile(join(sandbox.cwd, ".octocode", "skills"), "project-skill");
+		const projectAgents = skillFile(join(sandbox.cwd, ".agents", "skills"), "project-agents-skill");
+		const pi = skillFile(join(sandbox.piAgentDir, "skills"), "pi-skill");
+		approveFixtureSkillFiles(
+			[
+				{ name: "global-skill", filePath: global, category: "global" },
+				{ name: "agents-skill", filePath: agents, category: "global" },
+				{ name: "project-skill", filePath: projectSkill, category: "workspace" },
+				{ name: "project-agents-skill", filePath: projectAgents, category: "workspace" },
+				{ name: "pi-skill", filePath: pi, category: "global" },
+			],
+			sandbox.cwd,
+		);
 		promptFile(join(sandbox.agentDir, "prompts"), "global-prompt");
 		promptFile(join(sandbox.cwd, ".octocode", "prompts"), "project-prompt");
 		promptFile(join(sandbox.piAgentDir, "prompts"), "pi-prompt");

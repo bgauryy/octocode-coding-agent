@@ -186,6 +186,9 @@ describe("localSearch content rows count as partial reads", () => {
 		expect(guard.check(file, "edit", "src.txt")).toBeUndefined();
 		expect(guard.check(file, "write", "src.txt")).toMatch(/seen lines 2–4 of its 6 lines/);
 		guard.restore(contextReads(session([]) as never));
-		expect((await edit("beta", "BETA")).details.outcomes[0].message).toMatch(/read .* again/i);
+		// A write needs a reread; an edit is decided by the exact match of its oldText, as for a file never read.
+		expect(guard.check(file, "write", "src.txt")).toMatch(/read .* again/i);
+		expect((await edit("absent", "g")).details.outcomes[0].message).toMatch(/oldText was not found/);
+		expect((await edit("beta", "BETA")).details.outcomes[0]).toMatchObject({ ok: true });
 	});
 });

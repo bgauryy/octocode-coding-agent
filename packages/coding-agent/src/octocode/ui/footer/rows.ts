@@ -68,13 +68,14 @@ const OWN = {
 } as const;
 const BAR_CELLS = 8;
 
-/** An 8-cell gauge and its colour: green under half, yellow to 80%, red above. Any use fills at least one cell. */
+/** An 8-cell gauge and its colour: green under half, yellow to 80%, red above, judged on the rounded percent the label shows. Any use fills at least one cell. */
 export function contextBar(percent: number): { bar: string; color: Color } {
-	const cells = Math.round((percent / 100) * BAR_CELLS);
+	const shown = Math.round(percent);
+	const cells = Math.round((shown / 100) * BAR_CELLS);
 	const filled = Math.min(BAR_CELLS, Math.max(percent > 0 ? 1 : 0, cells));
 	return {
 		bar: "▰".repeat(filled) + "▱".repeat(BAR_CELLS - filled),
-		color: percent > 80 ? "error" : percent >= 50 ? "warning" : "success",
+		color: shown > 80 ? "error" : shown >= 50 ? "warning" : "success",
 	};
 }
 

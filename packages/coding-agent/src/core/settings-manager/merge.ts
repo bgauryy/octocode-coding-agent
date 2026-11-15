@@ -58,12 +58,17 @@ export function parseTimeoutSetting(value: unknown, settingName: string): number
 /**
  * Global settings overlaid by trusted project settings; project `toggles` keys keep their scope (see `mergeToggles`).
  * `remote.autoStart` publishes this machine to another device, so a project file may only turn it off: the global
- * value stands unless the project says "off".
+ * value stands unless the project says "off". `security` is global only.
  */
 export function mergeScopedSettings(global: Settings, project: Settings): Settings {
 	const merged = deepMergeSettings(global, project);
 	const toggles = mergeToggles(global.toggles, project.toggles);
 	const result = toggles === undefined ? merged : { ...merged, toggles };
+	// Which kinds the extension guard enforces is the user's choice: a repository cannot switch its own review off.
+	if (project.security !== undefined) {
+		if (global.security === undefined) delete result.security;
+		else result.security = global.security;
+	}
 	if (project.remote?.autoStart !== undefined && project.remote.autoStart !== "off") {
 		const autoStart = global.remote?.autoStart;
 		result.remote = { ...result.remote, ...(autoStart === undefined ? {} : { autoStart }) };

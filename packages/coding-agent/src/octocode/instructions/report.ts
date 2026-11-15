@@ -24,7 +24,7 @@ const OUTCOMES = REPORT_STATUSES.map((status) => `${status} (${REPORT_STATUS_MEA
  * `subagents/report.ts` parses, the preview size is what the parent keeps, and continuation depends on the run's
  * lifecycle, not just its outcome.
  */
-export function reportContractSentences(): string[] {
+function reportContractSentences(): string[] {
 	return renderInstruction("subagent/report.md", { outcomes: OUTCOMES, previewKb: REPORT_MAX_BYTES / 1024 }).split(
 		"\n",
 	);

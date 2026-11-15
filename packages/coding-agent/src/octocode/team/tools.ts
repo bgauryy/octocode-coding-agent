@@ -147,13 +147,15 @@ export function registerCollab(
 				parse ? ((await parse(text)) ?? null) : undefined,
 			);
 			if (verdict && "refusal" in verdict && !verdict.refusal.interpreter) {
-				// A line of readers with no write form runs even with a computed word (`rg foo "$dir"`).
-				if (onlyAllowedReaders(parse ? await parse(command) : undefined)) return undefined;
-				return { block: true, reason: `${NOT_CHECKED_HELD(verdict.refusal)} ${held}` };
+				// A line of readers with no write form runs even with a computed word (`rg foo "$dir"`), but still meets the
+				// write check below: a redirection on a group or loop (`{ cat "$f"; } > held`) is not part of the reader parse.
+				if (!onlyAllowedReaders(parse ? await parse(command) : undefined))
+					return { block: true, reason: `${NOT_CHECKED_HELD(verdict.refusal)} ${held}` };
 			}
-			const named = verdict
-				? namedReservation(command, ctx.cwd, (absolute, display) => team.reservation(absolute, display))
-				: undefined;
+			const named =
+				verdict && !("refusal" in verdict && !verdict.refusal.interpreter)
+					? namedReservation(command, ctx.cwd, (absolute, display) => team.reservation(absolute, display))
+					: undefined;
 			if (verdict && "refusal" in verdict && named)
 				return { block: true, reason: `${INTERPRETER_HELD(verdict.refusal)} ${named}` };
 			if (verdict && !("refusal" in verdict) && named && isRecord(event.input)) {

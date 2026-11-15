@@ -1,10 +1,11 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { backlog } from "../../../../db/src/api.ts";
+import { backlog, timers } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { shownLine } from "../sessions/store.ts";
 import { runningWorkBrief } from "../sessions/compaction-brief.ts";
+import { timerWorkRows } from "../timer/work.ts";
 
 /**
  * The Recovery lines that state what the tools say is true when a summary is written: the backlog items this session
@@ -47,5 +48,22 @@ export function liveStateLines(
 	}
 	const work = runningWorkBrief(entries, since, ctx.sessionManager.getSessionFile());
 	if (work.length > 0) lines.push(renderInstruction("notices/recovery/live-work.md", { work: work.join("; ") }));
+	const active = activeTimers(ctx);
+	if (active.length > 0)
+		lines.push(renderInstruction("notices/recovery/live-timers.md", { timers: active.join("; ") }));
 	return lines;
+}
+
+/** The session's active timers as `#3 until command exits 0 (note), due 2026-…Z`, read from the timer table. */
+function activeTimers(ctx: Pick<ExtensionContext, "sessionManager">): string[] {
+	try {
+		const rows = timers.forSession(sharedAgentDb().db, ctx.sessionManager.getSessionId());
+		return timerWorkRows(rows).map((row) => {
+			const note = row.detail ? ` (${shownLine(row.detail, TITLE_CHARS)})` : "";
+			const due = row.dueAt === undefined ? "" : `, due ${new Date(row.dueAt).toISOString()}`;
+			return `${row.id} ${shownLine(row.title, TITLE_CHARS)}${note}${due}`;
+		});
+	} catch {
+		return [];
+	}
 }

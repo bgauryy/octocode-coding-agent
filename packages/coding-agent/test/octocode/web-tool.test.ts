@@ -302,7 +302,7 @@ describe("fetchUrl against a local server", () => {
 		expect([hits["/p0"], hits["/p1"], hits["/p7"]]).toEqual([1, 2, 1]);
 	}, 30_000);
 
-	it("refuses a redirect from an approved private address, and reports one to another host", async () => {
+	it("follows a redirect within an approved private origin, and reports one to another host", async () => {
 		const base = await serve((req, res) => {
 			if (req.url === "/old") {
 				res.writeHead(301, { location: "/new" });
@@ -315,10 +315,8 @@ describe("fetchUrl against a local server", () => {
 			res.writeHead(200, { "content-type": "text/plain" });
 			res.end("new place");
 		});
-		// An approved private address is read for the first hop only: its own redirects are checked like any other.
-		await expect(fetchUrl(`${base}/old`, undefined, privateOk)).rejects.toThrow(
-			"Blocked private or non-public address",
-		);
+		// The approval covers the page's origin: a redirect to its own path is followed, one elsewhere is reported.
+		expect(asText(await fetchUrl(`${base}/old`, undefined, privateOk))).toContain("new place");
 		const away = await fetchUrl(`${base}/away`, undefined, privateOk);
 		expect(noticeText(away)).toMatch(/redirects \(HTTP 302\) to another host: https:\/\/elsewhere\.example\/landing/);
 		expect(noticeText(away)).toContain("server-supplied and not verified");
@@ -364,10 +362,6 @@ describe("web tool", () => {
 		await expect(tool.execute("id", { query: "   " })).rejects.toThrow(
 			"Provide url or query. url reads one page; query searches the web.",
 		);
-		// The schema is one flat object (a root union is refused or flattened by some providers): each field names its partner.
-		const { properties } = tool.parameters;
-		expect(properties.url.description).not.toContain("not both");
-		expect(properties.query.description).not.toContain("not both");
 		expect(fetch).not.toHaveBeenCalled();
 	});
 	beforeEach(() => {
@@ -857,44 +851,6 @@ describe("web images", () => {
 		await fetchUrl(`${base}/icon.svg`, undefined, privateOk);
 		await fetchUrl(`${base}/icon.svg`, undefined, privateOk);
 		expect(hits.filter((hit) => hit === "/icon.svg")).toHaveLength(1);
-	});
-
-	it("describes images in the tool description", () => {
-		let description = "";
-		registerWebTool(
-			{
-				registerTool: (definition: { description: string }) => {
-					description = definition.description;
-					return description;
-				},
-				getActiveTools: () => [],
-			} as unknown as ExtensionAPI,
-			fakePermission("full"),
-		);
-		expect(description).toMatch(/Image URLs \(PNG, JPEG, GIF, WebP\) return images/);
-		expect(description).toContain("resizing large ones and naming saved originals");
-		expect(description).toContain("SVG returns XML");
-	});
-
-	it("leaves browser routing to the policy, which knows whether the session holds a browser", () => {
-		let guidelines: string[] = [];
-		registerWebTool(
-			{
-				registerTool: (definition: { promptGuidelines: string[] }) => {
-					guidelines = definition.promptGuidelines;
-					return definition;
-				},
-				getActiveTools: () => [],
-			} as unknown as ExtensionAPI,
-			fakePermission("full"),
-		);
-		// Guidelines are static, so a browser rule here would reach sessions without one.
-		expect(guidelines.join(" ")).not.toMatch(/browser/i);
-		// The policy's evidence rule owns citing; this line is only how to use a fetched result.
-		expect(guidelines.join(" ")).not.toContain("Cite source URLs.");
-		expect(guidelines).toEqual([]);
-		// Reading a saved page by range is stated beside maxChars, where the file appears, not as a second rule.
-		expect(guidelines.join(" ")).not.toContain("Read saved output");
 	});
 });
 

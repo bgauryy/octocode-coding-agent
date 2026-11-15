@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { APP_NAME } from "../config.ts";
+import { prepareAgentDb } from "../storage/database.ts";
 import type { GrantTarget } from "../octocode/trust/grants.ts";
 import {
 	addTrust,
@@ -98,12 +99,14 @@ export async function runTrustCommand(args: string[], io: TrustCommandIo): Promi
 
 	try {
 		if (sub === "list") {
+			if (!options.db) await prepareAgentDb(options.env);
 			out(json ? JSON.stringify(liveGrants(options), null, 2) : describeAll(io.cwd, options));
 			return 0;
 		}
 		if (sub === "add") {
 			const folder = path.resolve(io.cwd, rest.join(" ") || ".");
 			const target = grantPath(folder, scope, options);
+			if (!options.db) await prepareAgentDb(options.env);
 			const now = resolveFolderTrust(target, options);
 			if (now.state === "trusted" && (now.root === now.path || scope === "folder")) {
 				out(`${shown(target)} is already trusted${now.root === now.path ? "" : ` (by ${shown(now.root)})`}.`);
@@ -122,6 +125,7 @@ export async function runTrustCommand(args: string[], io: TrustCommandIo): Promi
 			return 0;
 		}
 		if (sub === "remove") {
+			if (!options.db) await prepareAgentDb(options.env);
 			const row = findEntry(rest.join(" "), options);
 			const closes = appliesTo(row, io.cwd, options);
 			if (!yes && !(await confirm?.(`Remove ${describeGrant(row)}?`))) {

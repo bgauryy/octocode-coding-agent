@@ -186,6 +186,7 @@ function runData(db: DatabaseSync, row: Row, run: AgentRun | undefined): Record<
 		...(row.cwd ? { cwd: row.cwd } : {}),
 		...(row.branch ? { branch: row.branch } : {}),
 		...(row.process_title ? { processTitle: row.process_title } : {}),
+		...(row.mailbox === "pull" ? { mailbox: "pull" } : {}),
 		...(run?.backlog
 			? { backlogItem: itemRef(db, run.backlog.workspaceId, run.backlog.seq, String(row.workspace_id)) }
 			: {}),

@@ -198,6 +198,8 @@ export const AttachToolStatesSchema = Type.Object(
 			},
 			{ additionalProperties: false },
 		),
+		/** Complete live registry names, including disabled entries. Absent on older or unavailable hosts. */
+		mcpServerNames: Type.Optional(Type.Array(ToolName, { maxItems: 500 })),
 		mcp: Type.Optional(
 			Type.Array(
 				Type.Object(

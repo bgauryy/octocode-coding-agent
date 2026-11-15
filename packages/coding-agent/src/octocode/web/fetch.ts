@@ -84,7 +84,13 @@ const unsupported = (text: string): FetchedNotice => ({ kind: "notice", reason: 
  * successful page is cached for 15 minutes (an image is not); a redirect to another host is reported instead of followed.
  * `private`: the first request may reach a private address (the user approved this URL as a `net.private` ask).
  */
-export type PageFetcher = (url: string, signal?: AbortSignal, options?: { private?: boolean }) => Promise<Fetched>;
+export interface FetchOptions {
+	private?: boolean;
+	/** The addresses the caller resolved and checked for the URL's host: the first request goes to these without another lookup. */
+	addresses?: string[];
+}
+
+export type PageFetcher = (url: string, signal?: AbortSignal, options?: FetchOptions) => Promise<Fetched>;
 
 /**
  * A fetcher that owns its page cache and its fetches under way: the web tool makes one per registration, so a reload starts
@@ -103,7 +109,7 @@ export function pageFetcher(): PageFetcher {
 	}
 
 	/** Fetches one URL and caches its text. */
-	async function loadUrl(url: string, signal: AbortSignal, options: { private?: boolean }): Promise<Fetched> {
+	async function loadUrl(url: string, signal: AbortSignal, options: FetchOptions): Promise<Fetched> {
 		let text: Fetched;
 		try {
 			text = await fetchResource(url, signal, options);
@@ -202,7 +208,7 @@ function describeFetchError(error: unknown, url: string, tries: number): Error {
 async function fetchWithRetry(
 	url: string,
 	init: PublicFetchInit,
-	options: { private?: boolean },
+	options: FetchOptions,
 	signal: AbortSignal | undefined,
 	/** Each attempt's limit, so the caller clears the last once it has read the body. */
 	limits: Deadline[],
@@ -215,7 +221,7 @@ async function fetchWithRetry(
 			response = await publicFetch(
 				url,
 				{ ...init, signal: limit.signal },
-				{ sameHost: true, firstHopPrivate: options.private === true },
+				{ sameHost: true, firstHopPrivate: options.private === true, firstHopAddresses: options.addresses },
 			);
 		} catch (error) {
 			limit.clear();
@@ -272,11 +278,7 @@ async function fetchImage(response: Response, url: string, type: string): Promis
 	return { url: where, mimeType, bytes };
 }
 
-async function fetchResource(
-	url: string,
-	signal: AbortSignal | undefined,
-	options: { private?: boolean },
-): Promise<Fetched> {
+async function fetchResource(url: string, signal: AbortSignal | undefined, options: FetchOptions): Promise<Fetched> {
 	const limits: Deadline[] = [];
 	try {
 		return await fetchResourceWithin(url, signal, options, limits);
@@ -288,7 +290,7 @@ async function fetchResource(
 async function fetchResourceWithin(
 	url: string,
 	signal: AbortSignal | undefined,
-	options: { private?: boolean },
+	options: FetchOptions,
 	limits: Deadline[],
 ): Promise<Fetched> {
 	const response = await fetchWithRetry(

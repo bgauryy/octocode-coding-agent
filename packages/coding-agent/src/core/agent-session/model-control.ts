@@ -14,27 +14,16 @@ import type { SessionInternals } from "./host.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
 import { persistDefaultModel } from "./model-default.ts";
 import { deadline } from "../../../../common/src/deadline.ts";
+import { SessionContextCapacity } from "./context-capacity.ts";
+export { workingContextTokens } from "./context-capacity.ts";
 
 export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
-/** Share of a model's capacity the default working context may use. */
-type SetModelOptions = ModelMutationOptions & { source?: "set" | "fallback"; level?: ThinkingLevel };
-const DEFAULT_BUDGET_SHARE = 0.9;
-
-/**
- * The working context a `contextBudget` setting gives a model of `capacity` tokens: the setting capped at 90% of
- * capacity (the margin absorbs tokenizer drift between the estimate and the provider's count), or all of it for "full".
- */
-export function workingContextTokens(capacity: number, setting: number | "full"): number {
-	return setting === "full" ? capacity : Math.min(setting, Math.floor(capacity * DEFAULT_BUDGET_SHARE));
-}
+type SetModelOptions = ModelMutationOptions & { source?: "set" | "fallback"; level?: ThinkingLevel; reason?: string };
 
 export class SessionModelControl {
 	scopedModels: ScopedModel[];
-	private contextBudgets = new Map<string, { tokens: number; capacity: number }>();
-	private budgetSessionId?: string;
-	/** The selected model as given, before its working context was applied: it holds the capacity and the definition. */
-	private selected?: Model<any>;
+	private readonly context: SessionContextCapacity;
 	/** The level this session last asked for, before clamping; a model switch carries it over. */
 	private requested?: { sessionId: string; level: ThinkingLevel };
 
@@ -46,6 +35,7 @@ export class SessionModelControl {
 		requestedThinkingLevel?: ThinkingLevel,
 	) {
 		this.host = host;
+		this.context = new SessionContextCapacity(host);
 		this.scopedModels = scopedModels;
 		if (requestedThinkingLevel) this.requested = { sessionId: this.sessionId(), level: requestedThinkingLevel };
 	}
@@ -63,80 +53,26 @@ export class SessionModelControl {
 		if (entry) this.host.emit({ type: "entry_appended", entry });
 	}
 
-	private contextKey(model: Model<any>): string {
-		const sessionId = this.sessionId();
-		if (this.budgetSessionId !== sessionId) {
-			this.contextBudgets.clear();
-			this.budgetSessionId = sessionId;
-		}
-		return `${model.provider}/${model.id}`;
-	}
-
-	/**
-	 * The working context for a catalog model: this session's `/context` choice, else the `contextBudget` setting capped
-	 * at 90% of capacity (the margin absorbs tokenizer drift between the estimate and the provider's count).
-	 */
-	private budgetFor(model: Model<any>): number {
-		const chosen = this.contextBudgets.get(this.contextKey(model));
-		if (chosen) return Math.min(model.contextWindow, chosen.tokens);
-		return workingContextTokens(model.contextWindow, this.host.session.settingsManager.getContextBudget());
-	}
-
 	private withContextBudget(model: Model<any>): Model<any> {
-		if (isVirtualModel(model) || !(model.contextWindow > 0)) return model;
-		this.selected = model;
-		const tokens = this.budgetFor(model);
-		return tokens < model.contextWindow ? { ...model, contextWindow: tokens } : model;
+		return this.context.select(model);
 	}
 
-	/**
-	 * Apply the working context to the model the session started with, selected before this control existed. That model
-	 * is kept as given (SDK callers may pass their own definition); only its working context changes.
-	 */
 	applyContextBudget(): void {
 		const { session } = this.host;
-		const model = session.model;
-		if (model) session.agent.state.model = this.withContextBudget(model);
+		if (session.model) session.agent.state.model = this.withContextBudget(session.model);
 	}
 
-	/** The selected model as given (its own definition and full capacity), else its catalog entry. */
-	private unbudgeted(model: Model<any>): Model<any> | undefined {
-		const selected = this.selected;
-		if (selected && selected.provider === model.provider && selected.id === model.id) return selected;
-		return this.host.session.modelRuntime.getModel(model.provider, model.id);
-	}
-
-	/** The catalog limit, independent of this session's smaller working budget. */
+	/** The effective capacity, before this session's smaller working budget. */
 	getContextWindowLimit(): number | undefined {
-		const model = this.host.session.model;
-		if (!model || isVirtualModel(model)) return undefined;
-		const budget = this.contextBudgets.get(this.contextKey(model));
-		return this.unbudgeted(model)?.contextWindow ?? budget?.capacity ?? model.contextWindow;
+		return this.context.limit();
 	}
 
-	/**
-	 * Set a session-only compaction/request budget without changing the provider's advertised capacity. Undefined returns
-	 * to the default working context; the capacity itself is a valid choice.
-	 */
 	setContextWindow(tokens?: number): number {
-		const { session } = this.host;
-		if (!session.isIdle || session.isCompacting)
-			throw new Error("Wait for the current request to finish before changing context size.");
-		const model = session.model;
-		const capacity = this.getContextWindowLimit();
-		if (!model || !capacity) throw new Error("Select a physical model with /model before choosing its context size.");
-		const minimum = Math.min(8192, capacity);
-		if (tokens !== undefined && (!Number.isSafeInteger(tokens) || tokens < minimum || tokens > capacity)) {
-			throw new Error(
-				`Context size must be between ${minimum.toLocaleString()} and ${capacity.toLocaleString()} tokens for ${model.provider}/${model.id}.`,
-			);
-		}
-		const key = this.contextKey(model);
-		if (tokens === undefined) this.contextBudgets.delete(key);
-		else this.contextBudgets.set(key, { tokens, capacity });
-		session.agent.state.model = this.withContextBudget(this.unbudgeted(model) ?? { ...model, contextWindow: capacity });
-		this.host.emit({ type: "session_context_changed" });
-		return session.agent.state.model.contextWindow;
+		return this.context.set(tokens);
+	}
+
+	observeContextCapacity(message: AssistantMessage): void {
+		this.context.observe(message);
 	}
 
 	/**
@@ -194,6 +130,7 @@ export class SessionModelControl {
 		nextModel: Model<any>,
 		previousModel: Model<any> | undefined,
 		source: "set" | "cycle" | "restore" | "fallback",
+		reason?: string,
 	): Promise<void> {
 		if (modelsAreEqual(previousModel, nextModel)) return;
 		await this.host.session.extensionRunner.emit({
@@ -201,17 +138,18 @@ export class SessionModelControl {
 			model: nextModel,
 			previousModel,
 			source,
+			...(reason ? { reason } : {}),
 		});
 	}
 
-	/** `fallback`: `retry.fallbackModels` replaces a model that hit a usage limit, at `level` when the entry names one. */
+	/** `fallback`: `retry.fallbackModels` replaces a failed model for `reason`, at `level` when the entry names one. */
 	async setModel(model: Model<any>, options: SetModelOptions): Promise<void> {
 		const limit = deadline(15_000);
 		const authed = await this.host.session.modelRuntime
 			.checkAuth(model.provider, { signal: limit.signal })
 			.finally(limit.clear);
 		if (!authed) throw new Error(`No usable credentials for ${model.provider}/${model.id}. Connect it in /providers.`);
-		await this._switchTo(model, options, options.source ?? "set", options.level);
+		await this._switchTo(model, options, options.source ?? "set", options.level, options.reason);
 	}
 
 	/**
@@ -223,6 +161,7 @@ export class SessionModelControl {
 		options: ModelMutationOptions,
 		source: "set" | "cycle" | "fallback",
 		explicitLevel?: ThinkingLevel,
+		reason?: string,
 	): Promise<Model<any>> {
 		const { session } = this.host;
 		const previousModel = session.model;
@@ -231,7 +170,7 @@ export class SessionModelControl {
 		session.agent.state.model = selectedModel;
 		this.recordModel(model);
 		this.applyThinkingLevel(thinkingLevel, false);
-		await this._emitModelSelect(selectedModel, previousModel, source);
+		await this._emitModelSelect(selectedModel, previousModel, source, reason);
 		if (options.persist)
 			await persistDefaultModel(session.settingsManager, model, this._addPersistedDefaultToNonEmptyScope(model));
 		return selectedModel;

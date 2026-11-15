@@ -41,8 +41,8 @@ describe("file input shape", () => {
 
 describe("file tool one-of input", () => {
 	// The schema stays one flat object: a root union is flattened or refused by some providers, and a validator's
-	// "must match exactly one" names no fix. The description states the rule and `execute` names the fix.
-	it("states the either-or in its description and refuses both and neither with the taught shape", async () => {
+	// "must match exactly one" names no fix; `execute` names the fix.
+	it("refuses both and neither with the taught shape", async () => {
 		let tool: { description: string; execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
 			{
@@ -55,7 +55,6 @@ describe("file tool one-of input", () => {
 			researchGuard(),
 			fakePermission(),
 		);
-		expect(tool!.description).toMatch(/\bqueries\b[\s\S]*\bpatch\b/);
 		const cwd = tmp();
 		const taught = /file takes either queries .* or patch .*not both/;
 		const run = (input: Record<string, unknown>) =>
@@ -115,8 +114,11 @@ describe("file tool", () => {
 		expect(guard.check(file, "delete", "a.txt")).toMatch(/changed on disk/);
 		expect(guard.inspect(file, "edit", "a.txt")).toMatchObject({ stale: true });
 		guard.restore([]);
-		// After compaction the old read is out of context: the file must be read again, even unchanged.
-		expect(guard.check(file, "edit", "a.txt")).toMatch(/Read it again/);
+		// After compaction the old read is out of context: a write or delete needs a new read, even unchanged; an edit is
+		// decided by the exact match of its oldText, as for a file never read.
+		expect(guard.check(file, "write", "a.txt")).toMatch(/Read it again/);
+		expect(guard.check(file, "delete", "a.txt")).toMatch(/Read it again/);
+		expect(guard.inspect(file, "edit", "a.txt")).toMatchObject({ stale: true, unread: true });
 		guard.record(file);
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 	});
@@ -138,7 +140,9 @@ describe("file tool", () => {
 		expect(guard.check(kept, "edit", "kept.txt")).toBeUndefined();
 		expect(guard.check(changed, "write", "changed.txt")).toMatch(/changed on disk/);
 		expect(guard.inspect(changed, "edit", "changed.txt")).toMatchObject({ stale: true });
-		expect(guard.check(gone, "edit", "gone.txt")).toMatch(/no longer in your context/);
+		expect(guard.check(gone, "write", "gone.txt")).toMatch(/no longer in your context/);
+		expect(guard.check(gone, "delete", "gone.txt")).toMatch(/no longer in your context/);
+		expect(guard.inspect(gone, "edit", "gone.txt")).toMatchObject({ stale: true, unread: true });
 		guard.record(changed);
 		expect(guard.check(changed, "edit", "changed.txt")).toBeUndefined();
 	});

@@ -9,6 +9,32 @@ function advance(ms: number, step = 20): void {
 }
 
 describe("animationClock", () => {
+	it("resumes ticking within one interval after the wall clock steps back", () => {
+		// The interval timer is monotonic; only Date.now() steps back.
+		let wall = 1_000_000;
+		mock.timers.enable({ apis: ["setInterval"] });
+		const wallClock = mock.method(Date, "now", () => wall);
+		const tickFor = (ms: number) => {
+			for (let done = 0; done < ms; done += 20) {
+				wall += 20;
+				mock.timers.tick(20);
+			}
+		};
+		let calls = 0;
+		const stop = animationClock.subscribe(() => calls++, { everyMs: 1000, kind: "info" });
+		try {
+			tickFor(2000);
+			const before = calls;
+			assert.ok(before >= 1);
+			wall -= 60_000;
+			tickFor(1100);
+			assert.ok(calls > before, "a tick lands within one interval of the step");
+		} finally {
+			stop();
+			wallClock.mock.restore();
+		}
+	});
+
 	it("notifies motion-mode changes from a stable subscription snapshot", () => {
 		let calls = 0;
 		let stop: (() => void) | undefined;

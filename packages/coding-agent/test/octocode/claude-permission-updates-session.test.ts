@@ -4,6 +4,7 @@ import path from "node:path";
 import { withFileWriteLock } from "../../../common/src/file-write-lock.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 /**
  * Whether another writer is waiting on `target`'s file write lock. A contender polls the holder's owner record
@@ -193,6 +194,7 @@ for (const destination of ["session", "userSettings", "localSettings"]) {
 			);
 			await f.run("bash", { command: "node -p 42" });
 			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
+			approveFixtureHooks(f.cwd);
 			await f.restart();
 			await f.run("bash", { command: "node -p 42" });
 			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({
@@ -268,6 +270,7 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 				},
 			}),
 		);
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 41" });
 		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
@@ -276,6 +279,7 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 42" });
 		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
@@ -425,6 +429,7 @@ it("a canceled losing handler cannot publish its permission updates", async () =
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');while(!fs.existsSync(${JSON.stringify(started)}))Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);console.log(${JSON.stringify(JSON.stringify(decision({ behavior: "allow" })))});});`,
 		);
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 41" });
 		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });

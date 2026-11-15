@@ -8,6 +8,7 @@ import { expect, it } from "vitest";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
 
 it.each([false, true])("observes one full tool batch and applies block=%s before another model call", async (block) => {
@@ -51,6 +52,7 @@ it.each([false, true])("observes one full tool batch and applies block=%s before
 		],
 	});
 	try {
+		approveFixtureHooks(harness.tempDir, home);
 		await harness.session.bindExtensions({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("observe", { value: "first" }), fauxToolCall("observe", { value: "fail" })], {

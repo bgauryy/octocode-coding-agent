@@ -48,7 +48,7 @@ export async function list(
 					enabled: isEnabled({ entry }),
 					exposure: exposureOf(entry),
 					transport: describeTransport(entry),
-					state: "disabled",
+					state: entry.withheld ? "not checked" : "disabled",
 					tools: [],
 				};
 				if (!report.enabled) return report;

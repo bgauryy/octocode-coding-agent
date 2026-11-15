@@ -54,6 +54,8 @@ export interface McpPathsPort {
 	 * environment, whose `ALLOWED_PATHS` counts as one). A host without user-added folders omits it.
 	 */
 	researchRoots?(env?: NodeJS.ProcessEnv): McpResearchRoots;
+	/** The host's MCP configuration page, shown in Add MCP; a host without shipped docs omits it. */
+	mcpDocsPath?(): string;
 }
 
 /** What `spillOutput` made of a text. */
@@ -239,6 +241,34 @@ export interface McpPluginsPort {
 	servers(place: McpVendorPlace): { servers: Array<{ name: string; config: McpServerConfig }>; errors: string[] };
 }
 
+/** One configured entry as the review port sees it. */
+interface McpReviewEntry {
+	name: string;
+	config: McpServerConfig;
+	source: string;
+	scope?: string;
+}
+
+/**
+ * The host's extension guard: which configured servers stay off until the user approves their exact launch. Optional:
+ * without it every entry loads, so the package works alone. Never asked about a built-in (`default`) entry.
+ */
+export interface McpReviewPort {
+	/** The names among `entries` that do not load, for a session in `cwd`. Must not throw: a fault loads everything. */
+	withheld(entries: readonly McpReviewEntry[], cwd: string): ReadonlySet<string>;
+	/**
+	 * The static scan of one definition, as the review would rate it at load: before it is saved (Add MCP) the user sees
+	 * the rating and the findings, worst first. Nothing is started or looked up. Must not throw.
+	 */
+	rate?(entry: McpReviewEntry, cwd: string): McpReviewRating;
+}
+
+/** A scan's result as a row of text: the rating word and one plain sentence per finding, worst first. */
+export interface McpReviewRating {
+	rating: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+	findings: string[];
+}
+
 export interface McpHostPorts {
 	identity: McpIdentityPort;
 	plugins: McpPluginsPort;
@@ -251,6 +281,7 @@ export interface McpHostPorts {
 	browser: McpBrowserPort;
 	render: McpRenderPort;
 	ui: McpUiPort;
+	review: McpReviewPort;
 }
 
 let installed: Partial<McpHostPorts> = {};
@@ -277,3 +308,5 @@ export const hostModels = (): McpModelsPort => port("models");
 export const hostBrowser = (): McpBrowserPort => port("browser");
 export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
+/** The review port, or undefined when the host installed none. */
+export const hostReview = (): McpReviewPort | undefined => installed.review;

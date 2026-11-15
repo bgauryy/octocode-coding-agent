@@ -1,3 +1,4 @@
+import { entityOfRole } from "../shared/entity.ts";
 import { formatSpan } from "../shared/format.ts";
 import { plural } from "../shared/text.ts";
 import type { Growth, Orphan, ProcessEntry, ProcessReport } from "./classify.ts";
@@ -18,9 +19,14 @@ function orphanLine(orphan: Orphan): string {
 	return `  pid ${orphan.pid} · ${orphan.kind} · ${why} · ${rss(orphan.rssKb)} · up ${formatSpan(orphan.ageMs)} · ${orphan.label}`;
 }
 
-/** The `/processes` listing: the processes with their children, then the orphans and what to do about them. */
+/**
+ * The `/processes` listing: the processes, each after its entity mark (main session or subagent), with their children,
+ * then the orphans and what to do about them.
+ */
 export function formatReport(report: ProcessReport): string {
 	const { processes, orphans } = report;
+	// A title is at most `MAX_TITLE_LENGTH` long: the column fits the longest, so the columns after it stay aligned.
+	const titleWidth = Math.max(27, ...processes.map((entry) => entry.title.length));
 	const lines = [
 		processes.length
 			? `Octocode processes: ${plural(processes.length, "process", "processes")}`
@@ -28,15 +34,22 @@ export function formatReport(report: ProcessReport): string {
 	];
 	if (processes.length)
 		lines.push(
-			[pad("NAME", 30), pad("API", 10), pad("PID", 7), pad("PPID", 7), pad("OWNER", 11), pad("RSS", 8), "AGE"].join(
-				" ",
-			),
+			[
+				pad("NAME", titleWidth + 3),
+				pad("API", 10),
+				pad("PID", 7),
+				pad("PPID", 7),
+				pad("OWNER", 11),
+				pad("RSS", 8),
+				"AGE",
+			].join(" "),
 		);
 	for (const entry of processes) {
 		const flags = [entry.self && "this session", entry.growth && growth(entry.growth)].filter(Boolean).join("; ");
 		lines.push(
 			[
-				pad(entry.title, 30),
+				// The entity mark takes two cells and a space before the title.
+				`${entityOfRole(entry.role)} ${pad(entry.title, titleWidth)}`,
 				pad(entry.apiId ?? "off", 10),
 				pad(entry.pid, 7),
 				pad(entry.ppid, 7),

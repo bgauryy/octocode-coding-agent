@@ -31,7 +31,7 @@
  *
  */
 
-import { hostVendors } from "./host.ts";
+import { hostReview, hostVendors } from "./host.ts";
 import { readMcpConfigFile } from "./config-read.ts";
 import { isMcpOverride } from "./config-write.ts";
 import {
@@ -78,6 +78,8 @@ export interface McpServerEntry {
 	overrideScope?: "global" | "project";
 	/** The harness whose file defined the entry (`claude`, `codex`, `cursor`, ...); absent for defaults and extensions. */
 	vendor?: McpConfigVendor;
+	/** Off until the user checks and approves this exact entry (`/security`); never set on a built-in entry. */
+	withheld?: true;
 }
 
 /** The file `/mcp` may write for this entry: none for another agent's file, which only an override can change. */
@@ -275,8 +277,15 @@ export function loadMcpConfig(options: {
 		if (vendorEnabled(file.vendor, file.scope)) readConfigFile(file, cwd, state);
 		else noteSwitchedOff(file, cwd, state);
 	}
+	const servers = dropSameLaunchForeign([...state.servers.values()], cwd);
+	const off = hostReview()?.withheld(
+		servers.filter((entry) => entry.scope !== "default"),
+		cwd,
+	);
+	if (off?.size)
+		for (const entry of servers) if (entry.scope !== "default" && off.has(entry.name)) entry.withheld = true;
 	return {
-		servers: dropSameLaunchForeign([...state.servers.values()], cwd),
+		servers,
 		errors: state.errors,
 		globalConfig,
 		...(projectConfig ? { projectConfig } : {}),

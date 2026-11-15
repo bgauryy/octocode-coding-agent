@@ -5,6 +5,7 @@ import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
 beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp()));
@@ -24,6 +25,7 @@ async function setup() {
 		path.join(cwd, "post.cjs"),
 		"let input=''; process.stdin.on('data', chunk => input += chunk).on('end', () => require('node:fs').appendFileSync(JSON.parse(input).tool_input.file_path, '[hook]'));\n",
 	);
+	approveFixtureHooks(cwd);
 	const fake = fakeHost();
 	registerHooks(fake.api, { env: {}, home: tmp() });
 	registerFileTool(fake.api, new FileGuard(), fakePermission("manual"));

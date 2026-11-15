@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui/text";
 import type { Theme } from "../../../theme/theme.ts";
+import { ENTITY } from "../../shared/entity.ts";
 import { formatDuration, formatSpan } from "../../shared/format.ts";
 import type { WorkKind, WorkRow } from "../../shared/running-work.ts";
 import { fitName, safe } from "./compact.ts";
@@ -7,17 +8,20 @@ import { fitName, safe } from "./compact.ts";
 type Color = Parameters<Theme["fg"]>[0];
 
 const GAP = "  ";
-/** The type label's width: the longest, `timer`. */
+/** The type label's width in cells: the longest, `timer`. */
 const LABEL_WIDTH = 5;
 /** An id keeps at most this many cells, so a long name cannot take the row. */
 const ID_MAX = 18;
 /** The title and its detail need at least this many cells to be worth drawing. */
 const TEXT_MIN = 8;
 
-/** The label and tone of each type: timers use the warning (yellow) tone, the rest the accent. */
-/** `mark` names a glyph the caller passes (`Marks`): this module stays clear of the terminal package, which the headless session must not load. */
+/**
+ * The label and tone of each type: timers use the warning (yellow) tone, the rest the accent; a subagent is labelled
+ * with the subagent mark, as in the team rows above. `mark` names a glyph the caller passes (`Marks`): this module stays
+ * clear of the terminal package, which the headless session must not load.
+ */
 const TYPE: Record<WorkKind, { label: string; color: Color; mark: keyof Marks }> = {
-	agent: { label: "agent", color: "accent", mark: "live" },
+	agent: { label: ENTITY.subagent, color: "accent", mark: "live" },
 	bash: { label: "bash", color: "accent", mark: "live" },
 	timer: { label: "timer", color: "warning", mark: "waiting" },
 	external: { label: "ext", color: "accent", mark: "live" },
@@ -77,7 +81,8 @@ function fitText(title: string, detail: string, room: number): [string, string] 
 	const tail = detail ? ` › ${detail}` : "";
 	if (visibleWidth(title) + visibleWidth(tail) <= room) return [title, tail];
 	if (visibleWidth(title) >= room || room - visibleWidth(title) < 3 + 6) return [fitName(title, room), ""];
-	return [title, fitName(tail, room - visibleWidth(title))];
+	// Cut the detail alone: cutting the whole tail would trim the separator's leading space and glue it to the title.
+	return [title, ` › ${fitName(detail, room - visibleWidth(title) - 3)}`];
 }
 
 /** The block never takes more than this many rows when the terminal height is unknown. */
@@ -112,7 +117,8 @@ export function workRows(
 	const clockWidth = Math.max(...clocks.map((text) => visibleWidth(text)));
 	const lines = shown.map((row, index) => {
 		const type = TYPE[row.kind];
-		const lead = ` ${theme.fg(type.color, marks[type.mark])} ${theme.fg(type.color, type.label.padEnd(LABEL_WIDTH))}${GAP}${theme.fg("text", ids[index].padEnd(idWidth))}`;
+		const label = type.label + " ".repeat(Math.max(0, LABEL_WIDTH - visibleWidth(type.label)));
+		const lead = ` ${theme.fg(type.color, marks[type.mark])} ${theme.fg(type.color, label)}${GAP}${theme.fg("text", ids[index] + " ".repeat(Math.max(0, idWidth - visibleWidth(ids[index]))))}`;
 		const right = clocks[index] ? GAP + clocks[index].padStart(clockWidth) : "";
 		const room = width - visibleWidth(lead) - GAP.length - visibleWidth(right);
 		const [title, tail] = room >= TEXT_MIN ? fitText(safe(row.title), safe(row.detail), room) : ["", ""];

@@ -5,6 +5,13 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 /** Who pays for a runner's turns: its own plan (a subscription it signed in with) or a metered key. */
 export type RunnerBilling = ProviderPlan["billing"];
 
+/** One turn's only admitted MCP server; the host owns its identity, bearer token and lifetime. */
+interface RunnerCommunication {
+	name: string;
+	url: string;
+	headers: readonly { name: string; value: string }[];
+}
+
 /** One task's turn in a vendor CLI over ACP, as `octocode/index.ts` supplies it from `external/` (subagents import no transport). */
 interface RunnerTurn {
 	runner: string;
@@ -20,6 +27,7 @@ interface RunnerTurn {
 	onStart?(pid: number): void;
 	/** Where the runner's permission requests go: the session's dialog, or its full-mode policy. */
 	ctx: ExtensionContext;
+	communication?: RunnerCommunication;
 }
 
 /** What a runner's turn ended with: its answer, stop reason, and the token totals and cost it reported. */
@@ -36,5 +44,7 @@ export interface RunnerReply {
 /** The installed runners available in this session, fixed at tool declaration; a turn checks sign-in before launch. */
 export interface Runners {
 	readonly ids: readonly string[];
+	/** Installed routes proven to accept the restricted team server without ambient MCP or skills. */
+	readonly communication?: readonly string[];
 	turn(input: RunnerTurn): Promise<RunnerReply>;
 }

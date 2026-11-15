@@ -5,6 +5,7 @@ import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
 import type { RpcReady } from "../session-identity.ts";
 import { collectUntilSettled, guarded, notifyAll } from "./listeners.ts";
+import { startupTimeout } from "./startup.ts";
 import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
 import { leadsProcessGroup } from "../../../utils/shell.ts";
 import { reportToStderr } from "../../../../../common/src/stderr.ts";
@@ -38,7 +39,7 @@ export class RpcConnection {
 
 	/**
 	 * Start the RPC agent process. Resolves once the session announces itself with `rpc_ready`; rejects when the process
-	 * exits, fails to start or is stopped first.
+	 * exits, fails to start, is stopped, or exceeds the startup timeout first.
 	 */
 	async start(): Promise<void> {
 		if (this.process || this.starting) {
@@ -54,6 +55,7 @@ export class RpcConnection {
 
 	private async startProcess(): Promise<void> {
 		const generation = this.generation;
+		const timeoutMs = startupTimeout(this.options.startupTimeoutMs);
 		this.exitError = null;
 		this.stderr = "";
 
@@ -112,13 +114,23 @@ export class RpcConnection {
 		});
 
 		this.stopReadingStdout = attachJsonlLineReader(childProcess.stdout, (line) => {
-			this.handleLine(line);
+			if (this.process === childProcess && this.generation === generation) this.handleLine(line);
 		});
 
-		// Started means the session announced itself (`rpc_ready`); a process that exits or fails first rejects instead.
+		let timeoutError: Error | undefined;
+		const timer = setTimeout(() => {
+			timeoutError = new Error(
+				`Agent startup timed out after ${timeoutMs}ms waiting for rpc_ready. Stderr: ${this.stderr}`,
+			);
+			this.closed(timeoutError);
+		}, timeoutMs);
 		try {
 			await ready;
+		} catch (error) {
+			if (error === timeoutError) await this.stop();
+			throw error;
 		} finally {
+			clearTimeout(timer);
 			this.readyWaiter = undefined;
 		}
 	}
@@ -264,6 +276,7 @@ export class RpcConnection {
 
 	private dispatch(data: { type: string; id?: string; [key: string]: any }): void {
 		if (data.type === "rpc_ready") {
+			if (this.exitError) return;
 			this.readyWaiter?.resolve();
 			this.options.onReady?.(data as RpcReady);
 			return;

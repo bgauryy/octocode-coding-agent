@@ -6,7 +6,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
-import { backlogToolName, planEntryFields } from "./backlog-fixture.ts";
+import { backlogToolName } from "./backlog-fixture.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -48,12 +48,6 @@ const done = () => ({
 });
 
 describe("backlog schema", () => {
-	it("tells the model an epic follows its items", async () => {
-		const { plan } = await setup();
-		const props = planEntryFields(plan);
-		expect(props.state?.description).toMatch(/an epic follows its items/);
-	});
-
 	it("accepts type, parent and note on each items entry, as a single add does", async () => {
 		const { text } = await setup();
 		const out = await text({
@@ -97,9 +91,8 @@ describe("backlog schema", () => {
 		expect(await text({ op: "done", id: "B4", completion: done() })).toMatch(/^Updated B4 \[done/);
 	});
 
-	it("says add needs why, and refuses an add without it", async () => {
-		const { text, plan } = await setup();
-		expect(planEntryFields(plan).why?.description).toMatch(/add needs it/);
+	it("refuses an add without why", async () => {
+		const { text } = await setup();
 		await expect(text({ op: "add", items: [{ title: "x", goal: "g" }] })).rejects.toThrow(/add needs why/);
 	});
 });

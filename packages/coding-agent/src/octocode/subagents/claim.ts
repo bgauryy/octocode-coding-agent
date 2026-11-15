@@ -365,6 +365,8 @@ export function claimRun(
 	if (scratch) identity.scratch = scratch;
 	// Taken last: a throw above leaves no name behind (the caller gives the slot back when nothing is claimed).
 	runs.running.set(identity.id, undefined);
+	// A resumed run still works its item: the link is dropped once it is not running (`idle-items.ts`).
+	if (identity.item) runs.items.set(identity.id, identity.item);
 	const release = () => {
 		if (!runs.running.delete(identity.id)) return;
 		if (slot.held) runs.slots.give();

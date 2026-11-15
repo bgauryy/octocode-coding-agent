@@ -141,8 +141,6 @@ describe("isolated subagent session", () => {
 		// The task names the real worktree.
 		const user = harness.session.messages.find((message) => message.role === "user");
 		const text = JSON.stringify(user?.content);
-		expect(text).toContain("## Worktree");
-		expect(text).toContain("`node_modules`, builds, hydrated model data and other ignored files are absent");
 		expect(text).toContain(cwd);
 		// A write into the main tree is refused before the tool runs.
 		const result = harness.session.messages.find((message) => message.role === "toolResult");

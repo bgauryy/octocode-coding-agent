@@ -94,6 +94,21 @@ describe("running work note after a compaction", () => {
 		expect(note).toContain("Run the final suite");
 		expect(note).toContain("characters omitted");
 		expect(note).toContain("s.jsonl");
+		// The note names the file that keeps the whole request, so the cut does not claim none does.
+		expect(note).not.toContain("no file that keeps them");
+	});
+
+	it("leaves out a latest request the compaction kept in the retained tail, and names one it summarized", async () => {
+		const reply = { type: "message", id: "a1", message: { role: "assistant", content: "On it" } };
+		const later = { type: "message", id: "u2", message: { role: "user", content: "Ship it now" } };
+		// The request is at the first kept entry: the model still reads it whole after the summary.
+		expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId: "u1" })).toEqual([]);
+		expect(await compacted([request, reply, later], undefined, { details: {}, firstKeptEntryId: "a1" })).toEqual([]);
+		// The request was summarized away (the tail starts after it), or the kept entry is not on the branch.
+		for (const firstKeptEntryId of ["a1", "missing"])
+			expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId })).toEqual([
+				'[After compaction] Latest user request: "Ship the thing"',
+			]);
 	});
 
 	it("names the paths this agent reserved and the questions still waiting for its reply", async () => {

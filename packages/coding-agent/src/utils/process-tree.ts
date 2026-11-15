@@ -40,8 +40,8 @@ export async function prepareTree(): Promise<void> {
 
 /**
  * Right after spawning the root of a tree: on Windows, puts it in a job, so `signalTree`, `stopTree` and `killTree`
- * reach its whole tree and the tree ends with Octocode. Asynchronous and best effort; a no-op elsewhere (the process group
- * is the tree there: spawn with `detached: true`).
+ * reach assigned members and the job ends with Octocode. Assignment is asynchronous and best effort. A no-op elsewhere:
+ * POSIX callers own a process group (`detached: true`), which does not retain descendants that leave that group.
  */
 export function adoptTree(pid: number | undefined): void {
 	if (process.platform === "win32") void windowsTree.assign(pid);

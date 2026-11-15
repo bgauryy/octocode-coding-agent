@@ -218,7 +218,6 @@ describe("prompt optimization on submit", () => {
 		const [model, context, options] = helper.mock.calls[0];
 		expect(model.id).toBe("faux-1");
 		const asked = JSON.stringify(context.messages);
-		expect(asked).toContain("Rewrite the request quoted below");
 		expect(asked).toContain("<request>\\nfix teh login bug\\n</request>");
 		expect(options.signal).toBeInstanceOf(AbortSignal);
 		expect(screen.selects).toHaveLength(1);

@@ -22,10 +22,13 @@ export interface EnvironmentSettingsApi {
 	getBashInheritProviderKeys(): boolean;
 	/** Most bytes the saved full output of a foreground bash command holds; 0 lifts the cap. */
 	getBashSpillMaxBytes(): number;
-	/** Whether the agent tool may use external agents and runners; on unless disabled. */
+	/** Whether the agent tool may use external agents and runners; requires global opt-in. */
 	getExternalAgents(): boolean;
 	/** Turns external agents and runners on or off in the global settings (`/providers`, External agents). */
 	setExternalAgents(enabled: boolean): void;
+	/** Explicit global runner selection; undefined preserves the legacy all-runners choice. */
+	getEnabledExternalAgents(): string[] | undefined;
+	setEnabledExternalAgents(ids: readonly string[] | undefined): void;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

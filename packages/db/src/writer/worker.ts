@@ -4,6 +4,7 @@ import { isBusy } from "../sqlite.ts";
 import { type DbWriterMessage, type DbWriterRequest, isDbWriterWorkerData } from "./protocol.ts";
 import { CheckpointDuty } from "./checkpoint.ts";
 import { runWriterCommandWithin } from "./derived.ts";
+import { readArchivedAudits } from "../history-reader.ts";
 
 /** Longest one attempt waits inside SQLite for another connection's lock: a stop request lands between attempts. */
 const ATTEMPT_BUSY_MS = 250;
@@ -25,6 +26,10 @@ export function runDbWriterWorker(): void {
 	const port = parentPort;
 	if (!port || !isDbWriterWorkerData(workerData)) throw new Error("The database writer must run as its worker");
 	const { locations, role } = workerData;
+	const stopping = new Int32Array(workerData.stopping);
+	const assertActive = () => {
+		if (Atomics.load(stopping, 0) === 2) throw new Error("Database archive cancelled");
+	};
 	const post = (message: DbWriterMessage) => port.postMessage(message);
 	post({ type: "ready" });
 	let agent: AgentDb | undefined;
@@ -42,23 +47,37 @@ export function runDbWriterWorker(): void {
 	const next = () => {
 		const request = queue[0];
 		running = request !== undefined;
-		if (request) attempt(request, performance.now());
+		if (request) void attempt(request, performance.now());
 		else checkpoints.idle();
 	};
-	const attempt = (request: DbWriterRequest, started: number) => {
+	const attempt = async (request: DbWriterRequest, started: number) => {
+		const archive = request.command.kind === "archive-history";
+		if (archive && Atomics.compareExchange(stopping, 0, 0, 1) === 2) {
+			agent?.close();
+			post({ type: "stopped" });
+			return;
+		}
 		try {
 			const connection = open();
-			const result = runWriterCommandWithin(connection, request.command, ATTEMPT_BUSY_MS, steps);
+			const result =
+				request.command.kind === "archive-audits"
+					? await readArchivedAudits(connection, request.command.query, assertActive)
+					: runWriterCommandWithin(connection, request.command, ATTEMPT_BUSY_MS, steps, assertActive);
 			post({ type: "reply", id: request.id, ok: true, result });
 			checkpoints.ran();
 		} catch (error) {
 			const busy = isBusy(error);
 			if (busy && performance.now() - started < BUSY_BUDGET_MS) {
-				setTimeout(() => attempt(request, started), 0);
+				setTimeout(() => void attempt(request, started), 0);
 				return;
 			}
 			const message = error instanceof Error ? error.message : String(error);
 			post({ type: "reply", id: request.id, ok: false, message, busy });
+		}
+		if (archive && Atomics.compareExchange(stopping, 0, 1, 0) === 2) {
+			agent?.close();
+			post({ type: "stopped" });
+			return;
 		}
 		queue.shift();
 		next();

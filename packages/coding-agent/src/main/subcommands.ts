@@ -5,6 +5,7 @@
 
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
 import { handleConfigCommand, handlePackageCommand } from "../package-manager-cli.ts";
+import { prepareAgentDb } from "../storage/database.ts";
 
 interface SubcommandContext {
 	cwd: string;
@@ -15,8 +16,11 @@ type Subcommand = (args: string[], context: SubcommandContext) => Promise<number
 
 /** Subcommands by name; each receives the arguments after its name. */
 export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
-	mcp: async (args, context) => (await loadMcpCommand()).runMcpCommand(args, context),
+	mcp: async (args, context) =>
+		(await loadMcpCommand()).runMcpCommand(args, { ...context, prepareTrust: () => prepareAgentDb() }),
 	trust: async (args, { cwd }) => (await import("../cli/trust-command.ts")).runTrustCommand(args, { cwd }),
+	security: async (args, { cwd, agentDir }) =>
+		(await import("../cli/security-command.ts")).runSecurityCommand(args, { cwd, agentDir }),
 	profile: async (args, { cwd }) => (await import("../cli/profile-command.ts")).runProfileCommand(args, { cwd }),
 	marketplace: async (args, { cwd }) =>
 		(await import("../octocode/plugins/marketplace/command.ts")).runMarketplaceCommand(args, { cwd }),

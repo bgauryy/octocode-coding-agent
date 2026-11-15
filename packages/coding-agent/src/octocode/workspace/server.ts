@@ -192,7 +192,7 @@ export async function startWorkspaceWeb(
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {
 				const before = requestUrl.searchParams.get("before");
 				if (before !== null && !/^[1-9][0-9]*$/.test(before)) return reply(400, { error: "Invalid audit cursor" });
-				const events = backlog.store.audit(
+				const events = await backlog.store.auditAsync(
 					requestUrl.searchParams.get("backlogId") ?? undefined,
 					100,
 					before ? Number(before) : undefined,

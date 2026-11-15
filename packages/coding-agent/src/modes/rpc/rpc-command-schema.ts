@@ -36,7 +36,7 @@ export const RpcCommandSchema = Type.Union([
 		toolChoice: Type.Optional(Type.Literal("none")),
 	}),
 	command("follow_up", { message: Type.String(), images: ImagesSchema }),
-	command("abort"),
+	command("abort", { holdShutdown: Type.Optional(Type.Literal(true)) }),
 	command("clear_queue"),
 	command("get_queue"),
 	command("edit_queued", { queueId: Type.String(), text: Type.String() }),

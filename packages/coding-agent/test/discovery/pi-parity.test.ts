@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
+import { approveFixtureSkillFiles } from "../octocode/guard-helpers.ts";
+import { knownReviews } from "../../src/octocode/guard/registry.ts";
 import {
 	byText,
 	createLoader,
@@ -30,11 +32,13 @@ const skillNames = (loader: { getSkills(): { skills: Array<{ name: string }> } }
 describe("Pi skills", () => {
 	it("loads a Pi skill, and a same-named Octocode skill wins while the Pi copy is shadowed", async () => {
 		const piCopy = skillFile(join(sandbox.piAgentDir, "skills"), "demo", { description: "from Pi" });
+		approveFixtureSkillFiles([{ name: "demo", filePath: piCopy, category: "global" }], sandbox.cwd);
 		const loader = createLoader(sandbox, false);
 		await loader.reload();
 		expect(loader.getSkills().skills.map((skill) => [skill.name, skill.description])).toEqual([["demo", "from Pi"]]);
 
 		const native = skillFile(join(sandbox.agentDir, "skills"), "demo", { description: "from Octocode" });
+		approveFixtureSkillFiles([{ name: "demo", filePath: native, category: "global" }], sandbox.cwd);
 		await loader.reload();
 		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["from Octocode"]);
 		const items = configDiscovery.discover(
@@ -55,10 +59,12 @@ describe("Pi skills", () => {
 		const untrusted = createLoader(sandbox, false);
 		await untrusted.reload();
 		expect(untrusted.getSkills().skills).toEqual([]);
+		expect(knownReviews().filter((review) => review.item.kind === "skill")).toEqual([]);
 		expect(untrusted.getPrompts().prompts).toEqual([]);
 		expect(untrusted.getThemes().themes).toEqual([]);
 
 		const trusted = createLoader(sandbox, true);
+		approveFixtureSkillFiles([{ name: "pi-project-skill", filePath: skill, category: "workspace" }], sandbox.cwd);
 		await trusted.reload();
 		expect(trusted.getSkills().skills.map((item) => item.filePath)).toEqual([skill]);
 		expect(trusted.getPrompts().prompts.map((item) => item.filePath)).toEqual([prompt]);
@@ -66,12 +72,14 @@ describe("Pi skills", () => {
 	});
 
 	it("ranks an Octocode skill of any scope above a Pi project skill of the same name, project before global", async () => {
-		skillFile(join(sandbox.agentDir, "skills"), "dup", { description: "octocode global" });
+		const global = skillFile(join(sandbox.agentDir, "skills"), "dup", { description: "octocode global" });
 		skillFile(join(sandbox.cwd, ".pi", "skills"), "dup", { description: "pi project" });
+		approveFixtureSkillFiles([{ name: "dup", filePath: global, category: "global" }], sandbox.cwd);
 		const loader = createLoader(sandbox, true);
 		await loader.reload();
 		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["octocode global"]);
-		skillFile(join(sandbox.cwd, ".octocode", "skills"), "dup", { description: "octocode project" });
+		const project = skillFile(join(sandbox.cwd, ".octocode", "skills"), "dup", { description: "octocode project" });
+		approveFixtureSkillFiles([{ name: "dup", filePath: project, category: "workspace" }], sandbox.cwd);
 		await loader.reload();
 		expect(loader.getSkills().skills.map((skill) => skill.description)).toEqual(["octocode project"]);
 	});

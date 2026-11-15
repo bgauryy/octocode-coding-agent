@@ -12,7 +12,7 @@ import { findOnPath } from "../../../../../common/src/find-on-path.ts";
 import { agentEnv } from "../../../octocode/external/runner-env.ts";
 import { runnerRoute } from "../../../octocode/external/runner-headless.ts";
 import { checkRunners, isConnected, listRunners, type RunnerState } from "../../../octocode/external/runner-status.ts";
-import { runnerSpec } from "../../../octocode/external/runners.ts";
+import { RUNNERS, runnerSpec } from "../../../octocode/external/runners.ts";
 import { holdTerminalForChild } from "../../../utils/foreground-child.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import type { PageRow, PageSection } from "../../../theme/manage-page.ts";
@@ -22,6 +22,25 @@ import { showPage } from "./provider-ui.ts";
 
 const RUNNER_ROW = "runner";
 const runnerRowId = (id: string): string => `${RUNNER_ROW}:${id}`;
+
+/** What each vendor CLI's own sign-in can pay with: the reason to pick it in **+ Add a provider**. */
+const RUNNER_PLANS: Record<string, string> = {
+	"claude-code": "Claude Pro/Max subscription or its own API key",
+	codex: "ChatGPT subscription or its own API key",
+	opencode: "its own sign-ins and providers",
+	gemini: "Google AI Pro/Ultra subscription or its own API key",
+};
+
+/**
+ * The **+ Add a provider** entries for vendor CLIs. They are external agents, not providers: the vendor's own CLI runs
+ * each task in its own harness, so its plan is used where Octocode's harness may not use it.
+ */
+export const externalAgentSignIns = (): { id: string; name: string; detail: string }[] =>
+	RUNNERS.map((spec) => ({
+		id: runnerRowId(spec.id),
+		name: spec.name,
+		detail: `external agent · its own harness · ${RUNNER_PLANS[spec.id] ?? "its own sign-in"}`,
+	}));
 
 /** How a finished terminal command ended, or why it could not start. */
 type TerminalExit = { code: number | null } | { error: string };
@@ -135,16 +154,32 @@ async function checkRunner(
 }
 
 /** The External agents section of the main page; the setting's state is its empty text when nothing is installed. */
-export function runnerSection(states: readonly RunnerState[], enabled: boolean): PageSection {
+export function runnerSection(
+	states: readonly RunnerState[],
+	enabled: boolean,
+	selected?: readonly string[],
+): PageSection {
 	return {
 		heading: "External agents",
-		rows: states.map((state) => row(state, enabled)),
+		rows: states.map((state) => row(state, enabled && (selected === undefined || selected.includes(state.id)))),
 		empty: enabled ? "no vendor CLI found" : "off (externalAgents)",
 	};
 }
 
 /** What a runner's page uses of the interactive host. */
 type RunnerPageHost = Pick<ProviderManagerHost, "session" | "ui" | "showStatus" | "showError" | "showSelector">;
+
+/** A fresh selection opts in one CLI; an explicit legacy all-runners setting keeps the other known CLIs. */
+export function setRunnerEnabled(page: RunnerPageHost, id: string, enabled: boolean): void {
+	const settings = page.session.settingsManager;
+	const selected =
+		settings.getEnabledExternalAgents() ?? (settings.getExternalAgents() ? RUNNERS.map((runner) => runner.id) : []);
+	settings.setEnabledExternalAgents(enabled ? [...selected, id] : selected.filter((runner) => runner !== id));
+	if (enabled) settings.setExternalAgents(true);
+	page.showStatus(
+		`${runnerSpec(id)?.name ?? id} ${enabled ? "enabled" : "disabled"} for agent tasks. Run /reload to apply.`,
+	);
+}
 
 /** Report the runner's sign-in after a login or fresh check; changing task availability is a separate user action. */
 function reportCheck(page: Pick<RunnerPageHost, "showStatus">, name: string, now: RunnerState): void {
@@ -173,6 +208,8 @@ export async function showRunnerDetail(
 			: listed;
 	const settings = page.session.settingsManager;
 	const enabled = settings.getExternalAgents();
+	const selected = settings.getEnabledExternalAgents();
+	const active = enabled && (selected === undefined || selected.includes(id));
 	const actions = new Map<string, () => Promise<void> | void>();
 	const env = runnerEnvironment(options.source);
 	const cli = findOnPath(spec.cli, env);
@@ -207,26 +244,27 @@ export async function showRunnerDetail(
 		const now = await checkRunner(id, options.source, true, reportError);
 		if (now) reportCheck(page, spec.name, now);
 	});
-	actions.set(
-		enabled
-			? "Stop running agent tasks in external agents (new sessions)"
-			: "Run agent tasks in installed external agents (new sessions)",
-		() => {
+	actions.set(active ? "Disable this CLI for agent tasks" : "Enable this CLI for agent tasks", () => {
+		setRunnerEnabled(page, id, !active);
+	});
+	if (enabled || selected?.length) {
+		actions.set(enabled ? "Pause all external agent tasks" : "Resume selected external agent tasks", () => {
 			settings.setExternalAgents(!enabled);
-			page.showStatus(
-				`External agents ${enabled ? "off" : "on"} for new sessions (externalAgents in the global settings).`,
-			);
-		},
-	);
+			page.showStatus(`External agent tasks ${enabled ? "paused" : "enabled"}. Run /reload to apply.`);
+		});
+	}
 	const choice = await showPage(page, {
 		title: `${spec.name} — ${isConnected(state) ? "connected" : "not connected"}`,
-		notes: [`${spec.name} runs agent tasks with its own tools and sign-in; Octocode never reads its credentials.`],
+		notes: [
+			`${spec.name} is an external agent: its own harness runs each task with its own tools and sign-in; Octocode never reads its credentials.`,
+			"Selection applies after /reload or restart. Your default model stays unchanged.",
+		],
 		facts: [
 			{ label: "CLI", value: state.cli ? `${spec.cli}${state.version ? ` ${state.version}` : ""}` : "not installed" },
 			{ label: "Checked with", value: spec.tested },
 			{ label: "ACP adapter", value: state.adapter ? spec.adapter.command : `missing · ${spec.adapter.install}` },
 			{ label: "Sign-in", value: signIn(state) },
-			{ label: "External agents", value: enabled ? "on" : "off (externalAgents)" },
+			{ label: "Agent tasks", value: active ? "enabled · /reload applies changes" : "off · enable this CLI to use it" },
 		],
 		sections: [{ heading: "ACTIONS", rows: [...actions.keys()].map((label) => ({ id: label, name: label })) }],
 		hints: [

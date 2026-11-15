@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
+import { CLEARED_RESULTS_TYPE } from "../shared/cleared-results.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { partText } from "../shared/util.ts";
 import { appliedFileOutcomes } from "../shared/file-outcomes.ts";
@@ -21,7 +22,7 @@ export const RESTORED_FILES_TYPE = "octocode-restored-files";
  * The session entry that records which tool results were replaced by a placeholder after the prompt cache went cold
  * (`compaction/clearing`): `data.results` lists each result's `id` (its tool call id) and `saved`, where its whole text is.
  */
-export const CLEARED_RESULTS_TYPE = "octocode-cleared-results";
+export { CLEARED_RESULTS_TYPE };
 
 /** One message of the model's context, by the entry that owns it. */
 export interface MessageRef {

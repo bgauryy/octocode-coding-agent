@@ -1,11 +1,13 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { textResult } from "../shared/util.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "../team/identity.ts";
 import type { RunPlan } from "./claim.ts";
 import { runRunnerChild } from "./runner-child.ts";
 import type { Runners } from "./runner-port.ts";
+import type { Team } from "../team/session.ts";
 
 /** Task fields that belong to an Octocode child: a runner has its own tools, skills and session, so they do not apply. */
 const NATIVE_ONLY = ["skills", "mcp", "profile", "resume", "headless"] as const;
@@ -15,7 +17,7 @@ export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). See models. No skills, mcp, profile, resume or headless.",
+				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). Supported routes get a cooperative team inbox; no native wake/resume. See models. No skills, mcp, profile, resume or headless.",
 		}),
 	);
 
@@ -52,6 +54,7 @@ export function registerChildRunnerTask(
 	runners: Runners,
 	permission: SpawnPermission,
 	registerTool: ExtensionAPI["registerTool"],
+	team?: Team,
 ): void {
 	let started = 0;
 	registerTool({
@@ -60,7 +63,7 @@ export function registerChildRunnerTask(
 		description:
 			"Run a self-contained task in an installed vendor CLI using its own sign-in, checked when used, and return its report; the call waits for it.",
 		parameters: Type.Object({
-			runner: StringEnum(runners.ids, { description: "The installed vendor CLI that does the task (see models)" }),
+			runner: StringEnum(runners.ids, { description: renderInstruction("tools/agent/child-runner.md") }),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({ description: "The whole brief: the runner sees nothing else of this session" }),
 			model: Type.Optional(Type.String({ description: "The runner's own model option" })),
@@ -86,6 +89,7 @@ export function registerChildRunnerTask(
 				signal,
 				onProgress: () => undefined,
 				ctx,
+				team,
 			});
 			return textResult(outcome.text, {
 				runner,

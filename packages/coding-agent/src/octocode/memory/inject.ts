@@ -34,11 +34,13 @@ const LINE_MAX = 600;
 /** Characters reserved for a body when the title needs clipping too. */
 const BODY_RESERVE = 80;
 
-interface Injection {
+export interface Injection {
 	content: string;
 	ids: number[];
 	/** Each injected memory's `updatedAt`, in `ids` order: an edit after this makes it new again. */
 	updated: number[];
+	/** The session notes the message carries (`lead`). */
+	sessionNotes?: Array<{ id: number; version: number }>;
 }
 
 /**
@@ -179,6 +181,8 @@ export function selectInjection(
 		pinnedKind?: MemoryKind;
 		/** The whole caveat is already in context (`headerInContext`): open with the short header. */
 		headerInContext?: boolean;
+		/** Session notes the model cannot see (`session-notes-inject.ts`): their lines come first, outside `TOTAL_BUDGET`, and the message is sent even when no memory qualifies. */
+		lead?: { lines: string[]; notes: Array<{ id: number; version: number }> };
 		now?: number;
 	},
 ): Injection | undefined {
@@ -232,8 +236,14 @@ export function selectInjection(
 		if (added >= options.topK || hit.score < best * RELATIVE_THRESHOLD) break;
 		if (take(hit, false)) added++;
 	}
-	if (ids.length === 0) return undefined;
-	return { content: [header, ...lines, ...note].join("\n"), ids, updated };
+	const lead = options.lead ?? { lines: [], notes: [] };
+	if (ids.length === 0 && lead.lines.length === 0) return undefined;
+	return {
+		content: [header, ...lead.lines, ...lines, ...note].join("\n"),
+		ids,
+		updated,
+		...(options.lead ? { sessionNotes: lead.notes } : {}),
+	};
 }
 
 /**
@@ -242,14 +252,19 @@ export function selectInjection(
  * another entry or reading as a directive. A body that does not fit is cut and ends with the call that reads it whole.
  */
 function injectedLine(memory: Memory, now: number): string {
-	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
 	const prefix = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} `;
-	const title = flat(memory.title);
+	return quotedLine(prefix, memory.title, memory.body, memoryGetCall(memory.id));
+}
+
+/** `prefix`, then the title and the body as JSON strings on one line within `LINE_MAX`; a longer one ends with `pointer`, the call that reads it whole. */
+export function quotedLine(prefix: string, rawTitle: string, rawBody: string, call: string): string {
+	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
+	const title = flat(rawTitle);
 	const head = `${prefix}${JSON.stringify(title)}`;
-	const body = flat(memory.body);
+	const body = flat(rawBody);
 	const line = `${head}${body ? ` — ${JSON.stringify(body)}` : ""}`;
 	if (line.length <= LINE_MAX) return line;
-	const pointer = ` (${memoryGetCall(memory.id)})`;
+	const pointer = ` (${call})`;
 	const room = LINE_MAX - prefix.length - pointer.length;
 	// Leave room for the body when an oversized title competes with it. The stored memory stays whole.
 	const quotedTitle = boundedQuote(title, body ? room - BODY_RESERVE - 3 : room);

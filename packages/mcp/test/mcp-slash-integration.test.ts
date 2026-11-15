@@ -72,11 +72,10 @@ describe("unified MCP slash management", () => {
 		expect(restart).toHaveBeenCalledOnce();
 		expect(notifications.at(-1)).toContain('Reconnected to MCP server "octocode"');
 		expect((await command.getArgumentCompletions?.(""))?.map((item) => item.label)).toEqual([
+			"add",
 			"list",
 			"tools",
 			"config",
-			"exposure",
-			"assign",
 			"login",
 			"logout",
 			"reconnect",
@@ -103,9 +102,42 @@ describe("unified MCP slash management", () => {
 		);
 		await harness.session.prompt("/mcp");
 		await Promise.all(state.backgroundActions);
-		expect(menus[0].items).toMatchObject([{ value: "octocode", description: expect.stringContaining("default") }]);
-		expect(menus[1].items.map((item) => item.value)).toEqual(["tools", "reconnect", "disable", "exposure"]);
+		expect(menus[0].items).toMatchObject([
+			{ value: "octocode", description: expect.stringContaining("default") },
+			{ value: "@add", label: "Add MCP" },
+		]);
+		expect(menus[1].items.map((item) => item.value)).toEqual(["tools", "reconnect", "exposure"]);
 		expect(restart).toHaveBeenCalledOnce();
+	});
+	it("points /mcp assign and /mcp exposure at /harness mcp", async () => {
+		const { harness, state, command, notifications } = await setup();
+		await harness.session.prompt("/mcp assign octocode all");
+		expect(notifications.at(-1)).toBe("Moved: open /harness mcp, select octocode, then Available to");
+		await harness.session.prompt("/mcp exposure octocode hidden --local");
+		expect(notifications.at(-1)).toBe("Moved: open /harness mcp, select octocode, then Default for tools");
+		expect(state.findServer("octocode")?.entry.config.exposure).toBe("direct");
+		expect(await command.getArgumentCompletions?.("assign ")).toBeNull();
+	});
+	it("says where to turn a disabled server on in its manager detail", async () => {
+		const { harness } = await setup(
+			[{ ...entry(), scope: "global", config: { command: "never-launch", enabled: false } }],
+			true,
+		);
+		const menus: manager.McpMenu[] = [];
+		const choices = ["octocode", undefined, undefined];
+		vi.spyOn(manager, "showMcpManager").mockImplementation(async (_ctx, manage) =>
+			manage({
+				menu: async (build) => {
+					menus.push(build());
+					return choices.shift();
+				},
+				status: () => {},
+				redirectUrl: async () => undefined,
+			}),
+		);
+		await harness.session.prompt("/mcp");
+		expect(menus[1].items.map((item) => item.value)).toEqual(["exposure"]);
+		expect(menus[1].facts).toContainEqual({ label: "State", value: "Off · turn on in /harness mcp" });
 	});
 	it("keeps disabled same-name configuration authoritative", async () => {
 		const { harness, state, command, notifications } = await setup([

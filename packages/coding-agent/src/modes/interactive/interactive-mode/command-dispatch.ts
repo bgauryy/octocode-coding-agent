@@ -14,7 +14,15 @@ import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { unknownCommandWarning } from "./command-suggestion.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import {
+	argumentWordRefusal,
+	clearRefused,
+	handleRefused,
+	refusedInput,
+	refuseWith,
+	restoreRefused,
+} from "./refused-input.ts";
+import { interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { showFooterStatusReport } from "./footer-status-report.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
@@ -74,12 +82,6 @@ type CommandDispatchHost = ConfigurationHost &
 		| "uiStore"
 	>;
 
-/** Put back text the app refused to submit: the editor's own draft when it can, with its paste markers and cursor. */
-function restoreRefused(host: Pick<CommandDispatchHost, "editor">, text: string): void {
-	if (host.editor.restoreSubmitted) host.editor.restoreSubmitted(text);
-	else host.editor.setText(text);
-}
-
 /** The prompt submitted while startup runs, per interactive mode: sent once, when startup is ready. */
 const startupSubmits = new WeakMap<object, string>();
 
@@ -88,13 +90,13 @@ const startupSubmits = new WeakMap<object, string>();
  * A second Enter replaces the queued text; Esc cancels it; editing or clearing it means the user is still composing.
  */
 export function handleStartupSubmit(host: CommandDispatchHost, text: string): void {
-	restoreRefused(host, text);
+	restoreRefused(host.editor, text);
 	if (!text.trim()) {
 		host.showStatus("Startup is still in progress");
 		return;
 	}
 	startupSubmits.set(host, text);
-	const cancelKey = keyText("app.interrupt");
+	const cancelKey = interruptKey();
 	host.showStatus(`Sends when startup finishes${cancelKey ? ` · ${cancelKey} cancels` : ""}`);
 }
 
@@ -111,17 +113,18 @@ export function dispatchStartupSubmit(host: Pick<CommandDispatchHost, "editor" |
 	const text = startupSubmits.get(host);
 	startupSubmits.delete(host);
 	if (text === undefined) return;
-	const current = (host.editor.getExpandedText?.() ?? host.editor.getText()).trim();
+	const editor = host.editor;
+	const current = (editor.getExpandedText?.() ?? editor.getText()).trim();
 	if (current !== text.trim()) {
 		if (current) host.showStatus("Not sent: the prompt changed after Enter and stays in the editor");
 		return;
 	}
-	if (host.editor.submit) {
-		host.editor.submit();
+	if (editor.submit) {
+		editor.submit();
 		return;
 	}
-	host.editor.setText("");
-	host.editor.onSubmit?.(text);
+	editor.setText("");
+	editor.onSubmit?.(text);
 }
 
 function getNativeCommand(host: CommandDispatchHost, name: string) {
@@ -179,10 +182,6 @@ async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 }
 
 async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
-	if (args && !getBuiltinCommand(name)?.argumentHint) {
-		host.showWarning(`/${name} does not take arguments.`);
-		return;
-	}
 	if (await runTerminalAction(host, name, args)) return;
 	switch (name) {
 		case "btw":
@@ -295,6 +294,18 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 	}
 }
 
+/**
+ * Why slash input `/name args` is not run as a command: an unknown name, arguments to a built-in that takes none, or a
+ * first word a command does not declare (`argumentWords`). Undefined when the input runs.
+ */
+function slashRefusal(host: CommandDispatchHost, text: string, name: string, args: string): string | undefined {
+	const builtin = getBuiltinCommand(name);
+	if (builtin) return args && !builtin.argumentHint ? `/${name} does not take arguments.` : undefined;
+	const unknown = unknownCommandWarning(text, name, host.getSlashCommands(true));
+	if (unknown) return unknown;
+	return argumentWordRefusal(name, args, host.session.extensionRunner.getCommand(name)?.argumentWords);
+}
+
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 	// oxlint-disable-next-line typescript/no-misused-promises -- the editor ignores the callback's result
 	host.defaultEditor.onSubmit = async (submitted: string) => {
@@ -307,6 +318,11 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 
 		const parsed = parseSlashCommand(text);
 		const builtin = parsed && getBuiltinCommand(parsed.name);
+		// Text that starts with `/` may be a message about a command: a refusal keeps it, and Enter again sends it.
+		const refusal = parsed && slashRefusal(host, text, parsed.name, parsed.args);
+		const input = refusedInput(host);
+		if (refusal) return handleRefused(input, text, refusal);
+		clearRefused(input);
 		if (builtin) {
 			host.editor.setText("");
 			try {
@@ -316,23 +332,13 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			}
 			return;
 		}
-		const unknown = parsed && unknownCommandWarning(text, parsed.name, host.getSlashCommands(true));
-		if (unknown) {
-			restoreRefused(host, text);
-			host.showWarning(unknown);
-			return;
-		}
-
 		// Handle bash command (! for normal, !! for excluded from context)
 		if (text.startsWith("!")) {
 			const isExcluded = text.startsWith("!!");
 			const command = isExcluded ? text.slice(2).trim() : text.slice(1).trim();
 			if (command) {
-				if (host.session.isBashRunning) {
-					host.showWarning("A bash command is already running. Press Esc to cancel it first.");
-					restoreRefused(host, text);
-					return;
-				}
+				if (host.session.isBashRunning)
+					return refuseWith(input, text, "A bash command is already running. Press Esc to cancel it first.");
 				host.editor.addToHistory?.(text);
 				await host.handleBashCommand(command, isExcluded);
 				host.uiStore.getState().setBashMode(false);

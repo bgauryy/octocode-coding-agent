@@ -154,7 +154,7 @@ describe("agent rows", () => {
 			tagged,
 			asking,
 		);
-		expect(call(asking)).toContain("<warning>◇ <toolTitle>Agent");
+		expect(call(asking)).toContain("<warning>◇ <toolTitle>🐙 Agent");
 	});
 
 	it.each([
@@ -165,7 +165,7 @@ describe("agent rows", () => {
 		animationClock.setReducedMotion(true);
 		const context = row();
 		renderAgentResult({ content, details: details(extra) }, { isPartial: false } as never, tagged, context);
-		expect(first(renderAgentCall(args, tagged, context))).toContain(`${mark} <toolTitle>Agent`);
+		expect(first(renderAgentCall(args, tagged, context))).toContain(`${mark} <toolTitle>🐙 Agent`);
 	});
 
 	it.each([
@@ -178,6 +178,6 @@ describe("agent rows", () => {
 			{ expanded: false } as never,
 			tagged,
 		) as unknown as { render(width: number): string[] };
-		expect(message.render(120).join("\n")).toContain(`${mark} <toolTitle>Agent`);
+		expect(message.render(120).join("\n")).toContain(`${mark} <toolTitle>🐙 Agent`);
 	});
 });

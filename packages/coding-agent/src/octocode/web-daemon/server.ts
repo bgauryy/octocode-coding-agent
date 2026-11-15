@@ -46,6 +46,10 @@ export interface DaemonServerOptions {
 	onActivity: () => void;
 	/** Builds the configuration answer for `GET /api/config`; the caller validates its shape. */
 	config: ConfigRoutes["config"];
+	/** Checks whether a complete running MCP registry is available before showing the add form. */
+	mcpAddStatus?: ConfigRoutes["mcpAddStatus"];
+	/** Saves a validated MCP definition without starting or approving it. */
+	addMcp?: ConfigRoutes["addMcp"];
 	/** Applies a validated `POST /api/admin/config/settings` change to the settings files. */
 	writeSetting?: ConfigRoutes["writeSetting"];
 	/** Applies a validated `POST /api/admin/config/credentials` change; the command carries a key, so it is never logged. */

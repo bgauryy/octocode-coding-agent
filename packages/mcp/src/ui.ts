@@ -59,6 +59,8 @@ export interface McpUi {
 	 * cancelled or when `signal` aborts (the browser reached the callback).
 	 */
 	redirectUrl(title: string, authorizationUrl: string, signal: AbortSignal): Promise<string | undefined>;
+	/** Edit one literal field. Undefined cancels; an empty string is a submitted value. */
+	input?(title: string, value: string, hint: string): Promise<string | undefined>;
 }
 
 export class McpManagerView implements McpUi, Component, Focusable {
@@ -228,6 +230,34 @@ export class McpManagerView implements McpUi, Component, Focusable {
 						return;
 					}
 					input.handleInput(data);
+				},
+				input,
+			);
+		});
+	}
+
+	input(title: string, value: string, hint: string): Promise<string | undefined> {
+		if (this.disposed) return Promise.resolve(undefined);
+		return new Promise((resolve) => {
+			const input = new Input();
+			input.setValue(value);
+			const finish = (answer: string | undefined) => {
+				this.pending.delete(cancel);
+				resolve(answer);
+			};
+			const cancel = () => finish(undefined);
+			this.pending.add(cancel);
+			this.setContent(
+				hostUi().frame(
+					this.theme,
+					title,
+					[new Text(hint, 1, 1), input],
+					`${hostUi().keyHint("tui.select.confirm", "next")} • ${hostUi().keyHint("tui.select.cancel", "cancel")}`,
+				),
+				(data) => {
+					if (this.keybindings.matches(data, "tui.select.confirm")) finish(input.getValue());
+					else if (this.keybindings.matches(data, "tui.select.cancel")) cancel();
+					else input.handleInput(data);
 				},
 				input,
 			);

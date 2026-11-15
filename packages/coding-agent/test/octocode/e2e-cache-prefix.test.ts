@@ -1,3 +1,4 @@
+import { approveFixtureMcp, approveFixtureSkillFiles } from "./guard-helpers.ts";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -182,7 +183,20 @@ describe("a /reload between prompts", () => {
 		const skills = tmp("skills-");
 		skill(skills, "alpha", "Original alpha description.");
 		const s = await headless({
-			setup: ({ cwd }) => agents(cwd, "ORIGINAL-RULE"),
+			setup: ({ root, cwd, home }) => {
+				agents(cwd, "ORIGINAL-RULE");
+				approveFixtureSkillFiles(
+					[{ name: "alpha", filePath: path.join(skills, "alpha", "SKILL.md"), category: "global" }],
+					cwd,
+					{
+						env: {
+							...process.env,
+							OCTOCODE_HOME: path.join(home, ".octocode"),
+							OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
+						},
+					},
+				);
+			},
 			resources: { contextFiles: true, skillPaths: [skills] },
 		});
 		await s.run("first", [say("one")]);
@@ -201,6 +215,14 @@ describe("a /reload between prompts", () => {
 		const { s, skills } = await session();
 		skill(skills, "alpha", "Changed alpha description.");
 		skill(skills, "beta", "Brand new beta.");
+		approveFixtureSkillFiles(
+			["alpha", "beta"].map((name) => ({
+				name,
+				filePath: path.join(skills, name, "SKILL.md"),
+				category: "global" as const,
+			})),
+			s.cwd,
+		);
 		await s.session.reload();
 		await s.run("second", [say("two")]);
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
@@ -270,6 +292,7 @@ describe("the prefix of one configuration does not depend on the process", () =>
 		Object.defineProperty(process, "pid", { value: run.pid, configurable: true });
 		try {
 			return await withEnv(baseEnv(fx), async () => {
+				approveFixtureMcp(fx.cwd, fx.agentDir);
 				const { session, faux } = await scriptedSession(fx, {});
 				try {
 					let captured: TranscriptContext | undefined;

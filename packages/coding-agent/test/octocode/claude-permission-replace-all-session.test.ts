@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 function hook(f: Awaited<ReturnType<typeof fixture>>, input: unknown) {
 	const output = {
@@ -153,6 +154,7 @@ it("native replaceAll projects source replace_all consistently before and after 
 				},
 			];
 		fs.writeFileSync(config, JSON.stringify(settings));
+		approveFixtureHooks(f.cwd);
 		await f.session.reload();
 		fs.writeFileSync(target, "BEFORE BEFORE");
 		await f.run("read", { path: target });

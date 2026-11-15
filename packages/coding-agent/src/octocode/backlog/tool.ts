@@ -5,11 +5,12 @@ import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { timedTool } from "../render/rows.ts";
 import { withReason } from "../shared/reason.ts";
-import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
+import { type Backlog, type BacklogOptions, openBacklogWhenReady } from "./context.ts";
 import { parseJsonStrings, splitIds } from "./tool-arguments.ts";
 import { batchGet } from "./tool-batch.ts";
 import { backlogRenderers } from "./tool-render.ts";
 import { runBacklog } from "./tool-run.ts";
+import { AUDIT_SHOWN } from "./audit-text.ts";
 import { completeStep } from "./tool-step.ts";
 import { closeField, completionField, legacyEntityFields } from "./tool-schema.ts";
 import { oneWrite } from "./tool-support.ts";
@@ -132,10 +133,23 @@ export function registerBacklogTool(
 					throw new Error(
 						`${op} does not take ${extra.join(", ")}: it takes ${OP_FIELDS[op].filter((key) => DECLARED.includes(key)).join(", ")}.`,
 					);
-				if (op === "get") return work(openBacklog(ctx, options), args, op);
+				if (op === "get") {
+					const backlog = await openBacklogWhenReady(ctx, options, signal);
+					const { id, ids: listed, limit, offset, changes } = args;
+					const ids = [...splitIds(id ?? ""), ...(listed ?? []).flatMap(splitIds)];
+					const read = async (each: string | undefined) => {
+						signal?.throwIfAborted();
+						const audits =
+							changes && each ? await backlog.store.auditAsync(each, AUDIT_SHOWN, undefined, signal) : undefined;
+						signal?.throwIfAborted();
+						return runBacklog(backlog, { op: "get", id: each, limit, offset, changes }, { subagent, word: op, audits });
+					};
+					return ids.length > 1 ? batchGet(ids, read, signal) : read(ids[0]);
+				}
 				const result = await oneWrite(async () => {
 					signal?.throwIfAborted();
-					return work(openBacklog(ctx, options), args, op);
+					const backlog = await openBacklogWhenReady(ctx, options, signal);
+					return backlog.store.transactionWhenReady(() => work(backlog, args, op), signal);
 				});
 				options.changed?.(ctx);
 				return result;
@@ -145,17 +159,11 @@ export function registerBacklogTool(
 	);
 
 	/** Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs). */
-	function work(backlog: Backlog, args: Params, op: Op) {
+	function work(backlog: Backlog, args: Params, op: Exclude<Op, "get">) {
 		const run = (params: Parameters<typeof runBacklog>[1]) => runBacklog(backlog, params, { subagent, word: op });
 		const { id, note, version } = args;
 		if (op === "step") return completeStep(backlog, { id, note, version });
 		const one = { op: "update" as const, id, note, version };
-		if (op === "get") {
-			const { ids: listed, limit, offset, changes } = args;
-			const page = { op: "get" as const, limit, offset, changes };
-			const ids = [...splitIds(id ?? ""), ...(listed ?? []).flatMap(splitIds)];
-			return ids.length > 1 ? batchGet(ids, (each) => run({ ...page, id: each })) : run({ ...page, id: ids[0] });
-		}
 		if (op === "claim") return run({ ...one, state: "ongoing", why: args.why, goal: args.goal });
 		if (op === "done") return run({ ...one, state: "done", completion: args.completion as never });
 		if (op === "close") {

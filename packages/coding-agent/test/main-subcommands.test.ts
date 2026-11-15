@@ -16,7 +16,15 @@ afterEach(() => {
 
 describe("one-shot subcommands", () => {
 	it("are one table of names, each loaded on use", () => {
-		expect(Object.keys(SUBCOMMANDS).sort()).toEqual(["context", "marketplace", "mcp", "plugin", "profile", "trust"]);
+		expect(Object.keys(SUBCOMMANDS).sort()).toEqual([
+			"context",
+			"marketplace",
+			"mcp",
+			"plugin",
+			"profile",
+			"security",
+			"trust",
+		]);
 	});
 
 	it("run the named command with the arguments after its name and keep its exit code", async () => {

@@ -146,7 +146,7 @@ export function startBackground(
 			};
 			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
 			const next = outcome.error
-				? failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage))
+				? failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage), details.ran)
 				: "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
@@ -166,7 +166,7 @@ export function startBackground(
 				content: reportMessage(head, body, [
 					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
 					// A failure's `next` already names the route.
-					next || ranOn(run.route),
+					next || ranOn(run.route, details.ran),
 					...runFooter(details, Boolean(outcome.error)),
 					shot,
 					note,
@@ -206,7 +206,7 @@ export function startBackground(
 					: reportMessage(
 							`Background subagent ${who} stopped${citable(identity.id)}`,
 							[errorMessage(error), ...noticeLines(details)].join("\n\n"),
-							[ranOn(run.route), ...runFooter(details, true), note, reachable],
+							[ranOn(run.route, details.ran), ...runFooter(details, true), note, reachable],
 						),
 				details: {
 					id: identity.id,
@@ -328,7 +328,7 @@ export async function runForeground(
 		const text = reportMessage(
 			`Subagent ${identity.id} failed${citable(identity.id)}`,
 			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
-			[failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage)), note],
+			[failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage), details.ran), note],
 		);
 		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
 	}
@@ -348,7 +348,7 @@ export async function runForeground(
 					withShot(details, outcome.text || "(subagent returned no text)"),
 					[
 						typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "",
-						ranOn(run.route),
+						ranOn(run.route, details.ran),
 						note,
 					],
 				),

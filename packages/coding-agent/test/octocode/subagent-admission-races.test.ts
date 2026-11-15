@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 	spawn: vi.fn(),
 	prepareTree: vi.fn(),
 	stopTree: vi.fn(),
+	descendantRows: vi.fn(),
 	leftBehind: vi.fn(),
 	untrack: vi.fn(),
 	resources: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock("../../src/octocode/shared/process.ts", async (original) => ({
 	...(await original<Record<string, unknown>>()),
 	stopTree: mocks.stopTree,
 }));
+vi.mock("../../src/octocode/shared/process-descendants.ts", () => ({ descendantRows: mocks.descendantRows }));
 vi.mock("../../src/octocode/shared/shell-groups.ts", async (original) => ({
 	...(await original<Record<string, unknown>>()),
 	SHELL_GROUPS_FILE_ENV: "OCTOCODE_SHELL_GROUPS_FILE",
@@ -130,6 +132,7 @@ beforeEach(() => {
 	mocks.spawn.mockReturnValue(child);
 	mocks.prepareTree.mockResolvedValue(undefined);
 	mocks.stopTree.mockResolvedValue(undefined);
+	mocks.descendantRows.mockResolvedValue([]);
 	mocks.leftBehind.mockResolvedValue(false);
 	mocks.resources.mockReturnValue({});
 	mocks.nonce.mockReturnValue(path.join(root, "nonce"));
@@ -248,6 +251,37 @@ describe("subagent admission and teardown interleavings", () => {
 		await expect(work).resolves.toMatchObject({ text: "done. Completed report" });
 		expect(settled).toHaveBeenCalledTimes(1);
 		expect(resolved).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("aborts work immediately but holds EOF while the shared descendant snapshot is pending", async () => {
+		const capture = gate<[]>();
+		mocks.descendantRows.mockReturnValue(capture.promise);
+		const controller = new AbortController();
+		const work = superviseChild(run({ signal: controller.signal }), prepared);
+		await vi.advanceTimersByTimeAsync(0);
+		child.event({ type: "agent_start" });
+		controller.abort();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(child.commands.filter((command) => command.type === "abort")).toEqual([
+			{ type: "abort", holdShutdown: true },
+		]);
+		expect(child.stdin.writableEnded).toBe(false);
+		expect(mocks.stopTree).not.toHaveBeenCalled();
+		child.event({
+			type: "message_end",
+			message: { role: "assistant", content: [{ type: "text", text: "done. Kept report" }], stopReason: "stop" },
+		});
+		child.event({ type: "agent_settled" });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(child.stdin.writableEnded).toBe(false);
+		expect(mocks.descendantRows).toHaveBeenCalledTimes(1);
+		capture.resolve([]);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(child.stdin.writableEnded).toBe(true);
+		child.exit();
+		await expect(work).resolves.toMatchObject({ text: "done. Kept report" });
+		expect(mocks.stopTree).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 

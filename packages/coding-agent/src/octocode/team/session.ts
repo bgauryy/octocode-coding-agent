@@ -14,9 +14,35 @@ import type { TeamView } from "./ticker.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamState } from "./session/state.ts";
 import { patiently } from "./store/patient.ts";
+import { openRunnerBridge } from "./runner-bridge.ts";
+import type { RunnerMemberInput } from "./runner-member.ts";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
 export class Team extends TeamState {
+	private readonly runnerBridgeIds = new Set<string>();
+	/** Restricts an external turn to its own team identity and cooperative mailbox. */
+	async runnerBridge(input: RunnerMemberInput) {
+		if (this.runnerBridgeIds.has(input.id)) throw new Error(`The runner mailbox ${input.id} is already open.`);
+		this.runnerBridgeIds.add(input.id);
+		try {
+			const bridge = await openRunnerBridge(this.sendHost(), input, (id, secret) => this.vouch(id, secret));
+			let closing: Promise<void> | undefined;
+			return {
+				...bridge,
+				close: () =>
+					(closing ??= (async () => {
+						try {
+							await bridge.close();
+						} finally {
+							this.runnerBridgeIds.delete(input.id);
+						}
+					})()),
+			};
+		} catch (error) {
+			this.runnerBridgeIds.delete(input.id);
+			throw error;
+		}
+	}
 	/** Aborted while an interrupt waits for this agent's run to stop, or a question from its coordinator for its model (`agent_before_settle` waits end early on it). */
 	get interrupted(): AbortSignal {
 		return AbortSignal.any([this.mail.interrupted, this.mail.asked]);
@@ -107,6 +133,7 @@ export class Team extends TeamState {
 			this.ticker.reset();
 			this.relays.reset();
 			this.finished.clear();
+			this.runnerTasks.clear();
 			this.vouches.clear();
 			this.approvals.clear();
 			this.ctx = undefined;

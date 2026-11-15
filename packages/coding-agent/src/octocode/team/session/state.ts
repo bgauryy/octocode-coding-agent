@@ -23,6 +23,8 @@ import { WakePace } from "../wake-pace.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "../store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
+const RECENT_FINISHED_LIMIT = 128;
+
 /**
  * What a team member holds for its process (identity, database, ticker, mail, reservations, vouches) and the hosts the
  * send and reservation helpers read it through. `Team` (`../session.ts`) owns the public operations on top of it.
@@ -67,6 +69,17 @@ export abstract class TeamState {
 	protected stopParentWatch: (() => void) | undefined;
 	/** Subagents this session started that have finished: id → where their report went, for a later message to them. */
 	protected readonly finished = new Map<string, string>();
+	protected readonly runnerTasks = new Map<string, { active: boolean; mail: boolean }>();
+	/** Runner sessions are one turn: retain their capability beside recent completion receipts. */
+	trackRunner(id: string, mail: boolean): () => void {
+		const entry = { active: true, mail };
+		this.runnerTasks.set(id, entry);
+		return () => {
+			entry.active = false;
+			const inactive = [...this.runnerTasks].filter(([, state]) => !state.active);
+			for (const [old] of inactive.slice(0, -RECENT_FINISHED_LIMIT)) this.runnerTasks.delete(old);
+		};
+	}
 	/** Resumes a finished subagent that still lingers; `running` holds the subagents that have yet to report, by id (set by the subagents domain). */
 	setResumer(resume: Resumer, running?: ReadonlyMap<string, unknown>): void {
 		this.resumer = resume;
@@ -89,7 +102,7 @@ export abstract class TeamState {
 	rememberFinished(id: string, receipt: string): void {
 		this.finished.delete(id);
 		this.finished.set(id, receipt);
-		if (this.finished.size > 128) this.finished.delete(this.finished.keys().next().value!);
+		if (this.finished.size > RECENT_FINISHED_LIMIT) this.finished.delete(this.finished.keys().next().value!);
 	}
 	/** Join (or refresh) as this process; the reservation host calls it before the first lock. */
 	abstract join(goal?: string): Member;
@@ -157,6 +170,7 @@ export abstract class TeamState {
 			signedByParent: (message) => this.vouches.signedByParent(message),
 			started: (id) => this.finished.has(id) || this.vouches.has(id),
 			mail: this.mail,
+			runner: (id) => this.runnerTasks.get(id),
 		};
 	}
 

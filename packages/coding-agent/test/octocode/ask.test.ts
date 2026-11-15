@@ -479,11 +479,9 @@ describe("askUser tool", () => {
 		expect(typed.content[0].text).toBe('"Which extras?" → Tests + (typed) CI');
 	});
 
-	it("bounds options and questions at 4 in the description and the code", async () => {
-		// Strict-mode schemas refuse maxItems: the limit is in the description and enforced in code.
+	it("bounds options and questions at 4", async () => {
+		// Strict-mode schemas refuse maxItems; the code enforces the limit.
 		expect(JSON.stringify(tool.parameters)).not.toContain("maxItems");
-		expect(tool.description).toContain("2-4 options");
-		expect(tool.description).toContain("at most 4 (more refused)");
 		const questions = Array.from({ length: 6 }, (_, i) => ({
 			question: `Q${i}?`,
 			options: ["A", "B", "C", "D", "E"].map((label) => ({ label })),

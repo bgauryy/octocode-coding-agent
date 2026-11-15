@@ -16,6 +16,8 @@ import { createSourceInfo, isSyntheticPath, type SourceInfo } from "../source-in
 import type { EnabledResourcePaths } from "./enabled-resources.ts";
 import { mergePaths, resolveResourcePath } from "./paths.ts";
 import { skillPathPrecedence } from "./skill-precedence.ts";
+import { withheldSkills } from "../skill-review.ts";
+import { skillCategory } from "../skills/category.ts";
 import { findSourceInfoForPath, getDefaultSourceInfoForPath, type ResourceRoots } from "./source-info.ts";
 import { dedupePrompts, dedupeThemes, loadThemes } from "./themes.ts";
 import type { DefaultResourceLoaderOptions, ResourceExtensionPaths } from "./types.ts";
@@ -252,13 +254,29 @@ export class ResourceCollections {
 			seenIdentities.add(candidate.canonicalPath);
 			return true;
 		});
-		this.skills = resolvedSkills.skills.map((skill) => ({
+		const skills = resolvedSkills.skills.map((skill) => ({
 			...skill,
 			sourceInfo:
 				this.findSourceInfoForPath(skill.filePath, this.extensionSkillSourceInfos, metadataByPath) ??
 				skill.sourceInfo ??
 				this.getDefaultSourceInfoForPath(skill.filePath),
 		}));
+		// The extension guard: a skill Octocode did not ship stays off until the user approved its exact files.
+		const reviewed = skills.map((skill) => ({
+			name: skill.name,
+			filePath: skill.filePath,
+			category: skillCategory(skill),
+		}));
+		const shipped = new Set(
+			reviewed.filter((skill) => skill.category === "core" || skill.category === "octocode").map((skill) => skill.name),
+		);
+		const off = withheldSkills(
+			reviewed.filter((skill) => skill.category === "workspace" || skill.category === "global"),
+			this.config.cwd,
+			shipped,
+		);
+		this.skills = off.size ? skills.filter((skill) => !off.has(skill.filePath)) : skills;
+		if (off.size) this.explicitSkills = this.explicitSkills.filter((identity) => !off.has(identity.skill.filePath));
 		this.skillDiagnostics = resolvedSkills.diagnostics;
 	}
 

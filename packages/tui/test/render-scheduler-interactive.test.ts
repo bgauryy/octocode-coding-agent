@@ -60,6 +60,12 @@ function scheduledDelays(run: () => void): number[] {
 const PERIOD_MS = 1000 / 60;
 
 describe("RenderScheduler pointer frames", () => {
+	it("rejects an invalid interactive refresh target", () => {
+		const { s } = scheduler();
+		for (const interactiveFps of [0, -1, 121, Infinity, NaN]) {
+			assert.throws(() => s.setPacing({ interactiveFps }), RangeError);
+		}
+	});
 	it("paints a pointer frame well before the streaming cadence would", async () => {
 		const { s, frames } = scheduler();
 		s.paintNow();
@@ -100,12 +106,13 @@ describe("RenderScheduler pointer frames", () => {
 		s.stop();
 	});
 
-	it("paces pointer frames to one 60 Hz frame unless the terminal confirmed synchronized output", async () => {
+	it("keeps a 60 Hz default independently of synchronized output and permits an explicit 120 Hz target", async () => {
 		// The delay the scheduler asks for right after a frame, read from its timer: wall-clock gaps only grow under load,
 		// so an upper bound on them would measure the machine, not the pacing.
-		const measure = async (synchronizedOutput: boolean | undefined) => {
+		const measure = async (synchronizedOutput: boolean | undefined, interactiveFps = 60) => {
 			const { s, frames, terminal } = scheduler();
 			terminal.synchronizedOutput = synchronizedOutput;
+			s.setPacing({ interactiveFps });
 			const delays = scheduledDelays(() => {
 				s.paintNow();
 				s.requestInteractive();
@@ -117,8 +124,9 @@ describe("RenderScheduler pointer frames", () => {
 		// Terminal.app answers no DECRQM: a frame faster than its paint only shows half-written states.
 		assert.ok((await measure(undefined)) >= 15, "unknown support waits a whole frame");
 		assert.ok((await measure(false)) >= 15);
-		const synchronized = await measure(true);
-		assert.ok(synchronized >= 7 && synchronized < 15, `synchronized terminals keep 8 ms (${synchronized} ms)`);
+		assert.ok((await measure(true)) >= 15, "synchronized output does not imply a faster renderer");
+		const explicit = await measure(true, 120);
+		assert.ok(explicit >= 7 && explicit < 15, `explicit 120 Hz target keeps 8 ms (${explicit} ms)`);
 	});
 
 	it("counts the 60 Hz period from the start of the last frame, not the end of its paint", async () => {

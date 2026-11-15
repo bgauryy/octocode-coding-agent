@@ -7,10 +7,10 @@ description: "Use when skill listings or MCP tool files are large or stale, or a
 
 Agents never read a skill's or MCP tool's own description directly. Octocode records what it discovers in the agent directory and shows agents the optimized text stored there:
 
-| Agents read | Stored in `<agent directory>/context-optimization/` | Rewrite with |
+| Agents read                                           | Stored in `<agent directory>/context-optimization/` | Rewrite with                   |
 | ----------------------------------------------------- | --------------------------------------------------- | ------------------------------ |
-| The skills listing: each skill's name and description | `skills.json` (`skills.txt` shows the text) | `octocode context check/apply` |
-| Each MCP server's generated TypeScript file | `mcp/<server>.json` (`.txt` shows the text) | this skill's `scripts/` |
+| The skills listing: each skill's name and description | `skills.json` (`skills.txt` shows the text)         | `octocode context check/apply` |
+| Each MCP server's generated TypeScript file           | `mcp/<server>.json` (`.txt` shows the text)         | this skill's `scripts/`        |
 
 User-level skills and servers are stored there directly and shared by every project; skills inside a repository and servers its `.octocode/mcp.json` defines are stored under `projects/<repo>-<hash>/`. The commands pick the right folder from the working directory, so run them in the project whose skills or servers you optimize.
 
@@ -56,25 +56,25 @@ When a tool cannot be described without guessing, keep its source description.
 
 ### When a server changes
 
-| Change | What the product does | What to do |
+| Change                         | What the product does                                                     | What to do                                                             |
 | ------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Some tools changed | Keeps overrides whose source text is unchanged; others use source wording | Rewrite the tools `list` reports as stale, check, apply |
-| Instructions changed | Drops the server override, keeps tool overrides | Rewrite the server instructions, check, apply |
-| Octocode updated its generator | Re-renders with the stored overrides and checks them again | Nothing, unless a session falls back to the plain file; then run check |
-| New server | Renders the plain file and tells the user once | Run the steps above |
+| Some tools changed             | Keeps overrides whose source text is unchanged; others use source wording | Rewrite the tools `list` reports as stale, check, apply                |
+| Instructions changed           | Drops the server override, keeps tool overrides                           | Rewrite the server instructions, check, apply                          |
+| Octocode updated its generator | Re-renders with the stored overrides and checks them again                | Nothing, unless a session falls back to the plain file; then run check |
+| New server                     | Renders the plain file and tells the user once                            | Run the steps above                                                    |
 
 ## Resources
 
-| When | Read | Why |
+| When                                       | Read                                               | Why                                                                                           |
 | ------------------------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Rewriting a skill description | [skill-rules](references/skill-rules.md) | What a listing entry must carry, budget, example |
-| Rewriting any MCP description or trigger | [rewrite-rules](references/rewrite-rules.md) | What to keep, cut and fold; triggers; budget; worked example |
-| Writing or debugging an MCP overrides file | [overrides-format](references/overrides-format.md) | JSON shape, field paths, check limits, stored form |
-| Choosing which agents get an MCP server | [assignment](references/assignment.md) | Selectors, `defaultActive`, cache effect |
-| Producing an MCP plain file and catalog | [generate.mjs](scripts/generate.mjs) | Saves the catalog and renders the plain file |
-| Validating MCP overrides | [check.mjs](scripts/check.mjs) | Fidelity check and size tables |
-| Saving an MCP result | [apply.mjs](scripts/apply.mjs) | Checks again, then writes file and metadata |
-| Changing how the scripts reach the product | [lib.mjs](scripts/lib.mjs) | They only call the product's MCP compaction commands; `OCTOCODE_BIN` names another executable |
+| Rewriting a skill description              | [skill-rules](references/skill-rules.md)           | What a listing entry must carry, budget, example                                              |
+| Rewriting any MCP description or trigger   | [rewrite-rules](references/rewrite-rules.md)       | What to keep, cut and fold; triggers; budget; worked example                                  |
+| Writing or debugging an MCP overrides file | [overrides-format](references/overrides-format.md) | JSON shape, field paths, check limits, stored form                                            |
+| Choosing which agents get an MCP server    | [assignment](references/assignment.md)             | Selectors, `defaultActive`, cache effect                                                      |
+| Producing an MCP plain file and catalog    | [generate.mjs](scripts/generate.mjs)               | Saves the catalog and renders the plain file                                                  |
+| Validating MCP overrides                   | [check.mjs](scripts/check.mjs)                     | Fidelity check and size tables                                                                |
+| Saving an MCP result                       | [apply.mjs](scripts/apply.mjs)                     | Checks again, then writes file and metadata                                                   |
+| Changing how the scripts reach the product | [lib.mjs](scripts/lib.mjs)                         | They only call the product's MCP compaction commands; `OCTOCODE_BIN` names another executable |
 
 Skills need no script: run `octocode context` directly (`octocode context --help`).
 

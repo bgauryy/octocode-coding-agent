@@ -1,3 +1,4 @@
+import { approveFixtureMcp } from "../../coding-agent/test/octocode/guard-helpers.ts";
 import { planningRefusal } from "../../coding-agent/src/octocode/plan/gate.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -151,6 +152,8 @@ describe("default MCP in the shared host", () => {
 				cwd = tmp();
 			const entry = { command: process.execPath, args: [echo], ...(roles ? { roles } : {}) };
 			writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: entry } }));
+			// The user approved the replacement in the security review; an unapproved one stays off.
+			approveFixtureMcp(cwd, agentDir, presetEntries(presets));
 			const configured = host({
 				cwd,
 				presets,
@@ -245,6 +248,43 @@ describe("default MCP in the shared host", () => {
 		expect(h.transports).toHaveLength(0);
 		expect(h.tools.has("mcp__octocode__localFetch")).toBe(false);
 		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", enabled: false, state: "disabled" }]);
+	});
+	it("names only switched-on servers the review holds back as awaiting approval in mcp_status", async () => {
+		const entry = (name: string, enabled: boolean) => ({
+			name,
+			config: { command: "never-launch", enabled },
+			source: "/mcp.json",
+			scope: "global" as const,
+			withheld: true as const,
+		});
+		const createTransport = vi.fn();
+		const h = host({
+			servers: [entry("pending-review", true), entry("switched-off", false)],
+			presets: [],
+			createTransport,
+		});
+		await h.start();
+		const sections = await h.prompt();
+		expect(sections.mcp_status).toContain("- pending-review");
+		// The user switched this one off: telling the model it awaits approval would be wrong and cost every request.
+		expect(sections.mcp_status).not.toContain("switched-off");
+		expect(createTransport).not.toHaveBeenCalled();
+	});
+	it("leaves mcp_status out when the only withheld server is switched off", async () => {
+		const h = host({
+			servers: [
+				{
+					name: "unused",
+					config: { command: "never-launch", enabled: false },
+					source: "/mcp.json",
+					scope: "global",
+					withheld: true,
+				},
+			],
+			presets: [],
+		});
+		await h.start();
+		expect((await h.prompt()).mcp_status).toBeUndefined();
 	});
 	it("bounds startup, cancels a prompt wait, and cleans up a connecting process on shutdown", async () => {
 		const h = host({

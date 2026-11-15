@@ -4,6 +4,7 @@ import { say } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
 import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
+import { enforces, guardNotices } from "../../guard/registry.ts";
 import { emptyHooks } from "../config/parse.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
@@ -33,6 +34,7 @@ export function loadSessionHooks(
 		plugins: effectivePlugins(settings, ctx.cwd),
 		// An empty map still applies the harness defaults (Claude Code and Codex hooks off until enabled).
 		toggles: settings.toggles ?? {},
+		gate: { enforce: enforces(settings, "hook") },
 	});
 	session.config = decisionsOnly
 		? { ...emptyHooks(), PreToolUse: loaded.config.PreToolUse, PermissionRequest: loaded.config.PermissionRequest }
@@ -104,6 +106,10 @@ export function registerSessionStartHooks(
 
 	api.on("session_start", async (event, ctx) => {
 		loadSessionHooks(api, session, ctx, home);
+		// Hooks gate last of the three kinds, so the extension guard's one start-up notice is complete here. It is for a
+		// person who can open /security: a headless run lists the same with `octocode security check`.
+		if (!child && ctx.hasUI && event.reason === "startup")
+			for (const notice of guardNotices()) say(ctx, notice.text, notice.level);
 		pending = [];
 		startHooks(ctx, START_SOURCE[event.reason] ?? "startup", true);
 	});

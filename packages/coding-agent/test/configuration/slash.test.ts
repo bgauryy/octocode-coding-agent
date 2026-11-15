@@ -45,8 +45,8 @@ describe("/configuration", () => {
 		await instance.defaultEditor.onSubmit("/settings");
 		await instance.defaultEditor.onSubmit("/config");
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
-			"Unknown command /settings. Did you mean /configuration?",
-			"Unknown command /config. Did you mean /configuration?",
+			"Unknown command /settings. Did you mean /configuration? Enter again sends it as a message.",
+			"Unknown command /config. Did you mean /configuration? Enter again sends it as a message.",
 		]);
 	});
 

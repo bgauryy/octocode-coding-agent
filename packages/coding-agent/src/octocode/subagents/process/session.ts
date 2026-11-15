@@ -47,6 +47,8 @@ export function buildAgentArgs(
 	thinking?: string,
 	/** Servers a task named (`Identity.mcpNamed`): a child that selects by allowlist gets their tools in it. */
 	namedServers: readonly string[] = [],
+	/** `ModelRoute.fallbackModels`: the models the child continues on when its own fails on a credential, limit or outage. */
+	fallbackModels: readonly string[] = [],
 ): string[] {
 	// `--rpc-ask`: the parent's relay answers typed question batches (`ChildRelay`), so the child sends `ask`, not select/input.
 	// `--rpc-lean-events`: each message and tool result arrives whole once; the parent reads no repeated copy (`events.ts`).
@@ -68,6 +70,7 @@ export function buildAgentArgs(
 	// preference is routed by `routeModel` before this, so an unavailable one never reaches Octocode.
 	if (model) args.push("--model", model);
 	else if (thinking) args.push("--thinking", thinking);
+	if (fallbackModels.length > 0) args.push("--set", `retry.fallbackModels=${JSON.stringify(fallbackModels)}`);
 	const tools = profileTools(profile);
 	// A `+name` list takes exact names, so the child's MCP host selects a named server itself (`isSelected`, from the
 	// handoff file's `only`); only an allowlist needs the server's pattern in it.
@@ -91,6 +94,14 @@ export function buildAgentArgs(
 	for (const file of skillPaths ?? []) args.push("--skill", file);
 	return args;
 }
+
+/** `buildAgentArgs` for a planned run: its profile, the route's model, level and fallback models, and the servers its task named. */
+export const buildRouteArgs = (
+	profile: AgentProfile | undefined,
+	route: { model?: string; thinking?: string; fallbackModels?: readonly string[] },
+	session: ChildSession,
+	namedServers?: readonly string[],
+): string[] => buildAgentArgs(profile, route.model, session, [], route.thinking, namedServers, route.fallbackModels);
 
 /** Where a child without a scratch folder (an unwritable workspace) spills a long report, so a cut report always has its whole copy. */
 export function reportDir(id: string): string | undefined {

@@ -80,7 +80,7 @@ describe("running work rows", () => {
 		expect(ext).toContain("ext");
 		expect(ext).toContain("codex-1");
 		expect(ext).toMatch(/30s\s*$/);
-		expect(agent).toContain("agent");
+		expect(agent).toContain("🐙");
 		expect(agent).toContain("general-1a2b");
 	});
 
@@ -222,8 +222,8 @@ describe("the worktree badge", () => {
 describe("typed counts and the footer", () => {
 	it("counts by type, in a fixed order, and is empty when nothing runs", () => {
 		expect(workCounts(0, [])).toBe("");
-		expect(workCounts(1, [])).toBe("1 agent");
-		expect(workCounts(2, [bash, bare, timer])).toBe("2 agents · 2 bash · 1 timer");
+		expect(workCounts(1, [])).toBe("🐙 1 agent");
+		expect(workCounts(2, [bash, bare, timer])).toBe("🐙 2 agents · 2 bash · 1 timer");
 		expect(workCounts(0, [timer, external, bash])).toBe("1 bash · 1 timer · 1 external");
 	});
 
@@ -257,16 +257,49 @@ describe("typed counts and the footer", () => {
 		work.set("bash", [bash]);
 		work.set("timer", [timer]);
 		view.setBackground(["general-1a2b"]);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("1 agent · 1 bash · 1 timer");
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 bash · 1 timer");
 		expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 		work.set("bash", []);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("1 agent · 1 timer");
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 timer");
 		work.set("timer", []);
 		view.setBackground([]);
 		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
 		expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
 		view.stop(ctx);
 		team.stop();
+	});
+
+	it("publishes the footer's agent count for the tab title, and shows a finished child once", () => {
+		const live = (id: string) => member(id, { parentId: "main-aaaaaa", updatedAt: Date.now(), joinedAt: Date.now() });
+		const main = member("main-aaaaaa", { status: "idle", updatedAt: Date.now() });
+		const state = { members: [main, live("a-0001"), live("b-0002")], traffic: [] as never[] };
+		let tick: (() => void) | undefined;
+		const team = {
+			id: "main-aaaaaa",
+			view: state,
+			approvals: undefined,
+			watch: (cb: () => void) => {
+				tick = cb;
+				return () => undefined;
+			},
+		} as unknown as Team;
+		const ctx = fakeCtx({ cwd: tmp() });
+		const work = new RunningWork();
+		const view = new AgentsView(team, work);
+		view.start(ctx);
+		view.setBackground(["a-0001", "c-0003"]);
+		tick?.();
+		// Two live team rows plus the one background child the team does not list.
+		expect(work.agents()).toBe(3);
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 3 agents");
+		// b leaves the team while c is still only a background name.
+		state.members = [main, live("a-0001")];
+		view.setBackground(["a-0001", "b-0002", "c-0003"]);
+		tick?.();
+		expect(work.agents()).toBe(2);
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 2 agents");
+		view.stop(ctx);
+		expect(work.agents()).toBeUndefined();
 	});
 
 	it("repaints the widget when the work changes, and not when it is published unchanged", () => {

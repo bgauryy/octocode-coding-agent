@@ -43,6 +43,18 @@ export class ProviderLayers {
 		]);
 	}
 
+	/** An explicit context definition stays in control when a provider reports a different runtime capacity. */
+	hasContextWindowOverride(providerId: string, modelId: string): boolean {
+		const config = this.config.getProvider(providerId);
+		return (
+			config?.models?.some((model) => model.id === modelId && model.contextWindow !== undefined) === true ||
+			config?.modelOverrides?.[modelId]?.contextWindow !== undefined ||
+			this.extensionProviders
+				.get(providerId)
+				?.models?.some((model) => model.id === modelId && "contextWindow" in model) === true
+		);
+	}
+
 	/** Returns the provider without virtual models, or undefined when only virtual models define it. */
 	recomposeProvider(providerId: string): Provider | undefined {
 		const provider = this.composeProvider(providerId);

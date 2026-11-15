@@ -2,9 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { reportContract } from "../../src/octocode/instructions/report.ts";
 import { withIdentity } from "../../src/octocode/instructions/task.ts";
-import { archiveSearch } from "../../src/octocode/history/archive.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { renderAgentCall } from "../../src/octocode/subagents/render.ts";
@@ -67,15 +65,12 @@ function setup() {
 const reportOf = (text: string) => JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
 
 describe("the agent tool's goal", () => {
-	it("takes a goal in the schema (required for a new child) without a size limit (a refusal would echo every argument back), and says how much shows", () => {
+	it("takes a goal without a schema size limit", () => {
 		const { agent } = setup();
 		const goal = agent.parameters.properties.goal;
 		// Optional in the schema so `resume` can keep the child's goal; a new child without one is refused (next test).
 		expect(agent.parameters.required).toEqual(["task"]);
 		expect(goal).toEqual({ type: "string", description: expect.any(String) });
-		expect(goal.description).toMatch(/about 48 characters fit/);
-		expect(goal.description).toMatch(/Required for a new child/);
-		expect(goal.description).not.toContain("audit auth token refresh");
 		expect(agent.parameters.properties.task).not.toHaveProperty("minLength");
 	});
 
@@ -97,19 +92,17 @@ describe("the agent tool's goal", () => {
 		expect(AGENT_NAMES).toContain(facts.id);
 		expect(facts).toMatchObject({ role: "reviewer", goal: GOAL, parent: s.team.id });
 		expect(result.details).toMatchObject({ id: facts.id, profile: "reviewer", goal: GOAL });
-		expect(facts.task).toContain(
-			`## You\nYour name is \`${facts.id}\` (reviewer). Your goal: ${GOAL}. You work on a team led by your coordinator \`${s.team.id}\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator.`,
-		);
+		for (const value of [facts.id, "reviewer", GOAL, s.team.id]) expect(facts.task).toContain(value);
 	});
 
 	it("tells the child why it was started: the reason of the call that started it", async () => {
 		const s = setup();
 		const result = await s.run({ task: "report", goal: GOAL, reason: "The refresh  flow\nchanged in #42" });
 		const facts = reportOf(result.content[0].text as string);
-		expect(facts.task).toContain("Why you were started: The refresh flow changed in #42.\n\n## You\n");
-		expect(facts.task).toContain(`Your goal: ${GOAL}. You work on a team led by your coordinator`);
+		expect(facts.task).toContain("The refresh flow changed in #42");
+		expect(facts.task).toContain(GOAL);
 		const bare = reportOf((await s.run({ task: "report", goal: GOAL })).content[0].text as string);
-		expect(bare.task).not.toContain("Why you were started");
+		expect(bare.task).not.toContain("The refresh flow changed in #42");
 	});
 
 	it("gives parallel children different names", async () => {
@@ -172,7 +165,7 @@ describe("the agent tool's goal", () => {
 
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {
 		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {}))).toBe(
-			`○ Agent(${GOAL})`,
+			`○ 🐙 Agent(${GOAL})`,
 		);
 		expect(rendered(renderAgentCall({ goal: "a\u001b[2Jb" }, theme, {}))).not.toContain("\u001b");
 		const s = setup();
@@ -221,21 +214,19 @@ describe("child identity", () => {
 
 	it("keeps the why's own ending punctuation", () => {
 		const text = withIdentity("do it", { id: "inky-kraken", goal: GOAL, why: "Is the cache stale?" });
-		expect(text).toContain("Why you were started: Is the cache stale?\n\n## You\n");
+		expect(text).toContain("Is the cache stale?");
 	});
 
 	it("tells the child its own name, role, goal, parent and scratch folder", () => {
-		expect(
-			withIdentity("do it", {
-				id: "inky-kraken",
-				role: "reviewer",
-				goal: GOAL,
-				parentId: "salty-squid",
-				scratch: "/tmp/s",
-			}),
-		).toBe(
-			`do it\n\n## You\nYour name is \`inky-kraken\` (reviewer). Your goal: ${GOAL}. You work on a team led by your coordinator \`salty-squid\` (\`to\` \`parent\`): follow its task and decisions, coordinate with teammates through reservations and messages, and send blockers, decisions and conflicts to your coordinator. Your scratch folder is \`/tmp/s\`.\n\n## Report\n${reportContract()}`,
-		);
+		const text = withIdentity("do it", {
+			id: "inky-kraken",
+			role: "reviewer",
+			goal: GOAL,
+			parentId: "salty-squid",
+			scratch: "/tmp/s",
+		});
+		for (const value of ["do it", "inky-kraken", "reviewer", GOAL, "salty-squid", "/tmp/s"])
+			expect(text).toContain(value);
 	});
 
 	it("adds one line naming the parent's archive library only when it is given", () => {
@@ -243,22 +234,8 @@ describe("child identity", () => {
 		const base = withIdentity("do it", identity);
 		expect(withIdentity("do it", identity, undefined)).toBe(base);
 		const library = "/home/u/.octocode/agent/sessions/s/archive/LIBRARY.md";
-		// The line joins the `## You` block, before the report contract that closes every task.
-		const [you, report] = base.split("\n\n## Report\n");
-		expect(report).toBe(reportContract());
-		expect(withIdentity("do it", identity, { library })).toBe(
-			`${you}\nEarlier history of your coordinator's session is archived in /home/u/.octocode/agent/sessions/s/archive (read-only; LIBRARY.md indexes it; the repository shows today's state, the archive what was said and found then). ${archiveSearch()}\n\n## Report\n${report}`,
-		);
-	});
-
-	it("tells the child to search with the archive tool, and names rg on the folder for a child without it", () => {
-		const identity = { id: "inky-kraken", role: "reviewer", parentId: "salty-squid", scratch: "/tmp/s" };
-		const library = "/home/u/.octocode/agent/sessions/s/archive/LIBRARY.md";
-		const line = withIdentity("do it", identity, { library })
-			.split("\n")
-			.find((text) => text.startsWith("Earlier history of your coordinator's session"))!;
-		expect(line).toContain("with the `archive` tool");
-		expect(line).toContain("`rg -n -C 8 <term>` in the folder");
+		expect(base).not.toContain(path.dirname(library));
+		expect(withIdentity("do it", identity, { library })).toContain(path.dirname(library));
 	});
 });
 

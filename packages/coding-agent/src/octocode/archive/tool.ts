@@ -158,7 +158,7 @@ export function registerArchiveTool(api: ExtensionAPI, options: { isSubagent?: b
 				if (!input.reason?.trim()) throw new Error("archive needs reason (why history is needed, not the code).");
 				if (!archiveRead(input)) throw new Error("Unknown archive operation.");
 				if (subagent) {
-					const source = input.source === "events" ? "events" : undefined;
+					const source = input.source === "events" || input.id?.startsWith("event:") ? "events" : undefined;
 					const diagnostic = input.errors ? "errors" : source ? `source ${source}` : undefined;
 					if (diagnostic)
 						throw new Error(`${diagnostic} is read by the main session only: ask your coordinator for it.`);

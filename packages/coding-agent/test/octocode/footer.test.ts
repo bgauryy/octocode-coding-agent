@@ -94,6 +94,11 @@ describe("footer", () => {
 		expect(contextBar(100).bar).toBe("▰▰▰▰▰▰▰▰");
 		expect(contextBar(65).color).toBe("warning");
 		expect(contextBar(91).color).toBe("error");
+		// Colour and fill follow the rounded percent the label shows.
+		expect(contextBar(49.6)).toEqual({ bar: "▰▰▰▰▱▱▱▱", color: "warning" });
+		expect(contextBar(49.4).color).toBe("success");
+		expect(contextBar(80.4).color).toBe("warning");
+		expect(contextBar(80.6).color).toBe("error");
 		painted.length = 0;
 		footerLines({ ...state, context: { percent: 91, limit: 200_000 } }, "main", statuses, recording, 160);
 		expect(painted.some(([color, text]) => color === "error" && text.includes("91%"))).toBe(true);

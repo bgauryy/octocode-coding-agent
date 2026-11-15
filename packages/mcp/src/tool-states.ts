@@ -67,10 +67,20 @@ export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[]
 }
 
 let reader: (() => McpServerToolStates[]) | undefined;
+let serverNamesReader: (() => string[] | undefined) | undefined;
 
 /** Sets the session's reader; the MCP registry calls it once. */
-export function publishMcpToolStates(read: () => McpServerToolStates[]): void {
+export function publishMcpToolStates(
+	read: () => McpServerToolStates[],
+	readServerNames?: () => string[] | undefined,
+): void {
 	reader = read;
+	serverNamesReader = readServerNames;
+}
+
+/** All registered names, including disabled, withheld and pending entries; undefined means unavailable. */
+export function currentMcpServerNames(): string[] | undefined {
+	return serverNamesReader?.();
 }
 
 /** The session's tool states, or undefined in a process that runs no session. */

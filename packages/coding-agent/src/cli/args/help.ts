@@ -53,17 +53,15 @@ ${chalk.bold("Examples:")}
   # Include files in initial message
   ${APP_NAME} @prompt.md @image.png "What color is the sky?"
 
-  # Delegate one task without reading a parent's open stdin (pre-trusted folder)
+  # Delegate one task without reading a parent's open stdin; check the exit status
+  # (the folder must be trusted first: --trust records your grant, it is not a sandbox)
   ${APP_NAME} -p --no-stdin --no-session --permission-mode workspace "Review this project without editing files"
 
-  # Stream JSON Lines events, not a single JSON document
+  # Stream JSON Lines events, not a single JSON document; check the exit status
   ${APP_NAME} --mode json --no-stdin --permission-mode workspace "Run tests and report failures"
 
-  # Persistent worker. Keep stdin open until completion; --no-dialogs refuses asks
+  # Persistent worker: keep stdin open, check each completed run's outcome; --no-dialogs refuses asks
   ${APP_NAME} --mode rpc --no-dialogs --permission-mode workspace
-
-  # Configure provider credentials first; --trust records folder trust, not a sandbox
-  # Text/JSON: check exit status. RPC: check the completed run's outcome.
 
   # Prompt beginning with a dash
   ${APP_NAME} -p -- "- Summarize these points"

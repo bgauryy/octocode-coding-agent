@@ -37,7 +37,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			task: Type.String({
 				description:
-					"Brief as in <delegation>; msg#<N> appends the complete fenced message, report:<agent-id> a fenced report or bounded excerpt. Invalid or unresolvable references, including oversized messages, refuse the call.",
+					"Brief as in <delegation>; msg#<N> appends the complete fenced message, report:<agent-id> a fenced report or bounded excerpt. Recognized references that cannot be resolved, including oversized messages, refuse the call.",
 			}),
 			item: Type.Optional(
 				Type.String({
@@ -48,7 +48,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Continue this session's finished/stopped child, with optional model override. Isolated children cannot resume.",
+						"Continue this session's finished/stopped child, with optional model override. Isolated children cannot resume: start a task citing report:<id>.",
 				}),
 			),
 			profile: Type.Optional(

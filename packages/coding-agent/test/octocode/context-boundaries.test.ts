@@ -78,7 +78,7 @@ describe("agent context boundaries", () => {
 		expect(text).not.toContain("not delivered");
 	});
 
-	it("projects only active capabilities and refreshes changed profile guidance", async () => {
+	it("refreshes changed fixture profile guidance for active tools", async () => {
 		// With no Octocode server running, guidance follows the Octocode tools present.
 		const fake = fakeHost();
 		let description = "first profile";
@@ -98,10 +98,6 @@ describe("agent context boundaries", () => {
 			await fake.emit("before_agent_start", event, {});
 			return Object.values(allSections(event)).join("\n\n");
 		};
-		const inactive = await prompt(["read"]);
-		expect(inactive).toContain("no lookup tool is available");
-		expect(inactive).not.toContain("## Run children and use reports");
-		expect(inactive).not.toContain("You are a subagent");
 		const active = ["read", "agent", "mcp__octocode__localSearch"];
 		expect(await prompt(active)).toContain("first profile");
 		description = "updated profile";

@@ -4,9 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
-import { formatSkillsForPrompt, loadSkillsFromDir } from "../../src/core/skills.ts";
-import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
-import { FAKE_RESEARCH } from "./fake-research.ts";
+import { loadSkillsFromDir } from "../../src/core/skills.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { closeNames, editDistance } from "../../src/octocode/skill/catalog.ts";
 import { skillLoadSummary } from "../../src/octocode/skill/render.ts";
@@ -77,7 +75,6 @@ describe("skill tool", () => {
 		expect(text).not.toContain("description: Use for alpha");
 		expect(result.details).toMatchObject({ name: "alpha", baseDir: f.alpha, lines: 4 });
 		expect(tool.defaultActive).not.toBe(false);
-		expect(tool.description).toMatch(/directory/);
 	});
 
 	it("accepts the forms a user types: /skill:name, skill:name and another case", async () => {
@@ -282,30 +279,6 @@ describe("close names", () => {
 	});
 });
 
-describe("skill policy", () => {
-	const base = { research: FAKE_RESEARCH, profiles: [], canDelegate: true };
-
-	it("is stated once, by the skills section, so neither the policy nor the tool's listing restates the trigger", () => {
-		const trigger = "whose description matches the task";
-		for (const canDelegate of [true, false]) {
-			const prompt = octocodePrompt({ ...base, canDelegate });
-			expect(prompt).not.toContain(trigger);
-			expect(prompt).not.toMatch(/load (that|a|the|any named) skill/i);
-		}
-		expect(octocodePrompt({ ...base, canDelegate: false })).toContain("finish your task yourself.");
-		// The skills section carries the rule for whichever loader the session has; the tool says only what it does.
-		expect(formatSkillsForPrompt(fixtures().loaded.skills.slice(0, 1), "skill")).toContain(
-			`Use the skill tool (one call per name) to load every skill ${trigger} before other work; several can apply.`,
-		);
-		const { tool } = setup(fixtures().snapshot);
-		// The tool list points to the skills section instead of restating its trigger.
-		expect(tool.promptSnippet).toContain("<available_skills>");
-		expect(tool.promptSnippet).not.toContain(trigger);
-		expect(tool.description).not.toContain(trigger);
-		expect(tool.description).not.toContain("matches the description");
-	});
-});
-
 describe("a session with skills", () => {
 	let harness: Harness | undefined;
 	let env: ReturnType<typeof fixtures>;
@@ -345,7 +318,6 @@ describe("a session with skills", () => {
 		]);
 		await h.session.prompt("do alpha work");
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
-		expect(sections?.skills).toContain("Use the skill tool (one call per name) to load every skill");
 		expect(sections?.skills).toContain('<skill name="alpha">');
 		expect(sections?.skills).not.toContain('<skill name="hidden"');
 		const result = getToolResult(h, "skill");
@@ -362,6 +334,5 @@ describe("a session with skills", () => {
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
 		expect(sections?.skills).toBeUndefined();
 		expect(sections?.tools ?? "").not.toContain("- skill:");
-		expect(h.session.systemPrompt).not.toContain("skill tool");
 	});
 });

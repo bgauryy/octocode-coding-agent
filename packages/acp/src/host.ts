@@ -18,8 +18,8 @@ interface AcpProcessTree {
 	prepare(): Promise<void>;
 	/** Right after spawning the root of a tree. */
 	adopt(pid: number | undefined): void;
-	/** Ends the tree rooted at `pid`: a signal, a grace period, then a kill. */
-	stop(pid: number | undefined): Promise<void>;
+	/** Captures ownership before `graceful` (called once), then stops the tree even if it rejects. Without it, stops directly. */
+	stop(pid: number | undefined, graceful?: () => Promise<void>): Promise<void>;
 }
 
 /** What the outbound client (`AcpBackend`) needs from its host. */

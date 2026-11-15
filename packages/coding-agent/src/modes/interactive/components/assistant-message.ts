@@ -2,12 +2,12 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import {
-	animationClock,
+	type Component,
 	Container,
 	GLYPH,
-	Markdown,
+	type Markdown,
 	type MarkdownTheme,
-	MOTION,
+	renderChanged,
 	MouseRegion,
 	Spacer,
 	Text,
@@ -19,9 +19,9 @@ import { ApplicationAssets } from "../../../core/application/assets.ts";
 import { normalizeApplicationMessage } from "../../../core/application/normalize.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
-import { createMarkdownTransform } from "./markdown-transform.ts";
+import { AssistantMarkdown } from "./assistant-markdown.ts";
 import { LongResponse } from "./long-response.ts";
-import { streamingMarkdownTheme } from "./streaming-highlight.ts";
+import { ReasoningFrames } from "./reasoning-frames.ts";
 import { Osc133ZoneMarker } from "./osc133-zone.ts";
 import {
 	ContentAttachmentComponent,
@@ -41,9 +41,6 @@ import {
 } from "./reasoning-label.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 
-/** A live label that no render has drawn for this long belongs to a component that left the screen. */
-const STALE_FRAME_MS = 2_000;
-
 /** Renders a complete assistant message. */
 export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
@@ -57,7 +54,8 @@ export class AssistantMessageComponent extends Container {
 	private readonly zone = new Osc133ZoneMarker();
 	private compatibilityAssets?: ApplicationAssets;
 	private readonly tools = new Map<string, ToolExecutionComponent>();
-	private readonly markdown = new Map<string, { component: Markdown; text: string }>();
+	private readonly markdown = new AssistantMarkdown();
+	private contentDirty = false;
 	private readonly attachments = new Map<string, ContentAttachmentComponent>();
 	private readonly fullContent = transcriptContent;
 	private expanded = false;
@@ -68,7 +66,7 @@ export class AssistantMessageComponent extends Container {
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
 	private mouseHint = false;
 	/** The frame subscription of a streaming reasoning label; held only while one is on screen. */
-	private stopFrames: (() => void) | undefined;
+	private readonly frames: ReasoningFrames;
 	private liveLabel: LiveThinkingLabel | undefined;
 	/** Whether a tool row already showed the interrupt; decided once, when the message first reads as interrupted. */
 	private interruptShownByTool: boolean | undefined;
@@ -89,6 +87,7 @@ export class AssistantMessageComponent extends Container {
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 		this.contentOptions = contentOptions;
+		this.frames = new ReasoningFrames(() => this.liveLabel, contentOptions.requestRender);
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
@@ -161,37 +160,29 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	private markdownBlock(id: string, text: string, thinking = false): Markdown {
-		let cached = this.markdown.get(id);
-		if (!cached) {
-			cached = {
-				text,
-				component: new Markdown(
-					text,
-					this.outputPad,
-					0,
-					this.isStreaming ? streamingMarkdownTheme(this.markdownTheme) : this.markdownTheme,
-					thinking ? { color: (value: string) => theme.fg("thinkingText", value), italic: true } : undefined,
-					{
-						cwd: this.contentOptions.cwd,
-						transform: createMarkdownTransform(
-							thinking ? "assistant-thinking" : "assistant",
-							this.isStreaming,
-							this.markdownTransformers,
-						),
-					},
-				),
-			};
-			this.markdown.set(id, cached);
-		} else if (cached.text !== text) {
-			cached.component.setText(text);
-			cached.text = text;
-		}
-		return cached.component;
+		return this.markdown.get(id, text, {
+			streaming: this.isStreaming,
+			thinking,
+			padding: this.outputPad,
+			theme: this.markdownTheme,
+			transformers: this.markdownTransformers,
+			cwd: this.contentOptions.cwd,
+		});
 	}
 
 	override render(width: number): string[] {
+		this.rebuildContent();
 		const lines = super.render(width);
 		return this.hasToolCalls ? lines : this.zone.mark(lines);
+	}
+
+	override get children(): Component[] {
+		this.rebuildContent();
+		return super.children;
+	}
+
+	override set children(children: Component[]) {
+		super.children = children;
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
@@ -215,30 +206,14 @@ export class AssistantMessageComponent extends Container {
 				false,
 			);
 		}
-	}
-
-	/**
-	 * Ask for a frame every spinner step while a reasoning label streams, and not otherwise: the subscription ends with the
-	 * stream, with this component (`dispose`), or once frames stop drawing the label (it left the transcript unannounced).
-	 * Reduced motion keeps the subscription, but the clock does not tick decoration then.
-	 */
-	private syncFrames(): void {
-		const requestRender = this.contentOptions.requestRender;
-		if (!this.liveLabel || !requestRender) return this.dispose();
-		if (this.stopFrames) return;
-		this.stopFrames = animationClock.subscribe(
-			(now) => {
-				if (this.liveLabel && now - this.liveLabel.renderedAt < STALE_FRAME_MS) requestRender();
-				else this.dispose();
-			},
-			{ everyMs: MOTION.spinnerMs, kind: "decor" },
-		);
+		this.rebuildContent();
 	}
 
 	/** Stop asking for frames; the component may still be rendered, with a static label. */
 	dispose(): void {
-		this.stopFrames?.();
-		this.stopFrames = undefined;
+		this.contentDirty = false;
+		this.frames.stop();
+		this.markdown.clear();
 	}
 
 	updateMessage(received: ApplicationMessage, isStreaming = this.isStreaming): void {
@@ -247,14 +222,24 @@ export class AssistantMessageComponent extends Container {
 		this.lastMessage = message;
 		if (this.isStreaming !== isStreaming) this.markdown.clear();
 		this.isStreaming = isStreaming;
-		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
 		const now = Date.now();
-		blocks.forEach((block, index) => {
+		message.content?.forEach((block, index, blocks) => {
 			if (block.type !== "thinking") return;
 			const chars = contentText(block, this.contentOptions.readAsset).trim().length;
 			observeThinking(block.id, chars, index < blocks.length - 1, now, isStreaming);
 		});
+		this.contentDirty = true;
+		renderChanged(this);
+		if (!isStreaming) this.rebuildContent();
+	}
 
+	/** Intermediate deltas update state; only a displayed frame or a completed message rebuilds its presentation. */
+	private rebuildContent(): void {
+		if (!this.contentDirty || !this.lastMessage) return;
+		this.contentDirty = false;
+		const message = this.lastMessage;
+		const isStreaming = this.isStreaming;
+		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
 		this.contentContainer.clear();
 		this.responses.length = 0;
 		this.liveLabel = undefined;
@@ -369,7 +354,7 @@ export class AssistantMessageComponent extends Container {
 			}
 		}
 
-		this.syncFrames();
+		this.frames.sync();
 
 		// Check if incomplete/failed - show after partial content.
 		// An abort with tool calls shows on their rows. A failure shows its error here once; its tool rows say not run.
@@ -397,4 +382,4 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 }
-trackRenderChanges(AssistantMessageComponent.prototype); // Its rows' state changes only where it rebuilds its children.
+trackRenderChanges(AssistantMessageComponent.prototype); // Pending state is marked before its children are rebuilt.

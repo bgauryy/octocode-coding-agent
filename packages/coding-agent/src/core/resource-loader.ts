@@ -249,6 +249,19 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.loaded = true;
 	}
 
+	/**
+	 * Resolves and loads the skills (and the other file resources) without running any feature code: what a command
+	 * outside a session uses to see the skills a session would load. Not a substitute for `reload`.
+	 */
+	async loadSkillsOnly(): Promise<void> {
+		await this.settingsManager.reload();
+		const metadataByPath = new Map();
+		this.resourceMetadataByPath = metadataByPath;
+		this.collections.resetExtensionSourceInfos();
+		const enabled = collectEnabledResources(await this.featureLoader.resolveResources(), metadataByPath);
+		this.collections.load(enabled, metadataByPath);
+	}
+
 	private roots(): ResourceRoots {
 		return { cwd: this.cwd, agentDir: this.agentDir };
 	}

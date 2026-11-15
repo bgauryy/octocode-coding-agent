@@ -11,12 +11,15 @@ import { exclusive } from "../shared/locks.ts";
 import { clip } from "../shared/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { parseMemoryId } from "./query.ts";
+import { noteLabel, parseNoteId } from "./session-notes.ts";
+import { type AppendEntry, deleteNote, getNote, noteForPromotion, readNotes, saveNote } from "./session-notes-tool.ts";
 import { getMemory, readMemories } from "./reads.ts";
 import { MEMORY_KINDS, type MemoryStore } from "./store.ts";
 import { type MemoryWriteParams, writeMemory } from "./write.ts";
 
 /** Every field the full (non-subagent) schema accepts. */
-type MemoryParams = Omit<MemoryWriteParams, "op"> & {
+type MemoryParams = Omit<MemoryWriteParams, "op" | "scope"> & {
+	scope?: "session" | "workspace" | "project" | "global" | "all";
 	op: "search" | "get" | "list" | "set" | "delete";
 	id?: string;
 	query?: string;
@@ -33,7 +36,13 @@ interface MemoryDetails {
 	ids?: number[];
 }
 
-const SCOPES = ["workspace", "project", "global", "all"] as const;
+const SCOPES = ["session", "workspace", "project", "global", "all"] as const;
+
+/** The write path's parameters: everything but the session scope, which the session-note operations took. */
+function durableParams(params: MemoryParams): Omit<MemoryWriteParams, "op"> {
+	const { scope, ...rest } = params;
+	return { ...rest, ...(scope && scope !== "session" ? { scope } : {}) };
+}
 
 /** `op`, then what the call names: an id, a title, keywords or a query. */
 function callSummary(args: Record<string, unknown> | undefined): string {
@@ -49,24 +58,29 @@ function callSummary(args: Record<string, unknown> | undefined): string {
  */
 export function createMemoryTool(
 	storeFor: (ctx: ExtensionContext) => MemoryStore,
-	options: { isSubagent: boolean; permission: Permission },
+	options: { isSubagent: boolean; permission: Permission; appendEntry?: AppendEntry },
 ) {
 	const subagent = options.isSubagent;
 	const ops = subagent ? (["search", "get", "list"] as const) : (["search", "get", "list", "set", "delete"] as const);
 	const write = exclusive(writeMemory);
+	// Session-note writes share the memory writes' queue: an id is chosen from the notes the previous write appended.
+	const queued = exclusive(async (run: () => unknown) => run());
+	const writeNoteOp = <R>(run: () => R) => queued(run) as Promise<Awaited<R>>;
 	return timedTool({
 		name: "memory",
 		label: "Memory",
 		promptSnippet: renderInstruction("tools/memory/snippet.md"),
 		// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
 		description:
-			"Short workspace notes for later sessions; list shows pinned first. Near-duplicates in the scope are refused: update them. Global or pinned changes need approval.",
+			"Short notes: session (this session only, survive compaction) or workspace/project/global for later sessions; list shows pinned first. Near-duplicates in the scope are refused: update them. Global or pinned changes ask the user first.",
 		promptGuidelines: renderInstruction("tools/memory/guidelines.md", { subagent }).split("\n"),
 		parameters: Type.Object({
 			op: StringEnum(ops, {
 				description: subagent ? "search, get or list" : "set: add a memory (needs title), or update id",
 			}),
-			id: Type.Optional(Type.String({ description: "M<n>" })),
+			id: Type.Optional(
+				Type.String({ description: "M<n>, or S<n> for a session note (set it with a durable scope: moves it there)" }),
+			),
 			query: Type.Optional(Type.String({ description: "search: case-insensitive regex filter" })),
 			keywords: Type.Optional(
 				Type.String({
@@ -128,13 +142,50 @@ export function createMemoryTool(
 				case "set":
 				case "delete": {
 					if (subagent) throw new Error("Memory is read-only in a subagent: report it to your coordinator instead.");
-					const id = params.id === undefined ? undefined : parseMemoryId(params.id);
-					if (params.id !== undefined && id === undefined) throw new Error(`"${params.id}" is not a memory id (M<n>).`);
+					const note = parseNoteId(params.id);
 					const { op } = params;
+					if (params.id !== undefined && note !== undefined) {
+						if (op === "delete") return writeNoteOp(() => deleteNote(ctx, options.appendEntry, note));
+						if (params.scope === undefined || params.scope === "session")
+							return writeNoteOp(() => saveNote({ ctx, append: options.appendEntry, id: note, params }));
+						if (params.scope === "all") throw new Error("set scope is session, workspace, project or global.");
+						// Promotion: the write path saves the durable memory (duplicate, secret and approval checks), then the note goes.
+						return writeNoteOp(async () => {
+							const saved = noteForPromotion(ctx, note);
+							const durable = await write({
+								toolCallId,
+								id: undefined,
+								params: {
+									...durableParams(params),
+									op: "set",
+									title: params.title ?? saved.title,
+									body: params.body ?? saved.body,
+									kind: params.kind ?? saved.kind,
+								},
+								store,
+								permission: options.permission,
+								ctx,
+								signal,
+							});
+							deleteNote(ctx, options.appendEntry, note);
+							return textResult<MemoryDetails>(
+								`${durable.content[0]?.text ?? ""}\nPromoted from ${noteLabel(note)}: that session note is removed.`,
+								{ ids: durable.details?.ids ?? [] },
+							);
+						});
+					}
+					if (params.scope === "session") {
+						if (params.id !== undefined)
+							throw new Error(`"${params.id}" is a memory: a memory cannot move into the session scope.`);
+						return writeNoteOp(() => saveNote({ ctx, append: options.appendEntry, id: undefined, params }));
+					}
+					const id = params.id === undefined ? undefined : parseMemoryId(params.id);
+					if (params.id !== undefined && id === undefined)
+						throw new Error(`"${params.id}" is not a memory id (M<n> or S<n>).`);
 					return write({
 						toolCallId,
 						id,
-						params: { ...params, op },
+						params: { ...durableParams(params), op },
 						store,
 						permission: options.permission,
 						ctx,
@@ -143,6 +194,8 @@ export function createMemoryTool(
 				}
 				case "get": {
 					if (!params.id) throw new Error("get needs id.");
+					const note = parseNoteId(params.id);
+					if (note !== undefined) return getNote(ctx, note);
 					return textResult<MemoryDetails>(await getMemory(store, params.id), { mode: "get", hits: 1 });
 				}
 				case "search":
@@ -152,13 +205,19 @@ export function createMemoryTool(
 					// An invalid regular expression names the fix before any row is read.
 					if (params.query?.trim()) validPattern(params.query.trim());
 					const { op } = params;
-					const read = await readMemories(store, { ...params, op }, signal);
+					if (params.scope === "session") {
+						const notes = readNotes(ctx, params);
+						return textResult<MemoryDetails>(notes.text, { mode: op, hits: notes.hits });
+					}
+					// With scope all (the default) the session's notes come first on the first page.
+					const notes = (params.scope ?? "all") === "all" && !params.cursor ? readNotes(ctx, params) : undefined;
+					const read = await readMemories(store, { ...params, scope: params.scope ?? "all", op }, signal);
 					const more = read.cursor
 						? `\n\nMore memories remain. Continue with cursor ${read.cursor} and the same query, keywords and scope.`
 						: "";
-					return textResult<MemoryDetails>(`${read.text}${more}`, {
+					return textResult<MemoryDetails>(`${notes && notes.hits > 0 ? `${notes.text}\n\n` : ""}${read.text}${more}`, {
 						mode: op,
-						hits: read.hits,
+						hits: read.hits + (notes?.hits ?? 0),
 						...(read.cursor ? { nextCursor: read.cursor } : {}),
 					});
 				}

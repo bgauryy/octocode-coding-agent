@@ -10,6 +10,7 @@ import { patiently } from "../store/patient.ts";
 import type { Vouches } from "./vouches.ts";
 import { spilledMessage } from "./spilled-message.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { runnerMember } from "../runner-kind.ts";
 
 /** What a resume carries besides the text: the stored message, so the resumed run reads it framed (`messageText`) with its id. */
 export interface ResumeRequest {
@@ -63,6 +64,7 @@ export interface SendHost {
 	signed(id: number, recipient: string, text: string): string | undefined;
 	signedByParent: Vouches["signedByParent"];
 	readonly mail: Pick<Mail, "createdForUser">;
+	runner?(id: string): { active: boolean; mail: boolean } | undefined;
 }
 
 const CHANGED = "The session or team membership changed before the message could be sent.";
@@ -146,6 +148,8 @@ export async function resumeWith(
 
 /** The refusal for a finished subagent that no longer lingers. */
 export function finishedText(host: SendHost, to: string): string {
+	if (host.runner?.(to))
+		return `${to} was a one-turn vendor runner and cannot resume or receive a follow-up. Start a new runner task with the needed context (cite report:${to}).`;
 	return `${to} has finished and takes no more messages; ${host.finished.get(to)} To continue its work, resume it with the agent tool (resume: ${to}); if it ran isolated, start a new agent and give it the context it needs (cite its report as report:${to}).`;
 }
 
@@ -207,6 +211,13 @@ export async function sendMessage(
 	// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
 	const stored = () => spilledMessage(visibleControls(text), from);
 	if (typeof targets === "string") {
+		const runner = host.runner?.(to);
+		if (runner && (!runner.active || !runner.mail))
+			return {
+				error: runner.active
+					? `${to} is a vendor runner without a live mailbox. Do not retry this message; wait for its report or stop the task with coordinate stop.`
+					: finishedText(host, to),
+			};
 		if (to === "all" && starting.length > 0)
 			return {
 				error: `${targets} Still starting, so not reached: ${starting.join(", ")}. Nothing was sent; send again once they have joined.`,
@@ -264,6 +275,11 @@ export async function sendMessage(
 	}
 	const refused = options.interrupt ? interruptRefusal(members, targets, from, to, scope) : undefined;
 	if (refused) return { error: refused };
+	if (targets.some(runnerMember) && (options.interrupt || options.wake))
+		return {
+			error:
+				"Vendor runner mail is cooperative: it cannot interrupt or wake a turn. Send without those flags, or stop the task with coordinate stop. Nothing was sent.",
+		};
 	for (const target of targets) {
 		const denied = await check(target.id, text, options.replyTo, hookFlags);
 		if (denied) return { error: denied };
@@ -307,13 +323,15 @@ export async function sendMessage(
 	const working = new Set(listed.filter((member) => member.status === "working").map((member) => member.id));
 	const delivery: Record<string, DeliveryStatus> = {};
 	for (const recipient of sent)
-		delivery[recipient] = !listedIds.has(recipient)
-			? "stalled"
-			: woken.includes(recipient)
-				? "wake"
-				: working.has(recipient)
-					? "next-step"
-					: "queued-quiet";
+		delivery[recipient] = targets.some((target) => target.id === recipient && runnerMember(target))
+			? "pull"
+			: !listedIds.has(recipient)
+				? "stalled"
+				: woken.includes(recipient)
+					? "wake"
+					: working.has(recipient)
+						? "next-step"
+						: "queued-quiet";
 	if (from === USER_SENDER) host.mail.createdForUser(id, delivered, sent);
 	return {
 		sent,

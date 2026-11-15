@@ -9,6 +9,7 @@ import {
 	CONFIG_DIR_NAME,
 	getAgentDir,
 	getContextOptimizationDir,
+	getDocsPath,
 	getLegacyConfigDirs,
 	getOctocodeHome,
 	getPackageDir,
@@ -32,6 +33,7 @@ import { browserMcpAsked } from "../web/browser-mcp.ts";
 import { contextOptimizationDirs, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
 import { plugins } from "./plugins.ts";
+import { review } from "./review.ts";
 import { userResearchRoots } from "./research-roots.ts";
 import { vendors } from "./vendors.ts";
 
@@ -51,6 +53,7 @@ const paths: McpHostPorts["paths"] = {
 	contextOptimizationDirs: (cwd, agentDir) => contextOptimizationDirs(cwd, agentDir),
 	sessionRoots: (cwd, env) => [sessionsRoot(env, cwd), sessionTempRoot(env, cwd)],
 	researchRoots: (env) => userResearchRoots(env),
+	mcpDocsPath: () => join(getDocsPath(), "mcp.md"),
 };
 
 const output: McpHostPorts["output"] = {
@@ -105,5 +108,5 @@ const models: McpHostPorts["models"] = {
 const browser: McpHostPorts["browser"] = { mcpAsked: browserMcpAsked };
 
 export function installMcpCorePorts(): void {
-	installMcpHost({ identity, paths, plugins, vendors, output, images, trust, models, browser });
+	installMcpHost({ identity, paths, plugins, vendors, output, images, trust, models, browser, review });
 }

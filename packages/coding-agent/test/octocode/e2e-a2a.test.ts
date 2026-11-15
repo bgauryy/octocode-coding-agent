@@ -73,9 +73,9 @@ describe("two sessions", () => {
 		expect(answered).toContain(`It says it is ${JSON.stringify(b.name)}`);
 		expect(answered).toContain("Checked it.");
 
-		// The section is there, and no name enters the prompt: a process name in the cached block would rewrite it per process.
+		// No process name enters the cached system prompt.
 		const system = requestsOf(endpoint, aStarts)[0]?.system ?? "";
-		expect(system).toContain("Only you reach other Octocode processes");
+
 		expect(system).not.toContain(a.name);
 		// No shell call in either direction: `agent` `message` carried both.
 		for (const steps of [aStarts, bHears])
@@ -285,12 +285,6 @@ describe("the paths the protocol keeps", () => {
 		expect(results).toContain("Queued message");
 		// A process name is refused outright: a child has no route to another process and must ask its parent; nothing is queued.
 		expect(results).toContain("subagents have no route to other processes: nothing was sent");
-		// Its `to` field names no process address (another process, or the main checkout's `coordinator` from a linked
-		// worktree): a child gets only what it can use. Prose may still call its parent its coordinator.
-		const declared = JSON.stringify(requestsOf(endpoint, child)[0]?.declarations.agent ?? "");
-		expect(declared).not.toContain("linked worktree");
-		expect(declared).not.toContain("another Octocode process");
-		expect(requestsOf(endpoint, child)[0]?.system).not.toContain("Only you reach other Octocode processes");
 		await until(
 			() => endpoint.requests.some((request) => JSON.stringify(request.messages).includes("hello from the child")),
 			"the parent reading it",

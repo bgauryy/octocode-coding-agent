@@ -21,6 +21,8 @@ import { AcpError, AcpRefusal, timeoutSignal } from "./errors.ts";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
 import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
 import { untilAborted } from "@octocodeai/octocode-common/abort";
+import type { AcpTurnUpdate, Turn } from "./turn.ts";
+export type { AcpTurnUpdate } from "./turn.ts";
 
 export { AcpError } from "./errors.ts";
 
@@ -41,20 +43,10 @@ export interface AcpConnectInput {
 	authenticate?: boolean;
 }
 
-/** One session update of the turn in flight, as it arrives: thoughts and other sessions' updates never reach it. */
-export type AcpTurnUpdate = (update: SessionNotification["update"]) => void;
-
 export type AcpPermission = (
 	request: RequestPermissionRequest,
 	signal: AbortSignal,
 ) => Promise<RequestPermissionResponse>;
-
-interface Turn {
-	controller: AbortController;
-	signal: AbortSignal;
-	output: AcpOutput;
-	onUpdate?: AcpTurnUpdate;
-}
 
 export class AcpBackend implements ExternalBackend {
 	private connection?: ClientConnection;
@@ -253,7 +245,13 @@ export class AcpBackend implements ExternalBackend {
 		const deadline = timeoutSignal(options.timeoutMs);
 		const signal = AbortSignal.any([requestSignal, deadline]);
 		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
-		const turn: Turn = { controller, signal, output: new AcpOutput(this.host.saveOutput), onUpdate: options.onUpdate };
+		const turn: Turn = {
+			controller,
+			protocolCancel: new AbortController(),
+			signal,
+			output: new AcpOutput(this.host.saveOutput),
+			onUpdate: options.onUpdate,
+		};
 		this.active = turn;
 		// A timed-out request can still emit session-scoped updates. Keep its slot until the peer
 		// settles it so a new turn cannot receive those updates. Cancellation still closes the process.
@@ -265,7 +263,8 @@ export class AcpBackend implements ExternalBackend {
 			.request(
 				methods.agent.session.prompt,
 				{ sessionId: this.sessionId, prompt: [{ type: "text", text }] },
-				{ cancellationSignal: requestSignal },
+				// Local cancellation invalidates the turn immediately; protocol cancellation waits for owned-tree capture.
+				{ cancellationSignal: turn.protocolCancel.signal },
 			)
 			.finally(() => {
 				options.signal?.removeEventListener("abort", cancelled);
@@ -338,19 +337,7 @@ export class AcpBackend implements ExternalBackend {
 	private terminatePrompt(reason: unknown): Promise<void> {
 		if (this.cancelling) return this.cancelling;
 		this.active?.controller.abort(reason);
-		this.cancelling = Promise.resolve().then(async () => {
-			try {
-				if (this.connection && !this.connection.signal.aborted) {
-					await untilAborted(
-						this.connection.agent.notify(methods.agent.session.cancel, { sessionId: this.sessionId }),
-						timeoutSignal(this.host.processTree.graceMs),
-					);
-				}
-			} catch {
-				/* Closing the owned process is authoritative when cooperative cancellation cannot be sent. */
-			}
-			await this.shutdown(reason);
-		});
+		this.cancelling = this.shutdown(reason, true);
 		return this.cancelling;
 	}
 
@@ -373,20 +360,33 @@ export class AcpBackend implements ExternalBackend {
 		}
 	}
 
-	private shutdown(reason: unknown): Promise<void> {
+	private shutdown(reason: unknown, cancel = false): Promise<void> {
 		if (this.closing) return this.closing;
-		this.lifetime.abort(reason);
+		const turn = this.active;
 		this.closing = Promise.resolve().then(async () => {
 			try {
-				await this.closeSession();
-				this.connection?.close(reason);
-				await this.host.processTree.stop(this.child.pid);
+				await this.host.processTree.stop(this.child.pid, async () => {
+					turn?.protocolCancel.abort(reason);
+					if (cancel && this.connection && !this.connection.signal.aborted) {
+						try {
+							await untilAborted(
+								this.connection.agent.notify(methods.agent.session.cancel, { sessionId: this.sessionId }),
+								timeoutSignal(this.host.processTree.graceMs),
+							);
+						} catch {
+							/* Owned tree shutdown is authoritative when cancellation cannot be sent. */
+						}
+					}
+					await this.closeSession();
+					this.connection?.close(reason);
+				});
 			} finally {
 				this.child.stdin.destroy();
 				this.child.stdout.destroy();
 				this.child.stderr.destroy();
 			}
 		});
+		this.lifetime.abort(reason);
 		// Child and stream listeners start this without awaiting it; awaiting callers (`close`) still see a failure.
 		this.closing.catch(() => undefined);
 		return this.closing;

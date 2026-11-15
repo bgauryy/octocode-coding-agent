@@ -79,13 +79,27 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 	}
 
 	getExternalAgents(): boolean {
-		const value: unknown = this.settings.externalAgents;
+		const value: unknown = this.globalSettings.externalAgents;
 		return value === undefined ? SETTINGS_DEFAULTS.externalAgents : value === true;
 	}
 
 	setExternalAgents(enabled: boolean): void {
 		this.globalSettings.externalAgents = enabled;
 		this.markModified("externalAgents");
+		this.save();
+	}
+
+	getEnabledExternalAgents(): string[] | undefined {
+		const value: unknown = this.globalSettings.enabledExternalAgents;
+		if (value === undefined) return undefined;
+		if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || !id.trim())) return [];
+		return [...new Set(value.map((id: string) => id.trim()))];
+	}
+
+	setEnabledExternalAgents(ids: readonly string[] | undefined): void {
+		if (ids === undefined) delete this.globalSettings.enabledExternalAgents;
+		else this.globalSettings.enabledExternalAgents = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+		this.markModified("enabledExternalAgents");
 		this.save();
 	}
 

@@ -40,25 +40,25 @@ The digest is a past state. Before acting on it, compare it with now: `git statu
 
 ## 4. Resume
 
-| Situation | Do |
+| Situation                                         | Do                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The user asks you to resume or continue (default) | Restate the goal, what was done and what is left, from the prompts, the summary, the last reply and the checked state; then do the remaining work here under this session's rules. Work in the session's directory: in a worktree, run commands there and edit its paths, not the root's. |
-| The user wants it back in its own tool | Give the command from `show` and the directory to run it from (Claude Code finds a session only from its original directory). Do not run it through `bash`: these are interactive programs. Their headless forms (`claude -p --resume <id> "<prompt>"`, `codex exec resume <id> "<prompt>"`) spend the user's account on that tool and act outside Octocode's permission checks: run them only when the user asks for exactly that. |
-| `LIVE?` | The other tool may still be running it. Do not resume it natively or edit its directory; tell the user and wait for them. |
-| A Cursor editor chat | It has no command-line resume: continue here, or the user opens it in Cursor's chat history. |
-| The worktree folder is gone | Restore it with the `git worktree add` command `list` prints, then resume; or continue here on its branch. |
+| The user asks you to resume or continue (default) | Restate the goal, what was done and what is left, from the prompts, the summary, the last reply and the checked state; then do the remaining work here under this session's rules. Work in the session's directory: in a worktree, run commands there and edit its paths, not the root's.                                                                                                                                           |
+| The user wants it back in its own tool            | Give the command from `show` and the directory to run it from (Claude Code finds a session only from its original directory). Do not run it through `bash`: these are interactive programs. Their headless forms (`claude -p --resume <id> "<prompt>"`, `codex exec resume <id> "<prompt>"`) spend the user's account on that tool and act outside Octocode's permission checks: run them only when the user asks for exactly that. |
+| `LIVE?`                                           | The other tool may still be running it. Do not resume it natively or edit its directory; tell the user and wait for them.                                                                                                                                                                                                                                                                                                           |
+| A Cursor editor chat                              | It has no command-line resume: continue here, or the user opens it in Cursor's chat history.                                                                                                                                                                                                                                                                                                                                        |
+| The worktree folder is gone                       | Restore it with the `git worktree add` command `list` prints, then resume; or continue here on its branch.                                                                                                                                                                                                                                                                                                                          |
 
 ## Worktrees
 
 `node <skill>/scripts/sessions.mjs worktrees` reports every worktree of the repository: those git lists, those whose folder was deleted, and folders Claude Code, Cursor, Codex or Octocode created that git no longer lists. For each: branch or detached HEAD, changed files, commits ahead of and behind the base branch, last commit, the sessions that ran there and a suggested action.
 
-| State | Meaning | Suggested action |
+| State         | Meaning                                                | Suggested action                                                                          |
 | ------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `uncommitted` | Changed files in the folder | Resume its session there, or commit or stash |
-| `unmerged` | Commits not in the base branch | Merge, open a pull request or keep working; a detached HEAD needs a branch before removal |
-| `merged` | Clean and contained in the base | `git worktree remove <path>` is safe |
-| `dangling` | Folder deleted but listed, or folder left but unlisted | `git worktree prune`, `git worktree add` to restore, or `git worktree repair` |
-| `locked` | Someone locked it | Leave it |
+| `uncommitted` | Changed files in the folder                            | Resume its session there, or commit or stash                                              |
+| `unmerged`    | Commits not in the base branch                         | Merge, open a pull request or keep working; a detached HEAD needs a branch before removal |
+| `merged`      | Clean and contained in the base                        | `git worktree remove <path>` is safe                                                      |
+| `dangling`    | Folder deleted but listed, or folder left but unlisted | `git worktree prune`, `git worktree add` to restore, or `git worktree repair`             |
+| `locked`      | Someone locked it                                      | Leave it                                                                                  |
 
 The script only suggests these commands. Removing or pruning a worktree, deleting a folder or creating rescue branches changes the user's repository: do it only when they asked for that cleanup, and before removing anything, save unmerged commits on a branch.
 
@@ -74,10 +74,10 @@ The script only suggests these commands. Removing or pruning a worktree, deletin
 
 ## Resources
 
-| When | Read or run | Why |
+| When                                     | Read or run                                     | Why                                                          |
 | ---------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
-| Every step | [sessions.mjs](scripts/sessions.mjs) (`--help`) | `list`, `show`, `worktrees` and `locations`; read-only |
-| A session is missing or a format changed | [formats](references/formats.md) | Where each tool stores sessions, resume commands, known gaps |
+| Every step                               | [sessions.mjs](scripts/sessions.mjs) (`--help`) | `list`, `show`, `worktrees` and `locations`; read-only       |
+| A session is missing or a format changed | [formats](references/formats.md)                | Where each tool stores sessions, resume commands, known gaps |
 
 ## Output
 

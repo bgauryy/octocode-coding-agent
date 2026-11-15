@@ -27,6 +27,7 @@ describe("subagents.models: routing precedence", () => {
 		expect(routeModel({ preferred: "small", available, parent, configured })).toEqual({
 			model: "pick/chosen:high",
 			setting: "subagents.models.small",
+			fallbackModels: ["cheap/tiny:high", "other/mid:high"],
 		});
 		// A bare id resolves like a call's model, and without a level the default level applies.
 		expect(
@@ -34,9 +35,13 @@ describe("subagents.models: routing precedence", () => {
 		).toEqual({
 			model: "pick/chosen:low",
 			setting: "subagents.models.small",
+			fallbackModels: ["cheap/tiny:low", "other/mid:low"],
 		});
 		// The automatic choice when nothing is set.
-		expect(routeModel({ preferred: "small", available, parent })).toEqual({ model: "cheap/tiny" });
+		expect(routeModel({ preferred: "small", available, parent })).toEqual({
+			model: "cheap/tiny",
+			fallbackModels: ["pick/chosen", "other/mid"],
+		});
 	});
 
 	it("keeps the purpose's own level over the setting's, and a call's model over the setting", () => {
@@ -54,7 +59,7 @@ describe("subagents.models: routing precedence", () => {
 	});
 
 	it("falls back to the automatic choice, saying why, when the set model is unavailable, refused or cannot run a task", () => {
-		const auto = { model: "cheap/tiny" };
+		const auto = { model: "cheap/tiny", fallbackModels: ["pick/chosen", "other/mid"] };
 		expect(routeModel({ preferred: "small", available, parent, configured: { small: "pick/gone" } })).toEqual({
 			...auto,
 			skipped: "subagents.models.small pick/gone unavailable",
@@ -62,11 +67,14 @@ describe("subagents.models: routing precedence", () => {
 		const refused: Refused = (provider) => provider === "pick";
 		expect(routeModel({ preferred: "small", available, parent, configured, refused })).toEqual({
 			...auto,
+			// The refused provider is no fallback either.
+			fallbackModels: ["other/mid"],
 			skipped: "subagents.models.small pick/chosen: pick refused its credential".replace("pick/chosen", "pick/chosen"),
 		});
 		const small = model("pick", "chosen", 1, 4, { contextWindow: 8_192 });
+		// No other provider offers a model that can run a task, so the route has no fallback list.
 		expect(routeModel({ preferred: "small", available: [parent, cheap, small], parent, configured })).toEqual({
-			...auto,
+			model: "cheap/tiny",
 			skipped: "subagents.models.small pick/chosen cannot run a task: context 8.2k (needs 100k)",
 		});
 	});

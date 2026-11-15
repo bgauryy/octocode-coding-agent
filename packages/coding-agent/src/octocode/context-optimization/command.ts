@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { prepareAgentDb } from "../../storage/database.ts";
 import {
 	generatedDir,
 	readGenerated,
@@ -239,7 +240,10 @@ export async function runContextCommand(args: readonly string[], options: Contex
 			options: { json: { type: "boolean" }, overrides: { type: "string" }, "optimized-by": { type: "string" } },
 			allowPositionals: false,
 		});
-		if (action === "list") return list(options, values.json === true, log);
+		if (action === "list") {
+			await prepareAgentDb();
+			return list(options, values.json === true, log);
+		}
 		if (action !== "check" && action !== "apply") {
 			error(`Unknown context command "${action}".\n${CONTEXT_USAGE}`);
 			return 1;
@@ -248,8 +252,10 @@ export async function runContextCommand(args: readonly string[], options: Contex
 			error(`${action} needs --overrides <file>.\n${CONTEXT_USAGE}`);
 			return 1;
 		}
+		const overrides = readOverrides(values.overrides);
+		await prepareAgentDb();
 		const all = scopes(options);
-		const planned = targets(all, readOverrides(values.overrides));
+		const planned = targets(all, overrides);
 		const problems: string[] = [];
 		for (const { name, description, scope } of planned) {
 			if (!scope) {

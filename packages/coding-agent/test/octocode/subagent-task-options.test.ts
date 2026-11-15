@@ -31,6 +31,7 @@ function start(
 		api: { getSettings: () => options.settings ?? {} },
 		team: { join: () => ({ id: "parent" }), newName: () => "kid", rememberFinished: () => {} },
 		running: new Map(),
+		items: new Map(),
 		slots: new Slots(),
 	} as unknown as AgentRuns;
 	const ctx = {
@@ -51,11 +52,23 @@ function start(
 	const env = subagentProcessEnv(profile, options.env ?? {}, run.identity);
 	return {
 		run,
+		runs,
 		hooks: env.OCTOCODE_SUBAGENT_HOOKS,
 		history: env[CACHE_RETENTION_ENV],
 		instructions: env[INSTRUCTION_CACHE_RETENTION_ENV],
 	};
 }
+
+describe("a resumed subagent's backlog item", () => {
+	it("links the item again, as the run started for it did", () => {
+		const resumed = { id: "kid", role: "general", sessionId: "s1", goal: "g", item: "B7" } as Parameters<
+			typeof claimRun
+		>[5];
+		const { runs } = start({}, { resumed });
+		expect(runs.items.get("kid")).toBe("B7");
+		expect(start().runs.items.size).toBe(0);
+	});
+});
 
 describe("a subagent's hook mode", () => {
 	it.each<[profile: HookMode | undefined, task: HookMode | undefined, started: HookMode | undefined, mode: HookMode]>([
@@ -256,7 +269,6 @@ describe("the agent tool's task fields", () => {
 		expect(cache.enum).toEqual(["short", "long"]);
 		for (const field of [hooks, cache]) {
 			expect(field.description.length).toBeLessThanOrEqual(45);
-			expect(field.description).not.toMatch(/[.;]/);
 		}
 	});
 });

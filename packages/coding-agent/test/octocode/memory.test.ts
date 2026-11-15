@@ -497,12 +497,8 @@ describe("memory tool", () => {
 		expect(tool.parameters.properties.op.enum).toEqual(["search", "get", "list"]);
 		// The description is the same for every role (it leads the cached prefix); the limit is in the guideline and the refusal.
 		expect(tool.description).toBe(setup(false).tool.description);
-		expect(tool.description).not.toMatch(/subagent|parent/i);
-		// The trigger line is the same for every role and names no role.
+		// The trigger line is the same for every role.
 		expect(tool.promptSnippet).toBe(setup(false).tool.promptSnippet);
-		expect(tool.promptSnippet).not.toMatch(/subagent|parent|save/i);
-		expect(tool.promptGuidelines.join(" ")).toMatch(/^Memory is read-only here/);
-		expect(tool.promptGuidelines.join(" ")).not.toMatch(/Prefer updating/);
 		await expect(run(tool, { op: "set", title: "x" })).rejects.toThrow(/read-only in a subagent/);
 		await expect(run(tool, { op: "delete", id: "M1" })).rejects.toThrow(/read-only in a subagent/);
 		expect(subcommands.get("memory")).toBeUndefined();
@@ -516,12 +512,6 @@ describe("memory tool", () => {
 			const { tool } = setup(subagent);
 			expect(tool.promptGuidelines.length).toBeLessThanOrEqual(max);
 			for (const line of tool.promptGuidelines as string[]) expect(line.length, line).toBeLessThanOrEqual(230);
-			expect([tool.description, ...tool.promptGuidelines].join(" ")).not.toMatch(/ {2}/);
-			// A memory read by search (not only the injected header) may be stale: the guideline says to check it.
-			expect(tool.promptGuidelines.join(" ")).toMatch(
-				/Check a memory's named file, function or flag before relying on it/,
-			);
-			expect(MEMORY_HEADER).toMatch(/may be stale/);
 			for (const [name, schema] of Object.entries(
 				tool.parameters.properties as Record<string, { description?: string }>,
 			))

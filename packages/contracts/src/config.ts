@@ -2,6 +2,7 @@ import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
 
 export * from "./harness-config.ts";
+export * from "./mcp-add.ts";
 export * from "./tool-exposure.ts";
 export * from "./config-settings.ts";
 

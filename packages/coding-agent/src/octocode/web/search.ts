@@ -5,6 +5,8 @@ import { isHttpUrl, type PublicFetchInit, publicFetch } from "../../../../common
 import { decodeEntities, htmlToText } from "./html.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { untilAborted } from "../../../../common/src/abort.ts";
+import { searchSite } from "./search-site.ts";
+import { queryTerms, relatedHit } from "./search-relevance.ts";
 
 interface SearchHit {
 	title: string;
@@ -111,8 +113,9 @@ interface SearchOutcome {
 /**
  * Searches through a chain: every configured API (Tavily, Serper, Exa, Brave), then the keyless HTML pages
  * (DuckDuckGo, Bing, DuckDuckGo lite). A provider that fails (a bad key, a rate limit) passes to the next, and so
- * does one with no hits (a block page often parses as empty, and another index may know the query). Throws only when
- * every provider failed or the shared 30-second deadline expires.
+ * does one with no hits (a block page often parses as empty, and another index may know the query) or, for a keyless
+ * page, none sharing a word with the query (a decoy answer). Throws only when every provider failed or the shared
+ * 30-second deadline expires.
  */
 export async function search(
 	query: string,
@@ -138,6 +141,8 @@ async function searchWithin(
 ): Promise<SearchOutcome> {
 	// Every provider call goes through the guarded request: public addresses only, pinned connection, no redirect for a
 	// keyed API (it carries a secret), and a body read to at most the shared cap.
+	const site = searchSite(query);
+	const parseLimit = site ? 20 : max;
 	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: deadline });
 	const read = async (response: Response): Promise<BodyText> =>
 		readCapped(response, response.headers.get("content-type") ?? "");
@@ -235,23 +240,33 @@ async function searchWithin(
 	const keyless = [
 		{
 			name: "duckduckgo",
-			run: async () => parseDuckDuckGo((await page(`https://html.duckduckgo.com/html/?q=${q}`)).text, max),
+			run: async () => parseDuckDuckGo((await page(`https://html.duckduckgo.com/html/?q=${q}`)).text, parseLimit),
 		},
 		{
 			name: "bing",
-			run: async () => parseBing((await page(`https://www.bing.com/search?q=${q}&count=${max}`)).text, max),
+			run: async () => parseBing((await page(`https://www.bing.com/search?q=${q}&count=${max}`)).text, parseLimit),
 		},
 		{
 			name: "duckduckgo-lite",
-			run: async () => parseDuckDuckGoLite((await page(`https://lite.duckduckgo.com/lite/?q=${q}`)).text, max),
+			run: async () => parseDuckDuckGoLite((await page(`https://lite.duckduckgo.com/lite/?q=${q}`)).text, parseLimit),
 		},
 	];
 	const failures: string[] = [];
 	const empty: string[] = [];
+	const terms = queryTerms(query);
+	const scraped = new Set(keyless);
 	for (const provider of [...keyed, ...keyless]) {
 		try {
 			deadline.throwIfAborted();
-			const hits = await untilAborted(provider.run(), deadline);
+			const received = await untilAborted(provider.run(), deadline);
+			const inSite = site ? received.filter((hit) => site(hit.url)) : received;
+			if (inSite.length < Math.min(received.length, max) && site)
+				failures.push(`${provider.name}: discarded results outside the site restriction`);
+			const hits = (scraped.has(provider) ? inSite.filter((hit) => relatedHit(terms, hit)) : inSite).slice(0, max);
+			if (inSite.length > 0 && hits.length === 0) {
+				failures.push(`${provider.name}: results unrelated to the query`);
+				continue;
+			}
 			if (hits.length > 0)
 				return {
 					provider: provider.name,

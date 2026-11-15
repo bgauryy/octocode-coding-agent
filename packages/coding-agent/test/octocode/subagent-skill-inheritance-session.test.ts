@@ -419,9 +419,7 @@ it.each([[["review-kit:review"]], [[]]])(
 		try {
 			await f.run("Use $review-kit:review and $collision.", skills);
 			const child = JSON.stringify(f.requests[0]);
-			// Explicit skills ride in the task; with none, no catalog is listed anywhere (the declared skill tool's own
-			// description still names the <available_skills> block).
-			if (skills.length === 0) expect(child).not.toContain("to load every skill whose description matches the task");
+			// Explicit skills ride in the task; an empty selection carries no skill entries.
 			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
 				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
 				else expect(child).not.toContain(`<name>${name}</name>`);

@@ -111,7 +111,7 @@ export class ReportTracker {
 	 * A message reached the child; `job`: the notice line when it is the child's own background job ending. A `quiet` job
 	 * report starts no turn: it adds its line to the report already given instead of a follow-up answer.
 	 */
-	incoming(role: unknown, job?: string, quiet?: boolean): void {
+	incoming(role: unknown, job?: string, quiet?: boolean, reminder = false): void {
 		// The outcome question is no new task: the report it asks about stands as it is.
 		if (this.outcomeAsk === "pending" && role === "user") return;
 		if (quiet && job) {
@@ -126,7 +126,7 @@ export class ReportTracker {
 		if (role === "user" || role === "custom") {
 			this.fresh = true;
 			this.job = role === "custom" && job && this.sections > 0 ? job : undefined;
-			if (this.resultContract) this.structured = unavailableResult(this.resultContract);
+			if (this.resultContract && !reminder) this.structured = unavailableResult(this.resultContract);
 		}
 	}
 
@@ -162,9 +162,15 @@ export class ReportTracker {
 					),
 				)
 			: undefined;
-		if (this.resultContract && stopReason !== "toolUse")
+		// Ignored reminder/wait text leaves the current report and its validation together. A new task has already
+		// invalidated its predecessor in incoming(); a timer that starts real tool work invalidates it below.
+		if (!failed && stopReason !== "toolUse" && this.sections > 0)
+			if (reminder || (waiting && raw && isWaitingLine(visibleControls(raw)))) return;
+		if (this.resultContract)
 			this.structured =
-				failed || !raw ? unavailableResult(this.resultContract) : validateResultAnswer(raw, this.resultContract);
+				failed || !raw || stopReason === "toolUse"
+					? unavailableResult(this.resultContract)
+					: validateResultAnswer(raw, this.resultContract);
 		if (!raw) {
 			// An earlier report is evidence, not an answer to a new message that finished without text.
 			if (!failed && stopReason !== "toolUse" && this.fresh && this.sections > 0)
@@ -172,10 +178,6 @@ export class ReportTracker {
 			return;
 		}
 		const text = visibleControls(raw);
-		// A waiting line after a report pads it; the first answer is kept for now, as a report with nothing in it would be no
-		// answer, and the next section replaces it (`restart`).
-		if (waiting && !failed && stopReason !== "toolUse" && this.sections > 0 && isWaitingLine(text)) return;
-		if (reminder && !failed && stopReason !== "toolUse" && this.sections > 0) return;
 		this.lastText = preview(text);
 		if (stopReason === "toolUse" || failed) {
 			this.partialFile = undefined;

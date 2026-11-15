@@ -42,6 +42,8 @@ export interface MarkdownTheme {
 }
 
 export interface MarkdownOptions {
+	/** Retain a bounded parse cache while text streams; call setStreaming(false) when the stream ends. */
+	streaming?: boolean;
 	/** Resolve relative references against the message's original directory. */
 	cwd?: string;
 	/** Preserve source list markers instead of normalizing them. */

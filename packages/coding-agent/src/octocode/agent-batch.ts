@@ -4,6 +4,7 @@ import type { ToolDefinition } from "../core/features/index.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason } from "./shared/reason.ts";
+import { addUsage, emptyUsage } from "./shared/util.ts";
 
 /** The task type's `tasks` field: start several children in one call. */
 export const TASKS_FIELD = "tasks";
@@ -25,10 +26,10 @@ export function tasksSchema(): TSchema & { description: string } {
  * A row's head word: `error` when the entry never ran; otherwise the child's own outcome when it is not `done`
  * (`failed`, `partial`, `blocked`), so a child that ran and failed does not read `ok`; else `ok`.
  */
-function rowLabel(each: { ok: boolean; details?: unknown }): string {
+function rowLabel(each: { ok: boolean; isError?: boolean; details?: unknown }): string {
 	if (!each.ok) return "error";
 	const outcome = isRecord(each.details) ? each.details.outcome : undefined;
-	return typeof outcome === "string" && outcome && outcome !== "done" ? outcome : "ok";
+	return typeof outcome === "string" && outcome && outcome !== "done" ? outcome : each.isError ? "error" : "ok";
 }
 
 const textOf = (result: Result) =>
@@ -40,6 +41,8 @@ const textOf = (result: Result) =>
 interface Outcome {
 	goal: string;
 	ok: boolean;
+	isError?: boolean;
+	usage?: Result["usage"];
 	text: string;
 	details?: unknown;
 }
@@ -50,13 +53,18 @@ export const batchOf = (args: unknown): Fields[] | undefined => {
 	return Array.isArray(tasks) ? tasks.filter(isRecord) : undefined;
 };
 
+/** Resolve the same per-entry defaults for execution and both display surfaces. */
+export function batchGoals(args: unknown): string[] {
+	const defaults = isRecord(args) ? args : {};
+	return (batchOf(args) ?? []).map((entry) => {
+		const goal = { ...defaults, ...entry }.goal;
+		return typeof goal === "string" ? goal : "(no goal)";
+	});
+}
+
 /** The call line of a batch, one goal per entry; `agent-tool.ts` wraps it, so the SDK entry does not reach the TUI here. */
 export function batchCallText(args: unknown): string {
-	const { tasks: _tasks, type: _type, ...defaults } = isRecord(args) ? args : ({} as Fields);
-	const lines = (batchOf(args) ?? []).map((entry, index) => {
-		const goal = entry.goal ?? defaults.goal;
-		return `  ${index + 1}. ${typeof goal === "string" ? goal : "(no goal)"}`;
-	});
+	const lines = batchGoals(args).map((goal, index) => `  ${index + 1}. ${goal}`);
 	return `Agent task ×${lines.length}\n${lines.join("\n")}`;
 }
 
@@ -84,10 +92,7 @@ export async function runBatch(
 			details: { agentType: "task", batch: [] },
 		});
 	// Each entry's goal, its own or the batch default: a row names it whether the entry ran, was refused or crashed.
-	const goals = tasks.map((entry) => {
-		const goal = { ...defaults, ...entry }.goal;
-		return typeof goal === "string" ? goal : "(no goal)";
-	});
+	const goals = batchGoals(fields);
 	const runs = tasks.map(async (entry, index): Promise<Outcome> => {
 		const merged = { ...defaults, ...entry };
 		const goal = goals[index] ?? "(no goal)";
@@ -117,7 +122,14 @@ export async function runBatch(
 				: undefined,
 			call.ctx,
 		);
-		return { goal, ok: true, text: textOf(result), details: result.details };
+		return {
+			goal,
+			ok: true,
+			isError: result.isError,
+			usage: result.usage,
+			text: textOf(result),
+			details: result.details,
+		};
 	});
 	const settled = await Promise.allSettled(runs);
 	const outcomes = settled.map((each, index): Outcome => {
@@ -128,13 +140,20 @@ export async function runBatch(
 		.map((each, index) => `#${index + 1} ${rowLabel(each)}: ${each.goal}\n${each.text}`)
 		.join("\n\n");
 	if (outcomes.every((each) => !each.ok)) throw new Error(text);
+	const metered = outcomes.filter((each) => each.usage !== undefined);
+	const usage = metered.length ? emptyUsage() : undefined;
+	if (usage) for (const each of metered) addUsage(usage, each.usage);
 	return {
+		...(outcomes.some((each) => !each.ok || each.isError) ? { isError: true } : {}),
+		...(usage ? { usage } : {}),
 		content: [{ type: "text", text }],
 		details: {
 			agentType: "task",
-			batch: outcomes.map(({ goal, ok, details, text: message }) => ({
+			...(outcomes.some((each) => isRecord(each.details) && each.details.unpriced === true) ? { unpriced: true } : {}),
+			batch: outcomes.map(({ goal, ok, isError, details, text: message }) => ({
 				goal,
 				ok,
+				...(isError ? { isError: true } : {}),
 				...(ok ? { details } : { error: message }),
 			})),
 		},

@@ -46,10 +46,4 @@ describe("a message to another process", () => {
 		);
 		expect(sent).toEqual([]);
 	});
-
-	it("states in the field descriptions that these options are for teammates", () => {
-		const { properties } = setup().tool.parameters;
-		for (const field of ["replyTo", "forward", "interrupt"])
-			expect(properties[field].description).toContain("Teammates only");
-	});
 });

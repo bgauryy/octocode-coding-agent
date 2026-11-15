@@ -203,6 +203,35 @@ describe("OpenAI ChatGPT OAuth", () => {
 		);
 	});
 
+	it("names the OAuth error code of a rejected refresh and never other body fields", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ error: "invalid_grant", error_description: "token old-refresh reused" }), {
+						status: 400,
+					}),
+			),
+		);
+
+		const failure = openaiChatGPTOAuth.refresh(connectedCredential(), neverAbortedSignal);
+		await expect(failure).rejects.toThrow(
+			"OpenAI OAuth token request failed (400 invalid_grant); the ChatGPT sign-in expired or was revoked",
+		);
+		await expect(failure).rejects.not.toThrow("old-refresh");
+	});
+
+	it("keeps the status alone when a rejected token response has no OAuth error code", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("<html>bad gateway</html>", { status: 502 })),
+		);
+
+		await expect(openaiChatGPTOAuth.refresh(connectedCredential(), neverAbortedSignal)).rejects.toThrow(
+			/^OpenAI OAuth token request failed \(502\)$/,
+		);
+	});
+
 	it("preserves the refresh token when a refresh response does not rotate it", async () => {
 		const { refresh_token: _refreshToken, ...responseWithoutRefresh } = tokenResponse();
 		stubTokenEndpoint(responseWithoutRefresh);

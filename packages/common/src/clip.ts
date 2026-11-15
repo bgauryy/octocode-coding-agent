@@ -1,17 +1,29 @@
 import { sanitizeTerminalText } from "./sanitize.ts";
-import { cutText } from "./text.ts";
 
 /** The first line of a text (all of it when it has one line). */
 export const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 /**
- * `text` cut to `max` characters (UTF-16 code units, never inside a surrogate pair), ending in `…` when cut: the one
- * character clip (`clip` adds one sanitized line). A line that must fit terminal columns, where a wide character
- * counts 2, is the TUI's `truncateToWidth`; counting characters and counting columns differ, so this is not one with it.
+ * `text` cut to `max` characters (UTF-16 code units, so the result never exceeds `max` and callers can budget with
+ * it), ending in `…` when cut: the one character clip (`clip` adds one sanitized line). The cut falls between grapheme
+ * clusters, so it never leaves a dangling joiner, half a flag or a letter without its accent; a cluster that does not
+ * fit is dropped whole. A line that must fit terminal columns, where a wide character counts 2, is the TUI's
+ * `truncateToWidth`; counting characters and counting columns differ, so this is not one with it.
  */
 export function clipText(text: string, max: number): string {
 	if (max <= 0) return "";
-	return text.length > max ? `${cutText(text, max - 1, { chars: true })}…` : text;
+	if (text.length <= max) return text;
+	const room = max - 1;
+	// Code units below U+0300 stand alone, and so does the cut when the unit after it is one too: no segmenter needed.
+	if (!/[^\u0000-\u02ff]/.test(text.slice(0, room + 1))) return `${text.slice(0, room)}…`;
+	let kept = "";
+	for (const { segment } of graphemes.segment(text)) {
+		if (kept.length + segment.length > room) break;
+		kept += segment;
+	}
+	return `${kept}…`;
 }
 
 /** One sanitized line of at most `max` characters, ending in `…` when cut. */

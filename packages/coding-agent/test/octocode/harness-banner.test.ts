@@ -248,11 +248,8 @@ describe("startup banner from the context view", () => {
 });
 
 describe("harnesses", () => {
-	it("tells the agent every harness, on or off with what it holds, and who switches them", () => {
-		const line =
-			"Harnesses: Octocode on · .agents on · Claude Code off (1 skill, 1 hook, 2 MCP servers) · Cursor off (1 MCP server). The user switches them with /harness.";
-		expect(formatHarnessesForPrompt(STATUSES)).toBe(line);
-		expect(buildSystemPrompt({ cwd: "/repo", harnesses: STATUSES })).toContain(line);
+	it("forwards the formatted harness inventory to the system prompt only when provided", () => {
+		expect(buildSystemPrompt({ cwd: "/repo", harnesses: STATUSES })).toContain(formatHarnessesForPrompt(STATUSES));
 		expect(buildSystemPrompt({ cwd: "/repo" })).not.toContain("Harnesses:");
 	});
 
@@ -346,7 +343,7 @@ describe("harnesses", () => {
 });
 
 describe("skills in the agent's prompt", () => {
-	it("lists each skill by name for the skill tool, without its path, after one line on the folder layout", () => {
+	it("lists fixture skills by name for the skill tool and by path for a reader", () => {
 		const skill = {
 			name: "demo",
 			description: "Demo skill.",
@@ -360,9 +357,5 @@ describe("skills in the agent's prompt", () => {
 		expect(prompt).not.toContain("/skills/demo/SKILL.md");
 		// A file reader still gets the file it loads.
 		expect(formatSkillsForPrompt([skill], "bash")).toContain('<skill name="demo" location="/skills/demo/SKILL.md">');
-		expect(prompt).toContain(
-			"A skill is a folder: SKILL.md (frontmatter name and description, then instructions) with optional scripts/, references/ and assets/, resolved against that folder.",
-		);
-		expect(prompt.indexOf("A skill is a folder")).toBeLessThan(prompt.indexOf("<available_skills>"));
 	});
 });

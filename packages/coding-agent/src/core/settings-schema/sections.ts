@@ -48,7 +48,7 @@ export const RetrySettingsSchema = Type.Object({
 	fallbackModels: Type.Optional(
 		Type.Array(Type.String(), {
 			description:
-				'Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. The first one with credentials becomes the session model with a notice and stays selected; `/model` switches back. Empty: such a failure ends the turn.',
+				'Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401, 403, an expired sign-in) or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. After a refused credential, entries of the same provider are skipped. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.',
 			default: SETTINGS_DEFAULTS.retry.fallbackModels,
 		}),
 	),

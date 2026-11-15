@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hookPayload } from "../../src/octocode/hooks/profiles.ts";
 import { HOOK_SETTINGS } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -101,6 +102,7 @@ it.each([false, true])("requires actual child marker (child=%s)", async (child) 
 		metadata: () => ({ agentName: "stale-worker", agentType: "reviewer" }),
 	});
 	try {
+		approveFixtureHooks(cwd, home);
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await view.preToolUse(
 			{
@@ -170,6 +172,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 		},
 	});
 	try {
+		approveFixtureHooks(cwd, home);
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		const before = calls;
 		await view.preToolUse(
@@ -258,6 +261,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 		metadata: () => ({ agentName: "native-child", agentType: "reviewer" }),
 	});
 	try {
+		approveFixtureHooks(cwd, home);
 		await fake.fire("session_start", { reason: "startup" }, ctx);
 		await fake.fire("session_before_compact", { reason: "manual", signal: new AbortController().signal }, ctx);
 		await fake.fire("session_compact", { reason: "manual", compactionEntry: { summary: "summary" } }, ctx);

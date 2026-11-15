@@ -1,4 +1,4 @@
-import { getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
@@ -80,6 +80,19 @@ describe("status indicators", () => {
 			setKeybindings(previousKeybindings);
 		}
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("repaints each second for the run clock while the decoration is held", () => {
+		vi.useFakeTimers({ now: 5_000_000 });
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		try {
+			animationClock.holdDecoration(10_000);
+			vi.advanceTimersByTime(3_100);
+			expect(vi.mocked(tui.requestRender).mock.calls.length).toBeGreaterThanOrEqual(3);
+		} finally {
+			indicator.dispose();
+		}
 	});
 
 	it("draws the detail plain when the indicator does not animate", () => {

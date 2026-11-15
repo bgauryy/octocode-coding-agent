@@ -8,6 +8,7 @@ import * as runner from "../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
 
 it("adds completed async context to the next model request without creating an extra turn", async () => {
@@ -57,6 +58,7 @@ it("adds completed async context to the next model request without creating an e
 		],
 	});
 	try {
+		approveFixtureHooks(harness.tempDir, home);
 		await harness.session.bindExtensions({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("finish_background", {})], {
@@ -109,6 +111,7 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 		],
 	});
 	try {
+		approveFixtureHooks(harness.tempDir, home);
 		await harness.session.bindExtensions({});
 		harness.setResponses([
 			fauxAssistantMessage("initial work finished"),

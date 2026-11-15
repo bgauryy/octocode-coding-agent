@@ -1,7 +1,10 @@
-/** `retry.fallbackModels`: continue a turn on another model after a usage-limit failure. */
+/**
+ * `retry.fallbackModels`: continue a turn on another model after a failure the session retry did not clear: a usage
+ * limit, a refused credential, or an outage that outlasted the retries.
+ */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { isUsageLimitError } from "@octocodeai/octocode-ai";
+import { isCredentialError, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
 import { isValidThinkingLevel } from "../thinking-level.ts";
 import { isVirtualModel } from "../virtual-models.ts";
@@ -9,17 +12,34 @@ import type { SessionInternals } from "./host.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import { recordRunWarning } from "./run-outcome.ts";
 
-/** How long a model that hit a usage limit is skipped: limits reset after hours, a later `/model` may pick it again. */
+/** How long a failed model is skipped: limits reset after hours, a later `/model` may pick it again. */
 const EXHAUSTED_MS = 15 * 60_000;
-/** Models that failed on a usage limit in this process, by `provider/id`, and when. Subagents share the process's accounts. */
+/**
+ * Models that failed in this process, by `provider/id`, and when; `provider/*` after a refused credential, which fails
+ * for every model of that provider. Subagents share the process's accounts.
+ */
 const exhausted = new Map<string, number>();
 
 const keyOf = (provider: string, id: string) => `${provider}/${id}`;
-const isExhausted = (key: string) => Date.now() - (exhausted.get(key) ?? -Infinity) < EXHAUSTED_MS;
+const recent = (key: string) => Date.now() - (exhausted.get(key) ?? -Infinity) < EXHAUSTED_MS;
+const isExhausted = (provider: string, id: string) => recent(keyOf(provider, id)) || recent(keyOf(provider, "*"));
+
+/** Why the turn moves on: `usage` a usage limit, `credential` a refused credential, `outage` retries ran out. */
+type FallbackReason = "usage" | "credential" | "outage";
+
+const REASON_TEXT: Record<FallbackReason, string> = {
+	usage: "hit a usage limit",
+	credential: "refused the credential",
+	outage: "kept failing after retries",
+};
+
+const billingText = (billing: string) => (billing === "plan" ? "by plan" : "per token");
 
 export interface FallbackHost extends Pick<SessionInternals, "session" | "run"> {
 	readonly models: Pick<SessionModelControl, "setModel">;
 	omitRecoveryAttempt(message: AssistantMessage): void;
+	/** The session retry's own test (`SessionRetry.isRetryableError`): such a failure reaches here only after its retries. */
+	isRetryable(message: AssistantMessage): boolean;
 }
 
 /** `provider/id[:thinking]`; the id may hold slashes (gateway models). */
@@ -43,27 +63,47 @@ export class SessionFallback {
 		this.host = host;
 	}
 
+	/** Why a failed reply may move to another model; undefined for a failure another model would repeat. */
+	private reasonOf(message: AssistantMessage): FallbackReason | undefined {
+		if (message.stopReason !== "error") return undefined;
+		const text = message.errorMessage ?? "";
+		if (isUsageLimitError(text)) return "usage";
+		// Before the credential test: a rate limit that names the key is about waiting, not the key.
+		if (this.host.isRetryable(message)) return "outage";
+		return isCredentialError(text) ? "credential" : undefined;
+	}
+
 	/**
-	 * After a failure the session retry does not take: when it names a usage limit, hand it once to a virtual model's
-	 * router, or select the first usable `retry.fallbackModels` entry for the rest of the session.
+	 * After a failure the session retry does not take: hand a usage limit once to a virtual model's router, or select the
+	 * first usable `retry.fallbackModels` entry for the rest of the session. A refused credential skips every entry of
+	 * that provider; the notice names a change between plan and per-token billing.
 	 * @returns true if the caller should continue the agent with `run.failedResponse` set
 	 */
 	async prepare(message: AssistantMessage): Promise<boolean> {
 		const { session, run } = this.host;
-		if (message.stopReason !== "error" || !isUsageLimitError(message.errorMessage ?? "")) return false;
-		if (!session.settingsManager.getRetryEnabled()) return false;
+		const reason = this.reasonOf(message);
+		if (!reason || !session.settingsManager.getRetryEnabled()) return false;
 		const failedKey = keyOf(message.provider, message.model);
 		const current = session.model;
 		if (current && isVirtualModel(current)) {
-			if (isExhausted(failedKey)) return false;
+			if (reason !== "usage" || isExhausted(message.provider, message.model)) return false;
 			exhausted.set(failedKey, Date.now());
 			return this.resume(message);
 		}
-		exhausted.set(failedKey, Date.now());
+		exhausted.set(reason === "credential" ? keyOf(message.provider, "*") : failedKey, Date.now());
 		const candidate = await this.pick(session.settingsManager.getRetryFallbackModels());
 		if (!candidate) return false;
-		await this.host.models.setModel(candidate.model, { persist: false, source: "fallback", level: candidate.thinking });
-		const notice = `${failedKey} hit a usage limit; continuing on ${keyOf(candidate.model.provider, candidate.model.id)} (retry.fallbackModels). /model switches back.`;
+		await this.host.models.setModel(candidate.model, {
+			persist: false,
+			source: "fallback",
+			level: candidate.thinking,
+			reason: REASON_TEXT[reason],
+		});
+		const runtime = session.modelRuntime;
+		const from = runtime.getProviderBilling(message.provider);
+		const to = runtime.getProviderBilling(candidate.model.provider);
+		const billing = from === to ? "" : `, billed ${billingText(to)} instead of ${billingText(from)}`;
+		const notice = `${failedKey} ${REASON_TEXT[reason]}; continuing on ${keyOf(candidate.model.provider, candidate.model.id)}${billing} (retry.fallbackModels). /model switches back.`;
 		recordRunWarning(run.outcome, notice);
 		return this.resume(message);
 	}
@@ -82,7 +122,7 @@ export class SessionFallback {
 		const tokens = session.getContextUsage()?.tokens ?? undefined;
 		for (const selector of selectors) {
 			const parsed = parseSelector(selector.trim());
-			if (!parsed || isExhausted(keyOf(parsed.provider, parsed.id))) continue;
+			if (!parsed || isExhausted(parsed.provider, parsed.id)) continue;
 			const model = session.modelRuntime.getPhysicalModel(parsed.provider, parsed.id);
 			if (!model) continue;
 			// A window too small would compact first on the exhausted model, which fails on the same limit.
@@ -95,7 +135,7 @@ export class SessionFallback {
 	}
 }
 
-/** Forget recorded usage limits; for tests. */
+/** Forget recorded failures; for tests. */
 export function resetFallbackExhaustion(): void {
 	exhausted.clear();
 }

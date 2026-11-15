@@ -18,6 +18,8 @@ export interface ContextReport {
 	at: string;
 	capacity: number | null;
 	catalogCapacity: number | null;
+	/** Latest applicable runtime observation, separate from the catalog and the smaller working capacity. */
+	observedCapacity?: number;
 	currentTokens: number | null;
 	reportedTokens: number | null;
 	reserve: number;
@@ -36,7 +38,7 @@ export interface ContextReport {
 export function contextReport(
 	session: Pick<
 		AgentSessionStateApi,
-		"sessionManager" | "settingsManager" | "model" | "routedModel" | "thinkingLevel" | "systemPrompt"
+		"sessionManager" | "settingsManager" | "model" | "modelRuntime" | "routedModel" | "thinkingLevel" | "systemPrompt"
 	> &
 		Pick<AgentSessionModelApi, "getContextWindowLimit"> & { getContextUsage(): ContextUsage | undefined },
 ): ContextReport {
@@ -74,11 +76,24 @@ export function contextReport(
 	for (const [name, tokens] of groups) add(name, tokens);
 	const estimatedTotal = contributors.reduce((sum, item) => sum + item.tokens, 0);
 	const capacity = usage?.contextWindow ?? session.model?.contextWindow ?? null;
+	const effectiveCapacity = session.getContextWindowLimit();
+	const observed = projection.messages.findLast(
+		(message) =>
+			message.role === "assistant" &&
+			message.provider === session.model?.provider &&
+			message.model === session.model?.id &&
+			message.usage.contextWindow === effectiveCapacity &&
+			["stop", "toolUse", "length"].includes(message.stopReason),
+	);
 	return {
 		model: session.model ? `${session.model.provider}/${session.model.id}` : "No model selected",
 		at: new Date().toISOString(),
 		capacity,
-		catalogCapacity: session.getContextWindowLimit() ?? null,
+		catalogCapacity:
+			session.model && effectiveCapacity !== undefined
+				? (session.modelRuntime.getModel(session.model.provider, session.model.id)?.contextWindow ?? null)
+				: null,
+		...(observed && effectiveCapacity !== undefined ? { observedCapacity: effectiveCapacity } : {}),
 		currentTokens: usage?.tokens ?? null,
 		reportedTokens: measured.lastUsageIndex === null || usage?.tokens === null ? null : measured.usageTokens,
 		reserve: settings.reserveTokens,

@@ -119,7 +119,7 @@ export interface AgentSessionModelApi {
 	 * @throws Error if no auth is configured for the model
 	 */
 	setModel(model: Model<any>, options?: ModelMutationOptions): Promise<void>;
-	/** Catalog capacity of the selected physical model, before a session context budget. */
+	/** Effective capacity before the working budget; a current provider observation can refine an unoverridden catalog fallback. */
 	getContextWindowLimit(): number | undefined;
 	/** Set/reset this session's context budget within the model's capacity; requires an idle session. */
 	setContextWindow(tokens?: number): number;

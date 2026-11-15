@@ -225,14 +225,13 @@ describe("deferred declaration", () => {
 			parameters: { properties: Record<string, unknown>; required: string[] };
 			validationHint: (failure: { envelope: boolean; properties: string[] }) => string;
 		};
-		// The thin declaration has no schema for an entry, so the description names the operations and an entry's shape.
+		// The thin declaration has no schema for an entry.
 		expect(thin.parameters.properties.items).toEqual({ type: "array" });
 		expect(thin.parameters.required).toEqual(["reason"]);
-		expect(thin.description).toContain("add/edit write items: [{title, goal, why}]");
 		// A refused call returns the declared schema with its typed entry, not the looser one calls are validated against.
 		const hint = thin.validationHint({ envelope: false, properties: ["op"] });
 		expect(hint).toContain('"enum":["add","edit","list"]');
-		expect(hint).toContain('"title":{"type":"string","description":"one-line summary"}');
+		expect(hint).toContain('"title":{"type":"string"');
 		expect(hint).not.toContain('"items":{"type":"object"}');
 		const work = tools.get("backlog");
 		expect(withNativeDeferral(api({ mcpExposure: "recent" }), work as never).parameters).toBe(work.parameters);

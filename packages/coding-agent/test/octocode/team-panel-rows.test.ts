@@ -55,20 +55,20 @@ describe("agents panel rows", () => {
 
 	it("roots the tree at this session: its name and role, then the team's state, tokens and cost", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
-		expect(squash(lines[0])).toBe(" ● tidal-whale main claude-sonnet-4-5 2 working · 1 idle · 527k tok · ≈$1.23");
+		expect(squash(lines[0])).toBe(" 🦑 tidal-whale claude-sonnet-4-5 2 working · 1 idle · 527k tok · ≈$1.23");
 		expect(lines.join("\n")).not.toMatch(/^ agents/m);
 	});
 
 	it("shows who, what for, doing now, communication, model, state, time and tokens with the cached share", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(squash(lines[1])).toBe(
-			" ├ ⠋ inky-kraken researcher Checking vision routing refusal › localSearch vision_route claude-sonnet-4-5 working 4m49s 166k tok 74% cached 14 tool calls ≈$0.41",
+			" ├ ⠋ 🐙 inky-kraken researcher Checking vision routing refusal › localSearch vision_route claude-sonnet-4-5 working 4m49s 166k tok 74% cached 14 tool calls ≈$0.41",
 		);
 		expect(squash(lines[2])).toBe(
-			" ├ ⠋ plucky-otter researcher Checking timeout handling in serve_client.rs › localFetch serve_client.rs ✉ 1 claude-sonnet-4-5 working 4m49s 194k tok 63% cached 14 tool calls ≈$0.41",
+			" ├ ⠋ 🐙 plucky-otter researcher Checking timeout handling in serve_client.rs › localFetch serve_client.rs ✉ 1 claude-sonnet-4-5 working 4m49s 194k tok 63% cached 14 tool calls ≈$0.41",
 		);
 		expect(squash(lines[3])).toBe(
-			" └ ○ brave-squid general Searching ContextMode and AdaptiveMode enums 1 lock claude-sonnet-4-5 idle 4m49s 166k tok 74% cached 3 tool calls ≈$0.41",
+			" └ ○ 🐙 brave-squid general Searching ContextMode and AdaptiveMode enums 1 lock claude-sonnet-4-5 idle 4m49s 166k tok 74% cached 3 tool calls ≈$0.41",
 		);
 		expect(lines.join("\n")).not.toContain("anthropic/");
 	});
@@ -111,9 +111,9 @@ describe("agents panel rows", () => {
 	it("draws the tree: ├ for a child with later siblings, └ for the last, │ continuing beside a grandchild", () => {
 		const nested = [...team, agent("zesty-eel", "general", { parentId: "inky-kraken", goal: "Read routing.rs" })];
 		const lines = widgetLines(nested, "tidal-whale", NOW, theme, 200);
-		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ⠋ inky-kraken/);
-		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ⠋ zesty-eel/);
-		expect(rowOf(lines, "brave-squid")).toMatch(/^ └ ○ brave-squid/);
+		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ⠋ 🐙 inky-kraken/);
+		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ⠋ 🐙 zesty-eel/);
+		expect(rowOf(lines, "brave-squid")).toMatch(/^ └ ○ 🐙 brave-squid/);
 	});
 
 	it("paints with meaning: the waiting message in the attention colour, the state word in its state colour", () => {
