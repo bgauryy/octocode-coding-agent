@@ -2,7 +2,7 @@ import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveCacheAffinityId } from "../utils/cache-policy.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
@@ -44,8 +44,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 
 		try {
 			const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
-			const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
+			const cacheSessionId = resolveCacheAffinityId(options);
 			const grammarToolInputProperties = createGrammarToolInputProperties(
 				getDeclaredTools(normalizedContext.messages),
 				compat.supportsOpenAIGrammarTools,

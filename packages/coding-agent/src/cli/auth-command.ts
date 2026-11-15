@@ -30,14 +30,11 @@ export function getAuthCommandUsage(kind: AuthCommandKind): string {
 }
 
 export function isAuthCommandHelp(args: string[]): boolean {
-	return (
-		args[0] === "auth" &&
-		(args[1] === undefined || args[1] === "help" || args.includes("--help") || args.includes("-h"))
-	);
+	return args[0] === "auth" && (args[1] === "help" || args.includes("--help") || args.includes("-h"));
 }
 
-export function printAuthCommandHelp(): void {
-	console.log(`Usage:
+export function printAuthCommandHelp(write: (text: string) => void = console.log): void {
+	write(`Usage:
   ${APP_NAME} auth print-api-key [--provider <provider>] [--model <model>]
   ${APP_NAME} auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
   ${APP_NAME} auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]

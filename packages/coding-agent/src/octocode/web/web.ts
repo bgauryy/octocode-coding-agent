@@ -24,7 +24,7 @@ import {
 } from "../../../../common/src/web-guard.ts";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
-import { search } from "./search.ts";
+import { cachedSearch } from "./search-cache.ts";
 import { plural } from "../shared/text.ts";
 import { timedTool, timingOf } from "../render/rows.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -168,6 +168,7 @@ export async function approveFetch(
 
 export function registerWebTool(api: ExtensionAPI, permission: Permission): void {
 	const fetchUrl = pageFetcher();
+	const search = cachedSearch();
 	api.registerTool(
 		timedTool({
 			name: "web",

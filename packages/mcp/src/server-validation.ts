@@ -4,7 +4,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
-const MCP_TOOL_ROLES = ["reader", "search", "readOnly"] as const;
+const MCP_TOOL_ROLES = ["reader", "search", "judge", "readOnly"] as const;
 
 /** Whether a redirect URI can be served by Octocode's loopback callback server. */
 function isLoopbackRedirectUri(value: string): boolean {

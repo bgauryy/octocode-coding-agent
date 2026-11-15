@@ -1,3 +1,4 @@
+import { GLYPH } from "@octocodeai/octocode-tui/text";
 import { textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
@@ -47,6 +48,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 	api.registerTool(
 		timedTool({
 			name: "askUser",
+			roleVariant: true,
 			label: "Ask user",
 			promptSnippet: renderInstruction("tools/ask-user/snippet.md"),
 			description: `Receive user answers this turn; use instead of ending a reply or report with a question. Batch related, self-contained questions; at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options (none for free text); put the recommendation supported by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in.`,
@@ -219,7 +221,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 				const lines = answers.map(
 					(entry) =>
 						// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- recorded details are read back from the session and may predate the current shape
-						`${stateMark(theme, "done")} ${theme.fg("muted", clip(String(entry.question), 120))} ${theme.fg("dim", "→")} ${clip(String(entry.answer), 200)}`,
+						`${stateMark(theme, "done")} ${theme.fg("muted", clip(String(entry.question), 120))} ${theme.fg("dim", GLYPH.arrow)} ${clip(String(entry.answer), 200)}`,
 				);
 				// Declined or unavailable: `✗`; interrupted: `◼`. The same state marks the header.
 				const refused: UiState | undefined = !details?.cancelled

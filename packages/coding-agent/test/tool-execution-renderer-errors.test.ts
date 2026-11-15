@@ -36,7 +36,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 		});
 		const output = text(component);
 		expect(output).toContain("broken_tool");
-		expect(output).toContain("renderCall failed: TypeError: call renderer exploded");
+		expect(output).toContain("Call renderer failed: TypeError: call renderer exploded");
 	});
 
 	test("a throwing result renderer keeps the plain output and names the error", () => {
@@ -50,7 +50,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 		const output = text(component);
 		expect(output).toContain("CALL");
 		expect(output).toContain("PLAIN OUTPUT");
-		expect(output).toContain("renderResult failed: Error: result renderer exploded");
+		expect(output).toContain("Result renderer failed: Error: result renderer exploded");
 	});
 
 	test("a result renderer failure is shown even when the result has no text", () => {
@@ -61,7 +61,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 			},
 		});
 		component.updateResult({ content: [], isError: false });
-		expect(text(component)).toContain("renderResult failed: Error: nothing to show");
+		expect(text(component)).toContain("Result renderer failed: Error: nothing to show");
 	});
 
 	test("a component that throws while drawing shows plain output and names the error", () => {
@@ -74,7 +74,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 			}),
 		});
 		const output = text(component);
-		expect(output).toContain("Tool renderer failed (RangeError: draw exploded); showing plain output.");
+		expect(output).toContain("broken_tool renderer failed: RangeError: draw exploded");
 		expect(output).toContain("broken_tool");
 	});
 
@@ -87,7 +87,7 @@ describe("ToolExecutionComponent renderer failures", () => {
 		const raw = component.render(120).join("\n");
 		expect(raw).not.toContain("\u001b]0;");
 		const output = stripAnsi(raw);
-		expect(output).toContain("renderCall failed: Error: bad thing");
+		expect(output).toContain("Call renderer failed: Error: bad thing");
 		expect(output).not.toContain("second line");
 	});
 
@@ -98,6 +98,6 @@ describe("ToolExecutionComponent renderer failures", () => {
 				throw "plain string";
 			},
 		});
-		expect(text(component)).toContain("renderCall failed: plain string");
+		expect(text(component)).toContain("Call renderer failed: plain string");
 	});
 });

@@ -4,7 +4,7 @@ import path from "node:path";
 import ignore from "ignore";
 import type { ToolInvocation } from "../../../core/features/types.ts";
 import { agentCall } from "../../child-sessions/agent-call.ts";
-import { fileChanges } from "../../tool-input/file-input.ts";
+import { toolEffect } from "../tool-effects.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { untilCommand } from "../../shared/until-command.ts";
@@ -24,28 +24,14 @@ export interface Operation {
 }
 export function operations(invocation: ToolInvocation): Operation[] {
 	const input = asRecord(invocation.input);
-	if (invocation.toolName === "file")
-		return fileChanges(input).flatMap((query) => {
-			const name = query.type === "write" ? "Write" : query.type === "delete" ? "Delete" : "Edit";
-			return [
-				{
-					name,
-					input: query,
-					path: typeof query.path === "string" ? query.path : undefined,
-					mutation: true,
-				},
-				...(typeof query.movePath === "string"
-					? [
-							{
-								name: "Write",
-								input: query,
-								path: query.movePath,
-								mutation: true,
-							},
-						]
-					: []),
-			];
-		});
+	const declared = toolEffect(invocation.toolName);
+	if (declared?.kind === "write")
+		return (declared.changes?.(input) ?? []).map((change) => ({
+			name: change.type === "write" ? "Write" : change.type === "delete" ? "Delete" : "Edit",
+			input: change.detail === undefined ? input : asRecord(change.detail),
+			path: change.path,
+			mutation: true,
+		}));
 	if (invocation.toolName === "agent") {
 		const call = agentCall(input);
 		return [{ name: call.type === "task" ? "Agent" : `agent.${call.type ?? "unknown"}`, input: call.input }];

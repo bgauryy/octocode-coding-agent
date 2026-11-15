@@ -149,7 +149,7 @@ describe("a session tree", () => {
 		const { box, store } = teamBox();
 		const parent = await session(box);
 		// Each child follows the script the stand-up carries once it reads it, at its next step. The database is new, so the
-		// stand-up is message #1: an answer naming it wakes the idle asker (an FYI to an idle agent would only wait).
+		// stand-up is message #1: an answer naming it wakes the idle asker (a reply to anything else would only wait).
 		const answer = script([
 			{ tool: "agent", args: { type: "message", replyTo: 1, message: "stand-up answer: no blockers" } },
 			{ text: "answered" },

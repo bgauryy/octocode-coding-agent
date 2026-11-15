@@ -35,6 +35,7 @@ export const SETTINGS_DEFAULTS = {
 			maxRetryDelayMs: 60000,
 		},
 		fallbackModels: [] as string[],
+		fallbackCooldownMs: 15 * 60_000,
 	},
 	toolExecution: { earlyStart: false },
 	hideThinkingBlock: true,
@@ -47,6 +48,9 @@ export const SETTINGS_DEFAULTS = {
 	bash: {
 		inheritProviderKeys: false,
 		spillMaxBytes: 1024 * 1024 * 1024,
+		longCommandAfterSeconds: 30,
+		deliberateMaxSeconds: 600,
+		longCommandPatterns: [] as string[],
 	},
 	subagents: {
 		checkInSeconds: 300,

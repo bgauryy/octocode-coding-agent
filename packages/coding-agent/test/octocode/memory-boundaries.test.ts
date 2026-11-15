@@ -79,11 +79,15 @@ describe("memory retrieval and write boundaries", () => {
 			const a = new MemoryStore(db, "repo-a");
 			const b = new MemoryStore(db, "repo-b");
 			const global = b.set({ title: "Prefers tabs for indentation", scope: "global", author: "test" }).memory;
-			const local = a.set({ title: "Prefers tabs for indentation", author: "test" }).memory;
-			expect(local.scope).toBe("project");
-			expect(() => a.set({ id: local.id, scope: "global", author: "test" })).toThrow(
+			// The same title is refused outright in another visible scope; a distinct one is saved, then cannot be moved onto it.
+			expect(() => a.set({ title: "Prefers tabs for indentation", author: "test" })).toThrow(
 				new RegExp(`Similar memory M${global.id}`),
 			);
+			const local = a.set({ title: "Spaces are banned in source files", author: "test" }).memory;
+			expect(local.scope).toBe("project");
+			expect(() =>
+				a.set({ id: local.id, scope: "global", title: "Prefers tabs for indentation", author: "test" }),
+			).toThrow(new RegExp(`Similar memory M${global.id}`));
 			expect(a.get(local.id)?.scope).toBe("project");
 			// An update within the memory's own scope is not compared with itself.
 			expect(a.set({ id: local.id, body: "in every file", author: "test" }).memory.body).toBe("in every file");

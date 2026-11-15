@@ -282,3 +282,47 @@ describe("Enter without the tools source", () => {
 		expect(apply).toHaveBeenCalledOnce();
 	});
 });
+
+describe("usage audit of a server's tools", () => {
+	const audited = () =>
+		connected(
+			{
+				name: "search",
+				state: "direct",
+				decidedBy: "usage",
+				audit: { declared: 8, called: 3, used: 1, refused: 0, rate: 0.125, lastUsed: "2026-11-14", reason: "promoted" },
+			},
+			{
+				name: "read",
+				state: "deferred",
+				decidedBy: "usage",
+				audit: { declared: 8, called: 0, used: 0, refused: 0, rate: 0, reason: "unused" },
+			},
+			{ name: "plain", state: "direct", decidedBy: "default" },
+		);
+
+	it("carries each tool's audit on its row", () => {
+		live = audited();
+		const source = createMcpToolsSource({
+			ctx: () => ({
+				cwd,
+				agentDir,
+				settings: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				projectTrusted: true,
+			}),
+			live: () => live,
+		});
+		const rows = source.view("docs", "global").tools;
+		expect(rows.find((row) => row.name === "search")?.audit).toMatchObject({ rate: 0.125, lastUsed: "2026-11-14" });
+		expect(rows.find((row) => row.name === "read")?.audit).toMatchObject({ reason: "unused" });
+		expect(rows.find((row) => row.name === "plain")?.audit).toBeUndefined();
+	});
+
+	it("shows the rate, the last day used and the reason beside the exposure", () => {
+		live = audited();
+		const { text } = open();
+		expect(text()).toMatch(/\[x\] search\s+direct · 12\.5% of 8 sessions · 3 calls · last 2026-11-14 · promoted/);
+		expect(text()).toMatch(/\[~\] read\s+deferred · 0\.0% of 8 sessions · 0 calls · unused in 7 days · unused/);
+		expect(text()).toMatch(/\[x\] plain\s+direct$/m);
+	});
+});

@@ -59,7 +59,7 @@ describe("mail that arrives during a turn without tools", () => {
 		live.faux.setResponses([
 			async (context) => {
 				live.record(context);
-				await live.peer.send(live.id, "MAIL: just so you know", { replyRequired: false });
+				await live.peer.send(live.id, "MAIL: just so you know", { replyRequired: false, wake: false });
 				return fauxAssistantMessage("done");
 			},
 			(context) => {

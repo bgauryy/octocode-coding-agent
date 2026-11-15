@@ -216,8 +216,15 @@ export class ModelAvailability {
 	/** How a provider is configured: runtime key, stored credential, configured key, then the latest auth check. */
 	getProviderAuthStatus(providerId: string, credentials: RuntimeCredentials, layers: ProviderLayers): AuthStatus {
 		if (credentials.hasRuntimeApiKey(providerId)) return { configured: true, source: "runtime" };
-		if (this.snapshot.storedProviders.has(providerId))
-			return { configured: this.snapshot.auth.get(providerId) !== undefined, source: "stored" };
+		if (this.snapshot.storedProviders.has(providerId)) {
+			const origin = credentials.credentialOrigin(providerId);
+			const stored = credentials.storedIn(providerId);
+			return {
+				configured: this.snapshot.auth.get(providerId) !== undefined,
+				source: "stored",
+				...(origin ? { label: `saved credential in ${origin}` } : stored ? { label: stored } : {}),
+			};
+		}
 		const configured = configuredRequestAuthStatus(
 			layers.config.getProvider(providerId),
 			layers.extensionProviders.get(providerId),

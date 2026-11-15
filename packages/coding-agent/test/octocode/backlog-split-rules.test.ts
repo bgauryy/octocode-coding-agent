@@ -143,20 +143,18 @@ describe("G2: a verification that names no result is not recorded as passed", ()
 		expect(completionInput({ summary: "Done", verification }).verification).toEqual({ status, summary: verification });
 	});
 
-	it("stores not_stated, lets the item finish, and says how to state the result", async () => {
-		const { call, store } = await setup();
-		await call({ op: "claim", id: "B1" });
-		const out = await call({ op: "done", id: "B1", completion: { summary: "Done", verification: "ran the check" } });
-		expect(out).toContain("B1 [done");
-		expect(out).toContain(
-			"(Verification recorded as not stated: it names no result. Start it with passed, failed, not run or not applicable.)",
-		);
-		expect(store().get("B1")!.completions.at(-1)!.verification).toEqual({
-			status: "not_stated",
-			summary: "ran the check",
-		});
-		expect(await call({ op: "get", id: "B1" })).toContain("Verification: not_stated — ran the check");
-	});
+	it.each(["ran the check", "37 passed, 2 failed"])(
+		"refuses an agent's done whose verification %j names no result, keeping the item ongoing",
+		async (verification) => {
+			const { call, store } = await setup();
+			await call({ op: "claim", id: "B1" });
+			await expect(call({ op: "done", id: "B1", completion: { summary: "Done", verification } })).rejects.toThrow(
+				/names no result: start it with passed or not applicable/,
+			);
+			expect(store().get("B1")!.state).toBe("ongoing");
+			expect(store().get("B1")!.completions).toEqual([]);
+		},
+	);
 
 	it("says nothing extra when the result is stated, and takes the declared retry key", async () => {
 		const { call, store } = await setup();

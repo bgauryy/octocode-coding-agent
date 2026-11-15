@@ -7,7 +7,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../theme/theme.ts";
-import { keyHint } from "../../theme/theme-tui-helpers.ts";
+import { expandHint, plural } from "../shared/text.ts";
 import { cleanPurposeText, statedPurposes, type StatedPurpose } from "./purpose-data.ts";
 
 const INDENT = "  ";
@@ -52,11 +52,14 @@ class PurposeBlock implements Component {
 		const selected = this.expanded ? this.lines : this.lines.slice(0, MAX_LINES);
 		const shown = selected.flatMap(paint);
 		const more = this.lines.length - selected.length;
-		const truncated = !this.expanded && selected.some((line) => visibleWidth(line.text) > room);
-		if (more > 0 || truncated) {
-			const detail = more > 0 ? `… +${more} more` : "… more detail";
+		const cut = this.expanded
+			? 0
+			: selected.reduce((sum, line) => sum + Math.max(0, visibleWidth(line.text) - room), 0);
+		if (more > 0 || cut > 0) {
+			const detail = more > 0 ? `… +${more} more` : `… +${plural(cut, "char")}`;
+			const hint = expandHint();
 			shown.push(
-				...wrapTextWithAnsi(`${theme.fg("muted", detail)} ${keyHint("app.tools.expand", "to expand")}`, room).map(
+				...wrapTextWithAnsi(`${theme.fg("muted", detail)}${hint ? ` ${theme.fg("dim", hint)}` : ""}`, room).map(
 					(row) => indent + row,
 				),
 			);
@@ -95,11 +98,7 @@ export function returnedPurposeBlock(
 }
 
 /** Supplied call metadata stays with its query, including distinct reason and reasoning values. */
-export function suppliedPurposeBlock(
-	purposes: StatedPurpose[],
-	expanded = false,
-	section?: string,
-): Component | undefined {
+function suppliedPurposeBlock(purposes: StatedPurpose[], expanded = false, section?: string): Component | undefined {
 	const lines: PurposeLine[] = [];
 	for (const purpose of purposes) {
 		const query = purpose.row === undefined ? "" : `Query ${purpose.row + 1} · `;

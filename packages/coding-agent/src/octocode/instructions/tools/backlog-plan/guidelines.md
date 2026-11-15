@@ -1,1 +1,1 @@
-Reuse matching items. Set why, paths, evidence and a checkable goal. Put research and root cause (or hypothesis) in plan; follow-ups: from, trigger, fix. Link saved research/RFCs as evidence.
+Reuse matching items. Set why, paths, evidence and a checkable goal. Put research in plan: trigger, root cause (or hypothesis), evidence, the check that tells causes apart; follow-ups: from, trigger, fix. Link saved research/RFCs as evidence.

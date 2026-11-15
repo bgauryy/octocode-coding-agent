@@ -2,6 +2,7 @@ import {
 	type Component,
 	Container,
 	getKeybindings,
+	GLYPH,
 	type Input,
 	Spacer,
 	Text,
@@ -78,7 +79,7 @@ export class ActionsMenu implements Component {
 		const lines = [` ${truncateToWidth(theme.bold(this.title), Math.max(1, width - 2), "…")}`, ""];
 		this.actions.forEach((action, i) => {
 			const label = truncateToWidth(action.label, Math.max(1, width - 4), "…");
-			lines.push(i === this.selected ? ` ${theme.fg("accent", `› ${label}`)}` : `   ${label}`);
+			lines.push(i === this.selected ? ` ${theme.fg("accent", `${GLYPH.cursor} ${label}`)}` : `   ${label}`);
 		});
 		lines.push(
 			"",

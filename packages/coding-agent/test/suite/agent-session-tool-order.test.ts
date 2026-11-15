@@ -3,16 +3,18 @@ import { Type } from "typebox";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
+import { findToolCacheBoundary } from "../../src/core/tool-roles.ts";
 import { createHarness, type Harness } from "./harness.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "../octocode/fake-research-roles.ts";
 
-const register = (api: ExtensionAPI, name: string, namespace?: string) =>
+const register = (api: ExtensionAPI, name: string, namespace?: string, roleVariant?: boolean) =>
 	api.registerTool({
 		name,
 		label: name,
 		description: `${name} tool.`,
 		parameters: Type.Object({}),
 		...(namespace ? { namespace: { name: namespace } } : {}),
+		...(roleVariant ? { roleVariant } : {}),
 		execute: async () => ({ content: [], details: {} }),
 	});
 
@@ -47,8 +49,72 @@ describe("declared tool order", () => {
 		const mcp = ["mcp__alpha__beta", "mcp__alpha__zeta", "mcp__beta__alpha", "mcp__beta__gamma"];
 		expect(forward.filter((name) => name.startsWith("mcp__"))).toEqual(mcp);
 		expect(reverse).toEqual(forward);
-		// Tools that are not MCP tools keep their place, ahead of the MCP tools.
+		// Tools that are not MCP tools come ahead of the MCP tools.
 		expect(forward.indexOf("plain_tool")).toBeLessThan(forward.indexOf(mcp[0]));
+	});
+});
+
+describe("unlisted tools", () => {
+	it("declare the same tool bytes and boundary whichever order they register in", async () => {
+		const declare = async (names: string[]) => {
+			const harness = await createHarness({ extensionFactories: [(api) => names.forEach((n) => register(api, n))] });
+			try {
+				await harness.session.bindExtensions({});
+				harness.setResponses([fauxAssistantMessage("ok")]);
+				await harness.session.prompt("go");
+				const tools = harness.session.agent.state.tools;
+				return {
+					bytes: JSON.stringify(tools.map(({ name, description, parameters }) => ({ name, description, parameters }))),
+					boundary: findToolCacheBoundary(
+						tools.map((t) => t.name),
+						(name) => tools.some((t) => t.name === name && t.roleVariant),
+					),
+				};
+			} finally {
+				harness.cleanup();
+			}
+		};
+		const forward = await declare(["zz_tool", "aa_tool", "mm_tool"]);
+		const reverse = await declare(["mm_tool", "zz_tool", "aa_tool"]);
+		expect(reverse).toEqual(forward);
+		expect(forward.bytes.indexOf("aa_tool")).toBeLessThan(forward.bytes.indexOf("zz_tool"));
+	});
+});
+
+describe("role-variant tools", () => {
+	it("declare after the shared tools and set the boundary from the definition alone", async () => {
+		const declare = async (names: Array<[string, boolean]>) => {
+			const harness = await createHarness({
+				extensionFactories: [(api) => names.forEach(([name, variant]) => register(api, name, undefined, variant))],
+			});
+			try {
+				await harness.session.bindExtensions({});
+				harness.setResponses([fauxAssistantMessage("ok")]);
+				await harness.session.prompt("go");
+				const tools = harness.session.agent.state.tools;
+				const order = tools.map((tool) => tool.name);
+				return {
+					order,
+					boundary: findToolCacheBoundary(order, (n) => tools.some((t) => t.name === n && t.roleVariant)),
+				};
+			} finally {
+				harness.cleanup();
+			}
+		};
+		const forward = await declare([
+			["plain_b", false],
+			["new_role_tool", true],
+			["plain_a", false],
+		]);
+		const reverse = await declare([
+			["plain_a", false],
+			["plain_b", false],
+			["new_role_tool", true],
+		]);
+		expect(reverse).toEqual(forward);
+		expect(forward.boundary).toBe("new_role_tool");
+		expect(forward.order.indexOf("plain_b")).toBeLessThan(forward.order.indexOf("new_role_tool"));
+		expect(forward.order.at(-1)).toBe("new_role_tool");
 	});
 });
 
@@ -65,15 +131,23 @@ describe("orderToolNames", () => {
 	};
 	const namespaceOf = (name: string) => namespaces[name];
 	const research = [RESEARCH.search, RESEARCH.reader].toSorted();
+	const variantNames = new Set([
+		"backlog",
+		"backlogPlan",
+		"archive",
+		"memory",
+		"askUser",
+		"agent",
+		"skill",
+		"models",
+		"compact",
+	]);
+	const isVariant = (name: string) => variantNames.has(name);
 
-	it("keeps other tools in order, then MCP tools by namespace and name, without duplicates", () => {
-		expect(orderToolNames(["read", "mcp__b__x", "bash", "mcp__a__y", "mcp__a__x", "read"], namespaceOf)).toEqual([
-			"bash",
-			"read",
-			"mcp__a__x",
-			"mcp__a__y",
-			"mcp__b__x",
-		]);
+	it("sorts other tools by name, then MCP tools by namespace and name, without duplicates", () => {
+		expect(
+			orderToolNames(["read", "mcp__b__x", "bash", "mcp__a__y", "mcp__a__x", "read"], namespaceOf, isVariant),
+		).toEqual(["bash", "read", "mcp__a__x", "mcp__a__y", "mcp__b__x"]);
 	});
 
 	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
@@ -85,7 +159,23 @@ describe("orderToolNames", () => {
 			[...octocode, "mcp__a__x", ...invariant.slice().reverse(), ...variant.slice().reverse()],
 		];
 		for (const names of arrivals)
-			expect(orderToolNames(names, namespaceOf)).toEqual([...invariant, ...octocode, "mcp__a__x", ...variant]);
+			expect(orderToolNames(names, namespaceOf, isVariant)).toEqual([
+				...invariant,
+				...octocode,
+				"mcp__a__x",
+				...variant,
+			]);
+	});
+
+	it("places a definition-declared variant tool after the others with no list change", () => {
+		const names = ["zz_role", "bash", "aa_plain", "agent", "mcp__a__x"];
+		expect(orderToolNames(names, namespaceOf, (name) => name === "zz_role" || isVariant(name))).toEqual([
+			"bash",
+			"aa_plain",
+			"mcp__a__x",
+			"agent",
+			"zz_role",
+		]);
 	});
 
 	it("gives a child and its parent the same declaration prefix up to the first role-variant tool", () => {
@@ -95,8 +185,9 @@ describe("orderToolNames", () => {
 		const parent = orderToolNames(
 			["skill", "askUser", "agent", "archive", "backlog", ...octocode, "mcp__a__x", ...shared],
 			namespaceOf,
+			isVariant,
 		);
-		const child = orderToolNames(["agent", "archive", "backlog", ...octocode, ...shared], namespaceOf);
+		const child = orderToolNames(["agent", "archive", "backlog", ...octocode, ...shared], namespaceOf, isVariant);
 		expect(parent.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
 		expect(child.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
 	});

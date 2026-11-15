@@ -37,6 +37,9 @@ describe("/remote", () => {
 		const command = remoteCommand(host(async () => ({ origin, token })));
 		const ctx = fakeCtx({ cwd: "/tmp" });
 		await command.handler("", ctx);
+		expect(ctx.ui.notes.at(-1)).toEqual({ message: "Cancelled: nothing was published.", type: "info" });
+		ctx.ui.confirms.push(true);
+		await command.handler("", ctx);
 		const control = ctx.ui.notes.at(-1)!;
 		expect(control.type).toBe("info");
 		expect(control.message).toContain(`ssh -N -L ${server.port}:127.0.0.1:${server.port}`);
@@ -67,13 +70,23 @@ describe("/remote", () => {
 			}),
 		);
 		for (const word of ["", "status", "stop"]) {
+			ctx.ui.confirms.push(true);
 			await broken.handler(word, ctx);
 			expect(ctx.ui.notes.at(-1)).toEqual({ message: expect.stringContaining("no daemon today"), type: "error" });
 		}
 		const { origin, token } = await daemon();
 		const headless = fakeCtx({ cwd: "/tmp", hasUI: false });
-		await remoteCommand(host(async () => ({ origin, token }))).handler("", headless);
+		const command = remoteCommand(host(async () => ({ origin, token })));
+		await command.handler("view", headless);
+		expect(headless.ui.notes.at(-1)!.message).toContain("http://");
 		expect(headless.ui.notes.at(-1)!.message).not.toMatch(/[█▀▄]/);
+		// Nobody can agree to a control link: it is refused and points to the explicit command.
+		await command.handler("", headless);
+		expect(headless.ui.notes.at(-1)).toEqual({
+			message: expect.stringContaining("octocode remote link"),
+			type: "warning",
+		});
+		expect(headless.ui.notes.at(-1)!.message).not.toContain("http://");
 	});
 
 	it("uses the configured transport: a relay link when settings say so, with the relay from settings", async () => {
@@ -95,6 +108,7 @@ describe("/remote", () => {
 				() => ({ transport: "relay" }),
 			),
 		);
+		ctx.ui.confirms.push(true);
 		await missing.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/relay address/);
 	});

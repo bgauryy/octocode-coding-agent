@@ -1,5 +1,6 @@
 import { getAgentDir } from "../../../config.ts";
 import { SettingsManager } from "../../../core/settings-manager.ts";
+import type { LongCommandSettings } from "../bash/long-commands.ts";
 
 /** The shell a background job or a foreground command runs with: the user's Octocode settings, the prefix, a non-interactive environment. */
 
@@ -10,6 +11,8 @@ export interface ShellSettings {
 	commandPrefix?: string;
 	/** `bashBackgroundAfterSeconds`: when a foreground command moves to the background. */
 	backgroundAfterSeconds?: number;
+	/** `bash.longCommandAfterSeconds`, `bash.deliberateMaxSeconds` and `bash.longCommandPatterns`. */
+	longCommands?: LongCommandSettings;
 	/** `bashOutputMaxBytes`: the model-facing budget of a foreground result. */
 	outputMaxBytes?: number;
 	/** `bash.spillMaxBytes`: the most the saved full output of a foreground result holds; 0 lifts the cap. */
@@ -26,6 +29,7 @@ export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettin
 			...(shellPath ? { shellPath } : {}),
 			...(commandPrefix ? { commandPrefix } : {}),
 			backgroundAfterSeconds: settings.getBashBackgroundAfterSeconds(),
+			longCommands: settings.getBashLongCommands(),
 			outputMaxBytes: settings.getBashOutputMaxBytes(),
 			spillMaxBytes: settings.getBashSpillMaxBytes(),
 		};

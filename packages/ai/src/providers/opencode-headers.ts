@@ -1,4 +1,5 @@
 import type { ProviderHeaders, ProviderStreams, StreamOptions } from "../types.ts";
+import { resolvePromptCacheKey } from "../utils/cache-policy.ts";
 
 const OPENCODE_SESSION_HEADER = "x-opencode-session";
 
@@ -17,9 +18,10 @@ function withSessionHeader<TOptions extends StreamOptions>(
 		hasHeader(modelHeaders, OPENCODE_SESSION_HEADER)
 	)
 		return options;
+	// The header names the conversation the prompt cache key names, so a fork or child routes with its group.
 	return {
 		...options,
-		headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId },
+		headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: resolvePromptCacheKey(options) ?? options.sessionId },
 	};
 }
 

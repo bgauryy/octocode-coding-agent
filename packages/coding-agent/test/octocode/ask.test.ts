@@ -199,7 +199,7 @@ describe("askUser", () => {
 		expect(frames[0]).toContain("› 1. Small (Recommended)");
 		expect(frames[0]).toContain("One file");
 		expect(frames[0]).toContain("3. Write an answer");
-		expect(frames[0]).toContain("up/down/1-9 move · enter choose · escape/ctrl+c cancel");
+		expect(frames[0]).toContain("up/down/1-9 move · enter choose · esc/ctrl+c cancel");
 		expect(frames[0]).toContain("Choose one");
 		expect(frames[0]).not.toContain("Submit");
 	});
@@ -210,7 +210,7 @@ describe("askUser", () => {
 			cancelled: false,
 			answers: [{ question: "Which scope?", answer: "x my own", custom: true }],
 		});
-		expect(typed.frames[3]).toContain("enter submit · escape/ctrl+c back");
+		expect(typed.frames[3]).toContain("enter submit · esc/ctrl+c back");
 		// An empty submission keeps the dialog open and leaves typing mode.
 		const empty = await drive([scope], ["3", KEY.enter, KEY.enter, KEY.escape]);
 		expect(empty.frames[3]).toContain("enter choose");
@@ -223,7 +223,7 @@ describe("askUser", () => {
 			[scope, { question: "Why?", header: "Why", options: [] }],
 			[KEY.enter, ..."abc", KEY.escape, KEY.shiftTab, KEY.tab, KEY.enter, KEY.enter],
 		);
-		expect(frames[7]).toContain("enter submit · escape/ctrl+c back");
+		expect(frames[7]).toContain("enter submit · esc/ctrl+c back");
 		expect(frames[7]).toContain("abc");
 		expect(result.answers).toEqual([
 			{ question: "Which scope?", answer: "Small (Recommended)", custom: false },

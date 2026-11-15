@@ -54,6 +54,8 @@ export interface SnapshotItem {
 	epicState?: State;
 	children?: string[];
 	blockedBy?: string[];
+	/** The name of the background agent queued to start this item once its prerequisites are done; absent when none waits. */
+	queuedBy?: string;
 	needsReview?: boolean;
 	ref: string;
 	title: string;

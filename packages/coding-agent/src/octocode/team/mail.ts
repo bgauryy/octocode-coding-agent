@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
-import type { DeadLetter, MailDetails, Message } from "./model.ts";
+import type { DeadLetter, MailDetails, Message, RecipientKind } from "./model.ts";
 import { parentProofValid, userProofValid } from "./proof.ts";
 import { deadLetterText, messageText } from "./routing.ts";
 import { spillIntact } from "./spill.ts";
@@ -91,15 +91,6 @@ export class Mail {
 	followPeers(host: Omit<PeerNoticeHost, "mail">): void {
 		this.peers ??= new PeerNotices({ ...host, mail: this });
 		this.peers.watch();
-	}
-
-	/** One line that a peer ended: an FYI read at the next step, or, with `wake`, one that starts a turn of an idle agent (a question of this agent's is left open). */
-	peerLeft(text: string, wake: boolean): boolean {
-		return this.inject(
-			text,
-			{ messages: [{ from: "team", text, at: Date.now() }] },
-			{ triggerTurn: wake, deliverAs: "steer" },
-		);
 	}
 
 	/**
@@ -211,8 +202,14 @@ export class Mail {
 	 * Tells this agent, once and without waking it, about messages it sent that their recipients left without reading or
 	 * answering. A child leaves before its report is built, so a question it read waits while `reporting` says that report is
 	 * still to come: the report closes it (`closeQuestionsTo`), and only a run that ends without one reports it unanswered.
+	 * `kind` says which recipients were this agent's children, so the notice names the next step for each.
 	 */
-	reportDeadLetters(db: TeamStore, id: string, reporting: (recipient: string) => boolean = () => false): void {
+	reportDeadLetters(
+		db: TeamStore,
+		id: string,
+		reporting: (recipient: string) => boolean = () => false,
+		kind?: (recipient: string) => RecipientKind,
+	): void {
 		this.recordNotices(db);
 		if (this.noticePending) return;
 		const letters = db.deadLetters(id).filter((letter) => !letter.read?.some(reporting));
@@ -222,7 +219,13 @@ export class Mail {
 		const current = () => generation === this.generation;
 		if (
 			!this.notice(
-				letters.map(deadLetterText).join("\n\n"),
+				letters
+					.map((letter) =>
+						deadLetterText(
+							kind ? { ...letter, kinds: Object.fromEntries(letter.recipients.map((to) => [to, kind(to)])) } : letter,
+						),
+					)
+					.join("\n\n"),
 				() => {
 					if (current()) this.noticePending = false;
 				},

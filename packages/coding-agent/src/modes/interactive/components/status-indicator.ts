@@ -16,7 +16,7 @@ import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { hintText, interruptKey, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
+import { hintLine, interruptKey, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
 import { styledLine } from "../../../../../common/src/sanitize.ts";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
@@ -40,6 +40,13 @@ export class StatusIndicator extends Loader {
 	) {
 		super(ui, spinnerColorFn, messageColorFn, message, indicator);
 		this.kind = kind;
+	}
+
+	/** One row like the working indicator: a message too long for the width is cut, its trailing hint first. */
+	override render(width: number): string[] {
+		const [gap = "", first = "", ...more] = super.render(width);
+		if (more.length === 0) return [gap, first];
+		return [gap, truncateToWidth(`${first.trimEnd()} …`, Math.max(0, width), "…")];
 	}
 
 	renderInBorder(width: number): string {
@@ -142,12 +149,17 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	}
 }
 
+/** ` · esc cancel`, in the key-hint colors of every other hint line. */
+function cancelHint(): string {
+	return `${SEPARATOR}${hintLine([[interruptKey(), "cancel"]])}`;
+}
+
 export class RetryStatusIndicator extends StatusIndicator {
 	private countdown: CountdownTimer | undefined;
 
 	constructor(ui: TUI, attempt: number, maxAttempts: number, delayMs: number) {
 		const retryMessage = (seconds: number) =>
-			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s…${SEPARATOR}${hintText([[interruptKey(), "cancel"]])}`;
+			`Retrying (${attempt}/${maxAttempts})${seconds > 0 ? ` in ${seconds}s` : ""}…${cancelHint()}`;
 		super(
 			"retry",
 			ui,
@@ -189,7 +201,7 @@ function compactionMessage(label: string, progress?: CompactionProgress): string
 			? `${SEPARATOR}~${formatTokens(Math.ceil(progress.receivedChars / CHARS_PER_TOKEN))} tokens received`
 			: "";
 	const shown = progress ? ` ${formatDuration(progress.elapsedMs)}${received}` : "";
-	return `${label}${shown} · ${hintText([[interruptKey(), "cancel"]])}`;
+	return `${label}${shown}${cancelHint()}`;
 }
 
 export class CompactionStatusIndicator extends StatusIndicator {
@@ -223,7 +235,7 @@ export class BranchSummaryStatusIndicator extends StatusIndicator {
 			ui,
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
-			`Summarizing branch…${SEPARATOR}${hintText([[interruptKey(), "cancel"]])}`,
+			`Summarizing branch…${cancelHint()}`,
 		);
 	}
 }

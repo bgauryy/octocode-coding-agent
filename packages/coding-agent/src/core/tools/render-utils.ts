@@ -1,6 +1,7 @@
 import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { clipText } from "../../../../common/src/clip.ts";
+import { colorJson } from "../../../../common/src/json-color.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
@@ -44,13 +45,18 @@ export function getTextOutput(
 }
 
 const COLLAPSED_ARGS_CHARS = 100;
+/** One expanded argument value is cut here: a very large argument stays cheap to colour and draw. */
+const EXPANDED_VALUE_CHARS = 4096;
+
+type ThemeToken = Parameters<Theme["fg"]>[0];
 
 /**
  * Generic tool call header: the title followed by the arguments. Collapsed, they are `key=value`
  * pairs on the title line, cut to {@link COLLAPSED_ARGS_CHARS}. Expanded, each is a `key: value`
- * line below the title, with strings shown as written and continuation lines indented. The title, keys and values
- * come from the model or an MCP server, so terminal controls (escape sequences, C1 introducers, bidi overrides) are
- * stripped before the text is themed.
+ * line below the title, with strings shown as written and continuation lines indented, each value cut to
+ * {@link EXPANDED_VALUE_CHARS}. Keys, strings, numbers and punctuation take the colours of a JSON code block. The
+ * title, keys and values come from the model or an MCP server, so terminal controls (escape sequences, C1 introducers,
+ * bidi overrides) are stripped before the text is themed.
  */
 export function formatToolCallWithArgs(title: string, args: unknown, theme: Theme, expanded: boolean): string {
 	const header = theme.fg("toolTitle", theme.bold(sanitizeTerminalText(title)));
@@ -58,18 +64,36 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	const entries =
 		typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : ([["args", args]] as [string, unknown][]);
 	if (entries.length === 0) return header;
+	const tokens = { fg: (color: string, text: string) => theme.fg(color as ThemeToken, text) };
+	const key = (text: string) => theme.fg("syntaxVariable", sanitizeTerminalText(text));
+	const mark = (text: string) => theme.fg("syntaxPunctuation", text);
+	const json = (text: string) => colorJson(sanitizeTerminalText(text), tokens, false);
 	if (expanded) {
-		const lines = entries.map(([key, value]) => {
+		const lines = entries.map(([name, value]) => {
 			const text = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? String(value));
-			const shown = sanitizeTerminalText(replaceTabs(text).replace(/\r/g, ""));
-			return `  ${sanitizeTerminalText(key)}: ${shown.split("\n").join("\n    ")}`;
+			const cut = clipText(replaceTabs(text).replace(/\r/g, ""), EXPANDED_VALUE_CHARS);
+			const shown = typeof value === "string" ? theme.fg("syntaxString", sanitizeTerminalText(cut)) : json(cut);
+			return `  ${key(name)}${mark(":")} ${shown.split("\n").join("\n    ")}`;
 		});
-		return `${header}\n${theme.fg("muted", lines.join("\n"))}`;
+		return `${header}\n${lines.join("\n")}`;
 	}
-	const pairs = sanitizeTerminalText(
-		entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" "),
-	);
-	return `${header} ${theme.fg("muted", clipText(pairs, COLLAPSED_ARGS_CHARS))}`;
+	let budget = COLLAPSED_ARGS_CHARS;
+	const pieces: string[] = [];
+	for (const [name, value] of entries) {
+		const label = sanitizeTerminalText(name);
+		const text = sanitizeTerminalText(JSON.stringify(value) ?? String(value));
+		const need = (pieces.length ? 1 : 0) + label.length + 1 + text.length;
+		if (need <= budget) {
+			pieces.push(`${key(label)}${mark("=")}${json(text)}`);
+			budget -= need;
+			continue;
+		}
+		const room = budget - (pieces.length ? 1 : 0) - label.length - 1;
+		if (room >= 2) pieces.push(`${key(label)}${mark("=")}${json(text.slice(0, room - 1))}…`);
+		else if (budget - (pieces.length ? 1 : 0) >= 1) pieces.push("…");
+		break;
+	}
+	return `${header} ${pieces.join(" ")}`;
 }
 
 /** Renderer state of {@link startToolTimer} and {@link toolTimerText}, kept in `ToolRenderContext.state`. */

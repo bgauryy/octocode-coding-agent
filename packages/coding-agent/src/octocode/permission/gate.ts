@@ -127,7 +127,8 @@ export function permissionGate(options: PermissionGateOptions) {
 			const { event, ctx, input } = state;
 			// PowerShell's grammar is parsed by the Windows helper (async); classify itself stays synchronous.
 			const forceDestructive =
-				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
+				event.toolName === "bash" &&
+				input.type === "powershell" &&
 				(await powershell(optionalString(input.command) ?? ""));
 			const network = await options.network?.(event.toolName, input, ctx.cwd);
 			state.classified = network

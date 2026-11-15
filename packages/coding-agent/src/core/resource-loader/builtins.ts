@@ -3,7 +3,7 @@ import "../../octocode/mcp-host/render-install.ts";
 import "../../octocode/ui/export-rows-install.ts";
 import octocode from "../../octocode/index.ts";
 import llamaFeature from "../../octocode/llama/index.ts";
-import { withCoreToolReason } from "../../octocode/permission/native-tools.ts";
+import { nativeToolsPort, withCoreToolReason } from "../../octocode/permission/native-tools.ts";
 import { defaultMcpExtension } from "../../../../mcp/src/api.ts";
 import type { BuiltinFeatureId } from "../features/builtin-ids.ts";
 import type { Feature } from "../features/types.ts";
@@ -18,5 +18,10 @@ export const NATIVE_FEATURE: Feature = { id: "octocode", owner: "native", hidden
 export const BUILTIN_FEATURES: ReadonlyArray<Feature & { id: BuiltinFeatureId }> = [
 	{ id: "llama.cpp", owner: "builtin", hidden: true, register: llamaFeature },
 	// Its `mcp` tool is a core tool: it takes the native `reason` like every native tool.
-	{ id: "mcp", owner: "builtin", hidden: true, register: (api) => defaultMcpExtension(withCoreToolReason(api)) },
+	{
+		id: "mcp",
+		owner: "builtin",
+		hidden: true,
+		register: (api) => defaultMcpExtension(withCoreToolReason(api), { nativeTools: nativeToolsPort() }),
+	},
 ];

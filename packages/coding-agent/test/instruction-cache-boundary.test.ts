@@ -164,18 +164,30 @@ describe("instruction cache boundary", () => {
 			},
 			{ role: "user", content: "hi", timestamp: 1 },
 		];
+		const roleVariantTools = new Set(["archive", "memory", "agent", "skill"]);
 		const tools = ["bash", "file", "web", "mcp", "timer", "mcp__octocode__localSearch", "archive", "memory", "agent"];
-		expect(instructionCacheBoundaryOption(withTools(tools)).toolCacheBoundary).toBe("archive");
-		expect(instructionCacheBoundaryOption(withTools(["bash", "agent", "skill"])).toolCacheBoundary).toBe("agent");
+		expect(instructionCacheBoundaryOption(withTools(tools), { roleVariantTools }).toolCacheBoundary).toBe("archive");
+		expect(
+			instructionCacheBoundaryOption(withTools(["bash", "agent", "skill"]), { roleVariantTools }).toolCacheBoundary,
+		).toBe("agent");
 		// No role-variant tool, or one first: nothing to share apart from the last tool's own marker.
-		expect(instructionCacheBoundaryOption(withTools(["bash", "file"]))).not.toHaveProperty("toolCacheBoundary");
-		expect(instructionCacheBoundaryOption(withTools(["agent", "bash"]))).not.toHaveProperty("toolCacheBoundary");
-		// A caller's value and the off switch, as for the instruction boundaries.
-		expect(instructionCacheBoundaryOption(withTools(tools), { toolCacheBoundary: "x" })).not.toHaveProperty(
+		expect(instructionCacheBoundaryOption(withTools(["bash", "file"]), { roleVariantTools })).not.toHaveProperty(
 			"toolCacheBoundary",
 		);
+		expect(instructionCacheBoundaryOption(withTools(["agent", "bash"]), { roleVariantTools })).not.toHaveProperty(
+			"toolCacheBoundary",
+		);
+		// Without the declared set no tool is role-variant, so no boundary is set.
+		expect(instructionCacheBoundaryOption(withTools(tools))).not.toHaveProperty("toolCacheBoundary");
+		// A caller's value and the off switch, as for the instruction boundaries.
 		expect(
-			instructionCacheBoundaryOption(withTools(tools), { env: { OCTOCODE_INSTRUCTION_CACHE_SPLIT: "off" } }),
+			instructionCacheBoundaryOption(withTools(tools), { toolCacheBoundary: "x", roleVariantTools }),
+		).not.toHaveProperty("toolCacheBoundary");
+		expect(
+			instructionCacheBoundaryOption(withTools(tools), {
+				env: { OCTOCODE_INSTRUCTION_CACHE_SPLIT: "off" },
+				roleVariantTools,
+			}),
 		).toEqual({});
 	});
 });

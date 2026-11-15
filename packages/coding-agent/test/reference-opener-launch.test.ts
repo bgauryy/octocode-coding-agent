@@ -45,7 +45,7 @@ function host(opener = "auto", editor = "nvim") {
 }
 
 /** Lets the spawned child report `event` once the launcher listens. */
-function nextChild(event: "spawn" | "close" | "error", value?: unknown): FakeChild {
+function nextChild(event: "spawn" | "close" | "exit" | "error", value?: unknown): FakeChild {
 	const child = new FakeChild();
 	spawn.mockImplementationOnce(() => {
 		queueMicrotask(() => child.emit(event, value));
@@ -89,8 +89,40 @@ describe("opening a file reference", () => {
 		expect(ui.showStatus).not.toHaveBeenCalled();
 	});
 
-	it("keeps the foreground handoff for a terminal editor", async () => {
+	it("auto without an IDE or GUI editor opens the file with the system's default app, keeping the terminal", async () => {
 		const ui = host("auto", "nvim");
+		nextChild("exit", 0);
+		await openReference(ui as never, "file:///work/a.ts#L4:2", plain);
+		expect(spawn).toHaveBeenCalledOnce();
+		expect(spawn.mock.calls[0].slice(0, 2)).toEqual(["open", ["/work/a.ts"]]);
+		expect(spawn.mock.calls[0][2]).toMatchObject({ detached: true, stdio: "ignore", shell: false });
+		expect(ui.ui.stop).not.toHaveBeenCalled();
+		expect(release).not.toHaveBeenCalled();
+		expect(ui.showStatus).toHaveBeenCalledWith("Opened with the default app: /work/a.ts (go to line 4)");
+	});
+
+	it("a file type no app claims opens in the default text editor on macOS, else is reported", async () => {
+		const ui = host();
+		nextChild("exit", 1);
+		nextChild("exit", 0);
+		await openReference(ui as never, "file:///work/notes.unknown", plain);
+		expect(spawn.mock.calls.map((call) => call.slice(0, 2))).toEqual([
+			["open", ["/work/notes.unknown"]],
+			["open", ["-t", "/work/notes.unknown"]],
+		]);
+		expect(ui.showError).not.toHaveBeenCalled();
+		const linux = host();
+		spawn.mockReset();
+		nextChild("exit", 3);
+		await openReference(linux as never, "file:///work/a.ts", { ...plain, platform: "linux", env: { DISPLAY: ":0" } });
+		expect(spawn).toHaveBeenCalledOnce();
+		expect(linux.showError).toHaveBeenCalledExactlyOnceWith(
+			"Could not open reference: xdg-open found no app for this file (exit 3). Target: file:///work/a.ts",
+		);
+	});
+
+	it("keeps the foreground handoff for a terminal editor", async () => {
+		const ui = host("editor", "nvim");
 		nextChild("close", 0);
 		await openReference(ui as never, "file:///work/a.ts#L4:2", plain);
 		expect(spawn).toHaveBeenCalledWith("nvim", ["+call cursor(4,2)", "/work/a.ts"], { stdio: "inherit", shell: false });

@@ -45,14 +45,13 @@ const targetOf = (model: Model<any>, settings: CompactionSettings, forced?: stri
 	]);
 
 export class CompactionPrewarm {
+	/** The plan in force: one is made, then kept until it is used, dropped or a compaction succeeds. */
 	private plan: Plan | undefined;
-	/** Set once a plan was made, until a compaction succeeds: a dropped or unused plan is not requested a second time. */
-	private spent = false;
 
 	/** Whether `tokens` is inside the lead before the threshold of `model`'s window. */
 	due(tokens: number, model: Model<any>, settings: CompactionSettings): boolean {
 		const window = model.contextWindow;
-		if (this.plan || this.spent || !settings.enabled || !(window > 0)) return false;
+		if (this.plan || !settings.enabled || !(window > 0)) return false;
 		if (shouldCompact(tokens, window, settings)) return false;
 		return tokens > window - settings.reserveTokens - prewarmLeadTokens(window);
 	}
@@ -65,7 +64,7 @@ export class CompactionPrewarm {
 		settings: CompactionSettings,
 		summaryRequest: SummaryRequestPolicy,
 	): void {
-		if (this.plan || this.spent || !runner.hasHandlers("session_compact_prewarm")) return;
+		if (this.plan || !runner.hasHandlers("session_compact_prewarm")) return;
 		const branchEntries = sessionManager.getBranch();
 		const leaf = branchEntries[branchEntries.length - 1];
 		let preparation: CompactionPreparation | undefined;
@@ -77,7 +76,6 @@ export class CompactionPrewarm {
 		}
 		if (!preparation || !leaf) return;
 		const controller = new AbortController();
-		this.spent = true;
 		this.plan = {
 			preparation,
 			sessionId: sessionManager.getSessionId(),
@@ -120,15 +118,19 @@ export class CompactionPrewarm {
 		return plan.preparation;
 	}
 
-	/** Ends the plan and its request. No new plan is made until a compaction succeeds. */
+	/** Ends the plan and its request. The next approach to the threshold plans again. */
 	drop(): void {
 		this.plan?.controller.abort();
 		this.plan = undefined;
 	}
 
-	/** A compaction succeeded: the next approach to the threshold plans again. */
+	/** A compaction succeeded: its plan is over. */
 	reset(): void {
 		this.drop();
-		this.spent = false;
+	}
+
+	/** Ends a plan made for another model or other settings, so the request that follows plans for the ones in use. */
+	dropIfStale(model: Model<any>, settings: CompactionSettings, forcedSystemPrompt?: string): void {
+		if (this.plan && this.plan.target !== targetOf(model, settings, forcedSystemPrompt)) this.drop();
 	}
 }

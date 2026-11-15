@@ -129,6 +129,20 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 			: SETTINGS_DEFAULTS.bash.spillMaxBytes;
 	}
 
+	getBashLongCommands(): { afterSeconds: number; deliberateMaxSeconds: number; patterns: string[] } {
+		const bash = this.settings.bash;
+		const defaults = SETTINGS_DEFAULTS.bash;
+		const seconds = (value: unknown, min: number, fallback: number) =>
+			typeof value === "number" && Number.isFinite(value) && value >= min ? value : fallback;
+		return {
+			afterSeconds: seconds(bash?.longCommandAfterSeconds, 0, defaults.longCommandAfterSeconds),
+			deliberateMaxSeconds: seconds(bash?.deliberateMaxSeconds, 1, defaults.deliberateMaxSeconds),
+			patterns: Array.isArray(bash?.longCommandPatterns)
+				? bash.longCommandPatterns.filter((pattern) => typeof pattern === "string" && pattern.trim() !== "")
+				: [],
+		};
+	}
+
 	getNpmCommand(): string[] | undefined {
 		return this.settings.npmCommand ? [...this.settings.npmCommand] : undefined;
 	}

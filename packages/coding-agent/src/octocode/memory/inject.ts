@@ -1,6 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { clipText, contentText } from "../shared/util.ts";
+import { NOTE_CHARS, pinnedBudget, totalBudget } from "./limits.ts";
 import { clearsFloor, MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import {
 	type Memory,
@@ -18,9 +19,9 @@ export const MEMORY_HEADER = renderInstruction("notices/memory-header.md", { aga
 /** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
 export const MEMORY_HEADER_AGAIN = renderInstruction("notices/memory-header.md", { again: true });
 
-/** Characters of pinned memory lines per injection, and of the whole injected message (header and notes included). */
-export const PINNED_BUDGET = 1200;
-export const TOTAL_BUDGET = 2400;
+/** Characters of pinned memory lines per injection, and of the whole injected message (header and notes included), for a window of the floor size; `selectInjection` grows both with its `contextWindow`. */
+export const PINNED_BUDGET = pinnedBudget();
+export const TOTAL_BUDGET = totalBudget();
 /** Unseen pinned memories read per injection: more than the shortest lines that fit `PINNED_BUDGET`. */
 const PINNED_WINDOW = 50;
 /** Hits fetched per wanted one: the relevance filter drops some, so irrelevant top hits must not crowd out relevant lower ones. */
@@ -29,8 +30,6 @@ const SEARCH_WINDOW = 3;
 const RELATIVE_THRESHOLD = 0.3;
 /** Shorter prompt words (`ts`, `ok`) match too much by chance to pull a memory in. */
 const MIN_TERM_LENGTH = 3;
-/** Longest line one memory takes in an injection; a longer one ends with where to read it whole. */
-const LINE_MAX = 600;
 /** Characters reserved for a body when the title needs clipping too. */
 const BODY_RESERVE = 80;
 
@@ -163,9 +162,9 @@ export function lastInjection(entries: readonly unknown[]): string | undefined {
 }
 
 /**
- * What to inject before a prompt: pinned memories (up to `PINNED_BUDGET` chars; skipped with `pinned: false`, only
+ * What to inject before a prompt: pinned memories (up to `pinnedBudget` chars; skipped with `pinned: false`, only
  * those of `pinnedKind` when it is set), then the top `topK` BM25 hits for the prompt's words of 3+ letters that clear the absolute floor (`clearsFloor`) and score at least
- * `RELATIVE_THRESHOLD` of the best such hit, the whole message (header and held-back note too) within `TOTAL_BUDGET`,
+ * `RELATIVE_THRESHOLD` of the best such hit, the whole message (header and held-back note too) within `totalBudget`,
  * skipping `seen` ids. An empty `query` injects pinned memories only. Undefined when nothing
  * new qualifies. The first line is the caveat, whole unless `headerInContext` says an earlier injection still shows it.
  */
@@ -184,21 +183,26 @@ export function selectInjection(
 		/** Session notes the model cannot see (`session-notes-inject.ts`): their lines come first, outside `TOTAL_BUDGET`, and the message is sent even when no memory qualifies. */
 		lead?: { lines: string[]; notes: Array<{ id: number; version: number }> };
 		now?: number;
+		/** The model's context window in tokens: the budgets grow with it (`limits.ts`); the line cut does not. */
+		contextWindow?: number;
 	},
 ): Injection | undefined {
 	const now = options.now ?? Date.now();
 	const lines: string[] = [];
 	const ids: number[] = [];
 	const updated: number[] = [];
+	const pinnedMax = pinnedBudget(options.contextWindow);
+	const totalMax = totalBudget(options.contextWindow);
+	const lineMax = NOTE_CHARS;
 	const header = options.headerInContext === true ? MEMORY_HEADER_AGAIN : MEMORY_HEADER;
 	// The whole message counts toward `TOTAL_BUDGET`: the header, each line and its newline, and the held-back note.
 	let used = header.length;
 	let pinnedUsed = 0;
 	const take = (memory: Memory, pinned: boolean): boolean => {
 		if (options.seen.has(memory.id) || ids.includes(memory.id)) return false;
-		const line = injectedLine(memory, now);
-		if (used + line.length + 1 > TOTAL_BUDGET) return false;
-		if (pinned && pinnedUsed + line.length + 1 > PINNED_BUDGET) return false;
+		const line = injectedLine(memory, now, lineMax);
+		if (used + line.length + 1 > totalMax) return false;
+		if (pinned && pinnedUsed + line.length + 1 > pinnedMax) return false;
 		lines.push(line);
 		ids.push(memory.id);
 		updated.push(memory.updatedAt);
@@ -247,25 +251,31 @@ export function selectInjection(
 }
 
 /**
- * One memory on one line within `LINE_MAX`: its label, tags with its age, `(agent-written)` unless the user wrote it, then
+ * One memory on one line within `lineMax`: its label, tags with its age, `(agent-written)` unless the user wrote it, then
  * the title and the body, each as one JSON string. The quotes and escapes keep either from ending its line, imitating
  * another entry or reading as a directive. A body that does not fit is cut and ends with the call that reads it whole.
  */
-function injectedLine(memory: Memory, now: number): string {
+function injectedLine(memory: Memory, now: number, lineMax: number): string {
 	const prefix = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} `;
-	return quotedLine(prefix, memory.title, memory.body, memoryGetCall(memory.id));
+	return quotedLine(prefix, memory.title, memory.body, memoryGetCall(memory.id), lineMax);
 }
 
-/** `prefix`, then the title and the body as JSON strings on one line within `LINE_MAX`; a longer one ends with `pointer`, the call that reads it whole. */
-export function quotedLine(prefix: string, rawTitle: string, rawBody: string, call: string): string {
+/** `prefix`, then the title and the body as JSON strings on one line within `lineMax`; a longer one ends with `pointer`, the call that reads it whole. */
+export function quotedLine(
+	prefix: string,
+	rawTitle: string,
+	rawBody: string,
+	call: string,
+	lineMax = NOTE_CHARS,
+): string {
 	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
 	const title = flat(rawTitle);
 	const head = `${prefix}${JSON.stringify(title)}`;
 	const body = flat(rawBody);
 	const line = `${head}${body ? ` — ${JSON.stringify(body)}` : ""}`;
-	if (line.length <= LINE_MAX) return line;
+	if (line.length <= lineMax) return line;
 	const pointer = ` (${call})`;
-	const room = LINE_MAX - prefix.length - pointer.length;
+	const room = lineMax - prefix.length - pointer.length;
 	// Leave room for the body when an oversized title competes with it. The stored memory stays whole.
 	const quotedTitle = boundedQuote(title, body ? room - BODY_RESERVE - 3 : room);
 	const quotedBody = body ? ` — ${boundedQuote(body, room - quotedTitle.length - 3)}` : "";

@@ -58,6 +58,7 @@ const TEXT: ThemeToken[] = [
 
 /** Glyphs and rules that carry meaning: seen as shapes (3:1, WCAG non-text). */
 const GLYPH: ThemeToken[] = [
+	"border",
 	"borderAccent",
 	"scrollbarThumb",
 	"mdCodeBlockBorder",
@@ -74,7 +75,7 @@ const GLYPH: ThemeToken[] = [
 ];
 
 /** Decorative hairlines: may be quiet, never invisible. */
-const HAIRLINE: ThemeToken[] = ["border", "borderMuted", "scrollbarTrack"];
+const HAIRLINE: ThemeToken[] = ["borderMuted", "scrollbarTrack"];
 
 function luminance(hex: { r: number; g: number; b: number }): number {
 	const [r, g, b] = [hex.r, hex.g, hex.b].map((channel) => {

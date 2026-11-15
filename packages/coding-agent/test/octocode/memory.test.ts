@@ -205,8 +205,10 @@ describe("MemoryStore", () => {
 				body: "Use node sqlite not better sqlite3; no native dependencies allowed in the extension",
 			}),
 		).toThrow(`id:"M${first.id}"`);
-		// Another scope, or clearly new text, is fine.
-		expect(add(store, { title: "Use node:sqlite, not better-sqlite3", scope: "global" }).scope).toBe("global");
+		// The same title in another visible scope repeats it too; clearly new text is fine.
+		expect(() => add(store, { title: "Use node:sqlite, not better-sqlite3", scope: "global" })).toThrow(
+			`id:"M${first.id}"`,
+		);
 		expect(add(store, { title: "Vitest runs the tests", body: "yarn test" }).id).toBeGreaterThan(first.id);
 	});
 

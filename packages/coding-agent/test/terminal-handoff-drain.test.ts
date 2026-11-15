@@ -94,7 +94,13 @@ describe("handing the terminal to a child", () => {
 		const state = { id: "codex", cli: true, adapter: true, checkedAt: 1 } as unknown as RunnerStatus.RunnerState;
 		const host = {
 			ui,
-			session: { settingsManager: { getExternalAgents: () => false, setExternalAgents: vi.fn() } },
+			session: {
+				settingsManager: {
+					getExternalAgents: () => false,
+					getEnabledExternalAgents: () => undefined,
+					setExternalAgents: vi.fn(),
+				},
+			},
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 			showSelector: vi.fn(),

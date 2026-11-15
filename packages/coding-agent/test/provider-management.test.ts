@@ -66,6 +66,7 @@ function manager() {
 		isUsingOAuth: () => false,
 		getProviderPlan: vi.fn((_id: string): ProviderPlan | undefined => undefined),
 		getPlanDisabledReason: (id: string) => runtime.getProviderPlan(id)?.disabled,
+		readCredential: vi.fn(async () => undefined),
 		getCredentialKind: vi.fn(async (): Promise<"account" | "subscription" | "key"> => "key"),
 		getProviderKind: vi.fn((_id: string): ProviderKind => "API key"),
 		hasConfiguredAuth: (id: string) => id === "openai",
@@ -96,7 +97,7 @@ function manager() {
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		updateAvailableProviderCount: vi.fn(),
-		ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn() },
+		ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn(), terminal: { rows: 40 } },
 		getLoginProviderOptions: () => getLoginProviderOptions(createFakeHost(value)),
 	};
 	return {
@@ -223,7 +224,7 @@ describe("provider setup flow", () => {
 		expect(at).toEqual([...at].sort((a, b) => a - b));
 		expect(output).not.toMatch(/^ Disabled$/m);
 		expect(output.match(/OpenAI\b/g)?.length).toBeGreaterThanOrEqual(1);
-		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +configured/);
+		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +connected/);
 		expect(output).toContain("+ Add a provider");
 		expect(output).not.toMatch(/^ Sources$/m);
 		expect(output).toContain("not verified");
@@ -344,8 +345,8 @@ describe("provider setup flow", () => {
 		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · 1 model/);
 		list.handleInput(ENTER);
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail)).toMatch(/Status +Subscription configured · OPENAI_API_KEY/);
-		expect(textOf(detail)).not.toContain("API key configured");
+		expect(textOf(detail)).toMatch(/Status +Connected · Subscription · OPENAI_API_KEY/);
+		expect(textOf(detail)).not.toContain("Connected · API key");
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -358,7 +359,7 @@ describe("provider setup flow", () => {
 		expect(textOf(list)).toMatch(/OpenAI +API key · OPENAI_API_KEY/);
 		list.handleInput(ENTER);
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail)).toMatch(/Status +API key configured/);
+		expect(textOf(detail)).toMatch(/Status +Connected · API key/);
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -432,7 +433,7 @@ describe("provider setup flow", () => {
 		const page = await pageAt(value, 0);
 		const output = textOf(page);
 		for (const fact of [
-			/Status +API key configured · OPENAI_API_KEY/,
+			/Status +Connected · API key · OPENAI_API_KEY/,
 			/Provider +enabled/,
 			/Models +1 available · 1 in catalog/,
 			/Definition +built-in/,
@@ -590,7 +591,7 @@ describe("provider setup flow", () => {
 		await removeProviderCredential(host, "openai", "OpenAI");
 		expect(runtime.logout).toHaveBeenCalledOnce();
 		expect(value.showStatus).toHaveBeenCalledWith(
-			expect.stringContaining("Still configured: API key configured · OPENAI_API_KEY"),
+			expect.stringContaining("Still configured: Connected · API key · OPENAI_API_KEY"),
 		);
 	});
 
@@ -790,7 +791,7 @@ describe("provider setup flow", () => {
 		expect(textOf(list, 220)).not.toContain("sk-ant-oat01-test");
 		choose(list, "Anthropic");
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail, 260)).toContain(`Not configured: ${CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL}`);
+		expect(textOf(detail, 260)).toContain(`Not set: ${CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL}`);
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;

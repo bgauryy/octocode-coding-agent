@@ -139,6 +139,9 @@ export async function createAgentSessionServices(
 		}
 		extensionsResult.runtime.pendingVirtualModelRegistrations = [];
 		await modelRuntime.refresh({ allowNetwork: false });
+		if (!options.modelRuntime) {
+			for (const message of modelRuntime.getMissingCredentialWarnings()) diagnostics.push({ type: "warning", message });
+		}
 
 		const ownsRuntime = !options.modelRuntime;
 		return {

@@ -234,7 +234,11 @@ export class SessionToolLoadout {
 	private _applyToolLoadout(toolNames: string[]): AgentTool[] {
 		const namespaceOf = (name: string) => this._toolDefinitions.get(name)?.definition.namespace?.name;
 		const names = withCompanions(toolNames, (name) => this._trustedCompanions(name));
-		const tools = orderToolNames(names, namespaceOf).flatMap((name) => {
+		const tools = orderToolNames(
+			names,
+			namespaceOf,
+			(name) => this._toolDefinitions.get(name)?.definition.roleVariant === true,
+		).flatMap((name) => {
 			const tool = this._toolRegistry.get(name);
 			return tool && this._getToolExposure(name) !== "hidden" && this._isActivatable(name) ? [tool] : [];
 		});

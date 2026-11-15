@@ -40,6 +40,7 @@ export function plural(count: number, one: string, many = `${one}s`): string {
 const TERM_KEYS = [
 	"searchText",
 	"pattern",
+	"matchString",
 	"keywords",
 	"keywordsToSearch",
 	"symbolName",

@@ -3,8 +3,15 @@
  * text only, so a wrapper or a script the shell runs by another name is not recognised (it keeps the default threshold).
  */
 
-/** Seconds a known long command may run in the foreground before it moves to the background. */
-export const LONG_COMMAND_AFTER_SECONDS = 30;
+/** The `bash.longCommand*` and `bash.deliberateMaxSeconds` settings; each field falls back to its default. */
+export interface LongCommandSettings {
+	/** Seconds a known long command may run in the foreground before it moves to the background. */
+	afterSeconds?: number;
+	/** The longest a foreground wait with its own timeout holds the turn. */
+	deliberateMaxSeconds?: number;
+	/** Regular expressions for more long commands, matched where a command starts. */
+	patterns?: readonly string[];
+}
 
 /** Where a command starts: the line, or after `;`, `&`, `|`, `(` and any `VAR=value` words. */
 const START = String.raw`(?:^|[;&|(\n]\s*)(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*`;
@@ -26,7 +33,28 @@ const LONG_COMMANDS = [
 	String.raw`${RUNNER}\s+(?:run\s+)?(?:dev|serve|start)\S*`,
 ];
 
-const LONG_COMMAND = new RegExp(`${START}(?:${LONG_COMMANDS.join("|")})(?=\\s|$|;|&|\\|)`);
+const END = String.raw`(?=\s|$|;|&|\|)`;
+const compile = (patterns: readonly string[]) => new RegExp(`${START}(?:${patterns.join("|")})${END}`);
+const LONG_COMMAND = compile(LONG_COMMANDS);
+
+/** Compiled user patterns by their source list; entries that are not regular expressions are dropped. */
+const customCache = new Map<string, RegExp | undefined>();
+function customPattern(patterns: readonly string[]): RegExp | undefined {
+	const key = JSON.stringify(patterns);
+	if (customCache.has(key)) return customCache.get(key);
+	const valid = patterns.filter((pattern) => {
+		try {
+			new RegExp(pattern);
+			return true;
+		} catch {
+			return false;
+		}
+	});
+	const compiled = valid.length ? compile(valid) : undefined;
+	if (customCache.size >= 16) customCache.clear();
+	customCache.set(key, compiled);
+	return compiled;
+}
 
 /**
  * Commands that follow a stream and never exit by themselves: `tail -f`/`-F`/`--follow`, `journalctl -f`, `kubectl logs -f`,
@@ -47,8 +75,11 @@ const FOLLOW = new RegExp(
 /** Whether `command` follows a stream and never exits by itself (see {@link FOLLOW}). */
 export const neverExits = (command: string): boolean => FOLLOW.test(command);
 
-/** Whether `command` runs a test runner, the repository check, a build, a server or a stream follower (checked at the start of each part of the line). */
-export const isKnownLongCommand = (command: string): boolean => LONG_COMMAND.test(command) || neverExits(command);
+/** Whether `command` runs a test runner, the repository check, a build, a server or a stream follower, or a command matching the configured `patterns` (checked at the start of each part of the line). */
+export const isKnownLongCommand = (command: string, patterns: readonly string[] = []): boolean =>
+	LONG_COMMAND.test(command) ||
+	neverExits(command) ||
+	(patterns.length > 0 && customPattern(patterns)?.test(command) === true);
 
 const SLEEP_SECONDS = /(?:^|[;&|(\n]\s*)sleep\s+(\d+(?:\.\d+)?)([smhd]?)(?=\s|$|;|&|\|)/g;
 const POLL_LOOP = /(?:^|[;&|(\n]\s*)(?:while|until|for)\b[\s\S]*\bsleep\s+\d/;

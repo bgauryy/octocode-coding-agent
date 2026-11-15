@@ -14,6 +14,7 @@
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { InMemoryAuthStorageBackend } from "../../../coding-agent/src/core/auth-storage.ts";
+import { installMcpCorePorts } from "../../../coding-agent/src/octocode/mcp-host/core.ts";
 import type { McpHttpServerConfig, McpServerEntry } from "../../src/config.ts";
 import { McpOAuthCredentialStore, type McpSignInPrompt, signInMcpServer } from "../../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../../src/runtime.ts";
@@ -25,6 +26,9 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
  * three, the limit `auth/scope-retry-limit` checks.
  */
 const MAX_SIGN_INS = 3;
+
+// The MCP package reads its host (identity, paths, trust, output) through ports the app installs at startup.
+installMcpCorePorts();
 const REQUEST_TIMEOUT_SECONDS = 20;
 
 interface ToolCall {

@@ -56,13 +56,8 @@ export function thinkingMs(ids: readonly string[]): number | undefined {
 	return total >= MIN_SHOWN_MS ? total : undefined;
 }
 
-/** ` · 4s`, or nothing when the time is unknown. */
-export function durationSuffix(ms: number | undefined): string {
-	return ms === undefined ? "" : ` · ${formatDuration(ms)}`;
-}
-
 /** ` for 4s`, or nothing when the time is unknown: the end of "Thought for 4s". */
-export function thoughtDuration(ms: number | undefined): string {
+function thoughtDuration(ms: number | undefined): string {
 	return ms === undefined ? "" : ` for ${formatDuration(ms)}`;
 }
 
@@ -89,7 +84,12 @@ export function interruptedText(message: string | undefined): string {
 }
 
 /** The live label's text: the one word the working line also shows while the model reasons. */
-const THINKING_LABEL = `Thinking${ELLIPSIS}`;
+export const THINKING_LABEL = `Thinking${ELLIPSIS}`;
+
+/** The label of a finished block: `Thought` (with its time) or, once interrupted, `Thinking stopped`. */
+export function finishedLabel(interrupted: boolean, ms: number | undefined): string {
+	return interrupted ? "Thinking stopped" : `Thought${thoughtDuration(ms)}`;
+}
 
 /**
  * The label of a reasoning block while it streams: the running spinner mark and `Thinking…` shimmering. It paints from

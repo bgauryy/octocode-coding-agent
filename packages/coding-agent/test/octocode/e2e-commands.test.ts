@@ -103,10 +103,10 @@ const CASES: Record<string, Case> = {
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
 	api: { check: says(/Octocode API oc-[0-9a-f]+\s+socket: \S+\.sock\s+Discovery:[\s\S]*\/home\/\.octocode\/api/) },
 	archive: { check: says(/segment|archive|compact/i) },
-	// The view opens on its Skills section (Octocode's bundled skills, on), with keys to move to MCPs, Hooks, Sources and
-	// Extensions; the harness switches (Claude Code, Codex, Cursor) live in Sources.
+	// The view opens on its Overview: one row per section with switch counts (Octocode's bundled skills are on), and keys
+	// to move to Skills, MCPs, Hooks, Sources and Extensions; the harness switches (Claude Code, Codex, Cursor) live in Sources.
 	harness: {
-		check: asks(/\[x\] octocode-agentic {2}Octocode \(collection\)[\s\S]*ctrl\+←\/→ section/),
+		check: asks(/Skills\s+[1-9]\d* on · \d+ off[\s\S]*Sources[\s\S]*←\/→ section/),
 	},
 	jobs: { check: says(/No background bash jobs are running\./) },
 	memory: { check: asks(/memor/i) },
@@ -118,9 +118,14 @@ const CASES: Record<string, Case> = {
 	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
 	purge: { check: says(/Usage: \/purge workspace\|all/) },
 	worktree: { check: says(/worktree/i) },
-	// `/remote` starts the user-level daemon (or reuses the one `/web` started) and publishes an ssh link; the harness
-	// drains the daemon when it stops.
-	remote: { check: says(/Then open: http:\/\/127\.0\.0\.1:\d+\/#access=[\s\S]*Stop with \/remote stop/) },
+	// `/remote` grants control, so it asks first; the sweep dismisses the question and nothing is published (the
+	// accepted path, which publishes an ssh link, is covered in remote-command.test.ts).
+	remote: {
+		check: (run) => {
+			asks(/Publish a control link\?/)(run);
+			says(/Cancelled: nothing was published/)(run);
+		},
+	},
 	// The research CLI (`cli/command.ts`): its output is the command result.
 	octocode: { args: "--version", check: says(/octocode \d+\.\d+\.\d+/) },
 	// `/web` opens the user-level daemon's page on this session with a one-time code, never the token.

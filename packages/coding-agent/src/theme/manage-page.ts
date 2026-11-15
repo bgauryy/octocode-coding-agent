@@ -12,8 +12,9 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
+import { ruleLine } from "./dynamic-border.ts";
 import { theme } from "./theme.ts";
-import { type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
+import { hintLine, keyText, positionLabel, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
 
 export interface PageRow {
 	id: string;
@@ -48,6 +49,8 @@ export interface ManagePageOptions {
 	facts?: readonly PageFact[];
 	sections: readonly PageSection[];
 	hints: readonly RankedHint[];
+	/** Terminal height the body is sized to; defaults to the process terminal. */
+	viewportRows?(): number;
 	/** Row to select first. */
 	initialId?: string;
 	/** Single keys (`e`) reported with the selected row's id. */
@@ -100,7 +103,7 @@ export class ManagePageComponent implements Component {
 		if (width <= 0) return [];
 		if (this.options.responsive) return this.renderResponsive(width);
 		const { title, notes = [], alerts = [], facts = [], hints } = this.options;
-		const border = theme.fg("border", "─".repeat(Math.max(1, width)));
+		const border = ruleLine(Math.max(1, width));
 		const out = [border, truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…")];
 		if (facts.length > 0) {
 			const labelWidth = Math.max(...facts.map((fact) => visibleWidth(fact.label)));
@@ -132,7 +135,7 @@ export class ManagePageComponent implements Component {
 
 	private renderResponsive(width: number): string[] {
 		const { title, facts = [], notes = [], alerts = [], hints } = this.options;
-		const border = theme.fg("border", "─".repeat(width));
+		const border = ruleLine(width);
 		const selected = this.selectable[this.selected];
 		const body: { text: string; id?: string }[] = [];
 		const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width));
@@ -161,7 +164,10 @@ export class ManagePageComponent implements Component {
 			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
 			...notes.flatMap((note) => wrap(` ${theme.fg("muted", note)}`)),
 		];
-		this.bodyRows = Math.max(3, Math.min(MAX_LINES, (process.stdout.rows ?? 24) - tail.length - 7));
+		this.bodyRows = Math.max(
+			3,
+			Math.min(MAX_LINES, (this.options.viewportRows?.() ?? process.stdout.rows ?? 24) - tail.length - 7),
+		);
 		const at = Math.max(
 			0,
 			body.findIndex((line) => line.id === selected?.id),
@@ -183,10 +189,7 @@ export class ManagePageComponent implements Component {
 			...(scrolling
 				? [
 						truncateToWidth(
-							theme.fg(
-								"muted",
-								` ${this.scroll + 1}–${Math.min(body.length, this.scroll + this.bodyRows)}/${body.length} · PgUp/PgDn scroll`,
-							),
+							` ${theme.fg("muted", positionLabel(this.scroll + 1, Math.min(body.length, this.scroll + this.bodyRows), body.length))}${theme.fg("dim", " · ")}${hintLine([[`${keyText("tui.select.pageUp")}/${keyText("tui.select.pageDown")}`, "scroll"]])}${this.selectionVisible ? "" : `${theme.fg("dim", " · ")}${hintLine([[keyText("tui.select.confirm"), "show selection"]])}`}`,
 							width,
 							"…",
 						),
@@ -230,7 +233,11 @@ export class ManagePageComponent implements Component {
 			const moved = this.selectable[this.selected];
 			if (moved) this.options.onHighlight?.(moved.id);
 		} else if (kb.matches(data, "tui.select.confirm")) {
-			if (this.options.responsive && !this.selectionVisible) return;
+			if (this.options.responsive && !this.selectionVisible) {
+				// The selection is scrolled off: bring it back instead of acting on a row the user cannot see.
+				this.manualScroll = false;
+				return;
+			}
 			if (row) this.options.onSelect(row.id);
 		} else if (kb.matches(data, "tui.select.cancel")) this.options.onCancel();
 		else if (row && this.options.keys?.includes(data) && (!this.options.responsive || this.selectionVisible))

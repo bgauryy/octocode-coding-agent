@@ -283,6 +283,6 @@ describe("queued-messages list", () => {
 		const { ui, sync } = fixture([{ text: "a" }]);
 		sync();
 		const lines = ui.pendingMessagesContainer.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
-		expect(lines.join("\n")).toContain("↑ to manage · alt+up restores the last · Esc restores all");
+		expect(lines.join("\n")).toMatch(/↑ manage · (alt|option)\+up restores last · esc restores all/);
 	});
 });

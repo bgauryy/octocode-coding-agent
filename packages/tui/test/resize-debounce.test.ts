@@ -100,6 +100,64 @@ describe("resize coalescing", () => {
 		assert.strictEqual(fired, 2);
 	});
 
+	it("paints at the last settled width while a resize waits, then replays once", async () => {
+		const terminal = new VirtualTerminal(80, 10);
+		const tui = new TuiMainScreen(terminal);
+		const log = new WidthLog();
+		tui.addChild(log);
+		tui.start();
+		tui.renderNow();
+		const before = tui.fullRedraws;
+		log.widths.length = 0;
+
+		// Frames another source asks for (a spinner, a stream) during the drag: none renders at an intermediate width.
+		for (let i = 0; i < 20; i++) {
+			terminal.resize(70 - i, 10);
+			(tui as unknown as { doRender(): void }).doRender();
+		}
+		assert.deepStrictEqual(new Set(log.widths), new Set([80]));
+		assert.strictEqual(tui.fullRedraws, before);
+
+		await sleep(200);
+		assert.strictEqual(log.widths.at(-1), 51);
+		assert.ok(log.widths.slice(20).every((width) => width === 51));
+		assert.strictEqual(tui.fullRedraws, before + 1);
+		tui.stop();
+	});
+
+	it("an explicit paint settles the waiting resize at the current size", async () => {
+		const terminal = new VirtualTerminal(80, 10);
+		const tui = new TuiMainScreen(terminal);
+		const log = new WidthLog();
+		tui.addChild(log);
+		tui.start();
+		tui.renderNow();
+		const before = tui.fullRedraws;
+
+		terminal.resize(50, 10);
+		tui.renderNow();
+		assert.strictEqual(log.widths.at(-1), 50);
+		assert.strictEqual(tui.fullRedraws, before + 1);
+		const painted = log.widths.length;
+		await sleep(150);
+		assert.strictEqual(log.widths.length, painted, "the settled resize does not paint again");
+		tui.stop();
+	});
+
+	it("reports a resize as pending until its frame", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		const debounce = new ResizeDebounce(() => {}, { delayMs: 12 });
+		assert.strictEqual(debounce.pending, false);
+		debounce.trigger();
+		assert.strictEqual(debounce.pending, true);
+		t.mock.timers.tick(12);
+		assert.strictEqual(debounce.pending, false);
+		debounce.trigger();
+		assert.strictEqual(debounce.flush(), true);
+		assert.strictEqual(debounce.flush(), false);
+		t.mock.timers.tick(500);
+	});
+
 	it("does not render after stop", async () => {
 		const terminal = new VirtualTerminal(80, 10);
 		const tui = new TuiMainScreen(terminal);

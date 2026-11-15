@@ -1,6 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
 import type { Skill } from "../core/skills.ts";
-import { currentEnvironment, linkedWorktreeFact } from "../core/system-prompt.ts";
+import {
+	currentEnvironment,
+	type EnvironmentSurface,
+	linkedWorktreeFact,
+	type SessionSurface,
+} from "../core/system-prompt.ts";
+import { terminalHostFacts } from "../../../common/src/terminal-host.ts";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
@@ -16,6 +22,24 @@ import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/rou
 import { agentCall } from "./child-sessions/agent-call.ts";
 import { entryMessage } from "./shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+
+/**
+ * Where this session's replies go, for the `environment` section. Read at every prompt: `/settings` can turn Mermaid
+ * off mid-session, and the volatile section absorbs the change without touching the cached policy.
+ */
+function environmentSurface(api: ExtensionAPI, ctx: ExtensionContext, isSubagent: boolean): EnvironmentSurface {
+	const surface: SessionSurface | undefined = isSubagent ? "subagent" : ctx.mode;
+	// Only a terminal this process draws in has a host worth naming; an RPC client's terminal is not this one.
+	const host = surface === "tui" || surface === "print" ? terminalHostFacts(process.env).join(", ") : "";
+	// Only the terminal UI draws Mermaid (`modes/interactive/components/mermaid.ts`); `final` still draws it once done.
+	const mermaid =
+		surface === "tui" && typeof api.getSettings === "function" && api.getSettings().markdown?.mermaid !== "off";
+	return {
+		surface,
+		host: host || undefined,
+		mermaid,
+	};
+}
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
@@ -67,7 +91,12 @@ export function registerTurnSetup(
 			roles &&
 			(selected.some((name) => name.startsWith(roles.prefix)) ||
 				(server?.enabled === true && server.state !== "unselected" && canReachMcp(selected)))
-				? { prefix: roles.prefix, reader: roles.reader, search: roles.search }
+				? {
+						prefix: roles.prefix,
+						reader: roles.reader,
+						search: roles.search,
+						...(roles.judge ? { judge: roles.judge } : {}),
+					}
 				: undefined;
 		const profiles = [...options.profiles().values()];
 		const reading = coordinates(selected) ? currentRouting(ctx, profiles) : undefined;
@@ -137,6 +166,7 @@ export function registerTurnSetup(
 			undefined,
 			undefined,
 			promptRoots || !event.systemPromptOptions.cwd ? undefined : linkedWorktreeFact(event.systemPromptOptions.cwd),
+			environmentSurface(api, ctx, options.isSubagent),
 		);
 		if (promptRoots) {
 			// An isolated child's prompt names the main checkout, so siblings share the cached prefix. Tools and

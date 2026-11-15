@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { textResult } from "../shared/util.ts";
+import { NOTE_WARN_CHARS } from "./limits.ts";
 import { memoryLabel } from "./query.ts";
 import {
 	type MEMORY_KINDS,
@@ -21,8 +22,6 @@ const WIDE_REASON =
 
 /** Characters of a body in a save line; a longer body ends its line with the call that reads it whole. */
 const SAVED_BODY_CHARS = 60;
-/** A saved body longer than this keeps its save but gets a warning: an injected line is cut at 600 characters. */
-const BODY_SOFT_MAX = 500;
 /** Other memories named after a save, so the agent can merge overlapping ones. */
 const RELATED_COUNT = 2;
 
@@ -125,9 +124,11 @@ export async function writeMemory({
 		undefined,
 		current?.updatedAt,
 	);
+	// A body longer than the warning length keeps its save: an injected line is cut at `NOTE_CHARS`.
+	const softMax = NOTE_WARN_CHARS;
 	const long =
-		memory.body.length > BODY_SOFT_MAX
-			? `\nKept, but the body is ${memory.body.length} chars: shorten it to under ${BODY_SOFT_MAX}, the rule and why.`
+		memory.body.length > softMax
+			? `\nKept, but the body is ${memory.body.length} chars: shorten it to under ${softMax}, the rule and why.`
 			: "";
 	const related = store
 		.search(`${memory.title} ${memory.keywords} ${memory.body}`, "all", RELATED_COUNT, new Set([memory.id]))

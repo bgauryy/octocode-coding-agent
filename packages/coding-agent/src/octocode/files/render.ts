@@ -5,7 +5,7 @@ import { renderDiff } from "../../theme/diff.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../render/tool.ts";
 import { contentText } from "../shared/util.ts";
-import { clip, expandKey, plural } from "../shared/text.ts";
+import { clip, expandHint, plural } from "../shared/text.ts";
 import { isInformativeReason } from "../shared/reason.ts";
 import type { RenderContext } from "../render/types.ts";
 import { timingOf } from "../render/rows.ts";
@@ -88,6 +88,7 @@ export function renderBashResult(
 			body: outcome.body,
 			...total,
 			tail: true,
+			shell: true,
 			expanded: options.expanded,
 			...(spill ? { spill } : {}),
 			...timing,
@@ -97,17 +98,19 @@ export function renderBashResult(
 	);
 }
 
-/** A finished background job: `✓ Job(bash-1: yarn build)`, `↳ <why>`, `⎿  finished after 3s`, its output tail; the status header names its log (format: `bash-jobs/message.ts`). */
+/** A finished background job: `✓ Bash(bash-1: yarn build) · background`, `↳ <why>`, `⎿  finished after 3s`, its output tail; the status header names its log (format: `bash-jobs/message.ts`). */
 export function renderJobMessage(text: string, expanded: boolean, theme: Theme, outputPad = 1): Component {
 	const { head, why, log, rest } = parseJobMessage(text);
 	const ok = / finished after /.test(head);
 	const stopped = !ok && / stopped \(/.test(head); // killed by the user or at shutdown: interrupted, not failed
-	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Job(bash-1: yarn build)` / `⎿ finished after 3s`.
+	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Bash(bash-1: yarn build) · background` / `⎿ finished after 3s`.
 	const parts = /^Background bash (\S+) (.+?): (.*)$/.exec(head);
 	const context: RenderContext = { isPartial: false, isError: !ok, expanded, state: stopped ? { stopped: true } : {} };
 	const box = new Box(outputPad, 0); // custom messages are drawn flush left; pad them like a tool row
 	const lines = isInformativeReason(why) ? [theme.fg("toolReason", `↳ ${clip(sanitizeTerminalText(why), 200)}`)] : [];
-	box.addChild(toolHeader(theme, context, "Job", parts ? `${parts[1]}: ${parts[3]}` : head, { lines }));
+	box.addChild(
+		toolHeader(theme, context, "Bash", parts ? `${parts[1]}: ${parts[3]}` : head, { lines, meta: "background" }),
+	);
 	box.addChild(
 		resultBlock(theme, context, {
 			summary: parts?.[2] ?? head,
@@ -158,19 +161,12 @@ export function renderFileCall(args: FileArgs, theme: Theme, context: RenderCont
 			`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`,
 			200,
 		);
-	const why = (query: (typeof queries)[number] | undefined, indent = "", collapsed = false) =>
-		(collapsed || context.expanded) && isInformativeReason(query?.reason)
-			? [theme.fg("toolReason", `${indent}↳ ${clip(query.reason, 200)}`)]
-			: [];
-	// One change: File(edit src/a.ts · 2 edits) with the call's reason row under it, or the change's reason (collapsed too) when the call's says nothing. Several: File(3 changes) with a sub-line each.
-	if (queries.length <= 1)
-		return toolHeader(theme, context, "File", queries.length === 1 ? describe(queries[0]) : "", {
-			lines: isInformativeReason(args.reason) ? [] : why(queries[0], "", true),
-		});
-	const lines = queries.flatMap((query) => [
-		`${theme.fg("accent", clip(query?.type ?? "…", 20))} ${theme.fg("mdCode", clip(query?.path ?? "", 200))}${theme.fg("dim", querySize(query))}`,
-		...why(query, "  "),
-	]);
+	// One change: File(edit src/a.ts · 2 edits). Several: File(3 changes) with a sub-line each. Reasons are drawn once, by `reasonRow`.
+	if (queries.length <= 1) return toolHeader(theme, context, "File", queries.length === 1 ? describe(queries[0]) : "");
+	const lines = queries.map(
+		(query) =>
+			`${theme.fg("accent", clip(query?.type ?? "…", 20))} ${theme.fg("mdCode", clip(query?.path ?? "", 200))}${theme.fg("dim", querySize(query))}`,
+	);
 	return toolHeader(theme, context, "File", `${queries.length} changes`, { lines });
 }
 
@@ -239,7 +235,9 @@ export function renderFileResult(
 		});
 	}
 	const hint =
-		diffLines > 0 ? [theme.fg("dim", `… +${plural(diffLines, "diff line")} (${expandKey()} to expand)`)] : [];
+		diffLines > 0
+			? [theme.fg("dim", [`… +${plural(diffLines, "diff line")}`, expandHint()].filter(Boolean).join(" "))]
+			: [];
 	return resultBlock(theme, context, {
 		summary,
 		lines: [...heads, ...hint],

@@ -62,6 +62,7 @@ describe("skills the application ships", () => {
 		});
 		expect(diagnostics).toEqual([]);
 		expect(skills.map((skill) => skill.name).sort()).toEqual([
+			"octocode-backlog-grooming",
 			"octocode-context-optimization",
 			"octocode-debugging",
 			"resume-external-harness",

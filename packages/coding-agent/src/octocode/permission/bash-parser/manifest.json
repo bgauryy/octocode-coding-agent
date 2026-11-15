@@ -1,9 +1,9 @@
 {
 	"runtime": {
 		"package": "web-tree-sitter",
-		"version": "0.25.10",
+		"version": "0.27.2",
 		"license": "MIT",
-		"wasmSha256": "f38dcc4b43b818f9a0785bc1c6d5611a75ac4cdd428ff3f02757c34ca4e46d7f"
+		"wasmSha256": "488beeff7adb7fd7e21e97cc29a43dc6d031977755eda892d6d96c7f456cfdec"
 	},
 	"grammar": {
 		"repository": "https://github.com/tree-sitter/tree-sitter-bash",

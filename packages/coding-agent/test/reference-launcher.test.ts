@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { detectIde } from "../../common/src/terminal-host.ts";
 import {
-	detectIde,
 	resolveReferenceOpener,
 	windowsLaunchable,
 	type OpenerHost,
@@ -145,9 +145,19 @@ describe("referenceOpener resolution", () => {
 		});
 	});
 
-	it("auto with nothing found, over SSH, or on Linux without a display keeps the terminal editor", () => {
+	it("auto with nothing found opens with the system's default app; over SSH or on Linux without a display it keeps the terminal editor", () => {
 		const editor = { command: "vim", args: [], detached: false, source: "editor" };
-		expect(resolveReferenceOpener("auto", "vim", fakeHost({}))).toEqual(editor);
+		expect(resolveReferenceOpener("auto", "vim", fakeHost({}))).toEqual({
+			command: "open",
+			args: [],
+			detached: true,
+			source: "system",
+		});
+		expect(resolveReferenceOpener("auto", "vim", fakeHost({ DISPLAY: ":0" }, { platform: "linux" }))).toMatchObject({
+			command: "xdg-open",
+			source: "system",
+		});
+		expect(resolveReferenceOpener("auto", "vim", fakeHost({ SSH_TTY: "/dev/ttys001" }))).toEqual(editor);
 		const onPath = { onPath: { code: "/usr/bin/code" } };
 		expect(resolveReferenceOpener("auto", "vim", fakeHost({ SSH_TTY: "/dev/ttys001" }, onPath))).toEqual(editor);
 		expect(resolveReferenceOpener("auto", "vim", fakeHost({}, { ...onPath, platform: "linux" }))).toEqual(editor);
@@ -160,8 +170,8 @@ describe("referenceOpener resolution", () => {
 		const host = fakeHost(vscodeEnv(MAC_CODE), { onPath: { zed: "/opt/bin/zed" } });
 		expect(resolveReferenceOpener("auto", "vim", host)).toMatchObject({ command: "/opt/bin/zed", source: "path" });
 		expect(resolveReferenceOpener("auto", "vim", fakeHost(vscodeEnv(MAC_CODE)))).toMatchObject({
-			command: "vim",
-			detached: false,
+			command: "open",
+			source: "system",
 		});
 	});
 

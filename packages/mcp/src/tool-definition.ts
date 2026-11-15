@@ -127,6 +127,8 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		),
 		// A preset that draws its own rows still gets the generic display for other surfaces.
 		display: options.presentation?.display ?? createMcpToolRenderers(label).display,
+		// An aborted call settles through its client within the connection's own timeout: wait that long, not the loop's default.
+		abortGraceMs: options.timeoutMs,
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const client = await options.getClient();
 			const requested = (params ?? {}) as Record<string, unknown>;

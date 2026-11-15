@@ -36,6 +36,7 @@ flowchart LR
 | [Instructions](instructions.md)                           | Change what agents are told                                                     |
 | [What an agent reads](agent-context.md)                   | See each context source, its switch and how to measure it                       |
 | [Prompt caching](prompt-caching.md)                       | Keep requests cheap and find cache misses                                       |
+| [Request flows](harness-flows.md)                         | Follow how a request is built and what keeps it small and cached                |
 | [Keybindings](keybindings.md), [Themes](themes.md)        | Change keys and colours                                                         |
 
 ## Extend

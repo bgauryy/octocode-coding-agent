@@ -3,9 +3,9 @@
 import { readServerResource, resourceListing } from "./catalog-requests.ts";
 import { reconnect } from "./connections.ts";
 import { toToolResult } from "./tool-result.ts";
-import { serverInstructions, toolCatalog } from "./inspection.ts";
+import { instructionsInPrompt, serverInstructions, toolCatalog } from "./inspection.ts";
 import { mcpServerGroup, mcpServerSource } from "./group.ts";
-import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
+import { createMcpManageTool, type ManagedMcpServer, NATIVE_SERVER } from "./manage-tool.ts";
 import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
@@ -36,7 +36,13 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
+			loaded: (server, tool) => {
+				state.recordToolLoaded(server, tool);
+				if (server === NATIVE_SERVER) state.options.nativeTools?.loaded?.(tool);
+			},
+			...(state.options.nativeTools ? { nativeTools: state.options.nativeTools } : {}),
 			instructions: (name) => serverInstructions(state, name),
+			instructionsInPrompt: (name) => instructionsInPrompt(state, name),
 			resources: (name, signal) => resourceListing(state, name, signal),
 			read: async (name, uri, signal) =>
 				toToolResult(`resource ${uri}`, { content: await readServerResource(state, name, uri, signal) }, false),

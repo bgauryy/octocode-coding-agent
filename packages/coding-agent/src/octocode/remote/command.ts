@@ -11,7 +11,7 @@ import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { RemoteSettings } from "../../core/settings-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { daemonRequest, type LaunchedDaemon } from "../web-daemon/launcher.ts";
 import { describeLink, describeStatus } from "./links.ts";
 
@@ -61,7 +61,8 @@ async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: Remo
  */
 export function remoteCommand(host: RemoteHost): Subcommand {
 	return {
-		description: "Share sessions with another device",
+		description: "Give another device control; asks first",
+		argumentHint: "[view|status|stop]",
 		complete: (prefix) =>
 			wordCompletions(
 				[
@@ -87,6 +88,23 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 					}
 					return;
 				}
+				// A control link lets the other device send commands and answer approvals: ask whoever is at the keyboard.
+				// Without one (print mode, RPC without dialogs, a subagent) nobody can agree, so refuse and name the explicit
+				// command a script uses instead.
+				if (!word && !ctx.hasUI)
+					return say(
+						ctx,
+						"/remote needs a confirmation nobody can give here: a control link lets another device send commands. Publish it with `octocode remote link`, or a read-only link with /remote view.",
+						"warning",
+					);
+				if (
+					!word &&
+					!(await ctx.ui.confirm(
+						"Publish a control link?",
+						"Whoever opens it can send commands and answer approvals on every session on this machine. /remote view publishes a read-only link instead.",
+					))
+				)
+					return say(ctx, cancelledText("published"));
 				const link = await publishLink(host, ctx, word === "view" ? "view" : "control");
 				say(ctx, describeLink(link, { qr: ctx.hasUI }));
 			} catch (error) {

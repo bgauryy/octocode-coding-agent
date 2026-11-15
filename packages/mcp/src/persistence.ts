@@ -1,10 +1,9 @@
-/** Saves `/mcp` configuration changes and applies exposure changes to the registered tools. */
+/** Saves `/mcp` configuration changes to the server's file and the running session's entry. */
 
-import { applyMcpServerPatch, type McpExposure, type McpServerConfigPatch } from "./config.ts";
+import { applyMcpServerPatch, type McpServerConfigPatch } from "./config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { registerTools } from "./tool-registry.ts";
 
 /**
  * Save a config change; returns an error message when the file could not be updated. Changes to
@@ -38,28 +37,5 @@ export function saveConfig(
 	state.configuredEntries = state.configuredEntries.map((current) =>
 		current.name === entry.name ? server.entry : current,
 	);
-	return undefined;
-}
-
-export function setExposure(
-	state: McpExtensionState,
-	server: McpServer,
-	exposure: McpExposure,
-	inProject = false,
-): string | undefined {
-	const { api } = state;
-	const failed = saveConfig(state, server, { exposure }, inProject);
-	if (failed) return failed;
-	if (server.connection?.state === "connected") registerTools(state, server.connection);
-	// Tools no longer exposed directly leave the declared set; direct tools are activated on registration.
-	const indirect = new Set(
-		api
-			.getAllTools()
-			.filter((tool) => tool.exposure !== "direct")
-			.map((tool) => tool.name),
-	);
-	const tools = state.serverTools.get(server.entry.name) ?? new Set<string>();
-	api.setActiveTools(api.getActiveTools().filter((name) => !tools.has(name) || !indirect.has(name)));
-	state.emitChange();
 	return undefined;
 }

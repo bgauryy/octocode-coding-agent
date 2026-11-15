@@ -10,6 +10,7 @@ import { buildParams as buildResponsesParams } from "../src/api/openai-responses
 import { resolveModelCapabilities } from "../src/models/capabilities.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
+import { withCacheCapabilities } from "../src/utils/cache-capabilities.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] });
@@ -32,7 +33,7 @@ function completionsPayload(model: Model<"openai-completions">): CachePayload {
 }
 
 function completionsModel(id: string, compat?: Model<"openai-completions">["compat"]): Model<"openai-completions"> {
-	return {
+	return withCacheCapabilities({
 		id,
 		name: id,
 		api: "openai-completions",
@@ -44,7 +45,7 @@ function completionsModel(id: string, compat?: Model<"openai-completions">["comp
 		contextWindow: 128_000,
 		maxTokens: 4096,
 		compat,
-	};
+	});
 }
 
 describe("OpenAI Responses 24h extended retention", () => {

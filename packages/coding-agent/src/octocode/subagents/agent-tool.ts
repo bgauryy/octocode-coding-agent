@@ -14,6 +14,7 @@ import { runnerField } from "./runner-task.ts";
 export function agentToolSpec(runners: readonly string[] = []) {
 	const spec = {
 		name: "agent",
+		roleVariant: true,
 		label: "Agent",
 		description:
 			"Delegate a self-contained task to a fresh session without this conversation. " +
@@ -45,10 +46,16 @@ export function agentToolSpec(runners: readonly string[] = []) {
 						"Your ongoing item, or unheld todo/backlog with goal+why (claimed here). Child updates only it; report noted there.",
 				}),
 			),
+			after: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"With background: queue until each B<n> item is done and each agent:<name> child reported done; it then starts on its own, a failure holds it. Item's open dependsOn joins.",
+				}),
+			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Continue this session's finished/stopped child, with optional model override. Isolated children cannot resume: start a task citing report:<id>.",
+						"Continue this session's finished/stopped child, with optional model override. Isolated children cannot resume: start a task citing report:<id>. A held queued child starts now.",
 				}),
 			),
 			profile: Type.Optional(

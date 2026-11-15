@@ -1,4 +1,4 @@
-import { type Component, getKeybindings, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { type Component, getKeybindings, GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText, plainText } from "./entry-text.ts";
@@ -192,7 +192,7 @@ export class TreeList implements Component {
 			const isSelected = i === this.selectedIndex;
 
 			// Build line: cursor + prefix + path marker + label + content
-			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
+			const cursor = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 
 			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;

@@ -171,7 +171,7 @@ The check reads past wrappers, `VAR=value`, chains, `eval` and `bash -c`/heredoc
 
 ```mermaid
 flowchart TD
-    C["MCP tool call"] --> R{"Server entry declares the tool<br/>read-only (roles reader, search, readOnly)?"}
+    C["MCP tool call"] --> R{"Server entry declares the tool<br/>read-only (roles reader, search, judge, readOnly)?"}
     R -->|yes| Read["mcp.read: never asks, recorded"]
     R -->|no| H{"Server marks destructiveHint: true?"}
     H -->|yes| Des["mcp.destructive: asks in manual and workspace,<br/>no session grant covers it"]

@@ -53,7 +53,19 @@ describe("footer data visibility", () => {
 		const lines = footerLines(state, "main", statuses, theme, width);
 		expect(lines.length).toBeLessThanOrEqual(5);
 		expect(lines.join("\n")).toContain("error: database");
-		expect(lines.at(-1)).toContain("+2 alerts · /status");
+		// The short warning may fit whole on line 2; only alerts not shown whole are counted.
+		const warningShown = lines.slice(0, 2).some((line) => line.includes("provider retry pending"));
+		expect(lines.at(-1)).toContain(`+${warningShown ? 1 : 2} alerts · /status`);
+		expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+	});
+
+	it.each([20, 40])("keeps the location and moves a wide warning whole to its own row at %s columns", (width) => {
+		const warning = "custom ext status value";
+		const statuses = new Map([["ext", { text: warning, tone: "warning" as const }]]);
+		const lines = footerLines({ ...state, cwd: "/work/projects/app" }, "main", statuses, theme, width);
+		expect(lines[1]).toMatch(/^(app|\/…\/projects\/app|\/work\/projects\/app) ⎇/);
+		// Shown once and uncut: either on line 2 or in the alert rows, never a truncated copy on each.
+		expect(lines.filter((line) => line.includes("custom ext"))).toHaveLength(1);
 		expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 	});
 
@@ -64,7 +76,7 @@ describe("footer data visibility", () => {
 		expect(lines.join("\n").match(/database unavailable/g)).toHaveLength(1);
 	});
 
-	it("keeps a details route when complete alerts displace the compact hint", () => {
+	it("keeps the location and a details route when alerts outgrow their rows", () => {
 		const warning = "Retry in 4s · network unavailable";
 		const failure = "Database unavailable";
 		const statuses = new Map([
@@ -75,9 +87,8 @@ describe("footer data visibility", () => {
 		const lines = footerLines(state, "main", statuses, theme, 40);
 		const text = lines.join("\n");
 		expect(text).toContain(failure);
-		expect(lines.join("").replaceAll(" ", "")).toContain(warning.replaceAll(" ", ""));
-		expect(text).not.toContain("+1 alerts");
-		expect(text).toContain("/status");
+		expect(lines[1]).toMatch(/^\/work\/project ⎇ main/);
+		expect(lines.at(-1)).toContain("/status");
 		expect(lines.length).toBeLessThanOrEqual(5);
 		expect(lines.every((line) => visibleWidth(line) <= 40)).toBe(true);
 	});

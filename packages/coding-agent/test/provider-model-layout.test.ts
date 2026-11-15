@@ -34,7 +34,7 @@ describe("provider and model layout regressions", () => {
 			{ onChange: vi.fn(), onPersist: vi.fn(), onCancel: vi.fn() },
 		);
 		const output = text(view);
-		expect(output).toContain("escape/ctrl+c close");
+		expect(output).toContain("esc/ctrl+c close");
 		expect(output).toContain("[unavailable]");
 		for (const line of view.render(40)) expect(visibleWidth(line)).toBeLessThanOrEqual(40);
 	});

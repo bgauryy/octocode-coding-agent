@@ -27,9 +27,11 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	| "vllmPriority"
 	| "toolSchemaFlavor"
 	| "supportsTemperature"
+	| "supportsExplicitPromptCacheMode"
 > & {
 	supportsTemperature?: OpenAICompletionsCompat["supportsTemperature"];
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
+	supportsExplicitPromptCacheMode?: OpenAICompletionsCompat["supportsExplicitPromptCacheMode"];
 	supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];
 	supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];

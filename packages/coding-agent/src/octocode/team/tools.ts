@@ -21,6 +21,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { teamWorkspace } from "./store/workspace.ts";
 import { checkGoal } from "./identity.ts";
 import { describeMembers } from "./member-list.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeChanges, describeConflicts, memberGoals, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
 import { type ChildBudgets, grantRequests } from "./tools/grant.ts";
@@ -99,6 +100,8 @@ export function registerCollab(
 		budgets?: ChildBudgets;
 		beforeLeave?: (reason: string) => Promise<unknown>;
 		registerTool?: ExtensionAPI["registerTool"];
+		/** The repository's worktrees with the agents in each, for `coordinate list` (wired by `index.ts` from the worktrees domain). */
+		describeWorktrees?: (cwd: string, deps: { members: () => Member[] }) => Promise<string | undefined>;
 		/** The paths a bash command writes, as far as a parse can name them (wired by `index.ts` from the permission layer). */
 		shellWrites?: (command: string) => Promise<string[]>;
 		/** The paths a bash command that ran wrote, only those the parse names (not the guesses `shellWrites` also checks); recorded as changes. */
@@ -188,6 +191,7 @@ function registerCoordinateTool(
 		mergeBranch,
 		peers,
 		budgets,
+		describeWorktrees,
 		registerTool = (tool) => api.registerTool(tool),
 	}: {
 		stopAgent?: StopAgent | undefined;
@@ -195,6 +199,7 @@ function registerCoordinateTool(
 		mergeBranch?: MergeBranch | undefined;
 		peers?: PeerRoute | undefined;
 		budgets?: ChildBudgets | undefined;
+		describeWorktrees?: ((cwd: string, deps: { members: () => Member[] }) => Promise<string | undefined>) | undefined;
 		registerTool?: ExtensionAPI["registerTool"] | undefined;
 	},
 ): void {
@@ -341,8 +346,11 @@ function registerCoordinateTool(
 					team.stalled(),
 					details,
 				);
+				const queued = budgets?.queued?.() ?? [];
+				const waiting = queued.length ? `\n\nQueued children:\n${queued.map((row) => `  ${row}`).join("\n")}` : "";
+				const worktrees = await describeWorktrees?.(ctx.cwd, { members: () => members });
 				const others = peers ? `\n\n${await peers.list(ctx.cwd)}` : "";
-				return textResult(`${agents}${others}`, {
+				return textResult(`${agents}${waiting}${worktrees ? `\n\n${worktrees}` : ""}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",
 				});
 			},

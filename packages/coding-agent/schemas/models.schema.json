@@ -63,7 +63,7 @@
             "apiKey": {
               "type": "string",
               "minLength": 1,
-              "description": "Literal key, \"$NAME\" environment interpolation, or \"!command\" output."
+              "description": "Literal key, \"$NAME\" environment interpolation, or \"!command\" output (the command runs on first use, not at startup)."
             },
             "api": {
               "type": "string",
@@ -1258,6 +1258,11 @@
           "type": "boolean",
           "description": "Whether the provider supports long prompt cache retention. Defaults are API-specific or auto-detected."
         },
+        "supportsExplicitPromptCacheMode": {
+          "type": "boolean",
+          "description": "Whether the model accepts prompt_cache_options (GPT-5.6 and later) instead of prompt_cache_retention. Older OpenAI models reject the parameter. The generated catalog sets it for verified models; unset means false.",
+          "default": false
+        },
         "vllmPriority": {
           "type": "number",
           "description": "vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog."
@@ -1285,9 +1290,9 @@
           "description": "Whether the model supports client-executed tool search for transcript-anchored additions.",
           "default": false
         },
-        "supportsExplicitPromptCacheMode": {
+        "supportsInstructionBreakpoints": {
           "type": "boolean",
-          "description": "Whether the model accepts prompt_cache_options. Older OpenAI models reject the parameter.",
+          "description": "Whether the model takes 30m prompt cache breakpoints on its leading instructions without explicit cache mode (Azure deployments of GPT-6 Astra). The generated catalog sets it for verified models; unset means false.",
           "default": false
         },
         "supportsMidConvoEffort": {

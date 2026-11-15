@@ -284,7 +284,7 @@ describe("delivery acknowledgement", () => {
 		const b = agent(db, cwd);
 		a.team.join();
 		b.team.join();
-		const { id } = (await a.team.send(b.team.id, "fyi: tests are green", { replyRequired: false })) as {
+		const { id } = (await a.team.send(b.team.id, "fyi: tests are green", { replyRequired: false, wake: false })) as {
 			id: number;
 		};
 		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
@@ -859,7 +859,7 @@ describe("delivery edge cases", () => {
 		const receiver = agent(db, cwd);
 		receiver.team.join();
 		for (const text of ["one", "two"]) {
-			await sender.team.send(receiver.team.id, text, { replyRequired: false });
+			await sender.team.send(receiver.team.id, text, { replyRequired: false, wake: false });
 		}
 		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(1), { timeout: 3_000 });
 		await receiver.emit(
@@ -881,7 +881,9 @@ describe("delivery edge cases", () => {
 		raw.exec("DELETE FROM messages; DELETE FROM sqlite_sequence WHERE name = 'messages'");
 		raw.close();
 		const id = (
-			(await sender.team.send(receiver.team.id, "after the reset", { replyRequired: false })) as { id: number }
+			(await sender.team.send(receiver.team.id, "after the reset", { replyRequired: false, wake: false })) as {
+				id: number;
+			}
 		).id;
 		expect(id).toBe(1);
 		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(2), { timeout: 3_000 });

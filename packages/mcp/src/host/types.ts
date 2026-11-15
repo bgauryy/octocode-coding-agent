@@ -117,6 +117,8 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	exposure?: McpToolExposure;
 	namespace?: McpToolNamespace;
 	defaultActive?: boolean;
+	/** How long a call may keep running after an abort before the loop abandons it, in ms. */
+	abortGraceMs?: number;
 	execute(
 		toolCallId: string,
 		params: Static<TParams>,

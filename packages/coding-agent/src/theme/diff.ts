@@ -1,6 +1,7 @@
 import { backgroundAnsi, mixColors, visibleWidth } from "@octocodeai/octocode-tui";
 import * as Diff from "diff";
 import { replaceTabs } from "../core/tools/render-utils.ts";
+import { isUnifiedDiff } from "../utils/code-sniff.ts";
 import { getLanguageFromPath, highlightCode, theme } from "./theme.ts";
 
 /**
@@ -134,7 +135,7 @@ function overlayRanges(styled: string, ranges: Range[], on: string, off: string)
 
 /** A run of consecutive diff lines the renderer treats together. */
 type Segment =
-	| { kind: "raw"; text: string }
+	| { kind: "raw"; text: string; color?: "accent" | "muted"; file?: string }
 	| { kind: "context"; rows: DiffRow[] }
 	| { kind: "change"; removed: DiffRow[]; added: DiffRow[] };
 
@@ -207,14 +208,16 @@ function highlightRows(rows: DiffRow[], language: string | undefined): string[] 
  */
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const tints = diffTints();
-	const language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
+	// A unified diff (`git diff`'s text) has no line numbers, and names each file in its head.
+	const unified = isUnifiedDiff(diffText);
+	let language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
 	const wordOn = (sign: "+" | "-") => tints?.word[sign] ?? "\x1b[7m";
 	const wordOff = (sign: "+" | "-") => tints?.line[sign] ?? "\x1b[27m";
 	const changedLine = (sign: "+" | "-", row: DiffRow, highlighted?: string, ranges: Range[] = []): string => {
 		const color = sign === "+" ? "toolDiffAdded" : "toolDiffRemoved";
 		const body = highlighted ?? theme.fg(color, row.content);
 		const marked = overlayRanges(body, ranges, wordOn(sign), wordOff(sign));
-		const label = theme.fg(color, `${sign}${row.lineNum} `);
+		const label = theme.fg(color, unified ? sign : `${sign}${row.lineNum} `);
 		if (!tints) return `${label}${marked}`;
 		// The sign and number carry the colour; the tint marks the whole changed line, so a line of only whitespace
 		// still shows as changed.
@@ -222,16 +225,17 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 		return `${label}${tints.line[sign]}${text}${DEFAULT_BG}`;
 	};
 	const out: string[] = [];
-	for (const segment of parseSegments(diffText)) {
+	for (const segment of unified ? parseUnified(diffText) : parseSegments(diffText)) {
 		if (segment.kind === "raw") {
-			out.push(theme.fg("toolDiffContext", segment.text));
+			if (segment.file && !options.filePath) language = getLanguageFromPath(segment.file);
+			out.push(theme.fg(segment.color ?? "toolDiffContext", segment.text));
 		} else if (segment.kind === "context") {
 			const highlighted = highlightRows(segment.rows, language);
 			segment.rows.forEach((row, index) => {
 				out.push(
 					highlighted
-						? `${theme.fg("toolDiffContext", ` ${row.lineNum} `)}\x1b[2m${highlighted[index]}\x1b[22m`
-						: theme.fg("toolDiffContext", ` ${row.lineNum} ${row.content}`),
+						? `${theme.fg("toolDiffContext", unified ? " " : ` ${row.lineNum} `)}\x1b[2m${highlighted[index]}\x1b[22m`
+						: theme.fg("toolDiffContext", unified ? ` ${row.content}` : ` ${row.lineNum} ${row.content}`),
 				);
 			});
 		} else {
@@ -279,6 +283,49 @@ function parseSegments(diffText: string): Segment[] {
 		} else {
 			const removed = collect("-");
 			segments.push({ kind: "change", removed, added: collect("+") });
+		}
+	}
+	return segments;
+}
+
+/** The file a `diff --git a/x b/x` or `+++ b/x` head names: its new path, without the `a/`/`b/` prefix or a trailing tab. */
+function headFile(line: string): string | undefined {
+	const path = (/^\+\+\+ (\S.*?)\t?$/.exec(line)?.[1] ?? / b\/(.+)$/.exec(line)?.[1])?.replace(/^b\//, "");
+	return path && path !== "/dev/null" ? path : undefined;
+}
+
+/** Groups a unified diff (`@@` hunks, `+`/`-`/space lines) like `parseSegments`; heads and `\ No newline` lines stay raw. */
+function parseUnified(diffText: string): Segment[] {
+	const lines = diffText.split("\n");
+	const segments: Segment[] = [];
+	let inHunk = false;
+	let i = 0;
+	const run = (sign: string): DiffRow[] => {
+		const rows: DiffRow[] = [];
+		while (i < lines.length && lines[i].startsWith(sign))
+			rows.push({ lineNum: "", content: replaceTabs(lines[i++].slice(1)) });
+		return rows;
+	};
+	while (i < lines.length) {
+		const line = lines[i];
+		if (line.startsWith("@@")) {
+			inHunk = true;
+			segments.push({ kind: "raw", text: line, color: "accent" });
+			i++;
+		} else if (line.startsWith("diff --git ")) {
+			inHunk = false;
+			const file = headFile(line);
+			segments.push({ kind: "raw", text: line, color: "accent", ...(file ? { file } : {}) });
+			i++;
+		} else if (!inHunk || !/^[-+ ]/.test(line)) {
+			const file = line.startsWith("+++ ") ? headFile(line) : undefined;
+			segments.push({ kind: "raw", text: line, color: "muted", ...(file ? { file } : {}) });
+			i++;
+		} else if (line.startsWith(" ")) {
+			segments.push({ kind: "context", rows: run(" ") });
+		} else {
+			const removed = run("-");
+			segments.push({ kind: "change", removed, added: run("+") });
 		}
 	}
 	return segments;

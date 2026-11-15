@@ -18,6 +18,29 @@ const BashSettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.bash.spillMaxBytes,
 			}),
 		),
+		longCommandAfterSeconds: Type.Optional(
+			Type.Number({
+				minimum: 0,
+				description:
+					"Seconds a known long command (test runner, `yarn run check`, build, server, stream follower, or a `longCommandPatterns` match) may run in the foreground before it moves to the background as a job. It applies only when sooner than `bashBackgroundAfterSeconds`.",
+				default: SETTINGS_DEFAULTS.bash.longCommandAfterSeconds,
+			}),
+		),
+		deliberateMaxSeconds: Type.Optional(
+			Type.Number({
+				minimum: 1,
+				description:
+					"The longest a foreground bash call that names its own `timeout` holds the turn before the command moves to the background (it is still stopped at its timeout).",
+				default: SETTINGS_DEFAULTS.bash.deliberateMaxSeconds,
+			}),
+		),
+		longCommandPatterns: Type.Optional(
+			Type.Array(Type.String(), {
+				description:
+					'Regular expressions for commands that count as long, added to the built-in runners (vitest, jest, pytest, cargo, go, yarn test/check/build/dev…), for example `["bazel\\s+(?:test|build)", "make\\s+(?:test|check)"]`. Each is matched where a command starts (the line, or after `;`, `&`, `|`, `(` and `VAR=value` words) and must end at a space or the end of a part. An entry that is not a valid regular expression is ignored.',
+				default: SETTINGS_DEFAULTS.bash.longCommandPatterns,
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );

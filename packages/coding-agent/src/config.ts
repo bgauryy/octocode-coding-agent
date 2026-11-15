@@ -160,7 +160,7 @@ export function detectInstallChange(packageJsonPath = startupPackageJsonPath): I
 	if (isBunBinary || !packageJsonPath) return undefined;
 	let installed: PackageJson;
 	try {
-		installed = readJsonFile(packageJsonPath) as PackageJson;
+		installed = readJsonFile<PackageJson>(packageJsonPath);
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "removed" } : undefined;
 	}
@@ -185,7 +185,7 @@ let pkg: PackageJson = {};
 let startupPackageJsonPath: string | undefined;
 try {
 	const packageJsonPath = getPackageJsonPath();
-	pkg = readJsonFile(packageJsonPath) as PackageJson;
+	pkg = readJsonFile<PackageJson>(packageJsonPath);
 	startupPackageJsonPath = packageJsonPath;
 } catch (e: unknown) {
 	const err = e as NodeJS.ErrnoException;

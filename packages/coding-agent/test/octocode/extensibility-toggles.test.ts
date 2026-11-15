@@ -7,6 +7,7 @@ import { effectivePlugins, isSwitchedOn, pluginToggleId } from "../../src/core/e
 import type { Settings } from "../../src/core/settings-schema.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { initTheme } from "../../src/theme/theme.ts";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 import { mergeScopedSettings } from "../../src/core/settings-manager/merge.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { hookToggleIds } from "../../src/octocode/hooks/config/toggles.ts";
@@ -426,7 +427,7 @@ describe("/harness terminal list", () => {
 
 		// Typing filters; a filter with no match says so instead of showing an empty list.
 		press("z", "z", "z");
-		expect(screen()).toContain("Nothing matches this filter.");
+		expect(stripAnsi(screen())).toContain(`No items match "zzz" · backspace edit search`);
 
 		press("tui.select.cancel");
 		await closed;

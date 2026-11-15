@@ -149,7 +149,7 @@ describe("paste-first Add MCP", () => {
 		["bare http", '{"url":"https://example.test/mcp"}', "asked", ["asked"]],
 	])("saves %s to the chosen scope, off and unassigned", async (_label, text, name, extraInputs) => {
 		const host = await started();
-		const { port, menus } = ui(["global", "done"], [text, ...extraInputs]);
+		const { port, menus } = ui(["global", "save", "done"], [text, ...extraInputs]);
 		await addMcpWithUi(host.state, port);
 		const saved = read(globalMcpConfigPath(agentDir)).mcpServers[name];
 		expect(saved).toMatchObject({ enabled: false, defaultActive: false });
@@ -160,7 +160,7 @@ describe("paste-first Add MCP", () => {
 	});
 	it("re-asks an invalid name for a bare server", async () => {
 		const host = await started();
-		const { port, input } = ui(["global", "done"], ['{"command":"node"}', "bad name", "good"]);
+		const { port, input } = ui(["global", "save", "done"], ['{"command":"node"}', "bad name", "good"]);
 		await addMcpWithUi(host.state, port);
 		expect(input.mock.calls[2]?.[2]).toContain("name");
 		expect(Object.keys(read(globalMcpConfigPath(agentDir)).mcpServers)).toEqual(["good"]);
@@ -169,7 +169,7 @@ describe("paste-first Add MCP", () => {
 	it("saves every server of one paste to the workspace and reports each", async () => {
 		const host = await started([], true);
 		const text = '{"mcpServers":{"one":{"command":"a"},"two":{"url":"https://example.test/mcp"}}}';
-		const { port, menus } = ui(["workspace", "done"], [text]);
+		const { port, menus } = ui(["workspace", "save", "done"], [text]);
 		await addMcpWithUi(host.state, port);
 		expect(menus[0]?.items.map((item) => item.value)).toEqual(["global", "workspace"]);
 		expect(Object.keys(read(projectMcpConfigPath(cwd)).mcpServers)).toEqual(["one", "two"]);
@@ -179,7 +179,7 @@ describe("paste-first Add MCP", () => {
 	});
 	it("does not offer the workspace when untrusted and refuses it if chosen anyway", async () => {
 		const host = await started();
-		const { port, menus } = ui(["workspace", "done"], ['{"a":{"command":"x"}}']);
+		const { port, menus } = ui(["workspace", "save", "done"], ['{"a":{"command":"x"}}']);
 		await addMcpWithUi(host.state, port);
 		expect(menus[0]?.items.map((item) => item.value)).toEqual(["global"]);
 		expect(menus.at(-1)?.facts?.[0]?.value).toMatch(/Trust the workspace/);
@@ -205,9 +205,10 @@ describe("paste-first Add MCP", () => {
 		expect(JSON.stringify(editing.menus)).not.toContain("sk-private-marker");
 		expect(editing.input.mock.calls[1]?.[1]).toBe(text);
 		expect(fs.existsSync(globalMcpConfigPath(agentDir))).toBe(false);
-		const continuing = ui(["save", "global", "done"], [text]);
+		const continuing = ui(["save", "global", "save", "done"], [text]);
 		await addMcpWithUi(host.state, continuing.port);
 		expect(read(globalMcpConfigPath(agentDir)).mcpServers.a.env.TOKEN).toBe("sk-private-marker");
+		expect(JSON.stringify(continuing.menus)).not.toContain("sk-private-marker");
 		await host.close();
 	});
 	it("offers the field form from the prompt and from an error", async () => {

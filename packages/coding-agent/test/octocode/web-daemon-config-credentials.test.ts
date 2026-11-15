@@ -150,7 +150,7 @@ describe("POST /api/admin/config/credentials", () => {
 		expect(readAuth().openai).toBeUndefined();
 	});
 
-	it("refuses a key the provider rejects and saves nothing; saves one it cannot check", async () => {
+	it("refuses a key the provider rejects and saves nothing; saves one it cannot check only when acknowledged", async () => {
 		const { server, call, audits } = await daemon(fakeKeychain());
 		providerAnswer = 401;
 		const refused = await call(server.token, set());
@@ -163,10 +163,17 @@ describe("POST /api/admin/config/credentials", () => {
 		expect(audits()[0]).toMatchObject({ action: "credential.set", outcome: "refused", errorCode: "rejected" });
 
 		providerAnswer = new TypeError("fetch failed");
-		expect((await call(server.token, set())).status).toBe(200);
+		const unverified = await call(server.token, set());
+		expect(unverified.status).toBe(409);
+		expect(unverified.text).not.toContain(SECRET);
+		expect(unverified.json().error).toContain("unverified");
+		expect(entryOf("openai")).toBeUndefined();
+		expect((await call(server.token, set("openai", { acknowledgeUnverified: true }))).status).toBe(200);
 		expect(entryOf("openai")).toBe(SECRET);
 		providerAnswer = 503;
-		expect((await call(server.token, { ...set(), key: OLD_SECRET })).status).toBe(200);
+		expect((await call(server.token, { ...set(), key: OLD_SECRET })).status).toBe(409);
+		expect(entryOf("openai")).toBe(SECRET);
+		expect((await call(server.token, { ...set(), key: OLD_SECRET, acknowledgeUnverified: true })).status).toBe(200);
 		expect(entryOf("openai")).toBe(OLD_SECRET);
 	});
 
@@ -183,6 +190,32 @@ describe("POST /api/admin/config/credentials", () => {
 		expect((await call(server.token, set("openai"))).status).toBe(200);
 		expect(readAuth().anthropic.type).toBe("oauth");
 		expect(readAuth().other).toEqual({ type: "api_key", key: "x" });
+	});
+
+	it("clears an OAuth sign-in through the runtime logout: the provider revokes it and no refresh token stays", async () => {
+		fs.writeFileSync(
+			authFile(),
+			JSON.stringify({ openai: { type: "oauth", access: "acc", refresh: "REFRESH-1", expires: 1, clientId: "app_x" } }),
+		);
+		const { server, call } = await daemon(fakeKeychain());
+		const cleared = await call(server.token, { action: "clear", provider: "openai" });
+		expect(cleared.status).toBe(200);
+		expect(providerRequests).toContain("https://auth.openai.com/api/accounts/oauth/revoke");
+		expect(JSON.stringify(readAuth().openai ?? {})).not.toContain("REFRESH-1");
+	});
+
+	it("says so when the provider could not confirm revocation, though the sign-in is gone locally", async () => {
+		fs.writeFileSync(
+			authFile(),
+			JSON.stringify({ openai: { type: "oauth", access: "acc", refresh: "REFRESH-2", expires: 1, clientId: "app_x" } }),
+		);
+		providerAnswer = 400;
+		const { server, call } = await daemon(fakeKeychain());
+		const cleared = await call(server.token, { action: "clear", provider: "openai" });
+		expect(cleared.status).toBe(500);
+		expect(cleared.text).toContain("revocation");
+		expect(cleared.text).not.toContain("REFRESH-2");
+		expect(JSON.stringify(readAuth().openai ?? {})).not.toContain("REFRESH-2");
 	});
 
 	it("refuses a Claude subscription token for any provider and saves nothing", async () => {

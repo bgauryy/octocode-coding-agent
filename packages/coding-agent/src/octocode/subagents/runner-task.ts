@@ -59,6 +59,7 @@ export function registerChildRunnerTask(
 	let started = 0;
 	registerTool({
 		name: "agent",
+		roleVariant: true,
 		label: "Agent",
 		description:
 			"Run a self-contained task in an installed vendor CLI using its own sign-in, checked when used, and return its report; the call waits for it.",

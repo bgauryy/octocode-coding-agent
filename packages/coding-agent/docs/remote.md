@@ -4,6 +4,8 @@
 
 `/remote` starts the web daemon when none is running, the same one `/web` opens. When the daemon cannot start, `/remote` says why and publishes nothing.
 
+A control link lets another device send commands and answer approvals, so `/remote` asks before it publishes one. Where nobody can answer (print mode, RPC with `--no-dialogs`, a subagent), it refuses and publishes nothing: a script publishes with `octocode remote link`, and `/remote view` still publishes a read-only link.
+
 ```mermaid
 flowchart LR
   P[Phone or laptop] -->|ssh port forward, or sealed relay| D[Web daemon on this machine]

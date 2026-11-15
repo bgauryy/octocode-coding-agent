@@ -13,17 +13,15 @@ import {
 	CompactionFitError,
 	explainNothingToCompact,
 	prepareCompaction,
-	type SummaryRequestPolicy,
 	summaryStreamWatcher,
 } from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../features/index.ts";
-import { type CompactionHost, type CompactionReason, runCompaction } from "../session-compaction.ts";
+import { type CompactionHost, runCompaction } from "../session-compaction.ts";
 import type { SessionInternals } from "./host.ts";
 import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
 import { CompactionPrewarm } from "./compaction-prewarm.ts";
-import { summarizationRetryCallbacks } from "./retry.ts";
+import { summaryRequestPolicy } from "./compaction-summary-request.ts";
 import { recordRunFailure } from "./run-outcome.ts";
-import type { AgentSessionEvent } from "./types.ts";
 
 /** A manual compaction had nothing to summarize. The message stays the SDK/RPC error text; interactive mode shows it as a status. */
 export class NothingToCompactError extends Error {
@@ -78,27 +76,8 @@ export class SessionCompaction {
 			sessionManager: session.sessionManager,
 			extensionRunner: session.extensionRunner,
 			summarize: (...args) => this.host.summarize(...args),
-			summaryRequest: (reason) => this._summaryRequest(reason),
+			summaryRequest: (reason) => summaryRequestPolicy(this.host, reason),
 			refreshContext: () => this.host.refreshContext(),
-		};
-	}
-
-	/**
-	 * How one compaction's summary requests are sent: progress on the status line (`compaction_progress`, at most once a
-	 * second), an attempt that receives nothing for the HTTP idle window (`httpIdleTimeoutMs`) ended as a retryable
-	 * timeout, and the session's retry policy.
-	 */
-	private _summaryRequest(reason: CompactionReason): SummaryRequestPolicy {
-		const { settingsManager } = this.host.session;
-		const emit = (event: AgentSessionEvent) => this.host.emit(event);
-		return {
-			forceSystemPrompt: this.host.forcedSystemPrompt(),
-			watch: summaryStreamWatcher({
-				idleMs: settingsManager.getHttpIdleTimeoutMs(),
-				onProgress: (progress) => emit({ type: "compaction_progress", reason, ...progress }),
-			}),
-			retry: settingsManager.getRetrySettings(),
-			callbacks: summarizationRetryCallbacks(emit, { source: "compaction", reason }),
 		};
 	}
 
@@ -241,9 +220,11 @@ export class SessionCompaction {
 			model,
 			thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 		);
+		const forced = this.host.forcedSystemPrompt();
+		this._prewarm.dropIfStale(model, settings, forced);
 		if (!this._prewarm.due(tokens, model, settings)) return;
 		this._prewarm.start(session.sessionManager, session.extensionRunner, model, settings, {
-			forceSystemPrompt: this.host.forcedSystemPrompt(),
+			forceSystemPrompt: forced,
 			watch: summaryStreamWatcher({ idleMs: session.settingsManager.getHttpIdleTimeoutMs() }),
 			retry: session.settingsManager.getRetrySettings(),
 			callbacks: {},
@@ -284,15 +265,27 @@ export class SessionCompaction {
 		const limit = this._autoCompactionLimit.check(failureKey, reason);
 		if (limit === "quiet") return false;
 		if (limit === "notice") {
+			const errorMessage =
+				"Automatic compaction stopped after three consecutive failures. Resolve the error and run /compact, or start a new session.";
 			this.host.emit({
 				type: "compaction_end",
 				reason,
 				result: undefined,
 				aborted: false,
 				willRetry: false,
-				errorMessage:
-					"Automatic compaction stopped after three consecutive failures. Resolve the error and run /compact, or start a new session.",
+				errorMessage,
 			});
+			// An overflow's failed reply is already out of the context: extensions hear that it was not recovered. The run
+			// keeps the failure the provider reported for it.
+			if (reason === "overflow") {
+				await this.emitSessionCompactFailed({
+					reason,
+					errorMessage,
+					aborted: false,
+					willRetry: false,
+					fromExtension: false,
+				});
+			}
 			return false;
 		}
 		let abortController: AbortController | undefined;

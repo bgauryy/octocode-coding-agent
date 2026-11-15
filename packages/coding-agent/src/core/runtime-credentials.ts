@@ -68,6 +68,18 @@ export class RuntimeCredentials implements CredentialStore {
 		return isWatchable(this.store) ? this.store.watch(onChange) : () => {};
 	}
 
+	/** The fallback auth file (Pi's or a legacy one) that supplies the provider's saved credential, if it is one. */
+	credentialOrigin(providerId: string): string | undefined {
+		const store = this.store as { credentialOrigin?: (providerId: string) => string | undefined };
+		return store.credentialOrigin?.(providerId);
+	}
+
+	/** Where Octocode's own `auth.json` keeps the provider's secret, when its store can tell. */
+	storedIn(providerId: string): "keychain" | "auth.json" | undefined {
+		const store = this.store as { storedIn?: (providerId: string) => "keychain" | "auth.json" | undefined };
+		return store.storedIn?.(providerId);
+	}
+
 	setRuntimeApiKey(providerId: string, apiKey: string): void {
 		registerResolvedSecret(apiKey);
 		this.overrides.set(providerId, apiKey);

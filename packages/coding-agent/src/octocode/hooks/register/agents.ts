@@ -2,6 +2,8 @@ import type { ExtensionAPI, ExtensionContext } from "../../../core/features/inde
 import { AGENT_LIFECYCLE_CHANNEL, type AgentLifecycleNotice } from "../../shared/agent-lifecycle.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { HookEvent } from "../catalog.ts";
+import type { AgentChainNotice } from "../../shared/agent-chain.ts";
+import { ChainLinks, onChainNotice } from "./chain.ts";
 import type { HookSession, Dispatch, ReportFailure } from "./types.ts";
 
 const asNotice = (value: unknown): AgentLifecycleNotice | undefined =>
@@ -21,7 +23,7 @@ const iso = (ms: number | null): string | null => (ms === null ? null : new Date
  * The hook input of one transition (the dispatcher adds `hook_event_name`, `session_id` and `cwd`). `AgentOn` carries who
  * joined; `AgentOff` adds why it ended and its final numbers. `outcome` is what the parent had recorded when the agent left (null for a child that leaves before its report).
  */
-export function agentHookInput(notice: AgentLifecycleNotice): Record<string, unknown> {
+export function agentHookInput(notice: AgentLifecycleNotice, chain?: ChainLinks): Record<string, unknown> {
 	const { stats = {}, data } = notice;
 	const joined = number(stats.joinedAt) ?? number(data.joinedAt);
 	const ended = Date.parse(notice.time);
@@ -53,7 +55,16 @@ export function agentHookInput(notice: AgentLifecycleNotice): Record<string, unk
 					files_changed: files(data.filesChanged),
 				}
 			: {}),
+		...(chain ? (notice.kind === "on" ? chain.on(notice.agent) : chain.off(notice.agent)) : {}),
 	};
+}
+
+/** The input of an AgentQueued hook: who was queued, behind what, and for which item. */
+function queuedHookInput(
+	notice: Extract<AgentChainNotice, { kind: "queued" }>,
+	seq: number | null,
+): Record<string, unknown> {
+	return { seq, agent_id: notice.agent, agent_type: notice.role, after: notice.after, item: notice.item ?? null };
 }
 
 /**
@@ -70,8 +81,13 @@ export function registerAgentHooks(
 ): void {
 	let context: ExtensionContext | undefined;
 	const pending = new Set<Promise<void>>();
-	const run = (notice: AgentLifecycleNotice, ctx: ExtensionContext) => {
-		const event: HookEvent = notice.kind === "on" ? "AgentOn" : "AgentOff";
+	const chain = new ChainLinks();
+	/**
+	 * Runs the hooks of `event` in the background under the presence deadline; `build` makes the input and `name` is what
+	 * the matcher tests. It is built one turn of the event loop later: the chain notice a transition causes (the queued
+	 * children it released or held) is sent while the transition is still being delivered.
+	 */
+	const observe = (event: HookEvent, name: string, build: () => Record<string, unknown>, ctx: ExtensionContext) => {
 		const groups = session.config[event];
 		if (groups.length === 0) return;
 		const budget = Math.min(
@@ -80,8 +96,8 @@ export function registerAgentHooks(
 		);
 		const abort = new AbortController();
 		const timer = setTimeout(() => abort.abort(), budget);
-		const names = [notice.kind === "on" ? (notice.role ?? "general") : (notice.reason ?? "left")];
-		const done: Promise<void> = dispatch(ctx, event, names, () => agentHookInput(notice), abort.signal, ["octocode"])
+		const done: Promise<void> = Promise.resolve()
+			.then(() => dispatch(ctx, event, [name], build, abort.signal, ["octocode"]))
 			.then(() => undefined)
 			.catch((error: unknown) => {
 				if (!abort.signal.aborted) reportFailure(ctx, event, error);
@@ -92,12 +108,24 @@ export function registerAgentHooks(
 			});
 		pending.add(done);
 	};
+	const run = (notice: AgentLifecycleNotice, ctx: ExtensionContext) =>
+		observe(
+			notice.kind === "on" ? "AgentOn" : "AgentOff",
+			notice.kind === "on" ? (notice.role ?? "general") : (notice.reason ?? "left"),
+			() => agentHookInput(notice, chain),
+			ctx,
+		);
 	api.on("session_start", async (_event, ctx) => {
 		context = ctx;
 	});
 	api.events.on(AGENT_LIFECYCLE_CHANNEL, (value) => {
 		const notice = asNotice(value);
 		if (notice && context) run(notice, context);
+	});
+	onChainNotice(api.events, (notice) => {
+		chain.note(notice);
+		if (notice.kind === "queued" && context)
+			observe("AgentQueued", notice.role, () => queuedHookInput(notice, null), context);
 	});
 	api.on("session_shutdown", async () => {
 		// Each hook stops at its own deadline, so this wait is bounded.

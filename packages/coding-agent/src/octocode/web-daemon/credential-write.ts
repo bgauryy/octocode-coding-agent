@@ -13,13 +13,14 @@ import {
 } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import fs from "node:fs";
 import { join } from "node:path";
-import type { Credential } from "@octocodeai/octocode-ai";
+import { type Credential, ModelsError } from "@octocodeai/octocode-ai";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import type { ConfigCredentialCommand } from "@octocodeai/octocode-contracts/config";
 import { AuthStorage, KeychainReleaseError } from "../../core/auth-storage.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { KeychainSaveError, KeychainWrite } from "../../core/auth-storage/keychain-login.ts";
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
+import { ModelRuntime } from "../../core/model-runtime.ts";
 import { CredentialWriteFailure, RuntimeCredentials } from "../../core/runtime-credentials.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { classify, referenceMatchers } from "./config-status.ts";
@@ -121,21 +122,29 @@ async function currentKind(options: CredentialWriteOptions, keychain: KeychainBa
 	return classify(provider, entry, referenceMatchers(keychain), options.env ?? process.env)[0]?.kind ?? "env";
 }
 
+/** The longest a key check may take, the same bound the terminal sign-in uses. */
+const VERIFY_TIMEOUT_MS = 10_000;
+
+const UNVERIFIED_NOTICE = (name: string) =>
+	`Could not check the key with ${name} (network or service problem). Nothing was saved yet: confirm to save it unverified.`;
+
 /**
- * Asks the built-in provider's own key check, as a terminal sign-in does. A refusal (HTTP 401 or 403) saves nothing; a
- * key that could not be checked (network or service problem, no check, a custom provider) is saved. The key is not quoted.
+ * Asks the built-in provider's own key check, as a terminal sign-in does. A refusal (HTTP 401) saves nothing. A key
+ * that could not be reached (network, timeout, service problem) is saved only when the request acknowledges that it
+ * is unverified; one with no check (a custom provider), or whose check endpoint denies access (HTTP 403, which does
+ * not show the key is bad), is saved. The key and the provider's reply are not quoted.
  */
-async function verifyKey(provider: string, key: string): Promise<void> {
+async function verifyKey(provider: string, key: string, acknowledgeUnverified: boolean): Promise<void> {
 	const definition = builtinProviders().find((each) => each.id === provider);
 	const verify = definition?.auth.apiKey?.verify;
 	if (!definition || !verify) return;
-	const verdict = await verify({ key, signal: AbortSignal.timeout(15_000) }).catch(() => "unchecked" as const);
+	const verdict = await verify({ key, signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS) }).catch(
+		() => "unreachable" as const,
+	);
 	if (verdict === "rejected")
-		throw new ConfigWriteError(
-			400,
-			`${definition.name} rejected this key (HTTP 401 or 403). Nothing was saved.`,
-			"rejected",
-		);
+		throw new ConfigWriteError(400, `${definition.name} rejected this key (HTTP 401). Nothing was saved.`, "rejected");
+	if (verdict === "unreachable" && !acknowledgeUnverified)
+		throw new ConfigWriteError(409, UNVERIFIED_NOTICE(definition.name), "unverified");
 }
 
 async function setKey(
@@ -152,7 +161,7 @@ async function setKey(
 	if (before === "oauth") throw new ConfigWriteError(409, OAUTH_NOTICE, "oauth");
 	if (!keychain && command.acknowledgePlaintext !== true)
 		throw new ConfigWriteError(409, PLAINTEXT_NOTICE, "plaintext");
-	await verifyKey(command.provider, secret);
+	await verifyKey(command.provider, secret, command.acknowledgeUnverified === true);
 	// Opened only now: creating the storage creates auth.json, which a refused request must not do.
 	const storage = openStorage();
 	if (!keychain) restrictAuthFile(authPath);
@@ -177,15 +186,41 @@ async function setKey(
 	}
 }
 
-/** Removes the credential. A keychain entry that stays is reported, and the `auth.json` entry is kept so a retry works. */
+/**
+ * The terminal's `/logout`: the runtime revokes an OAuth session with its provider and, when only Pi's file holds a
+ * credential, leaves the signed-out marker. Runs after a key's removal too, so that marker is written for keys as well.
+ */
+async function runtimeLogout(provider: string, agentDir: string, keychain: KeychainBackend | undefined): Promise<void> {
+	const runtime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json"),
+		...(keychain ? { keychain } : {}),
+		refreshOnCreate: false,
+	});
+	try {
+		await runtime.logout(provider, { signal: AbortSignal.timeout(15_000) });
+	} finally {
+		runtime.dispose();
+	}
+}
+
+/**
+ * Removes the credential. An OAuth sign-in goes through the runtime logout; an API key is removed from `auth.json`
+ * directly, so a keychain entry that stays is reported and the `auth.json` entry is kept so a retry works.
+ */
 async function clearKey(
 	provider: string,
+	before: string,
 	openStorage: () => AuthStorage,
 	options: CredentialWriteOptions,
 	keychain: KeychainBackend | undefined,
 ): Promise<void> {
 	try {
-		await openStorage().deleteOrKeep(provider);
+		if (before === "oauth") await runtimeLogout(provider, options.agentDir, keychain);
+		else {
+			await openStorage().deleteOrKeep(provider);
+			await runtimeLogout(provider, options.agentDir, keychain);
+		}
 	} catch (error) {
 		if (error instanceof KeychainReleaseError) {
 			throw error.restored
@@ -202,6 +237,13 @@ async function clearKey(
 		}
 		// A failure after the file was replaced (a compromised lock) leaves the entry gone; do not say nothing changed.
 		const after = await currentKind(options, keychain, provider).catch(() => undefined);
+		// The runtime's only "oauth" failure on logout: the sign-in is already cleared locally, revocation was not confirmed.
+		if (error instanceof ModelsError && error.code === "oauth")
+			throw new ConfigWriteError(
+				500,
+				"Signed out locally, but the provider did not confirm revocation of the session. Disconnect the app in the provider's account settings.",
+				"revocation-unconfirmed",
+			);
 		throw after === "none"
 			? new ConfigWriteError(
 					500,
@@ -255,7 +297,7 @@ async function writeCredentialNow(command: ConfigCredentialCommand, options: Cre
 		} else {
 			// Nothing stored: nothing to clear, and no auth.json is created for it.
 			if (before !== "none") {
-				await clearKey(command.provider, openStorage, options, keychain);
+				await clearKey(command.provider, before, openStorage, options, keychain);
 			}
 			entry.afterKind = "none";
 		}

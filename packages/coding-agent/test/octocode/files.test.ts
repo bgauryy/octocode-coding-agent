@@ -1461,14 +1461,13 @@ describe("file change rendering", () => {
 		expect(call.split("\n")[0]).toBe("○ File(2 changes)");
 		expect(call).toMatch(/edit src\/a\.ts · 2 edits/);
 		expect(call).toMatch(/write test\/a\.test\.ts · 2 lines/);
-		// Reasoning shows only when expanded.
+		// The call row lists the changes only: each reason is drawn once, by the shared purpose row under it.
 		expect(call).not.toContain("↳");
 		const expandedCall = tool!
 			.renderCall(args, theme, { lastComponent: undefined, expanded: true })
 			.render(120)
 			.join("\n");
-		expect(expandedCall).toContain("↳ Fix the off-by-one in the loop");
-		expect(expandedCall).toContain("↳ Add the missing test");
+		expect(expandedCall).not.toContain("↳");
 		const single = tool!
 			.renderCall({ queries: [args.queries[0]] }, theme, {
 				lastComponent: undefined,
@@ -1478,8 +1477,7 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		// A single change shows one reason line, collapsed or expanded, under the title like the call's own: the per-change one only when the call has none.
-		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s\n  ↳ Fix the off-by-one in the loop");
+		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s");
 		const expandedSingle = (callArgs: object) =>
 			tool!
 				.renderCall(callArgs, theme, { lastComponent: undefined, expanded: true, isPartial: false })
@@ -1488,9 +1486,7 @@ describe("file change rendering", () => {
 		expect(expandedSingle({ reason: "Fix the loop bounds", queries: [args.queries[0]] })).toBe(
 			"✓ File(edit src/a.ts · 2 edits)",
 		);
-		expect(expandedSingle({ queries: [args.queries[0]] })).toBe(
-			"✓ File(edit src/a.ts · 2 edits)\n  ↳ Fix the off-by-one in the loop",
-		);
+		expect(expandedSingle({ queries: [args.queries[0]] })).toBe("✓ File(edit src/a.ts · 2 edits)");
 		const diff = Array.from({ length: 30 }, (_, index) => `+${index} added line ${index}`).join("\n");
 		const result = {
 			content: [],

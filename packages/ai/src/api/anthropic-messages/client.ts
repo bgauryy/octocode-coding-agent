@@ -23,8 +23,14 @@ function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): Provid
 	return merged;
 }
 
+/** Sent on every request so the SDK's own default (newer SDKs move to versions that reject sampling parameters) never applies. */
+export const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
+
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-	return mergeHeaders({ "User-Agent": getUserAgent() }, ...headerSources);
+	return mergeHeaders(
+		{ "User-Agent": getUserAgent(), "anthropic-version": DEFAULT_ANTHROPIC_VERSION },
+		...headerSources,
+	);
 }
 
 function hasRequestAuth(apiKey: string | undefined, headers: ProviderHeaders | undefined): boolean {
@@ -156,13 +162,18 @@ export function createClient(
 		return federationClient.client.withOptions({ defaultHeaders });
 	}
 
+	// SDK 1.x sends `apiKey` as `Authorization: Bearer`. Anthropic-compatible endpoints and the pinned API version
+	// expect `x-api-key`, so the key travels as that header and the SDK's Bearer header is omitted. Configured headers
+	// come last, so a model or caller can still replace or omit (`null`) either one.
 	const client = new HeaderAuthAnthropic({
 		apiKey: apiKey ?? null,
 		authToken: null,
 		baseURL: model.baseUrl,
 		dangerouslyAllowBrowser: true,
 		fetch,
-		defaultHeaders,
+		defaultHeaders: apiKey
+			? mergeHeaders({ "x-api-key": apiKey, authorization: null }, defaultHeaders)
+			: defaultHeaders,
 	});
 
 	return client;

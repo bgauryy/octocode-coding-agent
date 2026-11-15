@@ -22,6 +22,8 @@ export interface EnvironmentSettingsApi {
 	getBashInheritProviderKeys(): boolean;
 	/** Most bytes the saved full output of a foreground bash command holds; 0 lifts the cap. */
 	getBashSpillMaxBytes(): number;
+	/** Long-command thresholds and extra long-command regexes of the bash wrapper (`bash.longCommandAfterSeconds`, `bash.deliberateMaxSeconds`, `bash.longCommandPatterns`). */
+	getBashLongCommands(): { afterSeconds: number; deliberateMaxSeconds: number; patterns: string[] };
 	/** Whether the agent tool may use external agents and runners; requires global opt-in. */
 	getExternalAgents(): boolean;
 	/** Turns external agents and runners on or off in the global settings (`/providers`, External agents). */

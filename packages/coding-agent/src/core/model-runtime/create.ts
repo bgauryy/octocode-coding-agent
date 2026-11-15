@@ -59,13 +59,15 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
  * A provider keyed in Octocode's own models.json, or a built-in provider without an OAuth sign-in, skips their entries.
  */
 export function createDefaultCredentialStore(
-	options: Pick<CreateModelRuntimeOptions, "authPath" | "modelsPath" | "readOnlyCredentials"> = {},
+	options: Pick<CreateModelRuntimeOptions, "authPath" | "modelsPath" | "readOnlyCredentials" | "keychain"> = {},
 	providers: readonly Provider[] = createBuiltinProviders(undefined),
 ) {
 	const authPath = options.authPath ?? join(getAgentDir(), "auth.json");
 	const modelsPath =
 		options.modelsPath === null ? undefined : (options.modelsPath ?? join(getAgentDir(), "models.json"));
-	const storage = options.readOnlyCredentials ? new ReadOnlyAuthStorage(authPath) : DefaultAuthStorage.create(authPath);
+	const storage = options.readOnlyCredentials
+		? new ReadOnlyAuthStorage(authPath)
+		: DefaultAuthStorage.create(authPath, options.keychain ? { keychain: options.keychain } : undefined);
 	const fallbackDirs = getLegacyProviderDirs(dirname(authPath));
 	if (!fallbackDirs.length) return storage;
 	const builtin = new Map(providers.map((provider) => [provider.id, provider]));

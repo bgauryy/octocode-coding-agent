@@ -33,6 +33,10 @@ export const GLYPH = {
 	cursor: "›",
 	gutter: "⎿",
 	reason: "↳",
+	/** Leads a line of notes under a card: what the system adds about an action. Not a fold marker. */
+	note: "▸",
+	/** From one value to another (`A → B`), a state change or a question's answer. */
+	arrow: "→",
 	userBar: "▎",
 } as const;
 

@@ -93,6 +93,17 @@ async function verifyLoginKey(
 		});
 	}
 	if (verdict === "unreachable") {
+		const choice = await interaction.prompt({
+			type: "select",
+			message: `Could not check the ${providerName} key (network or service problem). Save it without checking?`,
+			signal,
+			options: [
+				{ id: "save", label: "Save it unverified" },
+				{ id: "cancel", label: "Cancel" },
+			],
+		});
+		if (choice !== "save")
+			throw new ModelsError("auth", `The ${providerName} key could not be checked. Nothing was saved.`);
 		interaction.notify({
 			type: "info",
 			message: `Could not check the ${providerName} key (network or service problem); it was saved anyway.`,

@@ -31,7 +31,8 @@ describe("provided tool purpose metadata", () => {
 	});
 	it("numbers input queries by position without treating a mechanical index argument as result correlation", () => {
 		const args = { queries: [{ index: 9, mainGoal: "Find owner" }] };
-		expect(plain(reasonRow(MCP, args, undefined, true))).toContain("Query 1");
+		// One query: no number.
+		expect(plain(reasonRow(MCP, args, undefined, true))).toContain("↳ Find owner");
 		expect(toolArgsForDisplay(MCP, args)).toEqual({ queries: [{ index: 9 }] });
 	});
 
@@ -50,8 +51,8 @@ describe("provided tool purpose metadata", () => {
 				expect(shown).toContain(query.mainGoal);
 				expect(shown).toContain(query.reasoning ?? query.reason);
 			}
-			expect(shown).toContain("Query 1");
-			expect(shown).toContain("Query 2");
+			expect(shown).toContain("1 · Find render stalls");
+			expect(shown).toContain("2 · Find save delays");
 		}
 	});
 
@@ -90,8 +91,8 @@ describe("provided tool purpose metadata", () => {
 	it("does not deduplicate identical purposes belonging to different queries", () => {
 		const queries = [0, 1].map(() => ({ mainGoal: "Shared goal", reasoning: "Shared reason" }));
 		const shown = plain(reasonRow(MCP, { queries }, undefined, true), 80);
-		expect(shown).toContain("Query 1 · Reason: Shared reason");
-		expect(shown).toContain("Query 2 · Reason: Shared reason");
+		expect(shown).toContain("1 · Shared goal — Shared reason");
+		expect(shown).toContain("2 · Shared goal — Shared reason");
 	});
 
 	it("deduplicates an echoed purpose only for its corresponding query", () => {
@@ -171,8 +172,9 @@ describe("provided tool purpose metadata", () => {
 			isError: false,
 		});
 		const shown = plain(component, 100);
-		expect(shown.indexOf("Find render stalls")).toBeGreaterThan(shown.indexOf("Arguments"));
-		expect(shown).toContain("Call");
+		// The purpose sits under the title, before the arguments.
+		expect(shown.indexOf("Find render stalls")).toBeGreaterThan(-1);
+		expect(shown.indexOf("Find render stalls")).toBeLessThan(shown.indexOf('path="src"'));
 		expect(shown).toContain("Result");
 		expect(shown.indexOf("Confirm ownership")).toBeLessThan(shown.indexOf("Found files"));
 		expect(shown.split("Find render stalls")).toHaveLength(2);

@@ -5,7 +5,9 @@ import { renderRowFrame } from "./tui/container-walk.ts";
 import { LayoutRecorder, recordLayout } from "./tui/layout-recorder.ts";
 import type { RenderCounters } from "./tui/render-counters.ts";
 import { type Component, type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
+import { clearWidthCache } from "./utils/width.ts";
 import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
+import { anchorShrunkTranscript } from "./tui-main-screen/collapse.ts";
 import { FrameFinisher } from "./tui-main-screen/frame-finish.ts";
 import { writeChangedRows, writeDeletedRows } from "./tui-main-screen/frame-write.ts";
 import {
@@ -38,6 +40,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private readonly scrollback = new ScrollbackPolicy();
 	/** Rows a replay writes at most; 0 writes all of them. */
 	private replayRows = DEFAULT_REPLAY_ROWS;
+	/** A row collapse was announced: the next frame may keep scrollback when the transcript shrank above the screen. */
+	private collapseAnnounced = false;
 
 	get renderCounters(): Readonly<RenderCounters> {
 		return this.ledger.snapshot(this.fullRedrawCount);
@@ -50,6 +54,10 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 	setReplayRows(rows: number): void {
 		this.replayRows = Number.isFinite(rows) ? Math.max(0, Math.floor(rows)) : 0;
+	}
+
+	keepScrollbackOnCollapse(): void {
+		this.collapseAnnounced = true;
 	}
 
 	/** Replay the whole transcript if a row above the viewport changed (default: left alone; `invalidate` asks too). */
@@ -109,12 +117,19 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 	protected doRender(): void {
 		if (this.stopped) return;
-		const width = this.terminal.columns;
-		const height = this.terminal.rows;
+		// While a resize waits for its settled frame, paint at the size of the last frame: a width change replays the
+		// whole transcript, so a window drag replays once when it pauses, not at every frame the spinner or a stream asks.
+		const holdSize = this.resizePending && this.previousWidth > 0 && this.previousHeight > 0;
+		const width = holdSize ? this.previousWidth : this.terminal.columns;
+		const height = holdSize ? this.previousHeight : this.terminal.rows;
 		const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
 		const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
+		// The rows measured at the old width are not asked about again: release them before the transcript is laid out.
+		if (widthChanged) clearWidthCache();
 		const previousBufferLength = this.previousHeight > 0 ? this.previousViewportTop + this.previousHeight : height;
-		const viewportTop = heightChanged ? Math.max(0, previousBufferLength - height) : this.previousViewportTop;
+		let viewportTop = heightChanged ? Math.max(0, previousBufferLength - height) : this.previousViewportTop;
+		const collapseAnnounced = this.collapseAnnounced;
+		this.collapseAnnounced = false;
 
 		// Render the rows (as a row frame: the transcript is not joined into a new array), then finish them for the
 		// terminal: all before the differential compare.
@@ -131,7 +146,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		const newLines = frame.lines;
 		// Every pass below starts at the first row that can differ from the rows on the terminal: those above it are the
 		// same strings when the terminal shows the last frame's rows.
-		const sharedRows = this.previousLines === frame.previous ? frame.unchanged : 0;
+		let sharedRows = this.previousLines === frame.previous ? frame.unchanged : 0;
 		const previousImageRows = this.kittyRows.of(this.previousLines);
 		const imageRows = this.kittyRows.of(
 			newLines,
@@ -197,7 +212,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		const bothImageRows = { previous: previousImageRows, next: imageRows };
 		let range = findChangedLineRange(this.previousLines, newLines, sharedRows, bothImageRows);
 		// Scrollback cannot be edited: rows that changed in place above the viewport are left as the terminal has them.
-		const deferred =
+		let deferred =
 			range.firstChanged !== -1 &&
 			range.firstChanged < viewportTop &&
 			this.scrollback.canDefer({
@@ -209,6 +224,33 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				repaintRequested,
 				firstChanged: range.firstChanged,
 			});
+		if (
+			!deferred &&
+			collapseAnnounced &&
+			!repaintRequested &&
+			range.firstChanged !== -1 &&
+			range.firstChanged < viewportTop
+		) {
+			// A collapse the reader asked for: keep scrollback, move the transcript's rows to the screen's last row.
+			const anchored = anchorShrunkTranscript(
+				{
+					previousLines: this.previousLines,
+					viewportTop,
+					hardwareCursorRow: this.hardwareCursorRow,
+					maxLinesRendered: this.maxLinesRendered,
+				},
+				newLines,
+			);
+			if (anchored) {
+				this.previousLines = anchored.previousLines;
+				this.hardwareCursorRow = anchored.hardwareCursorRow;
+				this.maxLinesRendered = anchored.maxLinesRendered;
+				viewportTop = anchored.viewportTop;
+				// Rows equal before the move are at other rows now.
+				sharedRows = 0;
+				deferred = true;
+			}
+		}
 		if (deferred)
 			range = findChangedLineRange(this.previousLines, newLines, Math.max(viewportTop, sharedRows), bothImageRows);
 		const { firstChanged, lastChanged, appendedLines } = range;

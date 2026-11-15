@@ -9,6 +9,7 @@ import { type Backlog, type BacklogOptions, openBacklogWhenReady } from "./conte
 import { parseJsonStrings, splitIds } from "./tool-arguments.ts";
 import { batchGet } from "./tool-batch.ts";
 import { backlogRenderers } from "./tool-render.ts";
+import { endedSignal } from "./ended-signal.ts";
 import { runBacklog } from "./tool-run.ts";
 import { AUDIT_SHOWN } from "./audit-text.ts";
 import { completeStep } from "./tool-step.ts";
@@ -105,6 +106,7 @@ export function registerBacklogTool(
 	api.registerTool(
 		timedTool({
 			name: "backlog",
+			roleVariant: true,
 			label: "Backlog",
 			...prompt,
 			// A child declares `backlog` only when its task names the item it may update (BACKLOG_ITEM_ENV, set by the parent):
@@ -160,7 +162,8 @@ export function registerBacklogTool(
 
 	/** Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs). */
 	function work(backlog: Backlog, args: Params, op: Exclude<Op, "get">) {
-		const run = (params: Parameters<typeof runBacklog>[1]) => runBacklog(backlog, params, { subagent, word: op });
+		const run = (params: Parameters<typeof runBacklog>[1]) =>
+			runBacklog(backlog, params, { subagent, word: op, queued: endedSignal(api) });
 		const { id, note, version } = args;
 		if (op === "step") return completeStep(backlog, { id, note, version });
 		const one = { op: "update" as const, id, note, version };

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hostQuirkHint } from "../../src/octocode/files/bash/host-hints.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -60,6 +61,17 @@ describe("bash: macOS host quirks", () => {
 		]) {
 			const result = await run(command);
 			expect(result.content[0].text).not.toMatch(/macOS/);
+		}
+	});
+});
+
+describe("host quirk hints by platform", () => {
+	const timeoutFailure = "/bin/bash: timeout: command not found";
+	it("gives the macOS hints on darwin only", () => {
+		expect(hostQuirkHint(timeoutFailure, "timeout 5 ls", "darwin")).toMatch(NO_TIMEOUT);
+		for (const platform of ["linux", "win32", "freebsd"] as const) {
+			expect(hostQuirkHint(timeoutFailure, "timeout 5 ls", platform)).toBeUndefined();
+			expect(hostQuirkHint('sed: 1: "s/a/b/": invalid command code s', "sed -i 's/a/b/' f", platform)).toBeUndefined();
 		}
 	});
 });

@@ -1,34 +1,54 @@
 import path from "node:path";
-import { GLYPH, SEPARATOR, SPINNER } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { APP_TITLE } from "../../config.ts";
+import { SEPARATOR, SPINNER } from "@octocodeai/octocode-tui";
+import { cleanTitle } from "../../core/session-manager/title.ts";
 import { ENTITY } from "../shared/entity.ts";
 
 /** What the session is doing, as the terminal tab shows it. */
 export type TitleState = "idle" | "thinking" | "running" | "waiting" | "done" | "failed";
 
-/** One single-width mark per state, taken from the TUI's design tokens; idle has none. */
-export const TITLE_MARK: Readonly<Record<TitleState, string>> = {
-	idle: "",
-	thinking: GLYPH.turn,
-	running: SPINNER.quadrant[0],
-	waiting: GLYPH.waiting,
-	done: GLYPH.done,
-	failed: GLYPH.failed,
+/** Busy frames: the footer's braille loader. Every frame is one cell wide, so the tab label never shifts while it animates. */
+const BUSY_FRAMES = SPINNER.braille;
+
+/** Each state's mark after the octopus (busy states animate through several; idle has none) and the word the tab shows. */
+export const TITLE_STATE: Readonly<Record<TitleState, { frames: readonly string[]; label: string }>> = {
+	idle: { frames: [""], label: "Idle" },
+	thinking: { frames: BUSY_FRAMES, label: "Thinking" },
+	running: { frames: BUSY_FRAMES, label: "Running" },
+	waiting: { frames: ["⚠️"], label: "Needs you" },
+	done: { frames: ["🟢"], label: "Done" },
+	failed: { frames: ["🔴"], label: "Error" },
 };
 
-/** Background subagents in the tab: the subagent mark, with their number when more than one runs. */
-const AGENTS_MARK = ENTITY.subagent;
+/** How often a busy title moves to its next frame: slow, so a terminal that reads slowly never falls behind on titles. */
+export const TITLE_FRAME_MS = 1000;
+
+/** Most characters of the description a tab shows. */
+const DESCRIPTION_MAX = 40;
+
+/** Whether a state animates. */
+export const isBusyTitle = (state: TitleState | undefined) => state === "thinking" || state === "running";
+
+/** `fix login · repo`: the description (escape sequences dropped, one line, capped), then the working directory. */
+export function plainTitle(description: string | undefined, cwd: string): string {
+	const name = description ? cleanTitle(description, DESCRIPTION_MAX) : "";
+	return [name, path.basename(cwd)].filter(Boolean).join(SEPARATOR);
+}
 
 /**
- * `✻ 🐙2 Octocode · fix login · repo`: the state mark, the background subagents still running, then the app, session
- * name and working directory.
+ * `🐙⠋ Running - fix login · repo · 2 agents`: the octopus with the state's mark (frame `frame` of a busy state) and word,
+ * the plain title, then how many background subagents still run.
  */
-export function terminalTitle(state: TitleState, sessionName: string | undefined, cwd: string, agents = 0): string {
-	const name = sessionName ? sanitizeTerminalText(sessionName).trim() : "";
-	const base = [APP_TITLE, name, path.basename(cwd)].filter(Boolean).join(SEPARATOR);
-	const agentsMark = agents > 0 ? `${AGENTS_MARK}${agents > 1 ? agents : ""}` : "";
-	return [TITLE_MARK[state], agentsMark, base].filter(Boolean).join(" ");
+export function terminalTitle(
+	state: TitleState,
+	description: string | undefined,
+	cwd: string,
+	agents = 0,
+	frame = 0,
+): string {
+	const { frames, label } = TITLE_STATE[state];
+	const agentsMark = agents > 0 ? `${SEPARATOR}${agents} agent${agents > 1 ? "s" : ""}` : "";
+	const subject = plainTitle(description, cwd);
+	return `${ENTITY.subagent}${frames[frame % frames.length]} ${label}${subject ? ` - ${subject}` : ""}${agentsMark}`;
 }
 
 /**

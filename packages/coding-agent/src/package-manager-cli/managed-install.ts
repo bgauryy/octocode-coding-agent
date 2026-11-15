@@ -23,7 +23,7 @@ export function getActiveManagedInstallRoot(): string | undefined {
 	const markerPath = join(managedRoot, MANAGED_INSTALL_MARKER);
 	let marker: { kind?: unknown; layout?: unknown; schemaVersion?: unknown } | undefined;
 	try {
-		marker = readJsonFile(markerPath) as typeof marker;
+		marker = readJsonFile<typeof marker>(markerPath);
 	} catch {
 		marker = undefined;
 	}

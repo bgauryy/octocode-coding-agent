@@ -20,11 +20,11 @@ Two settings choose editors. Both are global or trusted-project settings, like a
 | `externalEditor`  | Ctrl+G prompt editing and editor dialogs: Octocode waits for the editor to exit (a Code-family editor, Zed or Sublime Text gets `--wait`) | `VISUAL`, then `EDITOR`, then Notepad on Windows or Nano elsewhere |
 | `referenceOpener` | Opening a file reference (`/links`, a clicked reference) and `/diff --editor`                                                             | `auto`                                                             |
 
-| `referenceOpener` value | Opens with                                                                                                                                                                                                                                                                   |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`                  | The IDE whose integrated terminal runs Octocode (VS Code, Insiders, VSCodium, Cursor), in the current window; else the first of `code`, `cursor`, `code-insiders`, `codium`, `zed`, `subl` on PATH (skipped over SSH and on Linux without a display); else the prompt editor |
-| `editor`                | The prompt editor (`externalEditor`, `VISUAL`, `EDITOR`)                                                                                                                                                                                                                     |
-| any other text          | That command, for example `cursor` or `"/opt/My Editor/bin/edit" --flag`                                                                                                                                                                                                     |
+| `referenceOpener` value | Opens with                                                                                                                                                                                                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`                  | The IDE whose integrated terminal runs Octocode (VS Code, Insiders, VSCodium, Cursor), in the current window; else the first of `code`, `cursor`, `code-insiders`, `codium`, `zed`, `subl` on PATH; else the system's default app for the file (`open`, `xdg-open`). Over SSH and on Linux without a display: the prompt editor |
+| `editor`                | The prompt editor (`externalEditor`, `VISUAL`, `EDITOR`)                                                                                                                                                                                                                                                                        |
+| any other text          | That command, for example `cursor` or `"/opt/My Editor/bin/edit" --flag`                                                                                                                                                                                                                                                        |
 
 Code-family editors, Zed and Sublime Text open beside the session: Octocode keeps the terminal and does not wait. Any other editor, such as Vim or Nano, takes the terminal until it exits. Configure editors in the environment running Octocode, including SSH or WSL. See [editor workflows](tui.md#editor-and-vs-code-workflows).
 
@@ -132,7 +132,7 @@ Ids are `kind:name` (`tool:`, `mcp:`, `harness:`, `plugin:`, `hook:`, `skill:`, 
 | `set <key> <value>`, `unset <key>`  | Change or reset a settings key                                         | `/configuration set retry.maxRetries 4`                     |
 | `add mcp <name> ...`, `remove <id>` | Add an MCP server (arguments of `octocode mcp add`) or remove an entry | `/configuration add mcp docs --url https://example.com/mcp` |
 
-Without a verb a terminal opens a selector; otherwise the CLI lists. `--json` prints JSON; a refused change prints its reason with suggested ids and exits 1. Retired, each printing a hint: `/settings`, `/config`, `octocode config`, `/mcp enable|disable`, `/harness enable|disable`, `octocode mcp enable|disable`.
+Without a verb a terminal opens a selector; otherwise the CLI lists. `--json` prints JSON; a refused change prints its reason with suggested ids and exits 1. Retired, each printing a hint: `/settings`, `/config`, `octocode config`, `/mcp enable|disable|assign|exposure`, `/harness enable|disable`, `octocode mcp enable|disable`.
 
 | Scope   | Selected by                                                       | Written to                                                                                        | Lasts         |
 | ------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------- |
@@ -146,18 +146,37 @@ MCP is always on and cannot be switched through `extensions`; a `-builtin:mcp` e
 
 ### Harnesses
 
-A harness is one source of configuration. `/harness` organizes loaded items into **Skills**, **MCPs**, **Hooks**, **Sources** and **Extensions**, each with a count. Empty categories stay visible. **Sources** contains the harness switches below.
+A harness is one source of configuration. `/harness` opens on an **Overview** tab with one row per section (**Skills**, **MCPs**, **Hooks**, **Sources**, **Extensions**): how many items are on and off (`N on · M off`) and how many wait for approval in `/security`. Empty sections stay visible. **Sources** contains the harness switches below.
+
+| Command                                            | Opens                                                             |
+| -------------------------------------------------- | ----------------------------------------------------------------- |
+| `/harness`, `/harness overview`                    | The Overview                                                      |
+| `/harness skills\|mcp\|hooks\|sources\|extensions` | That section (outside the terminal it prints the section instead) |
+| `/harness list [section]`                          | A plain list, for example `/harness list sources`                 |
 
 | Key                               | Action                                                             |
 | --------------------------------- | ------------------------------------------------------------------ |
-| Ctrl+← / Ctrl+→                   | Change category.                                                   |
+| Enter on the Overview             | Open the selected section.                                         |
+| ← / →, Ctrl+← / Ctrl+→            | Change section (plain arrows only while the filter is empty).      |
 | Enter; Space with an empty filter | Toggle the selected item, following its approval and trust checks. |
 | Tab                               | Change global/project scope.                                       |
 | F2                                | Open full details; arrows and PgUp/PgDn scroll.                    |
 | Esc                               | Leave details or close the list.                                   |
 | Ctrl+R on a load failure          | Retry.                                                             |
 
-Changing category, scope, selection or filter clears an armed disable confirmation. Loading and failures appear in the selector, which remains cancellable.
+Changing section, scope, selection or filter clears an armed disable confirmation. Loading and failures appear in the selector, which remains cancellable.
+
+**Turning on a source.** Switching a source such as Claude Code, Codex or Cursor on first shows **Turn on `<source>`?** with every skill, MCP server and hook it would bring, each scanned by the [security review](#security-review) (static: nothing runs), worst rating first. Enter switches the source on; Esc writes nothing. The items stay off until you approve them in `/security`. `/configuration enable harness:<id>` prints the same list and then switches.
+
+**MCP servers.** In the **MCPs** section Space switches a server on or off. Enter or → on a server opens its tools:
+
+| Row               | Meaning                                                                                                           | Change with                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Available to      | `every agent`, or `only agents whose profile tools: names mcp__<server>__` (the server's `defaultActive` setting) | Space                                                            |
+| Default for tools | The server's exposure (`direct`, `deferred` or `hidden`) for tools without a pin                                  | Tab                                                              |
+| Each tool         | The tool's state; a pin overrides the server default                                                              | Space hides or unpins, Tab cycles `direct`, `deferred`, `hidden` |
+
+← or Esc goes back. A server that is not connected lists its pinned tools and tells you to connect to list the rest. Changes apply from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
 | Harness    | Reads                                   | Default   |
 | ---------- | --------------------------------------- | --------- |
@@ -213,7 +232,7 @@ What decides the state, first match wins:
 }
 ```
 
-See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/mcp exposure <server> <direct|deferred|hidden>` sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
+See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/harness mcp` → the server → **Default for tools** sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
 ## Trust
 
@@ -458,15 +477,15 @@ flowchart LR
   L -->|none left| F[Turn ends with the error]
 ```
 
-| Behavior        | Detail                                                                                                                                                                                                                                                                                                          |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default         | Empty list: the turn ends with the error                                                                                                                                                                                                                                                                        |
-| Stays selected  | The session keeps the fallback model; `/model` switches back. Switching back by itself would pay for a cold prompt cache twice                                                                                                                                                                                  |
-| Skipped entries | No credentials, a failure in the last 15 minutes (for a refused credential, any model of that provider), or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just failed)                                                |
-| Billing         | The notice says when the switch moves from a subscription plan to per-token billing, or back: `billed per token instead of by plan`                                                                                                                                                                             |
-| Virtual models  | A usage limit goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used. Other failures end the turn                                                                                                                                        |
-| Subagents       | A subagent whose model a purpose (`small`, `medium`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential |
-| Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                                                                                                                    |
+| Behavior        | Detail                                                                                                                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Default         | Empty list: the turn ends with the error                                                                                                                                                                                                                                                                                             |
+| Stays selected  | The session keeps the fallback model; `/model` switches back. Switching back by itself would pay for a cold prompt cache twice                                                                                                                                                                                                       |
+| Skipped entries | No credentials, a failure within `retry.fallbackCooldownMs` (default 15 minutes; `0` retries a failed model at once) (for a refused credential, any model of that provider), or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just failed) |
+| Billing         | The notice says when the switch moves from a subscription plan to per-token billing, or back: `billed per token instead of by plan`                                                                                                                                                                                                  |
+| Virtual models  | A usage limit goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used. Other failures end the turn                                                                                                                                                             |
+| Subagents       | A subagent whose model a purpose (`small`, `medium`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential                      |
+| Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                                                                                                                                         |
 
 Compaction and branch summaries use the same policy; Esc stops a wait. After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to 30 for each further failure, and resets after a quiet minute.
 
@@ -496,7 +515,7 @@ Global `cacheWarming`: `"off"`, `"streaming"` (refresh while the agent is active
 { "cacheWarming": "idle", "cacheRetention": "long" }
 ```
 
-A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md).
+A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md). How requests are built and kept small (tool exposure, clearing, compaction, fencing): [request flows](harness-flows.md).
 
 ## Early tool start
 
@@ -505,6 +524,40 @@ A refresh replays the request with a one-token cap, needs a known cache lifetime
 ```json
 { "toolExecution": { "earlyStart": true } }
 ```
+
+## Long cache retention on custom hosts
+
+With `cacheRetention: "long"`, Anthropic-compatible models send one-hour cache points (`cache_control.ttl: "1h"`) only on hosts whose documentation verifies the tier: `api.anthropic.com` and `opencode.ai`. Every other host (gateways, a `models.json` provider on its own URL) stays on the five-minute tier. If your host passes the one-hour tier through, opt in per model in `models.json`:
+
+```json
+{
+	"providers": {
+		"my-gateway": {
+			"api": "anthropic-messages",
+			"baseUrl": "https://llm.example.com",
+			"models": [{ "id": "claude-sonnet-4-5", "compat": { "supportsLongCacheRetention": true } }]
+		}
+	}
+}
+```
+
+`false` forces the five-minute tier for a model or region that rejects `ttl`; an explicit value always wins over the host list. OpenAI-style models use the same field for 24h retention. Field reference: [models.json](models-configuration.md).
+
+## Long shell commands
+
+A foreground `bash` command moves to the background as a job after `bashBackgroundAfterSeconds` (default 90; `0` turns the move off). A command that is known to run long moves sooner, so the turn is not held. Recognised out of the box: test runners (`vitest`, `jest`, `pytest`, `cargo test`, `go test`), `yarn`/`npm`/`pnpm` `test`, `check`, `build`, `dev`, `serve` and `start`, `tsc -b`, and commands that follow a stream (`tail -f`).
+
+| Setting                        | Default | Effect                                                                                                                                                   |
+| ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash.longCommandAfterSeconds` | `30`    | Seconds a recognised long command runs in the foreground before it moves; used only when shorter than `bashBackgroundAfterSeconds`                       |
+| `bash.longCommandPatterns`     | `[]`    | Regular expressions for more long commands, added to the built-in ones. A pattern matches where a command starts (the line, or after `;`, `&`, `         | `, `(`, `VAR=value`) and must end at a space or the end of a part; an invalid pattern is ignored |
+| `bash.deliberateMaxSeconds`    | `600`   | The longest a call that names its own `timeout` holds the turn before its command moves to the background; the command is still stopped at its `timeout` |
+
+```json
+{ "bash": { "longCommandPatterns": ["bazel\\s+(?:test|build)", "make\\s+(?:test|check)"] } }
+```
+
+A command the shell runs under another name (a wrapper script) is not recognised and keeps the `bashBackgroundAfterSeconds` threshold. Hints for GNU tools missing on macOS (`timeout`, `sed -i`) are shown only on macOS.
 
 ## Other topics
 

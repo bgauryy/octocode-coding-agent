@@ -137,14 +137,15 @@ export class FooterComponent implements Component {
 		// Unknown (no usage yet, or just compacted) reads `?`, never `0.0%`.
 		const contextPercent = contextUsage?.percent != null ? contextPercentValue.toFixed(1) : "?";
 
-		let pwd = plainText(
+		const place = plainText(
 			formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
 		);
-
 		const branch = this.footerData.getGitBranch();
-		if (branch) {
-			pwd = `${pwd} (${plainText(branch)})`;
-		}
+		const where = (dir: string) => (branch ? `${dir} ⎇ ${plainText(branch)}` : dir);
+		// Same as the Octocode footer: when the path does not fit, keep its root and last two directories.
+		const segments = place.split(/(?<=[\\/])/);
+		const elided = segments.length > 3 ? `${segments[0]}${ELLIPSIS}/${segments.slice(-2).join("")}` : place;
+		let pwd = visibleWidth(where(place)) > width ? where(elided) : where(place);
 
 		const sessionName = this.session.sessionManager.getSessionName();
 		if (sessionName) {

@@ -63,6 +63,7 @@ describe("/providers source toggle", () => {
 		const host = createFakeHost({
 			session: { modelRuntime: runtime, settingsManager },
 			showSelector,
+			ui: { terminal: { rows: 40 } },
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 			showWarning: vi.fn(),

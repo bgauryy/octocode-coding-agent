@@ -13,6 +13,8 @@ export interface ChildBudgets {
 	usage(id: string): BudgetStanding | undefined;
 	/** What running child `id` has cost so far in this run, in dollars. */
 	cost?(id: string): number | undefined;
+	/** The children queued behind prerequisites or held, one row each (`coordinate` `list`). */
+	queued?(): string[];
 }
 
 /**

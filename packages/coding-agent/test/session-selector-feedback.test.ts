@@ -38,8 +38,7 @@ describe("session picker feedback", () => {
 		await flush();
 		picker.getSessionList().setQuery("unmatched");
 		const output = picker.render(120).join("\n");
-		expect(output).toContain("No sessions match this search");
-		expect(output).toContain("Edit or clear the search");
+		expect(output).toContain('No sessions match "unmatched"');
 		expect(output).not.toContain("No sessions in current folder");
 		picker.getSessionList().setQuery("");
 		expect(picker.getSessionList().getSelectedSessionPath()).toBe(session.path);

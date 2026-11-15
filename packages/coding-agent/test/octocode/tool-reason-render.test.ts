@@ -46,7 +46,7 @@ describe("the reason line of a native tool row", () => {
 	});
 
 	it("retains even a short supplied reason, while informative reasons keep the compact arrow row", () => {
-		expect(lines(row("bash", { command: "ls", reason: "Edit" })).join("\n")).toContain("Reason: Edit");
+		expect(lines(row("bash", { command: "ls", reason: "Edit" })).join("\n")).toContain("↳ Edit");
 		expect(lines(row("bash", { command: "ls", reason: "Run tests" })).join("\n")).toContain("↳ Run tests");
 		expect(lines(row("bash", { command: "ls", reason: "Edit hello to hi." })).join("\n")).toContain(
 			"↳ Edit hello to hi.",
@@ -76,7 +76,8 @@ describe("the reason line of a native tool row", () => {
 		}
 		const silent = row("mcp__octocode__localSearch", args, false);
 		silent.updateResult({ content: [], structuredContent: { results: [{ data: {} }] }, isError: false });
-		expect(lines(silent).join("\n")).not.toContain("↳");
+		// An empty result adds no purpose of its own: only the call's two supplied lines show.
+		expect(lines(silent).filter((line) => line.includes("↳")).length).toBe(2);
 	});
 
 	it("appears as soon as the streamed arguments hold it, before the result", () => {

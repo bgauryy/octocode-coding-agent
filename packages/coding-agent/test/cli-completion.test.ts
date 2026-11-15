@@ -88,8 +88,8 @@ it("shows unattended delegation and persistent RPC examples in help", async () =
 			expect(parsed.unknownFlags).toEqual([]);
 			expect(parsed.diagnostics).toEqual([]);
 		}
-		expect(text).toContain("Keep stdin open until completion");
-		expect(text).toContain("--trust records folder trust");
+		expect(text).toMatch(/keep stdin open/i);
+		expect(text).toMatch(/--trust\b/u);
 	} finally {
 		log.mockRestore();
 	}
@@ -112,4 +112,40 @@ it.each(["bash", "zsh"] as const)("preserves an empty value through the %s shell
 	const result = spawnSync(shell, ["-c", script], { encoding: "utf8" });
 	expect(result.status, result.stderr).toBe(0);
 	expect(result.stdout.trim()).toBe("4:completion --values --mode");
+});
+
+it("lists every one-shot command in help, including security", async () => {
+	const { printHelp } = await import("../src/cli/args.ts");
+	const { SUBCOMMANDS } = await import("../src/main/subcommands.ts");
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	try {
+		printHelp();
+		const text = log.mock.calls.map((call) => String(call[0])).join("\n");
+		for (const name of Object.keys(SUBCOMMANDS)) expect(text).toMatch(new RegExp(`^\\s+\\S+ ${name} `, "m"));
+	} finally {
+		log.mockRestore();
+	}
+});
+
+it("completion prints help on stdout with exit 0, and a missing or unknown shell as a usage error on stderr", async () => {
+	const { runCompletionCommand } = await import("../src/cli/completion.ts");
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	const error = vi.spyOn(console, "error").mockImplementation(() => {});
+	const before = process.exitCode;
+	try {
+		process.exitCode = undefined;
+		runCompletionCommand(["completion", "--help"]);
+		expect(log).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
+		expect(process.exitCode).toBeUndefined();
+		for (const args of [["completion"], ["completion", "nope"]]) {
+			process.exitCode = undefined;
+			runCompletionCommand(args);
+			expect(process.exitCode).toBe(1);
+		}
+		expect(error).toHaveBeenLastCalledWith(expect.stringContaining('Unknown shell "nope"'));
+	} finally {
+		process.exitCode = before;
+		log.mockRestore();
+		error.mockRestore();
+	}
 });

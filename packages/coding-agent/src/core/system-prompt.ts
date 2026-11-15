@@ -100,21 +100,47 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
  */
 export type SystemPromptSections = Record<string, string>;
 
+/** Where the session's replies go: a run mode, or a subagent whose parent reads them. */
+export type SessionSurface = "tui" | "print" | "json" | "rpc" | "subagent";
+
+/** The surface facts of the `environment` section; all optional, so a caller without them keeps the short form. */
+export interface EnvironmentSurface {
+	surface?: SessionSurface;
+	/** What hosts the terminal (`terminalHostFacts`), joined for the prompt. */
+	host?: string;
+	/** Whether replies draw `mermaid` blocks as diagrams. */
+	mermaid?: boolean;
+}
+
 /**
- * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, today's local date and,
- * for a session other processes can reach, its process name. The last default section (custom sections follow it); a
- * new day changes only this section
+ * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, today's local date,
+ * a linked worktree, and where the session runs (surface, terminal host, whether replies draw Mermaid). It sits in
+ * the volatile tier after the cache breakpoints, so a new day or a changed surface changes only this section. No
+ * process name or pid: sessions of one configuration in different processes keep the same prefix.
  */
-export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env, worktree?: string): string {
+export function currentEnvironment(
+	now = new Date(),
+	env: NodeJS.ProcessEnv = process.env,
+	worktree?: string,
+	surface: EnvironmentSurface = {},
+): string {
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
+	const kind = surface.surface;
 	return renderInstruction("system/environment.md", {
 		platform: process.platform,
 		arch: process.arch,
 		shell,
 		date,
 		worktree,
-	});
+		subagent: kind === "subagent",
+		tui: kind === "tui",
+		print: kind === "print",
+		json: kind === "json",
+		rpc: kind === "rpc",
+		host: surface.host,
+		mermaid: surface.mermaid === true,
+	}).trimEnd();
 }
 
 /**
@@ -187,7 +213,7 @@ function buildRules(
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
-	// The floor for sessions without Octocode's Communication policy, which says the same with more detail.
+	// The floor for sessions without Octocode's Communication policy or a lean child's section, which say the same with more detail.
 	if (includeFloor) {
 		for (const rule of renderInstruction("system/rules-floor.md").split("\n")) addRule(rule);
 	}
@@ -266,7 +292,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		declaredTools,
 		toolGuidelines,
 		promptGuidelines,
-		!customPrompt && !customSections.communication,
+		!customPrompt && !customSections.communication && !customSections.lean,
 		!customPrompt && declaredTools.includes(BASH_TOOL) && !researchSearch,
 	);
 	contents.docs = renderInstruction("system/docs.md", { root: dirname(getReadmePath()) });

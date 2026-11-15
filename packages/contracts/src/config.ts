@@ -166,6 +166,8 @@ export const ConfigCredentialCommandSchema = Type.Union([
 			provider: ProviderIdSchema,
 			key: Type.String({ minLength: 1, maxLength: MAX_CREDENTIAL_KEY_LENGTH, pattern: "^[^\\u0000-\\u001f\\u007f]+$" }),
 			acknowledgePlaintext: Type.Optional(Type.Boolean()),
+			/** Save although the provider could not be reached to check the key (a rejected key is never saved). */
+			acknowledgeUnverified: Type.Optional(Type.Boolean()),
 		},
 		{ additionalProperties: false },
 	),

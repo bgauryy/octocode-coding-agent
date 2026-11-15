@@ -45,10 +45,11 @@ type BoundaryOptions = Pick<
  * The `instructionCacheBoundary`, `instructionVolatileBoundary` and `toolCacheBoundary` request options for a
  * transcript. A caller-supplied value wins, each on its own, and `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends none: the
  * tool boundary is one more instruction breakpoint.
+ * `roleVariantTools` names the declared tools whose definition is `roleVariant`; without it no tool boundary is set.
  */
 export function instructionCacheBoundaryOption(
 	messages: readonly { role: string }[],
-	options?: BoundaryOptions & { env?: ProviderEnv },
+	options?: BoundaryOptions & { env?: ProviderEnv; roleVariantTools?: ReadonlySet<string> },
 ): BoundaryOptions {
 	if (getProviderEnvValue(INSTRUCTION_CACHE_SPLIT_ENV, options?.env)?.trim().toLowerCase() === "off") return {};
 	const boundary = options?.instructionCacheBoundary === undefined ? findInstructionCacheBoundary(messages) : undefined;
@@ -56,7 +57,10 @@ export function instructionCacheBoundaryOption(
 		options?.instructionVolatileBoundary === undefined ? findInstructionVolatileBoundary(messages) : undefined;
 	const tools =
 		options?.toolCacheBoundary === undefined
-			? findToolCacheBoundary((getInitialSystemMessage(messages)?.toolsAdded ?? []).map((tool) => tool.name))
+			? findToolCacheBoundary(
+					(getInitialSystemMessage(messages)?.toolsAdded ?? []).map((tool) => tool.name),
+					(name) => options?.roleVariantTools?.has(name) === true,
+				)
 			: undefined;
 	return {
 		...(boundary ? { instructionCacheBoundary: boundary } : {}),

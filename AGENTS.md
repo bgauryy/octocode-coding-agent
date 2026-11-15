@@ -65,4 +65,4 @@ Change the generator, never its output (`yarn workspace @octocodeai/octocodecode
 
 ## Dogfooding
 
-Research this repository with the Octocode MCP server the session declares. While working, record tool errors, retries, wrong turns and choices that were not the best in `.octocode/REFLECT.md` (its header says how), and fix each cause in its owner or file a backlog item.
+Research this repository with the Octocode MCP server the session declares. For each tool error, retry, wrong turn or weak choice you hit while working, fix its cause in its owner or file a backlog item (`backlogPlan` `add`) with the trigger and evidence.

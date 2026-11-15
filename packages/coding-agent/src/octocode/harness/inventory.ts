@@ -332,7 +332,7 @@ export function renderInventory(inventory: Inventory, items: readonly InventoryI
 				`${"  ".repeat(item.depth + 1)}[${item.locked ? "-" : item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
 			);
 	}
-	if (!lines.length) lines.push(full ? EMPTY_INVENTORY : "Nothing matches.");
+	if (!lines.length) lines.push(full ? EMPTY_INVENTORY : "No items match.");
 	if (full && inventory.stale.length)
 		lines.push(
 			"",

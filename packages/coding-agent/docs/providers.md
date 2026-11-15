@@ -112,7 +112,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 Keys: Enter opens a row, `e` enables or disables the selected provider, external CLI or source, Esc goes back, and PgUp/PgDn scroll long details. Narrow screens wrap the selected row's details and complete facts, including plan terms.
 
-A provider's page shows its status (account, subscription or API key), credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test credential** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, **Show definition file** (the path and reload instructions), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
+A provider's page shows its status, credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test credential** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, **Show definition file** (the path and reload instructions), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
 Open a CLI directly with `/providers codex` or `/providers runner:opencode`. An exact provider name opens its provider page first; the `runner:` prefix selects the CLI when names overlap. **Pause all external agent tasks** keeps your CLI selection for later. See [external-runner configuration](configuration.md#headless-and-external-agent-runs).
 
@@ -121,6 +121,38 @@ On a remote or headless machine, an OAuth callback may not reach the local proce
 Choose **Sign out** or **Remove saved credential** on the provider’s page, or run `/logout [provider]` (the argument prefills the search) and select a provider, then confirm removal. A saved credential whose provider is no longer defined (its `models.json` entry was removed) is listed as **provider not defined**; remove it the same way. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
 
 Secret input and pasted authorization codes are hidden. When macOS Keychain or Linux Secret Service is available, API-key entry and account sign-ins offer it first: only a command reference is written to `auth.json` (an account sign-in is stored as one keychain entry and refreshed there; one too large for the macOS keychain's write channel stays in `auth.json`). A failed keychain write aborts without silently saving plaintext. You can explicitly choose local-file storage; new files use mode `0600` and new directories `0700`. Existing administrator-managed modes and ACLs are preserved. Startup warns when its credential file has group/world permissions or is inside a Git worktree; injected SDK model runtimes retain responsibility for their own credential storage. Sign-ins and API keys you store in the local file are plaintext; keep `auth.json` private and out of Git. Removal also attempts to delete an owned keychain entry.
+
+### Status and credential source
+
+Each provider row and page shows one status, then where the credential comes from.
+
+| Status     | Meaning                                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connected  | A usable credential is set. This is local evidence, not proof the provider accepts it; use **Test credential**.                              |
+| Expired    | An account sign-in is past its expiry and has no refresh token that can renew it (or the provider refused the refresh token). Sign in again. |
+| Signed out | The account was signed out; only its registration remains.                                                                                   |
+| Not set    | No usable credential.                                                                                                                        |
+
+| Source                       | Where it is                                              |
+| ---------------------------- | -------------------------------------------------------- |
+| `auth.json`                  | Octocode's credential file                               |
+| `keychain`                   | The OS keychain, referenced from `auth.json`             |
+| `models.json`                | A key or secret command in a `models.json` file          |
+| An environment variable name | The variable that supplies the key                       |
+| Pi file                      | A Pi `auth.json` read as a fallback, shown with its path |
+
+### Key check on save
+
+Before an API key is saved, in `/providers` or on the configuration page, Octocode sends the provider one small request (its model list) with a 10-second limit, without following redirects. Neither the key nor the provider's reply appears in any message.
+
+| Provider answer                 | Result                                                                                                                       |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Accepts the key                 | Saved.                                                                                                                       |
+| Rejects it (HTTP 401)           | Not saved; the message names the provider.                                                                                   |
+| Denies the check (HTTP 403)     | Saved, with a note: the check endpoint can deny a valid key.                                                                 |
+| Unreachable, times out or fails | `/providers` asks whether to save the key unverified. The configuration page refuses until you confirm saving it unverified. |
+
+Providers without a key check, and custom providers, save the key as entered.
 
 ## Enable or disable a provider
 

@@ -30,10 +30,15 @@ export function mapStopReason(reason: FinishReason): StopReason {
 		case FinishReason.UNEXPECTED_TOOL_CALL:
 		case FinishReason.TOO_MANY_TOOL_CALLS:
 		case FinishReason.NO_IMAGE:
+		case FinishReason.MISSING_THOUGHT_SIGNATURE:
+		case FinishReason.MALFORMED_RESPONSE:
+		case FinishReason.ESCALATION:
+		case FinishReason.PUP_LIMITED_DISABLED:
+		case FinishReason.MODEL_ARMOR:
 			return "error";
 		default: {
-			// The API adds reasons before the SDK's enum knows them (MISSING_THOUGHT_SIGNATURE, MALFORMED_RESPONSE): the
-			// raw reason is kept on the message, so an unknown one ends the turn as an error instead of throwing.
+			// The API adds reasons before the SDK's enum knows them: the raw reason is kept on the message, so an unknown
+			// one ends the turn as an error instead of throwing. The `never` check makes an SDK upgrade list each new one above.
 			const _known: never = reason;
 			void _known;
 			return "error";

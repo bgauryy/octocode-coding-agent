@@ -33,7 +33,6 @@ export interface SelectItem {
 }
 
 export interface SelectListTheme {
-	selectedPrefix: (text: string) => string;
 	selectedText: (text: string) => string;
 	description: (text: string) => string;
 	scrollInfo: (text: string) => string;

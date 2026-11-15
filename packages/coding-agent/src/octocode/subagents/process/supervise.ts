@@ -335,7 +335,11 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		child.on("close", (code, exitSignal) => settle(code, exitSignal));
 		const settle = (code: number | null, exitSignal: NodeJS.Signals | null) => {
 			const pending = phase.pending();
-			if (!finish()) return;
+			if (!finish()) {
+				// Settled earlier by a spawn `error`: once the exit cleanup ends, the exit hook must not signal a reused pid.
+				if (trackedPid) void Promise.resolve(pending).then(() => untrackDetachedChildPid(trackedPid));
+				return;
+			}
 			if (pending) void pending.then(() => conclude(code, exitSignal));
 			else conclude(code, exitSignal);
 		};

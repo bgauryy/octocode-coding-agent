@@ -3,6 +3,18 @@ const REQUEST_TIMEOUT_MS = 15_000;
 /** Every view reads a refused sign-in the same way: the link is missing, used up or expired. */
 export const SIGN_IN_MESSAGE = "Not signed in: this link is missing or has expired. Run /web again to open a new one.";
 
+/** A refused request: the host's text, plus its short fixed `code` when it sent one (never key or file text). */
+export class RequestError extends Error {
+	readonly status: number;
+	readonly code: string | undefined;
+	constructor(message: string, status: number, code: string | undefined) {
+		super(message);
+		this.name = "RequestError";
+		this.status = status;
+		this.code = code;
+	}
+}
+
 /** Bound the full response, including its body, without retrying a mutation whose outcome may be unknown. */
 export function requestJson<T = unknown>(
 	url: string,
@@ -34,7 +46,7 @@ async function request<T>(
 	try {
 		const response = await fetch(url, { ...options, signal: controller.signal });
 		if (response.status === 401) throw new Error(SIGN_IN_MESSAGE);
-		if (!response.ok) throw new Error(await failure(response, fallback));
+		if (!response.ok) throw await failure(response, fallback);
 		return await read(response);
 	} catch (error) {
 		if (controller.signal.aborted) throw controller.signal.reason;
@@ -45,9 +57,13 @@ async function request<T>(
 	}
 }
 
-/** The host's `{ error }` text; a proxy or HTML error page that is not JSON gets the caller's text instead. */
-async function failure(response: Response, fallback: string): Promise<string> {
+/** The host's `{ error, code }`; a proxy or HTML error page that is not JSON gets the caller's text instead. */
+async function failure(response: Response, fallback: string): Promise<RequestError> {
 	const result: unknown = await response.json().catch(() => undefined);
-	const error = result && typeof result === "object" && "error" in result ? result.error : undefined;
-	return typeof error === "string" ? error : fallback;
+	const body = result && typeof result === "object" ? (result as { error?: unknown; code?: unknown }) : {};
+	return new RequestError(
+		typeof body.error === "string" ? body.error : fallback,
+		response.status,
+		typeof body.code === "string" ? body.code : undefined,
+	);
 }

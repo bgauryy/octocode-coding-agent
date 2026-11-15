@@ -101,7 +101,7 @@ async function handleCredentialWrite(
 	try {
 		await routes.writeCredential(command);
 	} catch (error) {
-		if (error instanceof ConfigWriteError) return reply(error.status, { error: error.message });
+		if (error instanceof ConfigWriteError) return reply(error.status, { error: error.message, code: error.code });
 		return reply(500, { error: "The credential could not be saved." });
 	}
 	const repoParam = url.searchParams.get("repoId");

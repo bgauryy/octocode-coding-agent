@@ -10,6 +10,7 @@ import {
 	editorFamily,
 	editorProgramName,
 	launchDetached,
+	openFileWithSystem,
 	resolveReferenceOpener,
 	type EditorInvocation,
 	type OpenerHost,
@@ -130,6 +131,12 @@ export async function openReference(
 			host.settingsManager.getExternalEditorCommand(),
 			openerHost,
 		);
+		if (opener.source === "system") {
+			await openFileWithSystem(assertEditorPath(location.path), { host: openerHost });
+			const line = location.line ? ` (go to line ${location.line})` : "";
+			host.showStatus(`Opened with the default app: ${sanitizeTerminalText(location.path)}${line}`);
+			return;
+		}
 		const invocation = locationInvocation(opener.command, opener.args, location);
 		if (opener.detached) {
 			await launchDetached(invocation, { host: openerHost });

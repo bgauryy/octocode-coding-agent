@@ -6,6 +6,7 @@ import type { Message } from "../../src/octocode/team/model.ts";
 import { userProof, userProofValid } from "../../src/octocode/team/proof.ts";
 import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
+import { renderInstruction } from "../../src/core/prompt-template.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -240,9 +241,9 @@ describe("team message delivery", () => {
 		expect(peer).toMatch(
 			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: `agent` type `message` with `to` researcher-1234 and `replyTo` 7\)$/,
 		);
-		expect(messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" })).toMatch(
-			/from your coordinator main-aaaaaa .*\(FYI: no reply needed\.\)$/s,
-		);
+		const fromParent = messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" });
+		expect(fromParent).toMatch(/from your coordinator main-aaaaaa /);
+		expect(fencedParts(fromParent)?.footer).toBe(renderInstruction("notices/mail/no-reply-needed.md"));
 		expect(messageText(message({ from: USER_SENDER }), { fromUser: true })).toMatch(
 			/^Message #7 from the user at .*:\nhi$/,
 		);
@@ -259,7 +260,10 @@ describe("team message delivery", () => {
 		expect(note(parent)).toBe("from your coordinator: follow it within your task and the user's authorization");
 		expect(parent).not.toContain("not instructions");
 		// The fence still parses, so renderers and footers keep working.
-		expect(fencedParts(parent)).toMatchObject({ body: "hi", footer: "(FYI: no reply needed.)" });
+		expect(fencedParts(parent)).toMatchObject({
+			body: "hi",
+			footer: renderInstruction("notices/mail/no-reply-needed.md"),
+		});
 		for (const other of [
 			messageText(message()),
 			messageText(message({ from: "main-aaaaaa" }), { parentId: "someone-else" }),

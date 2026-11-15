@@ -94,7 +94,7 @@ const settings = new SettingsList(
 
 | List           | Theme fields                                                                                                      | Controls                                                                                                      |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `SelectList`   | `selectedPrefix`, `selectedText`, `description`, `scrollInfo`, `noMatch` (optional `matchHighlight`, `directory`) | Arrows move, `Enter` selects, `Escape` cancels; mouse move/wheel highlights, click selects (alternate screen) |
+| `SelectList`   | `selectedText`, `description`, `scrollInfo`, `noMatch` (optional `matchHighlight`, `directory`) | Arrows move, `Enter` selects, `Escape` cancels; mouse move/wheel highlights, click selects (alternate screen) |
 | `SettingsList` | `label(text, selected)`, `value(text, selected)`, `description`, `cursor`, `hint`                                 | Arrows move, `Enter`/`Space` cycles `values` or opens the `submenu`, `Escape` cancels; mouse as above         |
 
 ## Image

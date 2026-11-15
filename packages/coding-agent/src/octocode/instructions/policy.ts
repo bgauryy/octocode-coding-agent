@@ -4,7 +4,7 @@ import { renderPolicySection, SYSTEM_PROMPT_SECTIONS } from "../../core/system-p
 import type { ResolvedRoles } from "../../../../mcp/src/api.ts";
 
 /** The research server the policy routes code search to: its namespace prefix and full tool names, by role. */
-export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "prefix" | "reader" | "search">;
+export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "prefix" | "reader" | "search" | "judge">;
 
 /**
  * Octocode guidance, added to Octocode's structured system prompt as the `octocode` sections (Octocode wraps each section

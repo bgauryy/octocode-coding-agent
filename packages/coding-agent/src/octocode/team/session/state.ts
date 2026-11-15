@@ -132,6 +132,10 @@ export abstract class TeamState {
 				heartbeat: (db) => this.activity.heartbeat(db),
 				relays: (db) => this.relays.take(db),
 				reporting: (id) => this.running?.has(id) === true,
+				recipientKind: (id) => ({
+					child: this.finished.has(id) || this.vouches.has(id) || this.running?.has(id) === true,
+					reported: this.finished.has(id),
+				}),
 				checkIn: () => checkInConfig(api.getSettings().subagents, this.env, api),
 			},
 			this.mail,

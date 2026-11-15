@@ -11,8 +11,15 @@ import {
 	TruncatedBodyError,
 } from "../../../../common/src/web-guard.ts";
 import { decodeBody } from "./charset.ts";
+import {
+	conditionalHeaders,
+	type Freshness,
+	freshnessOf,
+	type PageEntry,
+	pageCache,
+	sharedRequests,
+} from "./page-cache.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
-import { untilAborted } from "../../../../common/src/abort.ts";
 import { type Deadline, deadline } from "../../../../common/src/deadline.ts";
 
 export const USER_AGENT =
@@ -26,15 +33,6 @@ const RETRY_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RETRIES = 2;
 const RETRY_BASE_MS = 400;
 const RETRY_AFTER_MAX_MS = 5_000;
-/**
- * A fetched page is reused for this long (parallel agents often read the same pages), up to this many pages and bytes in all.
- * Only text is cached: an image is megabytes of bytes and the caller saves it, so a cached copy would point at a saved
- * file the session sweep may have removed. Parallel fetches of one image still share a request.
- */
-const CACHE_TTL_MS = 15 * 60_000;
-const CACHE_MAX = 64;
-const CACHE_MAX_BYTES = 32 * 1024 * 1024;
-
 /** An image the server sent: its real format (by signature) and bytes, at most `MAX_BODY_BYTES`. */
 export interface FetchedImage {
 	url: string;
@@ -98,63 +96,41 @@ export type PageFetcher = (url: string, signal?: AbortSignal, options?: FetchOpt
  * caller has stopped waiting.
  */
 export function pageFetcher(): PageFetcher {
-	/** Least recently used first (a Map keeps insertion order; a hit re-inserts). */
-	const cache = new Map<string, { at: number; text: string; bytes: number }>();
-	let cachedBytes = 0;
-	const inFlight = new Map<string, { promise: Promise<Fetched>; controller: AbortController; waiting: number }>();
+	const cache = pageCache();
+	const share = sharedRequests<Fetched>();
 
-	function uncache(key: string): void {
-		cachedBytes -= cache.get(key)?.bytes ?? 0;
-		cache.delete(key);
-	}
-
-	/** Fetches one URL and caches its text. */
-	async function loadUrl(url: string, signal: AbortSignal, options: FetchOptions): Promise<Fetched> {
-		let text: Fetched;
+	/** Fetches one URL, asking the server to confirm `stale` when it has validators, and caches its text. */
+	async function loadUrl(url: string, signal: AbortSignal, options: FetchOptions, stale?: PageEntry): Promise<Fetched> {
+		let freshness: Freshness | undefined;
+		let headers: Headers | undefined;
+		let text: Fetched | typeof NOT_MODIFIED;
 		try {
-			text = await fetchResource(url, signal, options);
+			text = await fetchResource(url, signal, options, stale && conditionalHeaders(stale), (received) => {
+				headers = received;
+				freshness = freshnessOf(received);
+			});
 		} catch (error) {
 			// The model decides whether a server-supplied target is worth fetching; it is not followed on the page's word.
 			if (error instanceof CrossHostRedirect)
 				return { kind: "notice", reason: "redirect", text: `${error.message}\n${REDIRECT_NOTE}` };
 			throw error;
 		}
+		if (text === NOT_MODIFIED) {
+			cache.renew(url, stale!, headers!);
+			return stale!.text;
+		}
 		if (typeof text !== "string" || text.startsWith(CUT_NOTE)) return text;
-		uncache(url);
-		const bytes = Buffer.byteLength(text);
-		cache.set(url, { at: Date.now(), text, bytes });
-		cachedBytes += bytes;
-		while (cache.size > 1 && (cache.size > CACHE_MAX || cachedBytes > CACHE_MAX_BYTES))
-			uncache(cache.keys().next().value!);
+		cache.set(url, text, freshness!);
 		return text;
 	}
 
 	return async function fetchUrl(url, signal, options = {}) {
 		signal?.throwIfAborted();
 		const cached = cache.get(url);
-		if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-			cache.delete(url);
-			cache.set(url, cached);
-			return cached.text;
-		}
-		let entry = inFlight.get(url);
-		if (!entry) {
-			const controller = new AbortController();
-			const promise = loadUrl(url, controller.signal, options).finally(() => {
-				if (inFlight.get(url)?.promise === promise) inFlight.delete(url);
-			});
-			// Every caller may have stopped waiting; the abort rejection then has no other handler.
-			promise.catch(() => undefined);
-			entry = { promise, controller, waiting: 0 };
-			inFlight.set(url, entry);
-		}
-		entry.waiting += 1;
-		try {
-			return await untilAborted(entry.promise, signal);
-		} finally {
-			entry.waiting -= 1;
-			if (entry.waiting === 0 && signal?.aborted) entry.controller.abort(signal.reason);
-		}
+		if (cached?.fresh) return cached.entry.text;
+		const revalidate = cached && (cached.entry.etag || cached.entry.lastModified) ? cached.entry : undefined;
+		if (cached && !revalidate) cache.delete(url);
+		return share(url, (shared) => loadUrl(url, shared, options, revalidate), signal);
 	};
 }
 
@@ -278,10 +254,19 @@ async function fetchImage(response: Response, url: string, type: string): Promis
 	return { url: where, mimeType, bytes };
 }
 
-async function fetchResource(url: string, signal: AbortSignal | undefined, options: FetchOptions): Promise<Fetched> {
+/** What `fetchResource` returns when the server confirmed the copy the request named validators for. */
+const NOT_MODIFIED = Symbol("not modified");
+
+async function fetchResource(
+	url: string,
+	signal: AbortSignal | undefined,
+	options: FetchOptions,
+	conditional: Record<string, string> | undefined,
+	onResponse: (headers: Headers) => void,
+): Promise<Fetched | typeof NOT_MODIFIED> {
 	const limits: Deadline[] = [];
 	try {
-		return await fetchResourceWithin(url, signal, options, limits);
+		return await fetchResourceWithin(url, signal, options, limits, conditional, onResponse);
 	} finally {
 		for (const limit of limits) limit.clear();
 	}
@@ -292,7 +277,9 @@ async function fetchResourceWithin(
 	signal: AbortSignal | undefined,
 	options: FetchOptions,
 	limits: Deadline[],
-): Promise<Fetched> {
+	conditional: Record<string, string> | undefined,
+	onResponse: (headers: Headers) => void,
+): Promise<Fetched | typeof NOT_MODIFIED> {
 	const response = await fetchWithRetry(
 		url,
 		{
@@ -300,12 +287,18 @@ async function fetchResourceWithin(
 				"user-agent": USER_AGENT,
 				accept: "text/html,application/json,text/plain,*/*",
 				"accept-language": language(),
+				...conditional,
 			},
 		},
 		options,
 		signal,
 		limits,
 	);
+	onResponse(response.headers);
+	if (response.status === 304 && conditional) {
+		await discardBody(response);
+		return NOT_MODIFIED;
+	}
 	const type = response.headers.get("content-type") ?? "";
 	if (INLINE_IMAGE_HEADERS.has(mediaType(type))) {
 		if (response.ok) return fetchImage(response, url, mediaType(type));

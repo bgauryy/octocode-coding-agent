@@ -234,7 +234,11 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 		// the projection.
 		// The threshold is sized for this request's route: its model and thinking level.
 		const routeThinking = route.thinkingLevel ?? thinkingLevel;
-		if (exceedsCompactionThreshold(host, route.model, projection, routeThinking)) {
+		// One attempt per request, as for a model that is not virtual: a declined or futile one is not retried when the
+		// request is prepared again.
+		let thresholdAttempted = attempted.has(request.context);
+		if (!thresholdAttempted && exceedsCompactionThreshold(host, route.model, projection, routeThinking)) {
+			thresholdAttempted = true;
 			await host.runAutoCompaction("threshold", false, route.model, routeThinking);
 			host.inputs.flushDuringRun(host.run.outcome);
 			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
@@ -242,6 +246,8 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			({ previous, context } = await prepare());
 			assertFitsWindow(host, route.model);
 		}
+		if (thresholdAttempted) attempted.add(context);
+		else host.prewarmCompaction(requestTokens(host, projection), route.model, routeThinking);
 		assertImageRequestContext(route.model, convertToLlm(context.messages));
 		return {
 			...previous,

@@ -13,11 +13,12 @@ describe("the browser role's Octocode tools", () => {
 	beforeEach(() => publishToolRoles(resolveToolRoles([octocode])));
 	afterEach(() => publishToolRoles(resolveToolRoles([])));
 
-	it("keeps local search and read for its saved captures, and drops the GitHub tools and clasify", () => {
+	it("keeps local search, read and the judge for its saved captures, and drops the GitHub tools", () => {
 		const allowed = (loadProfiles(tmp(), tmp(), false, {}).get("browser")!.tools ?? "").split(",");
 		const octocodeTools = allowed.filter((name) => name.startsWith("mcp__octocode__")).sort();
 		expect(octocodeTools).toEqual([
 			"mcp__octocode__astSearch",
+			"mcp__octocode__clasify",
 			"mcp__octocode__localFetch",
 			"mcp__octocode__localSearch",
 			"mcp__octocode__lspSearch",
@@ -31,7 +32,6 @@ describe("the browser role's Octocode tools", () => {
 			"ghGetFileContent",
 			"ghSearchHistory",
 			"ghGetHistoryItem",
-			"clasify",
 		];
 		expect(octocode.config.roles?.readOnly).toEqual(expect.arrayContaining(dropped));
 		for (const tool of dropped) expect(matchesTool(allowed, `mcp__octocode__${tool}`)).toBe(false);

@@ -9,6 +9,7 @@
 import { Spacer, TruncatedText, watchSelection } from "@octocodeai/octocode-tui";
 import type { ApplicationStateSource } from "../../../core/application/state.ts";
 import { theme } from "../../../theme/theme.ts";
+import { hintLine, interruptKey, type KeyHintPair } from "../../../theme/theme-tui-helpers.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import type { InteractiveModeHost } from "../interactive-mode/host.ts";
 import { refreshQueueList } from "../interactive-mode/queue-list.ts";
@@ -79,9 +80,14 @@ export function renderPendingMessages(host: BindQueueHost, view: QueueView): voi
 	}
 	if (total > 3) area.addChild(new TruncatedText(theme.fg("muted", `… ${total - 3} more queued`), 1, 0));
 	const dequeueHint = host.getAppKeyDisplay("app.message.dequeue");
-	const send = view.carried > 0 && !view.compacting ? "Enter sends · " : "";
-	const hint = `↳ ${send}↑ to manage · ${dequeueHint} restores the last · Esc restores all${view.compacting ? " · waiting for compaction" : ""}`;
-	area.addChild(new TruncatedText(theme.fg("muted", hint), 1, 0));
+	const hints: KeyHintPair[] = [
+		...(view.carried > 0 && !view.compacting ? ([["enter", "sends"]] as KeyHintPair[]) : []),
+		["↑", "manage"],
+		[dequeueHint, "restores last"],
+		[interruptKey(), "restores all"],
+	];
+	const waiting = view.compacting ? theme.fg("dim", ` · waiting for compaction`) : "";
+	area.addChild(new TruncatedText(`${theme.fg("muted", "↳ ")}${hintLine(hints)}${waiting}`, 1, 0));
 }
 
 /** Starts following the queues of `service`; returns the function that stops it. */

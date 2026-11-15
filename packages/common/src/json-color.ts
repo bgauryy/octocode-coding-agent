@@ -31,8 +31,9 @@ export function isJsonDocument(text: string): boolean {
 /**
  * `json` (a document `isJsonDocument` accepted) coloured token by token. `indent` lays it out two spaces per level;
  * otherwise the server's own layout stays. Tokens are copied as sent, never parsed, so no number loses precision.
+ * With `maxChars`, only the tokens that start before that offset are coloured (and `indent` should be off).
  */
-export function colorJson(json: string, theme: TokenColors, indent: boolean): string {
+export function colorJson(json: string, theme: TokenColors, indent: boolean, maxChars = Infinity): string {
 	const out: string[] = [];
 	const mark = (text: string) => out.push(theme.fg(PUNCTUATION, text));
 	let depth = 0;
@@ -46,6 +47,11 @@ export function colorJson(json: string, theme: TokenColors, indent: boolean): st
 	};
 	let i = 0;
 	while (i < json.length) {
+		// Past `maxChars` (a collapsed row's visible part) the rest is copied as sent, uncoloured.
+		if (i >= maxChars) {
+			out.push(json.slice(i));
+			break;
+		}
 		const ch = json[i];
 		if (ch === '"') {
 			let end = i + 1;

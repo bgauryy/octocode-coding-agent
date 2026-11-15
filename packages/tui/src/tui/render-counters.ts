@@ -8,7 +8,7 @@ export interface RenderCounters {
 	written: number;
 	/** Frames that cleared the screen and scrollback and wrote the whole transcript again. */
 	fullRedraws: number;
-	/** Frames where rows above the viewport changed in place and were left alone, since scrollback cannot be edited. */
+	/** Frames where rows above the viewport changed (in place, or a collapse) and were left alone, since scrollback cannot be edited. */
 	deferredAboveViewport: number;
 }
 

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { notify, say, type Subcommands, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, notify, say, type Subcommands, wordCompletions } from "../shared/commands.ts";
 import {
 	blockerText,
 	databaseBytes,
@@ -59,7 +59,7 @@ async function purgeHandler(args: string, ctx: ExtensionCommandContext, options:
 		if (blocked) return say(ctx, blocked, "warning");
 		say(ctx, [`/purge ${scope} would delete:`, ...previewLines(plan, databaseBytes(index))].join("\n"));
 		const typed = await ctx.ui.input(`Purge ${scope}: type "${scope}" to delete the data listed above`, scope);
-		if (typed?.trim() !== scope) return notify(ctx.ui, "Purge cancelled: nothing was deleted.", "info");
+		if (typed?.trim() !== scope) return notify(ctx.ui, cancelledText("deleted"), "info");
 		const outcome = await executePurge(index, scope, { cwd: ctx.cwd, ...(current ? { current } : {}) });
 		if ("refused" in outcome) return say(ctx, outcome.refused, "warning");
 		say(ctx, resultLines(outcome.result).join("\n"), outcome.result.failed.length > 0 ? "warning" : "info");

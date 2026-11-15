@@ -47,12 +47,23 @@ afterEach(async () => {
 });
 
 describe("sendMessage delivery status", () => {
-	it("tells the sender an idle FYI is read on the next turn, not acted on", async () => {
+	it("tells the sender an idle recipient is woken by a new FYI", async () => {
 		const { a, b } = await pair();
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const sent = await run(
 			a.tools.get("sendMessage"),
 			{ to: b.team.id, message: "the build is broken on arm64" },
+			a.ctx,
+		);
+		expect(sent.details).toMatchObject({ to: [b.team.id], delivery: { [b.team.id!]: "wake" } });
+	});
+
+	it("tells the sender an idle FYI with wake: false is read on the next turn, not acted on", async () => {
+		const { a, b } = await pair();
+		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
+		const sent = await run(
+			a.tools.get("sendMessage"),
+			{ to: b.team.id, message: "the build is broken on arm64", wake: false },
 			a.ctx,
 		);
 		expect(sent.details).toMatchObject({
@@ -74,7 +85,7 @@ describe("sendMessage delivery status", () => {
 		await vi.waitFor(() => expect(b.team.members().find((entry) => entry.id === b.team.id)!.status).toBe("working"), {
 			timeout: 3_000,
 		});
-		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "heads-up" }, a.ctx);
+		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "heads-up", wake: false }, a.ctx);
 		expect(sent.details).toMatchObject({ delivery: { [b.team.id!]: "next-step" } });
 		expect(text(sent)).toMatch(new RegExp(`${b.team.id} reads it at its next step\\.`));
 	});

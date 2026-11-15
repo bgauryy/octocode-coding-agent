@@ -106,7 +106,8 @@ describe("unified MCP slash management", () => {
 			{ value: "octocode", description: expect.stringContaining("default") },
 			{ value: "@add", label: "Add MCP" },
 		]);
-		expect(menus[1].items.map((item) => item.value)).toEqual(["tools", "reconnect", "exposure"]);
+		expect(menus[1].items.map((item) => item.value)).toEqual(["tools", "reconnect"]);
+		expect(menus[1].facts).toContainEqual({ label: "Exposure", value: "direct · change in /harness mcp" });
 		expect(restart).toHaveBeenCalledOnce();
 	});
 	it("points /mcp assign and /mcp exposure at /harness mcp", async () => {
@@ -136,7 +137,7 @@ describe("unified MCP slash management", () => {
 			}),
 		);
 		await harness.session.prompt("/mcp");
-		expect(menus[1].items.map((item) => item.value)).toEqual(["exposure"]);
+		expect(menus[1].items).toEqual([]);
 		expect(menus[1].facts).toContainEqual({ label: "State", value: "Off · turn on in /harness mcp" });
 	});
 	it("keeps disabled same-name configuration authoritative", async () => {

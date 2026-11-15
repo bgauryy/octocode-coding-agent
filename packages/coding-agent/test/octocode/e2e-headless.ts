@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFauxCore, fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
+import {
+	createFauxCore,
+	fauxAssistantMessage,
+	type SimpleStreamOptions,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
 import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
@@ -22,7 +27,7 @@ const ENTRY =
 const octocode = (await import(ENTRY)).default as ExtensionFactory;
 
 export type ToolResult = { toolName: string; isError: boolean; text: string };
-type Reply = (context: TranscriptContext) => ReturnType<typeof fauxAssistantMessage>;
+type Reply = (context: TranscriptContext, options?: SimpleStreamOptions) => ReturnType<typeof fauxAssistantMessage>;
 
 /** The tool results the model was sent in the turn after a call. */
 function toolResults(context: TranscriptContext): ToolResult[] {
@@ -142,13 +147,16 @@ export async function headless(options: HeadlessOptions = {}) {
 	const turns: ToolResult[][] = [];
 	/** The transcript each request carried, oldest request first (for comparing what two requests share). */
 	const contexts: TranscriptContext[] = [];
+	/** The stream options (session id, cache key and policy, instruction boundaries) each request carried, as `contexts`. */
+	const requestOptions: Array<SimpleStreamOptions | undefined> = [];
 	/** Prompts once with scripted replies; returns the tool results each reply saw (the first sees none). */
 	const run = async (prompt: string, replies: Array<() => ReturnType<typeof fauxAssistantMessage>>) => {
 		const start = turns.length;
 		faux.setResponses(
-			replies.map((reply): Reply => (context) => {
+			replies.map((reply): Reply => (context, options) => {
 				turns.push(toolResults(context));
 				contexts.push(context);
+				requestOptions.push(options);
 				return reply();
 			}),
 		);
@@ -164,5 +172,5 @@ export async function headless(options: HeadlessOptions = {}) {
 					? [entry.data as { action: string; allowed: boolean; via: string; mode: string }]
 					: [],
 			);
-	return { root, cwd, home, outside, run, session, audit, contexts };
+	return { root, cwd, home, outside, run, session, audit, contexts, requestOptions };
 }

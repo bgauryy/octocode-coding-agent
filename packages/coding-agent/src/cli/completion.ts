@@ -194,8 +194,13 @@ export function runCompletionCommand(args: string[]): boolean {
 	} else if (args.length === 2 && ["bash", "zsh", "fish"].includes(args[1])) {
 		process.stdout.write(shellCompletion(args[1] as "bash" | "zsh" | "fish"));
 	} else {
-		console.log(`Usage: ${APP_NAME} completion <bash|zsh|fish>`);
-		if (args.length > 1 && !["--help", "-h"].includes(args[1])) process.exitCode = 1;
+		// Help goes to stdout and succeeds; a missing or unknown shell is a usage error on stderr.
+		const usage = `Usage: ${APP_NAME} completion <bash|zsh|fish>`;
+		if (["--help", "-h", "help"].includes(args[1] ?? "")) console.log(usage);
+		else {
+			console.error(args[1] === undefined ? usage : `Unknown shell "${args[1]}".\n${usage}`);
+			process.exitCode = 1;
+		}
 	}
 	return true;
 }

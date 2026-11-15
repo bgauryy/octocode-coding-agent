@@ -28,7 +28,7 @@ describe("the prerequisites an `until item ... ready` timer reads", () => {
 		expect(backlog.openPrerequisites(db, repo, 3)).toEqual(["B1", "B2"]);
 		expect(backlog.openPrerequisites(db, repo, 1)).toEqual([]);
 		await call({ op: "claim", id: "B1", why: "w", goal: "g" });
-		await call({ op: "done", id: "B1", completion: { summary: "s", verification: "v" } });
+		await call({ op: "done", id: "B1", completion: { summary: "s", verification: "Passed: v" } });
 		expect(backlog.openPrerequisites(db, repo, 3)).toEqual(["B2"]);
 		await call({ op: "close", id: "B2", close: { kind: "obsolete", text: "no longer needed" } });
 		expect(backlog.openPrerequisites(db, repo, 3)).toEqual([]);

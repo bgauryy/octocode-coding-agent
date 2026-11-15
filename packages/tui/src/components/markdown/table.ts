@@ -4,6 +4,11 @@ import { visibleWidth } from "../../utils/width.ts";
 import { renderInlineTokens } from "./inline.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
 
+/** A word up to this wide never breaks while the columns fit; longer ones (URLs, paths) wrap inside their cell. */
+const MAX_UNBROKEN_WORD_WIDTH = 30;
+/** Continuation rows of a stacked record start this far in, under the value rather than the header. */
+const STACKED_INDENT = 2;
+
 /**
  * Get the visible width of the longest word in a string.
  */
@@ -35,8 +40,44 @@ function wrapCellText(text: string, maxWidth: number, stylePrefix = ""): string[
 }
 
 /**
+ * Shares the spare columns. Each column starts at its longest word. A column whose remaining need fits an equal share of
+ * the spare takes it whole, again until none does, so short columns (states, names, counts) never wrap beside prose.
+ * The long columns then split the rest in proportion to what each still needs.
+ */
+function waterFill(minWidths: number[], naturalWidths: number[], available: number): number[] {
+	const widths = [...minWidths];
+	const need = (i: number) => naturalWidths[i] - widths[i];
+	let spare = available - widths.reduce((a, b) => a + b, 0);
+	let hungry = widths.map((_, i) => i).filter((i) => need(i) > 0);
+	for (;;) {
+		const share = spare / hungry.length;
+		const small = hungry.filter((i) => need(i) <= share);
+		if (small.length === 0) break;
+		for (const i of small) {
+			spare -= need(i);
+			widths[i] = naturalWidths[i];
+		}
+		hungry = hungry.filter((i) => need(i) > 0);
+	}
+	const totalNeed = hungry.reduce((total, i) => total + need(i), 0);
+	const grown = hungry.map((i) => Math.floor((need(i) / totalNeed) * spare));
+	hungry.forEach((i, k) => {
+		widths[i] += grown[k];
+	});
+	// Rounding leftovers go to the columns closest to fitting whole.
+	let leftover = spare - grown.reduce((a, b) => a + b, 0);
+	for (const i of [...hungry].sort((a, b) => need(a) - need(b))) {
+		if (leftover <= 0) break;
+		widths[i]++;
+		leftover--;
+	}
+	return widths;
+}
+
+/**
  * Render a table with width-aware cell wrapping.
- * Cells that don't fit are wrapped to multiple lines.
+ * Cells that don't fit are wrapped to multiple lines. When the columns cannot fit side by side without breaking words,
+ * each row becomes a record of `Header: value` lines instead.
  */
 export function renderTable(
 	host: MarkdownRenderHost,
@@ -45,17 +86,37 @@ export function renderTable(
 	nextTokenType?: string,
 	styleContext?: InlineStyleContext,
 ): string[] {
-	const lines: string[] = [];
 	const numCols = token.header.length;
 
 	if (numCols === 0) {
-		return lines;
+		return [];
 	}
 
 	// Calculate border overhead: "│ " + (n-1) * " │ " + " │"
 	// = 2 + (n-1) * 3 + 2 = 3n + 1
 	const borderOverhead = 3 * numCols + 1;
 	const availableForCells = availableWidth - borderOverhead;
+
+	// Calculate natural column widths (what each column needs without constraints)
+	const naturalWidths: number[] = [];
+	const minWordWidths: number[] = [];
+	for (let i = 0; i < numCols; i++) {
+		const headerText = renderInlineTokens(host, token.header[i].tokens || [], styleContext);
+		naturalWidths[i] = visibleWidth(headerText);
+		minWordWidths[i] = Math.max(1, getLongestWordWidth(headerText, MAX_UNBROKEN_WORD_WIDTH));
+	}
+	for (const row of token.rows) {
+		for (let i = 0; i < row.length; i++) {
+			const cellText = renderInlineTokens(host, row[i].tokens || [], styleContext);
+			naturalWidths[i] = Math.max(naturalWidths[i] || 0, visibleWidth(cellText));
+			minWordWidths[i] = Math.max(minWordWidths[i] || 1, getLongestWordWidth(cellText, MAX_UNBROKEN_WORD_WIDTH));
+		}
+	}
+
+	const minCellsWidth = minWordWidths.reduce((a, b) => a + b, 0);
+	if (minCellsWidth > availableForCells && numCols > 1 && availableWidth > STACKED_INDENT) {
+		return renderStacked(host, token, availableWidth, nextTokenType, styleContext);
+	}
 	if (availableForCells < numCols) {
 		// Too narrow to render a stable table. Fall back to raw markdown.
 		const fallbackLines = token.raw ? wrapTextWithAnsi(token.raw, availableWidth) : [];
@@ -65,94 +126,53 @@ export function renderTable(
 		return fallbackLines;
 	}
 
-	const maxUnbrokenWordWidth = 30;
-
-	// Calculate natural column widths (what each column needs without constraints)
-	const naturalWidths: number[] = [];
-	const minWordWidths: number[] = [];
-	for (let i = 0; i < numCols; i++) {
-		const headerText = renderInlineTokens(host, token.header[i].tokens || [], styleContext);
-		naturalWidths[i] = visibleWidth(headerText);
-		minWordWidths[i] = Math.max(1, getLongestWordWidth(headerText, maxUnbrokenWordWidth));
-	}
-	for (const row of token.rows) {
-		for (let i = 0; i < row.length; i++) {
-			const cellText = renderInlineTokens(host, row[i].tokens || [], styleContext);
-			naturalWidths[i] = Math.max(naturalWidths[i] || 0, visibleWidth(cellText));
-			minWordWidths[i] = Math.max(minWordWidths[i] || 1, getLongestWordWidth(cellText, maxUnbrokenWordWidth));
-		}
-	}
-
-	let minColumnWidths = minWordWidths;
-	let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
-
-	if (minCellsWidth > availableForCells) {
-		minColumnWidths = Array.from({ length: numCols }, () => 1);
-		const remaining = availableForCells - numCols;
-
-		if (remaining > 0) {
-			const totalWeight = minWordWidths.reduce((total, width) => total + Math.max(0, width - 1), 0);
-			const growth = minWordWidths.map((width) => {
-				const weight = Math.max(0, width - 1);
-				return totalWeight > 0 ? Math.floor((weight / totalWeight) * remaining) : 0;
-			});
-
-			for (let i = 0; i < numCols; i++) {
-				minColumnWidths[i] += growth[i] ?? 0;
-			}
-
-			const allocated = growth.reduce((total, width) => total + width, 0);
-			let leftover = remaining - allocated;
-			for (let i = 0; leftover > 0 && i < numCols; i++) {
-				minColumnWidths[i]++;
-				leftover--;
-			}
-		}
-
-		minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
-	}
-
-	// Calculate column widths that fit within available width
+	// A single column narrower than its longest word breaks that word; it has nowhere else to go.
+	const minColumnWidths = minCellsWidth > availableForCells ? [availableForCells] : minWordWidths;
 	const totalNaturalWidth = naturalWidths.reduce((a, b) => a + b, 0) + borderOverhead;
-	let columnWidths: number[];
+	const columnWidths =
+		totalNaturalWidth <= availableWidth ? naturalWidths : waterFill(minColumnWidths, naturalWidths, availableForCells);
+	return drawTable(host, token, columnWidths, nextTokenType, styleContext);
+}
 
-	if (totalNaturalWidth <= availableWidth) {
-		// Everything fits naturally
-		columnWidths = naturalWidths.map((width, index) => Math.max(width, minColumnWidths[index]));
-	} else {
-		// Need to shrink columns to fit
-		const totalGrowPotential = naturalWidths.reduce((total, width, index) => {
-			return total + Math.max(0, width - minColumnWidths[index]);
-		}, 0);
-		const extraWidth = Math.max(0, availableForCells - minCellsWidth);
-		columnWidths = minColumnWidths.map((minWidth, index) => {
-			const naturalWidth = naturalWidths[index];
-			const minWidthDelta = Math.max(0, naturalWidth - minWidth);
-			let grow = 0;
-			if (totalGrowPotential > 0) {
-				grow = Math.floor((minWidthDelta / totalGrowPotential) * extraWidth);
-			}
-			return minWidth + grow;
+/**
+ * One record per row: `Header: value`, the value wrapping under a short indent, records split by a rule. Used where a
+ * grid would break words into a column of letters.
+ */
+function renderStacked(
+	host: MarkdownRenderHost,
+	token: Tokens.Table,
+	availableWidth: number,
+	nextTokenType?: string,
+	styleContext?: InlineStyleContext,
+): string[] {
+	const headers = token.header.map((cell) => renderInlineTokens(host, cell.tokens || [], styleContext));
+	const rule = host.theme.hr("─".repeat(Math.min(availableWidth, 40)));
+	const indent = " ".repeat(STACKED_INDENT);
+	const lines: string[] = [];
+	token.rows.forEach((row, rowIndex) => {
+		if (rowIndex > 0) lines.push(rule);
+		row.forEach((cell, i) => {
+			const value = renderInlineTokens(host, cell.tokens || [], styleContext);
+			const record = `${host.theme.bold(`${headers[i] ?? ""}:`)} ${value}`;
+			// Wrapped at the indented width, so the first row and the indented continuation rows both fit.
+			const wrapped = wrapCellText(record, availableWidth - STACKED_INDENT, styleContext?.stylePrefix);
+			wrapped.forEach((line, index) => lines.push(index === 0 ? line : `${indent}${line}`));
 		});
-
-		// Adjust for rounding errors - distribute remaining space
-		const allocated = columnWidths.reduce((a, b) => a + b, 0);
-		let remaining = availableForCells - allocated;
-		while (remaining > 0) {
-			let grew = false;
-			for (let i = 0; i < numCols && remaining > 0; i++) {
-				if (columnWidths[i] < naturalWidths[i]) {
-					columnWidths[i]++;
-					remaining--;
-					grew = true;
-				}
-			}
-			if (!grew) {
-				break;
-			}
-		}
+	});
+	if (nextTokenType && nextTokenType !== "space") {
+		lines.push("");
 	}
+	return lines;
+}
 
+function drawTable(
+	host: MarkdownRenderHost,
+	token: Tokens.Table,
+	columnWidths: number[],
+	nextTokenType?: string,
+	styleContext?: InlineStyleContext,
+): string[] {
+	const lines: string[] = [];
 	const topBorderCells = columnWidths.map((w) => "─".repeat(w));
 	lines.push(`┌─${topBorderCells.join("─┬─")}─┐`);
 

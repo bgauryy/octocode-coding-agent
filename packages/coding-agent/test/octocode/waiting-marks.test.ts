@@ -45,7 +45,7 @@ describe("waiting on you: the ask tool", () => {
 			},
 			{ details: { cancelled: true, answers: [] }, mark: "<error>✗" },
 			{ details: { cancelled: true, answers: [], reason: "unavailable" }, mark: "<error>✗" },
-			{ details: { cancelled: true, answers: [], reason: "aborted" }, mark: "<muted>◼" },
+			{ details: { cancelled: true, answers: [], reason: "aborted" }, mark: "<warning>◼" },
 		];
 		for (const { details, mark } of cases) {
 			const context = row();
@@ -171,7 +171,7 @@ describe("agent rows", () => {
 	it.each([
 		["done", "<success>✓"],
 		["failed", "<error>✗"],
-		["stopped", "<muted>◼"],
+		["stopped", "<warning>◼"],
 	])("draws a background report that %s with its mark", (status, mark) => {
 		const message = renderAgentMessage(
 			{ content: "Done", details: { id: "general-0001", status, summary: "x" } } as never,

@@ -203,6 +203,7 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Mcp
 export function registerMcpCommand(state: McpExtensionState): void {
 	state.api.registerCommand("mcp", {
 		description: "Manage MCP servers and their tools",
+		argumentHint: "[list|add|tools|login|logout|reconnect|config]",
 		getArgumentCompletions: (prefix) => getArgumentCompletions(state, prefix),
 		handler: async (args, ctx) => {
 			const [action, name, ...extra] = args.trim().split(/\s+/).filter(Boolean);
@@ -256,6 +257,14 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				case "logout": {
 					const server = await pickServer(state, name, ctx, oauthPick);
 					if (!server) return;
+					if (
+						ctx.hasUI &&
+						!(await ctx.ui.confirm(
+							`Sign out of ${server.entry.name}?`,
+							"Its stored credentials are removed; signing in again needs the browser.",
+						))
+					)
+						return say(ctx, "Cancelled: nothing was signed out.", "info");
 					const removed = await signOut(state, server);
 					say(
 						ctx,

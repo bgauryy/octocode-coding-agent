@@ -7,6 +7,7 @@ import {
 	type Model,
 	normalizeContext,
 	resolveModelCapabilities,
+	replaysWithReasoningUnchanged,
 	type SimpleStreamOptions,
 	type Usage,
 } from "@octocodeai/octocode-ai";
@@ -101,18 +102,13 @@ export function estimateInstructionPrefixTokens(context: Context): number {
 }
 
 /**
- * Whether replaying the request with a one-token output cap leaves its cache
- * entry untouched. Anthropic's budget-based thinking (Claude models without
- * adaptive thinking) derives `budget_tokens` from `max_tokens`; the replay
- * would get a different budget, which Anthropic keys the message cache on,
- * and the model could still think for thousands of tokens.
+ * Whether replaying the request with a one-token output cap leaves its cache entry untouched. Where the reasoning
+ * budget derives from the output cap (Anthropic budget thinking, Bedrock), the replay would get a different budget,
+ * which the message cache is keyed on, and the model could still think for thousands of tokens. The model's resolved
+ * capabilities decide; an API they do not know is treated as not replayable.
  */
 export function isReplayable(model: Model<Api>, options: SimpleStreamOptions | undefined): boolean {
-	if (!options?.reasoning) return true;
-	// Bedrock can expand the output cap to accommodate reasoning; do not price that as a one-token replay.
-	if (model.api === "bedrock-converse-stream") return false;
-	if (model.api !== "anthropic-messages") return true;
-	return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true;
+	return !options?.reasoning || replaysWithReasoningUnchanged(model);
 }
 
 /** Reported reusable prefix and uncached tail of the latest real request. */

@@ -9,7 +9,7 @@ import { formatProviderError, normalizeProviderError, redactProviderText } from 
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { getClientApiKey } from "../utils/headers.ts";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveCacheAffinityId, resolveCacheRetention } from "../utils/cache-policy.ts";
 import { getDeclaredTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { createClient } from "./openai-completions/client.ts";
@@ -53,7 +53,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				compat.supportsOpenAIGrammarTools,
 			);
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
+			const cacheSessionId = resolveCacheAffinityId(options);
 			const client = createClient(
 				model,
 				normalizedContext,

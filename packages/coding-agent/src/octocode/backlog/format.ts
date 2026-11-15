@@ -105,7 +105,7 @@ function linkText({ relation, target }: WorkLink): string {
 	return `- ${relation}: ${visibleControls(text)}`;
 }
 
-/** The item's saved fields in reading order, empty ones omitted: Goal, Where, Why, Evidence (one `-` line per entry), Links, Plan. */
+/** The item's saved fields in reading order, empty ones omitted: Done when (the `goal` field), Where, Why, Evidence (one `-` line per entry), Links, Plan. */
 function itemFields(item: Item): string[] {
 	const lines: string[] = [`Type: ${item.type}`];
 	if (item.parentId) lines.push(`Parent: ${item.parentId}`);
@@ -123,7 +123,7 @@ function itemFields(item: Item): string[] {
 		);
 	if (completion?.lesson) lines.push(`Lesson: ${visibleControls(completion.lesson)}`);
 
-	if (item.goal) lines.push(`Goal: ${visibleControls(item.goal)}`);
+	if (item.goal) lines.push(`Done when: ${visibleControls(item.goal)}`);
 	if (item.paths.length) lines.push(`Where: ${item.paths.map((path) => visibleControls(path)).join(", ")}`);
 	if (item.why) lines.push(`Why: ${indented(item.why, "  ")}`);
 	if (item.evidence.length) lines.push("Evidence:", ...item.evidence.map((entry) => `- ${visibleControls(entry)}`));

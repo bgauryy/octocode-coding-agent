@@ -27,7 +27,6 @@ function mouse(type: TuiMouseEventType, x: number, y: number, width = 80, height
 }
 
 const selectTheme: SelectListTheme = {
-	selectedPrefix: (text) => text,
 	selectedText: (text) => text,
 	description: (text) => text,
 	scrollInfo: (text) => text,

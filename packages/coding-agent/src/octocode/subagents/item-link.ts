@@ -10,6 +10,8 @@ import { reportChecks } from "./report-outcome.ts";
 /** A child's backlog item: its ref for the child's identity, and the note its report leaves on the item. */
 export interface ItemLink {
 	ref: string;
+	/** The open prerequisites the item waits on, when it was checked for a queued start; else empty (a blocked item was refused). */
+	waitsOn: readonly string[];
 	/** Claims the item for this session when it was unheld (the footer says so); a no-op for a held item or a second call. */
 	claim(): void;
 	/**
@@ -25,9 +27,15 @@ export interface ItemLink {
  * What the end of `agent`'s run means for the items that wait on `ref` (`graphNotice`): ready ones, or ones its child left
  * waiting. The report carries it and wakes the parent for it. Undefined when there is none or the backlog cannot be read.
  */
-function itemGraphNotice(backlog: Backlog, ref: string, agent: string, lingers: boolean): string | undefined {
+function itemGraphNotice(
+	backlog: Backlog,
+	ref: string,
+	agent: string,
+	lingers: boolean,
+	queued: ReadonlySet<string>,
+): string | undefined {
 	try {
-		return graphNotice(backlog, ref, agent, lingers);
+		return graphNotice(backlog, ref, agent, lingers, queued);
 	} catch {
 		return undefined;
 	}
@@ -41,15 +49,17 @@ function itemGraphNotice(backlog: Backlog, ref: string, agent: string, lingers: 
 export function itemLink(
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
 	ref: string | undefined,
+	{ queue = false, queued }: { queue?: boolean; queued?: () => ReadonlySet<string> } = {},
 ): ItemLink | undefined {
 	if (ref === undefined) return undefined;
 	const backlog = openBacklog(ctx, { isSubagent: false });
-	const checked = checkDelegable(backlog, ref.trim());
+	const checked = checkDelegable(backlog, ref.trim(), queue);
 	const { ref: itemRef } = checked.item;
 	let claimed = false;
 	let notice: string | undefined;
 	return {
 		ref: itemRef,
+		waitsOn: checked.waitsOn,
 		get notice() {
 			return notice;
 		},
@@ -84,7 +94,7 @@ export function itemLink(
 					lines.push(`Could not link ${ref} on ${itemRef}: ${errorMessage(error)}`);
 				}
 			}
-			notice = itemGraphNotice(backlog, itemRef, agent, lingers);
+			notice = itemGraphNotice(backlog, itemRef, agent, lingers, queued?.() ?? new Set());
 			if (notice) lines.push(notice);
 			return lines.map((line) => `\n${line}`).join("");
 		},

@@ -1,57 +1,20 @@
 import { textResultDisplay } from "../../render/display.ts";
 import { renderInstruction } from "../../../core/prompt-template.ts";
-import { Box, Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
-import { formatClock } from "../../shared/format.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../render/tool.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
-import type { MailDetails } from "../model.ts";
 import type { Team } from "../session.ts";
 import { PARENT_WAITS_ENV } from "../store/env.ts";
 import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
-import { clip, plural } from "../../shared/text.ts";
 import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { mailRows, sendOutcome, sendPreview, sendSummary } from "./message-rows.ts";
 
-/** Columns of the sent text shown on the collapsed Send row. */
-const PREVIEW_CHARS = 60;
-
-/** Shows team mail in the conversation. */
+/** Shows team mail in the conversation: a header per message, its body previewed while collapsed. */
 export function registerMessageRenderer(api: ExtensionAPI): void {
-	// Agent messages are shown in full, collapsed or not: they are short (a long one arrives as its start plus a file path) and the user reads them.
-	api.registerMessageRenderer(INTERNAL_MESSAGE_TYPE, (message, { outputPad }, theme) => {
-		const mail = (message.details as Partial<MailDetails> | undefined)?.messages;
-		const box = new Box(outputPad ?? 1, 0);
-		// Details are another process's data: anything but a batch shows the text the model got.
-		const entries = Array.isArray(mail)
-			? mail
-			: [{ from: "agent", text: typeof message.content === "string" ? message.content : "", at: Date.now() }];
-		for (const entry of entries) {
-			// The sender's role and goal are already on its Agent row; the number is what `replyTo` takes.
-			// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- details are another process's data
-			const from = clip(String(entry?.from ?? "agent"), 64);
-			const meta = [
-				typeof entry?.id === "number" ? `#${entry.id}` : "",
-				formatClock(entry?.at ?? Date.now()),
-				entry?.replyRequired ? "reply requested" : "",
-			].filter(Boolean);
-			box.addChild(
-				new Text(
-					`${theme.fg("accent", "✉")} ${theme.fg("toolTitle", theme.bold(from))} ${theme.fg("dim", `→ you · ${meta.join(" · ")}`)}`,
-					0,
-					0,
-				),
-			);
-			// resultBlock sanitizes the body.
-			box.addChild(
-				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- details are another process's data
-				resultBlock(theme, { expanded: true }, { summary: "", body: String(entry?.text ?? ""), error: false }),
-			);
-		}
-		return box;
-	});
+	api.registerMessageRenderer(INTERNAL_MESSAGE_TYPE, (message, options, theme) => mailRows(message, options, theme));
 }
 
 /** The result of `forward`: stored message #N delivered to more agents, or a finished subagent resumed with it. */
@@ -163,12 +126,13 @@ export function registerSendMessageTool(
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: request an answer; wakes idle recipient. Default: FYI",
+						description: "true: request an answer. Default: FYI",
 					}),
 				),
 				wake: Type.Optional(
 					Type.Boolean({
-						description: "true: an idle recipient acts now, no answer expected. Not with to: all",
+						description:
+							"Default: a new message to a named agent starts its turn if idle, paced; false: read at its next turn. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
@@ -201,7 +165,7 @@ export function registerSendMessageTool(
 					...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
 					...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),
 					...(params.interrupt ? { interrupt: true } : {}),
-					...(params.wake ? { wake: true } : {}),
+					...(params.wake !== undefined ? { wake: params.wake } : {}),
 				});
 				if ("error" in result) throw new Error(result.error);
 				const details = {
@@ -272,8 +236,8 @@ export function registerSendMessageTool(
 					fate(group("next-step"), "reads it at its next step.", "read it at their next steps."),
 					fate(
 						group("queued-quiet"),
-						"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes. wake: true starts it with no reply expected.",
-						"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes. wake: true starts them with no reply expected.",
+						"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes.",
+						"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes.",
 					),
 					stalled,
 				]
@@ -289,65 +253,40 @@ export function registerSendMessageTool(
 					details,
 				);
 			},
+			// The app and web transcript get the same words as the terminal rows (`message-rows.ts`).
 			display(input) {
-				const { args } = input;
-				const summary = [
-					args.forward === undefined ? "" : `forward #${String(args.forward)}`,
-					// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-					args.to === undefined ? "" : `→ ${String(args.to)}`,
-					args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`,
-				]
-					.filter(Boolean)
-					.join(" · ");
-				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-				const message = String(args.message ?? "");
+				const args = asRecord(input.args);
+				const summary = sendSummary(args);
+				const message = typeof args.message === "string" ? args.message : "";
 				const head = { title: "Send", ...(summary ? { summary } : {}), kind: "agent" as const, blocks: [] };
 				const details: Record<string, unknown> = asRecord(input.result?.details);
 				if (!input.result || input.status === "failed" || typeof details.id !== "number")
 					return textResultDisplay(head, input);
-				const sent = Array.isArray(details.to) ? details.to.map(String) : [];
-				const departed =
-					Array.isArray(details.departed) && details.departed.length
-						? ` · not sent to ${details.departed.map(String).join(", ")}`
-						: "";
 				return {
 					...head,
-					outcome: {
-						text: `Queued #${details.id}${sent.length > 1 ? ` to ${plural(sent.length, "agent")}` : ""}${departed}`,
-					},
+					outcome: { text: sendOutcome(args, details) },
 					blocks: message ? [{ type: "text" as const, text: message }] : [],
 				};
 			},
 			renderCall(args, theme, context) {
-				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-				const to = args.to === undefined ? "" : `→ ${String(args.to)}`;
-				const reply = args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`;
-				const forward = args.forward === undefined ? "" : `forward #${String(args.forward)}`;
 				// Queueing is instant: a millisecond count says nothing, so only a send that took a second or more shows its time.
 				const slow = (context.durationMs ?? 0) >= 1_000;
 				return toolHeader(
 					theme,
 					slow ? context : { ...context, durationMs: undefined },
 					"Send",
-					[forward, to, reply].filter(Boolean).join(" · "),
+					sendSummary(asRecord(args)),
 				);
 			},
 			renderResult(result, _options, theme, context) {
 				const details: Record<string, unknown> = asRecord(result.details);
 				const text = contentText(result.content);
-				const sent = Array.isArray(details.to) ? details.to.map(String) : [];
-				const departed =
-					Array.isArray(details.departed) && details.departed.length
-						? ` · not sent to ${details.departed.map(String).join(", ")}`
-						: "";
 				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
-				// Collapsed, the first line of what was sent; the whole message shows when expanded.
-				const first = context.expanded ? "" : clip(message.trimStart(), PREVIEW_CHARS);
-				const preview = first ? ` · "${first}"` : "";
+				// Collapsed, the start of what was sent; the whole message shows when expanded.
 				const summary =
 					typeof details.id === "number"
-						? `Queued #${details.id}${sent.length > 1 ? ` to ${plural(sent.length, "agent")}` : ""}${preview}${departed}`
+						? `${sendOutcome(asRecord(context.args), details)}${context.expanded ? "" : sendPreview(message)}`
 						: firstLine(text);
 				return resultBlock(theme, context, {
 					summary,

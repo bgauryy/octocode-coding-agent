@@ -237,7 +237,7 @@ function toKeybindingsConfig(value: Record<string, unknown>): KeybindingsConfig 
 function loadRawConfig(path: string): Record<string, unknown> | undefined {
 	if (!existsSync(path)) return undefined;
 	try {
-		const parsed = readJsonFile(path) as unknown;
+		const parsed = readJsonFile(path);
 		if (typeof parsed !== "object" || parsed === null) return undefined;
 		return parsed as Record<string, unknown>;
 	} catch {

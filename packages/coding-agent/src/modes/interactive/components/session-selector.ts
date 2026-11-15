@@ -85,7 +85,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 	/** Border, title, content, hints: the list is the only content that fills the terminal. */
 	private buildBaseLayout(content: Component, options?: { showHeader?: boolean }): void {
 		this.clear();
-		this.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+		this.addChild(new DynamicBorder((s) => theme.fg("border", s)));
 		if (options?.showHeader ?? true) {
 			this.addChild(this.header);
 			this.addChild(content);
@@ -94,7 +94,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			this.addChild(new Spacer(1));
 			this.addChild(content);
 			this.addChild(new Spacer(1));
-			this.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
+			this.addChild(new DynamicBorder((s) => theme.fg("border", s)));
 		}
 	}
 

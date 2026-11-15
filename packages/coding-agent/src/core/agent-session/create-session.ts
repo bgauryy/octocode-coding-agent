@@ -211,6 +211,7 @@ export async function createSessionFromServices(
 			modelRuntime.getCachePolicy(physical, options, settingsManager.getCachePreferenceLayers()).options;
 		return {
 			...options,
+			roleVariantTools: new Set(agent.state.tools.filter((tool) => tool.roleVariant).map((tool) => tool.name)),
 			promptCacheKey: options.promptCacheKey ?? sessionPromptCacheKey(options.sessionId),
 			// A virtual model's request is resolved for the model it routes to.
 			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),

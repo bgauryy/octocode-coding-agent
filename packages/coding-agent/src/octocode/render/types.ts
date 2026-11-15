@@ -1,4 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
+import { STATE_COLOR } from "../../theme/status.ts";
 import type { Theme } from "../../theme/theme.ts";
 
 /** Renderer state kept per tool row (`context.state`). */
@@ -46,3 +47,9 @@ export interface RenderContext {
 export type Phase = "pending" | "running" | "done" | "error" | "stopped";
 
 export type ColorToken = Parameters<Theme["fg"]>[0];
+
+/**
+ * The one tone of an interrupted call: its text, the assistant's `Interrupted` line and a stopped reasoning label.
+ * The `◼` mark uses the same token.
+ */
+export const STOPPED_COLOR: ColorToken = STATE_COLOR.stopped;

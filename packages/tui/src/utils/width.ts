@@ -48,9 +48,30 @@ const terminalSpacingMarkRegex =
 	/^(?:[\p{Spacing_Mark}--[\u1734\u302E\u302F]]|[\u065F\u0F7F\u102B\u102C\u1031\u1033-\u1035\u1038\u103A-\u103E])+$/v;
 const rgiEmojiRegex = /^\p{RGI_Emoji}$/v;
 
-// Cache for non-ASCII strings
+/**
+ * Widths of strings measured recently. A row is measured again by the passes that handle it one after the other
+ * (wrapping, padding, framing, finishing), so the same string is asked about again within a short span: a small cache
+ * answers those. It starts over when full rather than evicting one entry per insert: a long result measured row by row
+ * never repeats a row, and evicting for each of them cost several times the measuring. Strings of
+ * `WIDTH_CACHE_MIN_LENGTH` or more are kept; shorter ASCII strings cost less to scan than to look up, shorter
+ * non-ASCII strings are kept anyway (segmenting is slow). Strings over `WIDTH_CACHE_MAX_LENGTH` are not kept, which
+ * bounds the cache's memory.
+ */
 const WIDTH_CACHE_SIZE = 512;
+const WIDTH_CACHE_MIN_LENGTH = 24;
+const WIDTH_CACHE_MAX_LENGTH = 1024;
 const widthCache = new Map<string, number>();
+
+/** Drop every cached width: the rows measured at a size that no longer applies will not be asked about again. */
+export function clearWidthCache(): void {
+	widthCache.clear();
+}
+
+function rememberWidth(str: string, width: number): void {
+	if (str.length > WIDTH_CACHE_MAX_LENGTH) return;
+	if (widthCache.size >= WIDTH_CACHE_SIZE) widthCache.clear();
+	widthCache.set(str, width);
+}
 
 export function isPrintableAscii(str: string): boolean {
 	for (let i = 0; i < str.length; i++) {
@@ -141,16 +162,23 @@ export function visibleWidth(str: string): number {
 		return 0;
 	}
 
+	const cacheable = str.length >= WIDTH_CACHE_MIN_LENGTH;
+	if (cacheable) {
+		const cached = widthCache.get(str);
+		if (cached !== undefined) return cached;
+	}
+
 	// Fast path: printable ASCII, tabs, and ANSI escape sequences. Styled lines take this path, so
 	// re-rendering after a theme change does not run grapheme segmentation on every line.
 	const asciiWidth = asciiVisibleWidth(str);
 	if (asciiWidth !== -1) {
+		if (cacheable) rememberWidth(str, asciiWidth);
 		return asciiWidth;
 	}
 
-	const cached = widthCache.get(str);
-	if (cached !== undefined) {
-		return cached;
+	if (!cacheable) {
+		const cached = widthCache.get(str);
+		if (cached !== undefined) return cached;
 	}
 
 	// Normalize: tabs to 3 spaces, strip ANSI escape codes
@@ -184,13 +212,7 @@ export function visibleWidth(str: string): number {
 		width += graphemeWidth(segment);
 	}
 
-	if (widthCache.size >= WIDTH_CACHE_SIZE) {
-		const firstKey = widthCache.keys().next().value;
-		if (firstKey !== undefined) {
-			widthCache.delete(firstKey);
-		}
-	}
-	widthCache.set(str, width);
+	rememberWidth(str, width);
 
 	return width;
 }

@@ -249,14 +249,29 @@ describe("who counts as gone", () => {
 	it("treats a row whose pid now names a later process as gone", async () => {
 		const store = TeamStore.open(repo(), path.join(tmp(), "team.sqlite"));
 		try {
-			// The parent process runs, but it did not start when this row says: the recorded process is gone.
-			store.save(member("reused", { pid: process.ppid, started: "1" }));
+			// The parent process runs, but it did not start when this row says, and the row stopped beating: it is gone.
+			store.save(member("reused", { pid: process.ppid, started: "1", updatedAt: Date.now() - 120_000 }));
 			store.save(member("real", { ...other() }));
 			// The sweep runs on a timer and never waits for `ps`: it judges from the shared process table, read off-thread.
 			await refreshProcessTable();
 			store.sweep();
 			expect(store.names().sort()).toEqual(["real"]);
 			expect(store.list().map((each) => each.id)).toEqual(["real"]);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("keeps a member with a fresh heartbeat and a live pid whatever the process table says, until it goes stale", async () => {
+		const store = TeamStore.open(repo(), path.join(tmp(), "team.sqlite"));
+		try {
+			// The table names another start for this pid: a misread table must not retire a peer that is still beating.
+			store.save(member("beating", { pid: process.ppid, started: "1" }));
+			await refreshProcessTable();
+			store.sweep();
+			expect(store.names()).toEqual(["beating"]);
+			store.sweep(Date.now() + 120_000);
+			expect(store.names()).toEqual([]);
 		} finally {
 			store.close();
 		}

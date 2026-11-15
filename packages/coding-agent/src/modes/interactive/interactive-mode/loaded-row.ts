@@ -14,7 +14,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
-import { keyHint } from "../../../theme/theme-tui-helpers.ts";
+import { keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
 import type { Expandable } from "./types.ts";
 
 export interface LoadedRowSpec {
@@ -97,9 +97,11 @@ const FIT_COLUMNS: readonly RowColumn[] = [
 	{ priority: 1 },
 ];
 
-/** `(ctrl+o to expand)`, as the collapsed bash output and other expandable views word it. */
+/** `(ctrl+o to expand)`, as the collapsed bash output and other expandable views word it; nothing when unbound. */
 export const expandHint = (): string =>
-	`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+	keyText("app.tools.expand")
+		? `${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`
+		: "";
 
 /** Wraps `text` into `width - indent` cells and indents every row after the first by `indent`. */
 function wrapAfter(text: string, width: number, indent: number): string[] {

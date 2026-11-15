@@ -15,17 +15,8 @@ import { timerWorkRows } from "../timer/work.ts";
  * Recovery bullet (`splitSummary` removes the section by that shape), rebuilt at every compaction, never carried.
  */
 
-/** Items named one by one; the rest are counted. */
-const MAX_ITEMS = 8;
 /** Characters kept of an item's title. */
 const TITLE_CHARS = 100;
-
-/** The held items as `B7 ongoing "title"`, the first `MAX_ITEMS`, then how many more. */
-function itemsText(rows: ReadonlyArray<{ seq: number; title: string }>): string {
-	const named = rows.slice(0, MAX_ITEMS).map((row) => `B${row.seq} ongoing "${shownLine(row.title, TITLE_CHARS)}"`);
-	if (rows.length > MAX_ITEMS) named.push(`${rows.length - MAX_ITEMS} more (backlogPlan list shows them)`);
-	return named.join("; ");
-}
 
 /**
  * The live-state lines for the session `ctx` belongs to. `entries` is its branch (the background work in its tool
@@ -42,7 +33,9 @@ export function liveStateLines(
 		const agent = sharedAgentDb();
 		const repoKey = registeredWorkspace(ctx.cwd, agent).id;
 		const rows = backlog.ongoingItems(agent.db, repoKey, ctx.sessionManager.getSessionId());
-		lines.push(renderInstruction("notices/recovery/live-items.md", { items: itemsText(rows) }));
+		// Held items are listed once, with their goals, by the session-state brief sent after the compaction
+		// (`sessions/brief.ts`, read from the same table later); this block only states that there are none.
+		if (rows.length === 0) lines.push(renderInstruction("notices/recovery/live-items.md"));
 	} catch {
 		lines.push(renderInstruction("notices/recovery/live-unreadable.md"));
 	}

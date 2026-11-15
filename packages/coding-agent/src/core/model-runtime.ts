@@ -32,6 +32,7 @@ import {
 	type MutableModels,
 	type Provider,
 } from "@octocodeai/octocode-ai";
+import { getConfigValueEnvVarNames, isCommandConfigValue } from "./config-value.ts";
 import { ModelCatalog } from "./model-runtime/catalog.ts";
 import { ModelAvailability } from "./model-runtime/availability.ts";
 import { loadModelRuntimeParts, type ModelRuntimeParts, refreshOnCreate } from "./model-runtime/create.ts";
@@ -63,9 +64,7 @@ import {
 export {
 	type CreateModelRuntimeOptions,
 	CredentialSynchronizationError,
-	type CredentialSynchronizationOperation,
 	type ModelRuntimeAuthOverrides,
-	type ModelRuntimeLoginOptions,
 } from "./model-runtime/types.ts";
 
 /** Configured octocode-ai Models collection used by coding-agent and SDK consumers. */
@@ -159,6 +158,39 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getWarnings();
 	}
 
+	/**
+	 * One warning per enabled models.json provider that adds models but has no credential from any source (its `apiKey`,
+	 * a stored key or sign-in, the environment), so none of its models can run. Read after an availability pass.
+	 */
+	getMissingCredentialWarnings(): string[] {
+		return this.layers.config
+			.getProviderIds()
+			.filter(
+				(providerId) =>
+					(this.layers.config.getProvider(providerId)?.models?.length ?? 0) > 0 &&
+					!this.isProviderDisabled(providerId) &&
+					!this.hasConfiguredAuth(providerId),
+			)
+			.map((providerId) => this.missingCredentialWarning(providerId));
+	}
+
+	private missingCredentialWarning(providerId: string): string {
+		const subject = `models.json provider "${providerId}"`;
+		const apiKey = this.layers.config.getProvider(providerId)?.apiKey;
+		if (apiKey !== undefined && isCommandConfigValue(apiKey)) {
+			return `${subject} has no credential: its apiKey comes from a command, which could not be used, so its models cannot run.`;
+		}
+		const unset = apiKey === undefined ? [] : getConfigValueEnvVarNames(apiKey).filter((name) => !process.env[name]);
+		if (unset.length > 0) {
+			const names = unset.map((name) => `$${name}`).join(", ");
+			return `${subject} has no credential: its apiKey uses ${names}, which ${unset.length > 1 ? "are" : "is"} not set, so its models cannot run. Set it, or save a key or sign in with /providers.`;
+		}
+		return (
+			`${subject} has no credential, so its models cannot run. Add "apiKey" to it ` +
+			`(a key, "$ENV_NAME" or "!command"), or save a key or sign in with /providers.`
+		);
+	}
+
 	getError(): string | undefined {
 		const errors = this.layers.getErrors();
 		const availabilityError = this.availability.availabilityError;
@@ -187,6 +219,10 @@ export class ModelRuntime extends ModelCatalog implements Models {
 
 	listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		return this.credentials.list(options);
+	}
+	/** The credential saved for a provider, with a keychain reference resolved; undefined when none. */
+	readCredential(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+		return this.credentials.read(providerId, options);
 	}
 	importCredential(...args: Parameters<CredentialOperations["importCredential"]>): Promise<void> {
 		return this.credentialOperations.importCredential(...args);

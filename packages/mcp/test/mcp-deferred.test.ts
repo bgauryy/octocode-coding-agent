@@ -104,7 +104,7 @@ describe("deferred MCP exposure", () => {
 		expect(block).not.toContain("Input schema");
 	});
 
-	it("returns the full upstream instructions, description and schema on demand, by tool or call name", async () => {
+	it("returns the full upstream description and schema on demand, by tool or call name, and points to the instructions", async () => {
 		const h = host([entry("docs", { exposure: "deferred" })]);
 		await h.start();
 		await h.prompt();
@@ -113,7 +113,9 @@ describe("deferred MCP exposure", () => {
 		expect(tool).toContain(`Input schema:\n${JSON.stringify(SHOUT_SCHEMA, null, 2)}`);
 		expect(text(await h.call("mcp", { intent: "tools", server: "docs", tool: "mcp__docs__shout" }))).toBe(tool);
 		const server = text(await h.call("mcp", { intent: "tools", server: "docs" }));
-		expect(server).toContain("Echo test server.");
+		// The prompt's block already holds the instructions whole, so the listing names the block instead.
+		expect(server).not.toContain("Echo test server.");
+		expect(server).toContain('<mcps> section, block "docs"');
 		expect(server).toContain("shout [deferred] — Uppercase the given text");
 	});
 

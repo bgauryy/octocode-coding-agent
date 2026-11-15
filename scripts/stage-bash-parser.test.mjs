@@ -20,7 +20,7 @@ test("staged parser assets independently parse Bash and retain source licenses",
 		assert.match(tree.rootNode.toString(), /command_substitution/);
 		for (const name of ["LICENSE.bash", "LICENSE.tree-sitter"])
 			assert.match(readFileSync(join(target, name), "utf8"), /Permission is hereby granted/);
-		assert.equal(JSON.parse(readFileSync(join(target, "manifest.json"), "utf8")).runtime.version, "0.25.10");
+		assert.equal(JSON.parse(readFileSync(join(target, "manifest.json"), "utf8")).runtime.version, "0.27.2");
 	} finally {
 		tree?.delete();
 		parser?.delete();

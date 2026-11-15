@@ -1,5 +1,5 @@
 import { AGENT_SCRATCH_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV, envFlag } from "../../../../common/src/env.ts";
-import { mutatedPaths } from "../tool-input/file-input.ts";
+import { toolEffect } from "./tool-effects.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { shellPath } from "./file-access.ts";
@@ -54,9 +54,10 @@ export function isolatedTreeRefusal(
 		const target = canonicalPath(fromShell ? shellPath(cwd, file) : resolveToolPath(cwd, file));
 		return isWithin(target, main) && !(scratch && isWithin(target, canonicalPath(scratch)));
 	};
-	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
-		const found = mutatedPaths(event.toolName, input).find((file) => intoMain(file));
-		return found === undefined ? undefined : refusal(`Changing ${found}`, main);
+	const declared = toolEffect(event.toolName);
+	if (declared?.kind === "write") {
+		const found = declared.changes?.(input)?.find((change) => intoMain(change.path));
+		return found === undefined ? undefined : refusal(`Changing ${found.path}`, main);
 	}
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
 	const command = optionalString(input.command) ?? "";

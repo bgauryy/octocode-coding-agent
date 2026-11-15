@@ -7,7 +7,7 @@ import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
-import type { DeadLetter, Lease, LeaseConflict, Message } from "./model.ts";
+import type { DeadLetter, Lease, LeaseConflict, Message, RecipientKind } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { cutText } from "../../../../common/src/text.ts";
@@ -19,7 +19,16 @@ export const MESSAGE_MAX_CHARS = 8_000;
 /** Senders that are not agents: they cannot be replied to, and their messages wake the recipient. */
 export const outside = (from: string) => from === USER_SENDER || from === EXTERNAL_SENDER;
 
-/** The notice a sender gets when its message's recipients left the team before reading it, or before answering its question. */
+/** What a sender can do about mail `who` can no longer read: a child's report and resume, or, for a peer, another agent or the user. */
+export const nextStep = (who: string, { child, reported }: RecipientKind): string =>
+	renderInstruction("notices/mail/dead-letter-next.md", { who, child, reported });
+
+const PEER: RecipientKind = { child: false, reported: false };
+
+/**
+ * The notice a sender gets when its message's recipients left the team before reading it, or before answering its
+ * question, ending with the next step for each (`letter.kinds`; a recipient it does not name is a peer).
+ */
 export function deadLetterText(letter: DeadLetter): string {
 	const read = letter.read ?? [];
 	const unread = letter.recipients.filter((recipient) => !read.includes(recipient));
@@ -47,7 +56,8 @@ export function deadLetterText(letter: DeadLetter): string {
 	const parts = [unread.length > 0 ? notice(unread, false) : "", read.length > 0 ? notice(read, true) : ""].filter(
 		Boolean,
 	);
-	return visibleControls(`${parts.join(" ")} ${began}`);
+	const next = new Set(letter.recipients.map((recipient) => nextStep(recipient, letter.kinds?.[recipient] ?? PEER)));
+	return visibleControls(`${parts.join(" ")} ${began} ${[...next].join(" ")}`);
 }
 
 /** `reviewer: audit auth token refresh`: what the sender is and works on, as written. Each reader escapes it for its own channel. */

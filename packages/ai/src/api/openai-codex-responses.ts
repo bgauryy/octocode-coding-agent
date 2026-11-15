@@ -3,7 +3,7 @@ import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveCacheAffinityId, resolveCacheRetention } from "../utils/cache-policy.ts";
 import { appendAssistantMessageDiagnostic, createAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -85,7 +85,9 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			);
 			const cacheSessionId =
 				resolveCacheRetention(options?.cacheRetention, options?.env) === "none" ? undefined : options?.sessionId;
-			const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);
+			// Headers and the websocket handshake route by the shared prompt cache key (like the body); the socket cache
+			// and its continuation state stay per session, since a fork's history diverges from its parent's.
+			const codexSessionId = clampOpenAIPromptCacheKey(resolveCacheAffinityId(options));
 			let body = buildRequestBody(model, normalizedContext, options, codexSessionId, grammarToolInputProperties);
 			const nextBody = await options?.onPayload?.(body, model);
 			if (nextBody !== undefined) {

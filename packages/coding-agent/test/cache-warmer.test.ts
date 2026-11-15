@@ -561,6 +561,21 @@ describe("cache warming", () => {
 		expect(unavailable.calls).toHaveLength(0);
 	});
 
+	it("replays a Gemini reasoning request once a cache lifetime is declared for it", async () => {
+		vi.useFakeTimers();
+		const catalogGemini = getBuiltinModel("google", "gemini-2.5-pro");
+		const declared: Model<Api> = { ...catalogGemini, promptCache: { short: 300 } };
+		const run = fakeRuntime();
+		// Implicit caching declares no lifetime in the catalog: nothing to plan with, so nothing is replayed.
+		run.warmer.start(request(catalogGemini, { reasoning: "high" }), current);
+		expect(run.warmer.status.reason).toBe("cache lifetime unavailable");
+		run.warmer.start(request(declared, { reasoning: "high" }), current);
+		expect(run.warmer.status.reason).not.toBe("request cannot be replayed safely");
+		await vi.advanceTimersByTimeAsync(270_000);
+		expect(run.calls).toHaveLength(1);
+		expect(run.calls[0]?.options).toMatchObject({ reasoning: "high", maxTokens: 1 });
+	});
+
 	it("stops for unsupported requests, context changes, and mode changes", async () => {
 		vi.useFakeTimers();
 		const unsupported = fakeRuntime();

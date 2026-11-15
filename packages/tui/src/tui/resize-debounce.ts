@@ -38,6 +38,21 @@ export class ResizeDebounce {
 		this.maxWaitMs = options.maxWaitMs ?? RESIZE_BURST_MAX_WAIT_MS;
 	}
 
+	/** A resize event is waiting for its frame: the terminal's size has not settled. */
+	get pending(): boolean {
+		return this.timer !== undefined;
+	}
+
+	/** Settle a waiting resize now; returns whether one was waiting. The caller paints the frame. */
+	flush(): boolean {
+		if (!this.timer) return false;
+		clearTimeout(this.timer);
+		this.timer = undefined;
+		this.windowStart = Date.now();
+		this.leading = false;
+		return true;
+	}
+
 	trigger(): void {
 		const now = Date.now();
 		const inBurst = this.lastEventAt !== undefined && now - this.lastEventAt < this.burstDelayMs;
@@ -52,9 +67,7 @@ export class ResizeDebounce {
 		const delay = Math.max(0, deadline - now);
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
-			this.timer = undefined;
-			this.windowStart = Date.now();
-			this.leading = false;
+			this.flush();
 			this.fire();
 		}, delay);
 		this.timer.unref();

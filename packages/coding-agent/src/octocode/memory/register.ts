@@ -66,10 +66,15 @@ export function registerMemory(
 			},
 		};
 
-	api.on("before_agent_start", async (event, ctx) => {
+	/**
+	 * What to send before a request: the session notes the model cannot see, then (with recall on) pinned and relevant memories
+	 * for `query`. A broken store never blocks a request; notify once until retrieval recovers.
+	 */
+	const injectionFor = (ctx: ExtensionContext, query: string) => {
 		// Session notes belong to the session, not to the memory store or its automatic recall: a note the model cannot see
 		// is sent whatever those settings say, and a broken store does not hide it.
-		const lead = sessionNoteLead(sessionNotes(ctx.sessionManager));
+		const contextWindow = ctx.model?.contextWindow;
+		const lead = sessionNoteLead(sessionNotes(ctx.sessionManager), contextWindow);
 		const lone = () =>
 			lead.lines.length > 0
 				? hiddenMessage(noteOnlyInjection(lead, sessionInjections(ctx.sessionManager).headerInContext))
@@ -80,11 +85,12 @@ export function registerMemory(
 			if (!store.autoSetting()) return lone();
 			const earlier = sessionInjections(ctx.sessionManager);
 			const injection = selectInjection(store, {
-				query: agentStartQuery(event, goal),
+				query,
 				scope: "all",
 				seen: unchangedIds(store, earlier.injected),
 				headerInContext: earlier.headerInContext,
 				topK: options.isSubagent ? SUBAGENT_TOP_K : TOP_K,
+				...(contextWindow ? { contextWindow } : {}),
 				// Owner decision, 2026-11-11: a subagent gets pinned memories of kind `preference` only, within the same
 				// pinned budget; pinned facts, decisions and other kinds stay out, and it reads those with the `memory` tool.
 				...(options.isSubagent ? { pinnedKind: SUBAGENT_PINNED_KIND } : {}),
@@ -93,7 +99,6 @@ export function registerMemory(
 			failedSession = undefined;
 			return hiddenMessage(injection);
 		} catch {
-			// A broken store never blocks a prompt; notify once until retrieval recovers.
 			const session = ctx.sessionManager.getSessionId();
 			if (failedSession !== session) {
 				failedSession = session;
@@ -105,6 +110,23 @@ export function registerMemory(
 					);
 			}
 			return lone();
+		}
+	};
+
+	api.on("before_agent_start", async (event, ctx) => injectionFor(ctx, agentStartQuery(event, goal)));
+
+	// An overflow compaction retries the turn with `continue()`, which sends no `before_agent_start`: the notes and pinned
+	// memories the summary replaced would stay out of the retry's request. They are sent again here, before it, only
+	// when the compaction left them out of context (`seen` and the notes' context check already say so, so the retry adds
+	// no bytes when a kept message still shows them).
+	api.on("session_compact", async (event, ctx) => {
+		if (!event.willRetry) return;
+		const injection = injectionFor(ctx, "");
+		if (!injection) return;
+		try {
+			void api.sendMessage(injection.message, { triggerTurn: false, deliverAs: "followUp" });
+		} catch {
+			// The session was replaced.
 		}
 	});
 

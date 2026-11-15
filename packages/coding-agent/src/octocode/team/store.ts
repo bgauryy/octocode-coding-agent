@@ -11,7 +11,7 @@ import {
 } from "../../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
 import { agentDbPath } from "../shared/home.ts";
-import { liveProcess } from "../shared/process.ts";
+import { liveProcess, processAlive } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
 import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
@@ -192,13 +192,14 @@ export class TeamStore {
 
 	/**
 	 * Retires every member whose process is gone (`rowLive`: dead, or a later process that got its pid; no `ps` for a fresh
-	 * heartbeat): the one place a member that did not leave is dropped and its mail dead-lettered. A stale member is kept.
+	 * heartbeat; `deadOnly`: only a pid that no longer runs, cheap enough for every heartbeat): the one place a member that
+	 * did not leave is dropped and its mail dead-lettered. A stale member is kept.
 	 * Each is judged outside the write lock and retired only if its row still names the process judged, so a member that
 	 * joined again under the same name meanwhile is left alone. What was retired is read back with `names`.
 	 */
-	sweep(now = Date.now()): void {
+	sweep(now = Date.now(), deadOnly = false): void {
 		for (const { id, seenAt, ...identity } of agents.allProcesses(this.db))
-			if (!rowLive({ ...identity, seenAt }, now)) this.reap(id, identity, now);
+			if (deadOnly ? !processAlive(identity.pid) : !rowLive({ ...identity, seenAt }, now)) this.reap(id, identity, now);
 	}
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */

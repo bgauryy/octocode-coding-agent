@@ -328,6 +328,8 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	 * input belongs to someone else (an MCP server). Never sent to a provider.
 	 */
 	coerceArguments?: false;
+	/** True: declared only by some agent roles; the tool cache breakpoint sits before the first such tool. Never sent to a provider. */
+	roleVariant?: boolean;
 }
 
 export interface ToolReference {

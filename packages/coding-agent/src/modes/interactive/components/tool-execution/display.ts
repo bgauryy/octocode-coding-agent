@@ -4,16 +4,16 @@ import {
 	type ToolDisplay,
 	type ToolDisplayBlock,
 } from "@octocodeai/octocode-contracts";
-import type { Component } from "@octocodeai/octocode-tui";
+import { GLYPH, Markdown, type Component, renderChanged, trackRenderChanges } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { buildToolDisplay } from "../../../../core/application/transcript-display.ts";
 import type { ToolDefinition, ToolRenderers } from "../../../../core/features/types.ts";
 import { displayText } from "../../../../octocode/render/display.ts";
 import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
-import { clip } from "../../../../octocode/shared/text.ts";
+import { clip, INDENT } from "../../../../octocode/shared/text.ts";
 import type { RenderContext } from "../../../../octocode/render/types.ts";
 import { stateMark } from "../../../../theme/status.ts";
-import type { Theme } from "../../../../theme/theme.ts";
+import { getMarkdownTheme, type Theme } from "../../../../theme/theme.ts";
 import type { ThemeColor } from "../../../../theme/theme-tokens.ts";
 import { renderDiff } from "../../../../theme/diff.ts";
 
@@ -25,8 +25,11 @@ const TONE: Record<Tone, ThemeColor> = {
 	error: "error",
 };
 
+/** The spaces the markdown layout pads a line with, before the style resets that end it. */
+const PADDING = / +((?:\x1b\[[0-9;]*m)*)$/;
+
 /** A block as styled terminal lines; a block this version does not know shows its text. */
-function blockLines(theme: Theme, block: ToolDisplayBlock): string[] {
+function blockLines(theme: Theme, block: ToolDisplayBlock, width: number): string[] {
 	const known = knownToolDisplayBlock(block);
 	const plain = (text: string, color: ThemeColor = "toolOutput") =>
 		sanitizeTerminalText(text)
@@ -36,7 +39,7 @@ function blockLines(theme: Theme, block: ToolDisplayBlock): string[] {
 		case "diff":
 			return known.files.flatMap((file) => {
 				const counts = `${file.additions > 0 || file.removals === 0 ? ` ${theme.fg("toolDiffAdded", `+${file.additions}`)}` : ""}${file.removals > 0 ? ` ${theme.fg("toolDiffRemoved", `-${file.removals}`)}` : ""}`;
-				const target = `${stateMark(theme, "done")} ${clip(file.operation, 20)} ${theme.fg("mdCode", clip(file.from ? `${file.from} → ${file.path}` : file.path, 200))}${counts}`;
+				const target = `${stateMark(theme, "done")} ${clip(file.operation, 20)} ${theme.fg("mdCode", clip(file.from ? `${file.from} ${GLYPH.arrow} ${file.path}` : file.path, 200))}${counts}`;
 				return [
 					target,
 					...(file.patch ? renderDiff(sanitizeTerminalText(file.patch), { filePath: file.path }).split("\n") : []),
@@ -54,6 +57,11 @@ function blockLines(theme: Theme, block: ToolDisplayBlock): string[] {
 			);
 		case "text":
 			return plain(known.text, known.tone ? TONE[known.tone] : "toolOutput");
+		case "markdown":
+			// Laid out at the width the row has, so a table or a code fence is never re-wrapped.
+			return new Markdown(sanitizeTerminalText(known.text).trim(), 0, 0, getMarkdownTheme(theme))
+				.render(Math.max(1, width))
+				.map((line) => line.replace(PADDING, "$1"));
 		case "path":
 			return [];
 		default:
@@ -90,10 +98,35 @@ function renderDisplayResult(display: ToolDisplay, theme: Theme, context: Render
 			...common,
 			body: only.text,
 			tail: only.type === "output" || only.preview === "tail",
+			...(only.type === "output" ? { shell: true } : {}),
 		});
-	const lines = shown.flatMap((block) => blockLines(theme, block));
-	return resultBlock(theme, context, { ...common, ...(lines.length ? { lines } : { max: 0 }) });
+	const rows = (width: number) => {
+		const lines = shown.flatMap((block) => blockLines(theme, block, width));
+		return resultBlock(theme, context, { ...common, ...(lines.length ? { lines } : { max: 0 }) });
+	};
+	// Markdown depends on the width: the rows are built when the width is known. Other blocks do not.
+	return shown.some((block) => block.type === "markdown")
+		? new WidthResult((width) => rows(width - INDENT.length))
+		: rows(0);
 }
+
+/** A result whose body is laid out for the width it is drawn at; the drawn rows are kept per width. */
+class WidthResult implements Component {
+	private drawn: { width: number; lines: string[] } | undefined;
+	private readonly build: (width: number) => Component;
+	constructor(build: (width: number) => Component) {
+		this.build = build;
+	}
+	render(width: number): string[] {
+		if (this.drawn?.width !== width) this.drawn = { width, lines: this.build(width).render(width) };
+		return this.drawn.lines;
+	}
+	invalidate(): void {
+		this.drawn = undefined;
+		renderChanged(this);
+	}
+}
+trackRenderChanges(WidthResult.prototype);
 
 /** The display a row shows: the host's when the row has it, otherwise built here from the same pure function. */
 export function rowDisplay(input: {

@@ -67,6 +67,11 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		return Array.isArray(models) ? models.filter((model) => typeof model === "string" && model.trim() !== "") : [];
 	}
 
+	getRetryFallbackCooldownMs(): number {
+		const ms = this.settings.retry?.fallbackCooldownMs;
+		return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? ms : SETTINGS_DEFAULTS.retry.fallbackCooldownMs;
+	}
+
 	/** `toolExecution.earlyStart`: start read-only, approval-free tool calls while the message still streams. */
 	getToolExecutionEarlyStart(): boolean {
 		return this.settings.toolExecution?.earlyStart ?? SETTINGS_DEFAULTS.toolExecution.earlyStart;

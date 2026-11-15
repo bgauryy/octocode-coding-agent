@@ -109,7 +109,7 @@ describe("B: lists and objects sent as JSON text", () => {
 	it("parses a completion sent as JSON text", async () => {
 		const { text } = await setup();
 		await text({ op: "claim", id: "B1" });
-		const completion = JSON.stringify({ summary: "Done", verification: "ran the check" });
+		const completion = JSON.stringify({ summary: "Done", verification: "Passed: ran the check" });
 		expect(await text({ op: "done", id: "B1", completion })).toMatch(/^Updated B1/);
 	});
 });
@@ -281,7 +281,7 @@ describe("F: epics", () => {
 	};
 	const finish = async (text: (p: Record<string, unknown>) => Promise<string>, id: string) => {
 		await text({ op: "claim", id });
-		await text({ op: "done", id, completion: { summary: "Done", verification: "checked" } });
+		await text({ op: "done", id, completion: { summary: "Done", verification: "Passed: checked" } });
 	};
 
 	it("closes from plain state done once its items are done or closed", async () => {
@@ -417,10 +417,10 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 			'○ Backlog(list "search")',
 		);
 		expect(rendered(tool.renderCall({ op: "add", title: "Old item", from: "B1" }, theme, {}))).toBe(
-			'○ Backlog(add from B1 “first” "Old item")',
+			'○ Backlog(add from B1 "Old item")',
 		);
 		expect(rendered(tool.renderCall({ op: "update", id: "B2", state: "ongoing" }, theme, {}))).toBe(
-			"○ Backlog(update B2 “second” → ongoing)",
+			"○ Backlog(update B2 → ongoing)",
 		);
 		const row = (args: Record<string, unknown>, text: string, details: Record<string, unknown> = {}) =>
 			rendered(
@@ -435,10 +435,10 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 		);
 		const item = { ref: "B2", state: "ongoing", title: "second" };
 		expect(row({ op: "update", id: "B2", state: "ongoing" }, "Updated B2 [ongoing p2] second (you)", { item })).toBe(
-			"  ⎿  B2 “second” → ongoing",
+			"  ⎿  B2 → ongoing · second",
 		);
 		expect(row({ op: "add", title: "second" }, "Added B2 [backlog p2] second", { item })).toBe(
-			"  ⎿  Added B2 “second” · ongoing",
+			"  ⎿  Added B2 · ongoing · second",
 		);
 		const shown = tool.display({
 			args: { op: "update", id: "B2", state: "done" },

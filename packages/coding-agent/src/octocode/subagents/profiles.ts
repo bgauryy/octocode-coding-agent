@@ -8,6 +8,7 @@ import { selectsToolPrefix } from "../../core/agent-session/tool-selection.ts";
 import { applyToolModifiers, SettingsManager } from "../../core/settings-manager.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
+import type { PermissionRequest } from "../permission/request.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
@@ -303,23 +304,15 @@ const REACH_TEXT: Record<string, string> = {
 	shell: "run shell commands",
 };
 
-/**
- * The `agent.spawn` ask, showing the profile, what its tools reach, the permissions it declares and the task. Returns
- * the grant for the child: the classes the profile reaches when the user allowed this spawn (none when the mode itself
- * allows spawning: the child inherits the mode), and the classes the profile declared. A profile that declares
- * permissions forces this prompt in manual and workspace (reason `profile.permissions`), listing each class; the answer
- * is remembered for the session for that profile's content, so an edit asks again. Full allows it and records the
- * reason. A refusal throws, before anything starts.
- */
-export async function askSpawn(
+/** The `agent.spawn` request for `profile`'s child: what it reaches and declares, and the answer the profile still needs. */
+export function spawnRequest(
 	permission: Permission,
-	ctx: Pick<ExtensionContext, "hasUI" | "ui" | "cwd">,
+	ctx: Pick<ExtensionContext, "cwd">,
 	profile: AgentProfile | undefined,
 	task: string,
-	signal?: AbortSignal,
-	defaultTools?: readonly string[],
-	origin: { toolCallId?: string; goal?: string } = {},
-): Promise<ActionClass[]> {
+	defaultTools: readonly string[] | undefined,
+	origin: { toolCallId?: string; goal?: string },
+) {
 	const name = profile?.name ?? GENERAL_PROFILE;
 	const reach = profileReach(profile, defaultTools);
 	const declared = profile?.permissions ?? [];
@@ -330,7 +323,7 @@ export async function askSpawn(
 	// One identity for both remembered answers: the profile's name and the hash of its whole content.
 	const seen = `${name} ${profile?.hash ?? ""}`;
 	const needsAnswer = declared.length > 0 && !permission.profileSeen(seen);
-	const verdict = await permission.check(ctx, {
+	const request: PermissionRequest = {
 		action: "agent.spawn",
 		title: "Start this subagent?",
 		what: [
@@ -349,9 +342,39 @@ export async function askSpawn(
 		...(origin.toolCallId ? { toolCallId: origin.toolCallId } : {}),
 		...(origin.goal ? { purpose: origin.goal } : {}),
 		cwd: ctx.cwd,
-		...(signal ? { signal } : {}),
-	});
+	};
+	return { request, reach, declared, seen, needsAnswer };
+}
+
+/**
+ * The `agent.spawn` ask, showing the profile, what its tools reach, the permissions it declares and the task. Returns
+ * the grant for the child: the classes the profile reaches when the user allowed this spawn (none when the mode itself
+ * allows spawning: the child inherits the mode), and the classes the profile declared. A profile that declares
+ * permissions forces this prompt in manual and workspace (reason `profile.permissions`), listing each class; the answer
+ * is remembered for the session for that profile's content, so an edit asks again. Full allows it and records the
+ * reason. A refusal throws, before anything starts.
+ */
+export async function askSpawn(
+	permission: Permission,
+	ctx: Pick<ExtensionContext, "hasUI" | "ui" | "cwd">,
+	profile: AgentProfile | undefined,
+	task: string,
+	signal?: AbortSignal,
+	defaultTools?: readonly string[],
+	/** `answered` hears how the spawn was allowed (`mode`, `grant`, `user`, `hook`), for `spawnStillAllowed` later. */
+	origin: { toolCallId?: string; goal?: string; answered?: (via: string) => void } = {},
+): Promise<ActionClass[]> {
+	const { request, reach, declared, seen, needsAnswer } = spawnRequest(
+		permission,
+		ctx,
+		profile,
+		task,
+		defaultTools,
+		origin,
+	);
+	const verdict = await permission.check(ctx, { ...request, ...(signal ? { signal } : {}) });
 	if (!verdict.allowed) throw new Error(verdict.message);
+	origin.answered?.(verdict.via);
 	if (needsAnswer && (verdict.via === "user" || verdict.via === "hook")) permission.markProfileSeen(seen);
 	return [...new Set([...(verdict.via === "mode" ? [] : reach), ...declared])];
 }

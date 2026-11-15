@@ -1,4 +1,4 @@
-import { type Subcommands, say, wordCompletions } from "../../shared/commands.ts";
+import { cancelledText, type Subcommands, say, wordCompletions } from "../../shared/commands.ts";
 import { shortPath } from "../../../utils/display-path.ts";
 import { plural } from "../../shared/text.ts";
 import { firstLine } from "../../shared/util.ts";
@@ -10,10 +10,18 @@ import type { ReloadedJob } from "./types.ts";
 export function registerJobsCommand(commands: Subcommands, jobs: BashJobs): void {
 	commands.add("jobs", {
 		description: "List or stop background bash jobs",
+		argumentHint: "[kill <id>]",
 		handler: async (args, ctx) => {
 			const [sub = "", id = ""] = args.split(/\s+/);
 			if (!sub) return say(ctx, jobs.describe(), "info");
 			if (sub !== "kill") return say(ctx, "Usage: /jobs [kill <id>]", "warning");
+			if (!id) return say(ctx, `Usage: /jobs kill <id>. ${jobs.describe()}`, "warning");
+			if (
+				ctx.hasUI &&
+				jobs.jobs.has(id) &&
+				!(await ctx.ui.confirm("Stop background job?", `Stop ${id}? Output it has not written is lost.`))
+			)
+				return say(ctx, cancelledText("stopped"));
 			if (!jobs.stop(id, "user")) return say(ctx, `No background bash job "${id}".\n${jobs.describe()}`, "warning");
 			say(ctx, `Stopping ${id}…`, "info");
 		},

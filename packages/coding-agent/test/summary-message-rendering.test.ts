@@ -92,7 +92,7 @@ describe("summary messages", () => {
 		expect(lines(component, 80).join("\n")).toContain("Plain summary text");
 	});
 
-	test("a branch summary has its title and the expand hint on one line", () => {
+	test("a branch summary has its title, then the expand hint on its own row", () => {
 		const component = new BranchSummaryMessageComponent({
 			role: "branchSummary",
 			summary: "branch details",
@@ -100,7 +100,8 @@ describe("summary messages", () => {
 			timestamp: Date.now(),
 		});
 		expect(lines(component, 80).filter(Boolean)).toEqual([
-			expect.stringContaining("[branch] Summary of the branch you left ("),
+			expect.stringContaining("[branch] Summary of the branch you left"),
+			expect.stringContaining("(ctrl+o to expand)"),
 		]);
 	});
 

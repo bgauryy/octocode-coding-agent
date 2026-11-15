@@ -12,7 +12,9 @@ import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
+import { covers, shownRanges } from "./restore-shown.ts";
 import { type Outline, outlineOf } from "./restore-outline.ts";
+import { restoreLimits, type RestoreLimits, RESTORE_TOTAL_CHARS } from "./restore-limits.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "../../../../common/src/text.ts";
@@ -27,16 +29,7 @@ import { cutText } from "../../../../common/src/text.ts";
  * after the summary already hold, as it is on disk now (`heldFiles`), is not read back.
  */
 
-/** At most this many files come back (the few the work centered on; more would refill the context the summary freed)... */
-export const RESTORE_MAX_FILES = 5;
-/** ...a file up to this many characters (about 2.7k tokens at `CHARS_PER_TOKEN`) comes back whole; a longer one shows its outline (at most `RESTORE_OUTLINE_CHARS`), or, with no declaration to list, whole lines from the last range worked on, with a note... */
-export const RESTORE_FILE_CHARS = 8_000;
-/** ...an outline takes up to this many characters (the declarations of a file that did not fit whole)... */
-export const RESTORE_OUTLINE_CHARS = 4_000;
-/** ...and all of them together up to this many (about 6.7k tokens at `CHARS_PER_TOKEN`), but at most `RESTORE_SHARE` of the window left after Octocode's reserve (`windowBudget`)... */
-export const RESTORE_TOTAL_CHARS = 20_000;
-/** ...the share of that window, so a small model is not refilled to its threshold. */
-export const RESTORE_SHARE = 0.1;
+export * from "./restore-limits.ts";
 /** A file that would get fewer characters than this is not read back: a stub counted as read helps no one. */
 export const RESTORE_MIN_FILE_CHARS = 2_000;
 /** At most this many candidates that cannot be read back (binary, too large, missing, not UTF-8) are tried: a run of them must not stall the compaction. */
@@ -199,15 +192,18 @@ export function heldFiles(
 }
 
 /**
- * Reads back up to `RESTORE_MAX_FILES` of `candidates` (most recent first) except those in `held` (`heldFiles`: the
+ * Reads back up to `limits.maxFiles` of `candidates` (most recent first) except those in `held` (`heldFiles`: the
  * context has their current content), within the budgets, and gives up after `RESTORE_MAX_SKIPPED` candidates that
- * cannot be read back. Undefined when none qualifies.
+ * cannot be read back. A cut window of a file that `shown` (`shownRanges`) already covers is not read back either.
+ * Undefined when none qualifies.
  */
 export function restoreFiles(
 	candidates: readonly WorkedFile[],
 	held: ReadonlySet<string>,
 	cwd: string,
 	total = RESTORE_TOTAL_CHARS,
+	limits: RestoreLimits = restoreLimits(),
+	shown: ReadonlyMap<string, readonly LineRange[]> = new Map(),
 ): Restored | undefined {
 	const blocks: string[] = [];
 	const files: Restored["files"] = [];
@@ -221,8 +217,8 @@ export function restoreFiles(
 		const { file } = candidate;
 		const separator = blocks.length > 0 ? 2 : 0;
 		const available = total - used - separator;
-		let room = Math.min(RESTORE_FILE_CHARS, available);
-		if (files.length >= RESTORE_MAX_FILES || room < RESTORE_MIN_FILE_CHARS || skipped >= RESTORE_MAX_SKIPPED) break;
+		let room = Math.min(limits.fileChars, available);
+		if (files.length >= limits.maxFiles || room < RESTORE_MIN_FILE_CHARS || skipped >= RESTORE_MAX_SKIPPED) break;
 		const real = canonicalPath(file);
 		if (held.has(real) || taken.has(real)) continue;
 		const read = textOf(file);
@@ -234,8 +230,8 @@ export function restoreFiles(
 		// A file over the whole-file size shows its outline when it has declarations, else a window of whole lines.
 		const viewOf = (chars: number): Window => {
 			const outline =
-				text.length > RESTORE_FILE_CHARS
-					? outlineOf(text, Math.min(chars, RESTORE_OUTLINE_CHARS), candidate.line)
+				text.length > limits.fileChars
+					? outlineOf(text, Math.min(chars, limits.outlineChars), candidate.line)
 					: undefined;
 			if (!outline) return windowOf(text, chars, candidate.line);
 			const lines = text.match(/[^\n]*\n|[^\n]+$/g)?.length ?? 0;
@@ -277,6 +273,8 @@ export function restoreFiles(
 			block = render(view);
 		}
 		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) break;
+		// The tail's reads show every line of this window: the same text would come twice.
+		if (view.cut && !view.outline && covers(shown.get(real), view.first, view.last)) continue;
 		taken.add(real);
 		blocks.push(block);
 		files.push(
@@ -322,7 +320,15 @@ export function deliverRestoredFiles(
 			return undefined;
 		}
 	}
-	const restored = restoreFiles(pending, heldFiles(contextReads(ctx)), ctx.cwd, total);
+	const reads = contextReads(ctx);
+	const restored = restoreFiles(
+		pending,
+		heldFiles(reads),
+		ctx.cwd,
+		total,
+		restoreLimits(ctx.model?.contextWindow),
+		shownRanges(reads, RESTORE_MAX_BYTES),
+	);
 	if (!restored || restored.content.length > total) return undefined;
 	// Partial excerpts stay partial for the guard, but an identical retained excerpt need not be appended again.
 	const retained = ctx.sessionManager

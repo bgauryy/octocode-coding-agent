@@ -1,21 +1,6 @@
 import type { Model } from "../../types.ts";
-import { isOpenAIExtendedRetentionModel } from "../../utils/cache-capabilities.ts";
 import { isOpenRouterModel, matchesDomain, matchesHost } from "../../utils/provider-host.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
-
-/**
- * OpenRouter models whose caching its docs say needs explicit `cache_control` breakpoints (Alibaba).
- * Snapshot endpoints such as `qwen/qwen3.5-plus-02-15` are excluded there, so ids are matched exactly.
- * https://openrouter.ai/docs/guides/best-practices/prompt-caching#alibaba-qwen
- */
-const OPENROUTER_ALIBABA_EXPLICIT_CACHE_MODELS: ReadonlySet<string> = new Set([
-	"deepseek/deepseek-v3.2",
-	"qwen/qwen3-max",
-	"qwen/qwen-plus",
-	"qwen/qwen3.6-plus",
-	"qwen/qwen3-coder-plus",
-	"qwen/qwen3-coder-flash",
-]);
 
 /**
  * Kimi and Moonshot model ids (OpenRouter `moonshotai/kimi-*` slugs, relayed ids like `kimi-k3`) reach Moonshot's
@@ -88,10 +73,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		provider.startsWith("xiaomi") ||
 		matchesDomain(baseUrl, "xiaomimimo.com");
 	const isOpenRouterAnthropic = provider === "openrouter" && /^~?anthropic\//.test(model.id);
-	// OpenRouter documents Alibaba caching as explicit-breakpoint only, with a fixed 5-minute TTL.
-	const isOpenRouterAlibabaExplicitCache =
-		provider === "openrouter" && OPENROUTER_ALIBABA_EXPLICIT_CACHE_MODELS.has(model.id);
-	const cacheControlFormat = isOpenRouterAnthropic || isOpenRouterAlibabaExplicitCache ? "anthropic" : undefined;
+	// Other explicit-marker models (OpenRouter's Alibaba ids) declare `cacheControlFormat` in their catalog compat.
+	const cacheControlFormat = isOpenRouterAnthropic ? "anthropic" : undefined;
 
 	return {
 		supportsStore: !isNonStandard,
@@ -135,18 +118,11 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		reasoningReplayField: provider === "opencode-go" ? "reasoning_content" : undefined,
 		toolCallIdMaxLength: provider === "openai" ? 40 : undefined,
 		// Without markers the long tier is `prompt_cache_retention: "24h"`, which api.openai.com takes only for the models
-		// OpenAI lists; Chat Completions has no 12h tier for GPT-5.6 and later.
+		// OpenAI lists (the catalog sets the flag for them); Chat Completions has no 12h tier for GPT-5.6 and later.
 		supportsLongCacheRetention:
 			cacheControlFormat !== "anthropic" && matchesHost(baseUrl, "api.openai.com")
-				? isOpenAIExtendedRetentionModel(model.id)
-				: !(
-						isOpenRouterAlibabaExplicitCache ||
-						isTogether ||
-						isCloudflareWorkersAI ||
-						isCloudflareAiGateway ||
-						isNvidia ||
-						isAntLing
-					),
+				? false
+				: !(isTogether || isCloudflareWorkersAI || isCloudflareAiGateway || isNvidia || isAntLing),
 		toolSchemaFlavor: isMoonshot || isMoonshotModelId(model.id) ? "moonshot" : undefined,
 	};
 }

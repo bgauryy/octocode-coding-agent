@@ -1,7 +1,12 @@
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { type AutocompleteProvider, CombinedAutocompleteProvider } from "@octocodeai/octocode-tui";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import {
+	type AutocompleteProvider,
+	CombinedAutocompleteProvider,
+	getKeybindings,
+	setKeybindings,
+} from "@octocodeai/octocode-tui";
+import { beforeAll, describe, expect, onTestFinished, test, vi } from "vitest";
 import { type Component, Container, type Focusable, type TUI } from "../../tui/src/tui.ts";
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
@@ -25,6 +30,7 @@ import type { ToolStatus } from "../src/utils/tools-manager.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 
 function renderLastLine(container: Container, width = 120): string {
 	const last = container.children[container.children.length - 1];
@@ -1070,8 +1076,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1122,8 +1127,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  3  alpha/one, beta/one, gamma/one
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1156,8 +1160,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  1  plan-mode
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1190,8 +1193,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  1  plan-mode
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1233,8 +1235,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  2  plan-mode, webfetch.ts
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1276,8 +1277,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  2  bar, foo
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1319,8 +1319,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  2  alpha/tools, beta/tools
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1353,8 +1352,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  1  main.ts
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1390,8 +1388,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  1  pi-markdown-preview
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1433,8 +1430,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  2  primary-package, primary-package:../sibling-package
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1479,8 +1475,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			"Hooks       0
 			Plugins     0
 			Extensions  2  primary-package, primary-package:../sibling-package
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness
-			( to expand)"
+			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
 		`,
 		);
 	});
@@ -1585,6 +1580,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 	});
 
 	test("hints ctrl+o to expand while the listing is collapsed, and not once it is expanded", () => {
+		const original = getKeybindings();
+		setKeybindings(new KeybindingsManager());
+		onTestFinished(() => setKeybindings(original));
 		const contextFiles = [{ path: path.join(homedir(), ".octocode", "agent", "AGENTS.md") }];
 		const collapsed = createShowLoadedResourcesThis({ quietStartup: false, contextFiles });
 		loadedResources.showLoadedResources(createFakeHost(collapsed), { force: true });

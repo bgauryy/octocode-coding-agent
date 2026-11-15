@@ -28,6 +28,7 @@ export function webCommand(
 ): Subcommand {
 	return {
 		description: "Open the web workspace",
+		argumentHint: "[backlogs|item <id>]",
 		complete: (prefix) => wordCompletions(["backlogs", "item"], prefix),
 		async handler(args, ctx) {
 			const parsed = parseWebArgs(args);

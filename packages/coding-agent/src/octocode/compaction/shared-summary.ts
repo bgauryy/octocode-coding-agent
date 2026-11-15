@@ -14,6 +14,7 @@ import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "
 import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { projectForcedSystemPrompt } from "../../core/forced-system-prompt.ts";
+import { forkPromptCacheKey } from "../../core/session-manager/cache-key.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
@@ -193,6 +194,7 @@ export async function sharedSummary(
 			preferences.cacheRetention !== "long" &&
 			!rewritten &&
 			!instructionsCold;
+		const promptCacheKey = forkPromptCacheKey(ctx.sessionManager.getHeader());
 		const options: SimpleStreamOptions = {
 			...preferences,
 			// A cold history is not marked (nothing reads what it writes). History `none` makes octocode-ai send no markers
@@ -205,6 +207,8 @@ export async function sharedSummary(
 			...(settings.thinkingBudgets ? { thinkingBudgets: settings.thinkingBudgets } : {}),
 			...(settings.transport ? { transport: settings.transport } : {}),
 			sessionId: ctx.sessionManager.getSessionId(),
+			// The key the session's own requests carry (`create-session.ts`), so a fork's summary reads the parent's shard.
+			...(promptCacheKey ? { promptCacheKey } : {}),
 			signal: event.signal,
 			maxTokens: cap,
 		};

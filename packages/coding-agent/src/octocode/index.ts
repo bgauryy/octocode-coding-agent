@@ -89,7 +89,7 @@ import { registerNotify } from "./ui/notify.ts";
 import { registerWebTool } from "./web/web.ts";
 import { installOctocodeDiscovery } from "./discovery/index.ts";
 import { registerLeaveConfirmation, registerReaderRole } from "./session-guards.ts";
-import { registerExternalApi, registerTeamSessions, shellCollaboration } from "./team-surfaces.ts";
+import { collaborationPorts, registerExternalApi, registerTeamSessions } from "./team-surfaces.ts";
 /**
  * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
@@ -244,7 +244,7 @@ export default function octocode(host: ExtensionAPI): void {
 		...(isSubagent ? {} : { budgets: budgetsThrough(() => agents) }),
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
-		...shellCollaboration(),
+		...collaborationPorts(),
 	});
 	if (!isSubagent) {
 		registerPermissionCommand(commands, permission, () => provenance.size(), planning);

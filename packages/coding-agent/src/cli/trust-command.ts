@@ -142,6 +142,6 @@ export async function runTrustCommand(args: string[], io: TrustCommandIo): Promi
 		err(error.message);
 		return 1;
 	}
-	err(`Unknown trust command ${sub}.\n${TRUST_COMMAND_USAGE}`);
+	err(`Unknown trust command "${sub}".\n${TRUST_COMMAND_USAGE}`);
 	return 1;
 }

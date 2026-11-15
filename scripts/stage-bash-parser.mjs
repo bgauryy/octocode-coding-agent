@@ -14,16 +14,16 @@ export function stageBashParser(target = join(root, "packages/coding-agent/dist/
 		"364f0a2cd385c792239423026ef442dbd073d34c396b7bc9e5932426b8e4aa5d"
 	)
 		throw new Error("Bash grammar asset hash mismatch");
-	const runtimeFile = require.resolve("web-tree-sitter/tree-sitter.wasm");
+	const runtimeFile = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
 	const runtime = readFileSync(runtimeFile);
 	if (
 		createHash("sha256").update(runtime).digest("hex") !==
-		"f38dcc4b43b818f9a0785bc1c6d5611a75ac4cdd428ff3f02757c34ca4e46d7f"
+		"488beeff7adb7fd7e21e97cc29a43dc6d031977755eda892d6d96c7f456cfdec"
 	)
 		throw new Error("Bash parser runtime asset hash mismatch");
 	mkdirSync(target, { recursive: true });
 	for (const name of ["tree-sitter-bash.wasm", "LICENSE.bash", "LICENSE.tree-sitter", "manifest.json"])
 		copyFileSync(join(source, name), join(target, name));
-	copyFileSync(require.resolve("web-tree-sitter/tree-sitter.wasm"), join(target, "tree-sitter.wasm"));
+	copyFileSync(require.resolve("web-tree-sitter/web-tree-sitter.wasm"), join(target, "tree-sitter.wasm"));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) stageBashParser();

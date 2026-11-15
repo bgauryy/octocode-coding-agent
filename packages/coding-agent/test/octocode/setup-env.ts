@@ -39,6 +39,8 @@ vi.resetModules();
 // A fake Octocode never runs the Octocode server: no server process or first-prompt wait unless a test opts in (e2e runs the
 // real server; mcp.test.ts passes its own env).
 process.env.OCTOCODE_MCP = "0";
+// Nor the FreeLlama server, which is on by default wherever `ollama` is on PATH (a developer machine, say).
+process.env.OCTOCODE_MCP_FREELLAMA = "0";
 // Every process a test starts boots the CLI from TypeScript source, about 2 s of CPU each with nothing cached. Node's compile
 // cache (keyed by file content and Node version, so a changed file is never served stale) halves that, and the folder sits
 // beside the per-run temporary directory so later runs start warm too. Processes read it from the environment they are given.

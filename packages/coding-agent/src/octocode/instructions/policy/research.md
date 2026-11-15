@@ -1,9 +1,10 @@
-- Fetch only the evidence the next decision needs; keep large results behind paths or cursors and state truncation or coverage gaps.
+- Research before deciding: name the missing fact that could change the result; fetch only it where it lives (this checkout, GitHub, packages, web); state coverage gaps.
 {{#if research}}
-- Research, checks and quality work use the research tools (`{{research.prefix}}*`): search with {{research.search}}{{#if localReader}} and read source{{#unless readOnly}} you will edit{{/unless}} with {{research.reader}}{{/if}}{{#if shell}}. A quick fetch of one known file or a command's output may use bash{{/if}}. Their descriptions route each question, including sources outside this checkout.
-- A call rejected for its input or cursor: fix it from the returned schema or hint. A server disconnected, timing out or missing its tools: say so and restart it{{#if shell}}; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`){{/if}}.
+- Search and read with the research tools (`{{research.prefix}}*`): search with {{research.search}}{{#if localReader}} and read source{{#unless readOnly}} you will edit{{/unless}} with {{research.reader}}{{/if}}{{#if shell}}. A quick fetch of one known file or a command's output may use bash{{/if}}.
+- A research server that is disconnected, timing out or missing its tools: say so and restart it{{#if shell}}; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`){{/if}}.
 {{/if}}
 {{#unless research}}
+- Before adding or upgrading a dependency, check its known vulnerabilities with the tools you have; with none that covers them, name that gap.
 {{#if shell}}
 - Search with bash when the location is unknown: `git ls-files | head`, `fd -e ts . src`, `rg -c` or `rg -l`, then `rg -n -C2 pat | head -60`; read known paths with `sed -n 'A,Bp'` or `cat`.
 {{/if}}

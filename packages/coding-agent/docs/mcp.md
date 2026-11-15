@@ -17,6 +17,20 @@ flowchart LR
 
 In the terminal, open `/mcp` and choose **Add MCP**, or run `/mcp add`. The entry is available even when no servers are configured. In the web page opened from the Octocode terminal, open a **running session**, choose **Settings**, then **Add MCP**. Published read-only links cannot save. The form appears only after the session supplies its complete MCP registry; standalone daemon settings, disconnected sessions and older sessions without registry support explain this requirement before asking for credentials. Reconnect or reload the session if its registry is unavailable.
 
+**In the terminal**, paste a JSON definition. The prompt shows where this page is. Accepted shapes:
+
+| Paste                                                       | Result                                       |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| `{"mcpServers":{"docs":{...}}}`                             | Every server in the object (several at once) |
+| `{"docs":{...}}`                                            | Every named server in the object             |
+| One server object, such as `{"command":"npx","args":[...]}` | A name prompt, then that server              |
+
+A Markdown code fence around the paste is removed. An invalid paste is rejected with the JSON path of the problem, never the value. A literal `env` or header value gets a warning: prefer `${VAR}` references. Then choose **Save to**: **Global** or **This workspace** (offered only in a trusted folder; each option shows its file). Each server is shown with its security rating (the static scan `/security` shows later) before it is saved. Servers are saved off and unassigned and stay off until you approve them in `/security` and switch them on in `/harness mcp`.
+
+Submit an empty paste for the field-by-field form (it is not scanned): choose the scope, name the server and choose **Stdio** or **HTTP**.
+
+**In the web page**, the form has these steps:
+
 1. Choose **Global** or **Trusted workspace**. For a workspace, select it in web settings first and grant folder trust from the terminal if needed.
 2. Enter a unique server name and choose **Stdio** or **HTTP**.
 3. Enter the transport fields below, then choose **Save MCP**. Cancel leaves configuration unchanged. Validation or save errors keep your input available for correction.
@@ -30,7 +44,7 @@ Environment and header values are saved to the configuration file but are not re
 
 If audit recording fails after a save, the page still reports **Saved** and shows an audit warning. The definition is on disk; do not retry it as a failed save.
 
-**Saved does not mean applied.** New definitions are saved disabled and unassigned by default. Saving does not launch a process, connect, sign in or approve anything. Run `/reload` in the session that should use the server, review it in `/security` (not checked/off until approved), then enable and assign it separately. The existing server controls remain in `/mcp` and the web Harness panel.
+**Saved does not mean applied.** New definitions are saved disabled and unassigned by default. Saving does not launch a process, connect, sign in or approve anything. Run `/reload` in the session that should use the server, review it in `/security` (not checked/off until approved), then switch it on and choose which agents get it in `/harness mcp` (or the web Harness panel). `/mcp` shows connections only.
 
 ### Command-line configuration
 
@@ -42,7 +56,7 @@ octocode mcp list
 octocode
 ```
 
-Add `--local` (`-l`) to save to the workspace file `.octocode/mcp.json` instead of your user file; a workspace file loads only in a trusted project (`/trust add`, then `/reload` after editing). `/mcp` opens the manager (Add MCP, servers, tools, errors, sign-in, exposure).
+Add `--local` (`-l`) to save to the workspace file `.octocode/mcp.json` instead of your user file; a workspace file loads only in a trusted project (`/trust add`, then `/reload` after editing). `/mcp` opens the manager (Add MCP, servers, tools, errors, sign-in).
 
 ## Configure servers
 
@@ -96,29 +110,34 @@ Octocode also reads `.agents/mcp.json`, the workspace `.mcp.json` and Pi's `mcp.
 | Codex       | `/configuration enable harness:codex`  | `~/.codex/config.toml`, `.codex/config.toml`       |
 | Cursor      | `/configuration enable harness:cursor` | `~/.cursor/mcp.json`, `.cursor/mcp.json`           |
 
+Before the switch is written, `/harness` (Enter on the harness) and `/configuration enable harness:<name>` list what it would bring — its skills, MCP servers and hooks — each scanned now by the [security review](configuration.md#security-review), worst rating first, with the top finding per item. The scan reads files only: nothing starts and nothing is looked up. `/harness` asks you to confirm and writes nothing on cancel; `/configuration` prints the list and then switches. Items stay off until you approve them in `/security`.
+
 Add `--local` to enable for this workspace only. A same-named server in an Octocode file wins. Formats: [files of other agents](mcp-reference.md#files-of-other-agents).
 
 ## Manage servers
 
-| Need                        | In a session                                                 | In the shell                                                                                       |
-| --------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Browse state and tools      | `/mcp`, `/mcp list`, `/mcp tools`                            | `octocode mcp list`, `octocode mcp tools [server] [tool]`                                          |
-| Turn a server on or off     | `/configuration enable\|disable mcp:docs`                    | `octocode configuration enable\|disable mcp:docs`                                                  |
-| Add a definition            | `/configuration add mcp`, or edit `mcp.json` and `/reload`   | `octocode mcp add <server> -- <command> [args]` or `--url <url>`                                   |
-| Remove a definition         | `/configuration remove`, or edit `mcp.json`                  | `octocode mcp remove <server> [-l]`                                                                |
-| Sign in or out, reconnect   | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs` | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs`                                |
-| Exposure and assignment     | `/mcp exposure …`, `/mcp assign …`                           | `octocode mcp exposure <server> <mode> [-l]`                                                       |
-| Show resolved config        | `/mcp config`                                                | `octocode mcp config [--json]`                                                                     |
-| Optimize the generated file | none                                                         | `octocode mcp compact show\|check\|apply\|list` ([compact](mcp-reference.md#compact-presentation)) |
+| Need                        | In a session                                                      | In the shell                                                                                       |
+| --------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Browse state and tools      | `/mcp`, `/mcp list`, `/mcp tools`                                 | `octocode mcp list`, `octocode mcp tools [server] [tool]`                                          |
+| Turn a server on or off     | `/configuration enable\|disable mcp:docs`                         | `octocode configuration enable\|disable mcp:docs`                                                  |
+| Add a definition            | `/configuration add mcp`, or edit `mcp.json` and `/reload`        | `octocode mcp add <server> -- <command> [args]` or `--url <url>`                                   |
+| Remove a definition         | `/configuration remove`, or edit `mcp.json`                       | `octocode mcp remove <server> [-l]`                                                                |
+| Sign in or out, reconnect   | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs`      | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs`                                |
+| Exposure and assignment     | `/harness mcp` → server → **Available to**, **Default for tools** | `octocode mcp exposure <server> <mode> [-l]`                                                       |
+| Show resolved config        | `/mcp config`                                                     | `octocode mcp config [--json]`                                                                     |
+| Optimize the generated file | none                                                              | `octocode mcp compact show\|check\|apply\|list` ([compact](mcp-reference.md#compact-presentation)) |
 
-`mcp add` options: `--env KEY=VALUE`, `--cwd`, `--header KEY=VALUE`, `--bearer-token-env-var`, `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, `--oauth-client-name`, `--exposure direct|hidden`, `--description`. `/mcp enable|disable` and `octocode mcp enable|disable` are retired and print a hint to `/configuration`.
+`mcp add` options: `--env KEY=VALUE`, `--cwd`, `--header KEY=VALUE`, `--bearer-token-env-var`, `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, `--oauth-client-name`, `--exposure direct|hidden`, `--description`. `/mcp enable|disable` and `octocode mcp enable|disable` are retired and print a hint to `/configuration`; `/mcp assign` and `/mcp exposure` are retired and print where to go in `/harness mcp`. A server that is off shows `Off · turn on in /harness mcp` in `/mcp`.
 
 ### Default servers
 
-| Server     | Default                                             | Turn off                                                                                                             | Turn on again                                                                      |
-| ---------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `octocode` | on                                                  | `/configuration disable mcp:octocode`, `OCTOCODE_MCP=0`, or `{ "mcpServers": { "octocode": { "enabled": false } } }` | `/configuration enable mcp:octocode`; a file definition overrides `OCTOCODE_MCP=0` |
-| `browser`  | on, assigned only to the bundled `browser` subagent | `/configuration disable mcp:browser`                                                                                 | `/configuration enable mcp:browser`                                                |
+| Server      | Default                                                          | Turn off                                                                                                             | Turn on again                                                                        |
+| ----------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `octocode`  | on                                                               | `/configuration disable mcp:octocode`, `OCTOCODE_MCP=0`, or `{ "mcpServers": { "octocode": { "enabled": false } } }` | `/configuration enable mcp:octocode`; a file definition overrides `OCTOCODE_MCP=0`   |
+| `browser`   | on, assigned only to the bundled `browser` subagent              | `/configuration disable mcp:browser`                                                                                 | `/configuration enable mcp:browser`                                                  |
+| `freellama` | on when an `ollama` command is on `PATH`, except in offline mode | `/harness mcp`, `/configuration disable mcp:freellama`, or `OCTOCODE_MCP_FREELLAMA=0`                                | `/harness mcp`, `/configuration enable mcp:freellama`, or `OCTOCODE_MCP_FREELLAMA=1` |
+
+`freellama` runs [FreeLlama](https://github.com/bgauryy/FreeLlama) (`@octocodeai/freellama-mcp-server`), which picks, runs and manages local Ollama models. Octocode installs the pinned package from npm on its first launch, so offline mode leaves it off unless you turn it on. A switch you save in `/harness` or `/configuration` wins over the `PATH` check. Ollama must be running for its tools to work.
 
 Defining a server with the same name in `mcp.json` replaces the built-in launch. To switch MCP off for one run use `--no-mcp` (no servers connect, no MCP tools; subagents inherit it). The browser server and its permission rules: [reference](mcp-reference.md#built-in-mcp-host).
 
@@ -134,11 +153,11 @@ Every tool of a selected server is declared to the model up front, and the serve
 
 Set `exposure` on a server, or `toolExposure` for individual tools (exact names or `*` patterns; exact wins):
 
-| Value              | The agent sees                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `direct` (default) | The tool, declared up front                                                                                              |
-| `deferred`         | The tool declared up front, but its block lists only name and trigger; the agent loads the full text with its `mcp` tool |
-| `hidden`           | No callable tool; the server may stay connected                                                                          |
+| Value              | The agent sees                                                                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `direct` (default) | The tool, declared up front                                                                                                                                                                    |
+| `deferred`         | The tool declared up front with its whole description and its field names and types; its server's block lists only name and trigger, and the agent loads the schema detail with its `mcp` tool |
+| `hidden`           | No callable tool; the server may stay connected                                                                                                                                                |
 
 ```json
 {
@@ -148,13 +167,13 @@ Set `exposure` on a server, or `toolExposure` for individual tools (exact names 
 }
 ```
 
-The `mcpExposure` setting sets the default for servers that set none: `"direct"`, `"deferred"`, `"recent"` (a tool called in this working directory in the last 24 hours is direct, any other is deferred) or `"auto:<bytes>"` (keeps servers direct in name order while their blocks fit the byte budget, then defers the rest). An agent without the `mcp` tool gets deferred servers in full. A deferred tool the session has called is declared in full from then on where the model can add the definition without resending its tool list ([reference](mcp-reference.md#exposure-and-results)). After a compaction, the input schemas of the deferred tools the session called (MCP and native) follow the summary as one hidden message, whole schemas only, most recent first. `/mcp exposure <server> <direct|deferred|hidden>` saves a value. More: [exposure and results](mcp-reference.md#exposure-and-results).
+The `mcpExposure` setting sets the default for servers that set none: `"direct"`, `"deferred"`, `"recent"` (a tool called in this working directory in the last 24 hours is direct, any other is deferred), `"usage"` (every tool is deferred unless the promotion snapshot built from use across all your folders names it; [how](harness-flows.md#usage-based-promotion)) or `"auto:<bytes>"` (keeps servers direct in name order while their blocks fit the byte budget, then defers the rest). An agent without the `mcp` tool gets deferred servers in full. A deferred tool the session has called is declared in full from then on where the model can add the definition without resending its tool list ([reference](mcp-reference.md#exposure-and-results)). After a compaction, the input schemas of the deferred tools the session called (MCP and native) follow the summary as one hidden message, whole schemas only, most recent first. In the terminal, `/harness mcp` → the server sets the server default (**Default for tools**) and pins each tool: Space hides or unpins, Tab cycles `direct`, `deferred`, `hidden`; changes apply from the next session. More: [exposure and results](mcp-reference.md#exposure-and-results).
 
 The Tools panel of the [web Settings page](web-workspace.md#settings-page) lists every tool of each enabled server with its state in the running session and what decided it (a pin, the server's `exposure`, use in the last 24 hours, or the default), and pins one tool by saving its `toolExposure` entry. A pin applies from the next session.
 
 ## Assign servers to agents
 
-By default every server is in every agent's tool selection. Set `"defaultActive": false` to give a server only to agents whose selection names it (for example `mcp__docs__*` in a subagent profile's `tools:` or in `--tools`; `*` and `mcp__*` do not select it). `/mcp assign <server> selected` saves that (`all` removes it; `--local` for the project) from the next session. A session whose selection does not reach a server never starts it and `/mcp` shows `not selected`. The `browser` server ships this way: the main agent delegates browser work to the `browser` subagent. Rules and examples: [assign servers to agents](mcp-reference.md#assign-servers-to-agents).
+By default every server is in every agent's tool selection. Set `"defaultActive": false` to give a server only to agents whose selection names it (for example `mcp__docs__*` in a subagent profile's `tools:` or in `--tools`; `*` and `mcp__*` do not select it). In the terminal, `/harness mcp` → the server → **Available to** switches between `every agent` and only agents whose profile `tools:` names `mcp__<server>__` from the next session. A session whose selection does not reach a server never starts it and `/mcp` shows `not selected`. The `browser` server ships this way: the main agent delegates browser work to the `browser` subagent. Rules and examples: [assign servers to agents](mcp-reference.md#assign-servers-to-agents).
 
 ## Host and protocol support
 

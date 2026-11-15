@@ -189,7 +189,7 @@ describe("cache configuration", () => {
 			return describeCachePolicy(target, resolveConfiguredCache(target, undefined, values), subscription);
 		};
 		const asApi = <A extends Api>(api: A, overrides: Partial<Model<A>> = {}) =>
-			({ ...model, api, compat: undefined, ...overrides }) as unknown as Model<Api>;
+			withCacheCapabilities({ ...model, api, compat: undefined, ...overrides });
 
 		it("says explicit OpenAI none means no caching at all", () => {
 			const text = describeWith(model, { cacheRetention: "none" });

@@ -12,7 +12,11 @@ export function sessionToolStates(
 	mcpServerNames: string[] | undefined = currentMcpServerNames(),
 ): AttachToolStates {
 	return {
-		native: { names: [...native.names], deferred: Object.fromEntries(native.declared) },
+		native: {
+			names: [...native.names],
+			deferred: Object.fromEntries(native.declared),
+			...(native.saved ? { saved: Object.fromEntries(native.saved) } : {}),
+		},
 		...(mcpServerNames ? { mcpServerNames } : {}),
 		...(mcp
 			? {
@@ -20,7 +24,12 @@ export function sessionToolStates(
 						server: server.server,
 						connected: server.connected,
 						saved: server.saved,
-						tools: server.tools.map(({ name, state, decidedBy }) => ({ name, state, decidedBy })),
+						tools: server.tools.map(({ name, state, decidedBy, audit }) => ({
+							name,
+							state,
+							decidedBy,
+							...(audit ? { audit } : {}),
+						})),
 					})),
 				}
 			: {}),
@@ -31,7 +40,11 @@ export function sessionToolStates(
 export function liveTools(states: AttachToolStates): LiveTools {
 	const declared = new Map(Object.entries(states.native.deferred));
 	return {
-		native: () => ({ names: states.native.names, declared }),
+		native: () => ({
+			names: states.native.names,
+			declared,
+			...(states.native.saved ? { saved: new Map(Object.entries(states.native.saved)) } : {}),
+		}),
 		mcp: () => states.mcp ?? [],
 		mcpServerNames: () => states.mcpServerNames,
 	};

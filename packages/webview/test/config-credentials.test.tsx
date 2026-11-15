@@ -10,6 +10,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConfigView } from "../src/app/config/ConfigView.tsx";
+import { RequestError } from "../src/request.ts";
 
 const SECRET = "SENTINEL-KEY-4f9a1c7e";
 const base: ConfigSnapshot = {
@@ -57,7 +58,7 @@ describe("ConfigView credential editing", () => {
 		}));
 		const { container } = render(<ConfigView load={async () => base} saveCredential={save} />);
 		await openEditor("Set key for OpenAI");
-		const input = screen.getByLabelText("API key for OpenAI") as HTMLInputElement;
+		const input = screen.getByLabelText<HTMLInputElement>("API key for OpenAI");
 		expect(input.type).toBe("password");
 		expect(input.autocomplete).toBe("off");
 		await userEvent.type(input, `  ${SECRET} `);
@@ -97,6 +98,22 @@ describe("ConfigView credential editing", () => {
 		await userEvent.click(saveButton);
 		expect(save).toHaveBeenCalledWith(
 			{ action: "set", provider: "openai", key: SECRET, acknowledgePlaintext: true },
+			undefined,
+		);
+	});
+
+	it("offers Save unverified only when the host could not check the key, and resends with the acknowledgement", async () => {
+		const save = vi
+			.fn(async (_command: ConfigCredentialCommand): Promise<ConfigSnapshot> => base)
+			.mockRejectedValueOnce(new RequestError("Could not check the OpenAI key.", 409, "unverified"));
+		render(<ConfigView load={async () => base} saveCredential={save} />);
+		await openEditor("Set key for OpenAI");
+		expect(screen.queryByRole("button", { name: /without checking/ })).toBeNull();
+		await userEvent.type(screen.getByLabelText("API key for OpenAI"), SECRET);
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await userEvent.click(await screen.findByRole("button", { name: "Save key for OpenAI without checking it" }));
+		expect(save).toHaveBeenLastCalledWith(
+			{ action: "set", provider: "openai", key: SECRET, acknowledgeUnverified: true },
 			undefined,
 		);
 	});

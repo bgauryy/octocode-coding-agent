@@ -280,24 +280,15 @@ describe("AgentSession MCP integration", () => {
 		expect(saved.at(-1)).toEqual({ enabled: false });
 		expect(getMcpSessionStatus(api!.events)).toMatchObject([{ enabled: false, state: "disabled" }]);
 		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");
-		await harness.session.prompt("/mcp exposure docs direct");
-		expect(saved.at(-1)).toEqual({ exposure: "direct" });
+		// Exposure is changed in /harness mcp: the slash subcommand only points there and saves nothing.
+		const count = saved.length;
+		for (const mode of ["direct", "hidden", "deferred", "auto", "nonsense"]) {
+			await harness.session.prompt(`/mcp exposure docs ${mode}`);
+			expect(saved).toHaveLength(count);
+			expect(notifications.at(-1)).toContain("Moved: open /harness mcp, select docs, then Default for tools");
+		}
 		await getMcpSwitch(api!.events)!({ name: "docs", enabled: true, inProject: false });
 		expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search");
-		await harness.session.prompt("/mcp exposure docs hidden");
-		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");
-		await harness.session.prompt("/mcp exposure docs direct");
-		expect(nestedToolNames(harness)).toContain("mcp__docs__search");
-		await harness.session.prompt("/mcp exposure docs deferred");
-		expect(saved.at(-1)).toEqual({ exposure: "deferred" });
-		expect(nestedToolNames(harness)).toContain("mcp__docs__search");
-		await harness.session.prompt("/mcp exposure docs direct");
-		const count = saved.length;
-		for (const removed of ["auto", "codemode", "nonsense"]) {
-			await harness.session.prompt(`/mcp exposure docs ${removed}`);
-			expect(saved).toHaveLength(count);
-			expect(notifications.at(-1)).toContain("Usage:");
-		}
 	});
 
 	it("includes extension registrations alongside configured servers in the common status list", async () => {
@@ -313,7 +304,7 @@ describe("AgentSession MCP integration", () => {
 		);
 		await harness.session.prompt("/mcp list");
 		expect(notifications.at(-1)).toContain("docs: enabled · connected");
-		expect(notifications.at(-1)).toContain("octocode: enabled · connected · 3 tools (direct)");
+		expect(notifications.at(-1)).toContain("octocode: enabled · connected · 3 tools · direct");
 	});
 
 	it("restores the same tool definition after reconnecting an unchanged validated catalog", async () => {

@@ -5,6 +5,7 @@ import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
 import {
 	isProviderDisabled,
+	providerCredentialState,
 	providerStatus,
 	removeProviderCredential,
 	setProviderEnabled,
@@ -81,6 +82,7 @@ export async function showProviderDetail(
 	});
 
 	const status = await providerStatus(host, id);
+	const state = await providerCredentialState(host, id);
 	const piSignIn = await unsupportedPiSignIn(host, id, name).catch(() => undefined);
 	// Fields its models.json ignores (a misspelled `apikey`) or an `api` no built-in serves explain "not configured".
 	const definitionWarnings = definition
@@ -108,7 +110,7 @@ export async function showProviderDetail(
 			]
 		: [];
 	const choice = await showPage(host, {
-		title: `${name} — ${disabled ? "disabled" : runtime.getProviderAuthStatus(id).configured ? "configured" : "not configured"}`,
+		title: `${name} — ${disabled ? "disabled" : state}`,
 		facts: [
 			{ label: "Status", value: disabled ? `disabled · ${status}` : status },
 			{ label: "Access", value: "Not verified; Test credential sends a small request." },

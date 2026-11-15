@@ -29,6 +29,11 @@ export function say(ctx: Pick<ExtensionContext, "hasUI" | "ui">, text: string, l
 	if (!ctx.hasUI) process.stderr.write(`${sanitizeTerminalText(text)}\n`);
 }
 
+/** The one line a declined or abandoned confirmation says: `cancelledText("stopped")` is "Cancelled: nothing was stopped.". */
+export function cancelledText(verb: string): string {
+	return `Cancelled: nothing was ${verb}.`;
+}
+
 /** A native command registered once under its canonical name. */
 export interface Subcommand {
 	/** One sentence of at most 50 characters; usage goes in `argumentHint`. */

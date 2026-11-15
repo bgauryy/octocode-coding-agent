@@ -11,13 +11,14 @@ import { promptTitle } from "../shared/locks.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
-import { terminalTitle, type TitleState, TitleTracker } from "./terminal-title.ts";
+import { TitleTracker } from "./terminal-title.ts";
+import { TitlePainter } from "./title-painter.ts";
 import { registerPresentWarming } from "./present-warming.ts";
 
 /**
  * "Answer ready" and "waiting for you" signals for a terminal in the background: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
- * the bell). The terminal title carries the session state: `✻` thinking, `◐` running a tool, `◇` waiting for the user,
- * then `✓` finished or `✗` failed until the user is back (focus returns or a key is pressed).
+ * the bell). The terminal title carries the session state, `🐙⠋ Running - fix login · repo · 2 agents`: thinking and running animate,
+ * then `⚠️` needs you, `🟢` done or `🔴` error until the user is back (focus returns or a key is pressed), else idle.
  *
  * This enables focus reports (CSI ?1004) and reads `ESC [ I` / `ESC [ O` in both TUI modes. A terminal without focus
  * reports leaves focus unknown; then it falls back to idleness: a run that took long while the user typed nothing.
@@ -44,8 +45,6 @@ const FOCUS_OFF = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
 const BEL = "\x07";
-/** Thinking and tool runs alternate within milliseconds; their title swaps are coalesced over this window. */
-const TITLE_COALESCE_MS = 250;
 /** Without focus reports: a run this long with no keypress counts as "the user stepped away". */
 const AWAY_MS = 30_000;
 /** No two notifications within this window (a prompt right after an answer, back-to-back dialogs). */
@@ -155,8 +154,8 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	let lastNoticeAt = 0;
 	const title = new TitleTracker();
 	const work = runningWorkOf(api);
-	let shown: { state: TitleState; text: string } | undefined;
-	let titleTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The first prompt of the session, its description in the tab until it has a name. */
+	let firstPrompt: string | undefined;
 	/** Outcome of the latest response, applied to the title when the run settles. */
 	let outcome: "idle" | "done" | "failed" = "idle";
 	let unsubscribe: (() => void) | undefined;
@@ -169,33 +168,13 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 
 	const tui = (current: ExtensionContext | undefined): current is ExtensionContext =>
 		current?.mode === "tui" && current.hasUI;
-	const clearTitleTimer = () => {
-		if (titleTimer) clearTimeout(titleTimer);
-		titleTimer = undefined;
-	};
-	const writeTitle = (force: boolean) => {
-		titleTimer = undefined;
-		if (!tui(ctx)) return;
-		const state = title.state;
-		const agents = state === "idle" ? 0 : (work.agents() ?? work.background().length);
-		const text = terminalTitle(state, api.getSessionName(), ctx.cwd, agents);
-		if (!force && shown?.text === text) return;
-		shown = { state, text };
-		ctx.ui.setTitle(text);
-	};
-	/** Repaint the title; `force` rewrites it after another writer (the host, a session switch) may have replaced it. */
-	const paintTitle = (force = false) => {
-		const busy = (state: TitleState | undefined) => state === "thinking" || state === "running";
-		if (!force && busy(title.state) && busy(shown?.state)) {
-			if (!titleTimer) {
-				titleTimer = setTimeout(() => writeTitle(false), TITLE_COALESCE_MS);
-				titleTimer.unref?.();
-			}
-			return;
-		}
-		clearTitleTimer();
-		writeTitle(force);
-	};
+	const painter = new TitlePainter({
+		state: () => title.state,
+		target: () => (tui(ctx) ? { cwd: ctx.cwd, setTitle: (text) => ctx?.ui.setTitle(text) } : undefined),
+		description: () => api.getSessionName()?.trim() || firstPrompt,
+		agents: () => work.agents() ?? work.background().length,
+	});
+	const paintTitle = (force = false) => painter.paint(force);
 	/** The user is back: drop a finished or failed mark. */
 	const seen = () => {
 		title.seen();
@@ -232,11 +211,11 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		unsubscribe?.();
 		unsubscribe = undefined;
 		clearIdle();
-		clearTitleTimer();
+		painter.reset();
 		ctx = current;
 		title.reset();
 		outcome = "idle";
-		shown = undefined;
+		firstPrompt = firstPromptOf(current);
 		if (!tui(current)) return;
 		paintTitle(true);
 		unsubscribe = current.ui.onTerminalInput((data) => {
@@ -258,17 +237,20 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	});
 	// The host rewrites the plain title on a rename; put the state mark back.
 	api.on("session_info_changed", async () => paintTitle(true));
+	api.on("before_agent_start", async (event) => {
+		if (!firstPrompt && event.messageType === "user") firstPrompt = event.prompt.trim() || undefined;
+		return undefined;
+	});
 	api.on("session_shutdown", async () => {
 		clearIdle();
 		unsubscribe?.();
 		unsubscribe = undefined;
 		dropExitHook();
 		if (tui(ctx) && condition !== "off") write(FOCUS_OFF);
-		clearTitleTimer();
 		title.reset();
-		// Work still running after exit is no longer this tab's: leave the plain title.
+		// Work still running after exit is no longer this tab's: leave the plain title, without a state.
 		title.setBackground(0);
-		if (shown?.state !== "idle") paintTitle(true);
+		painter.leave();
 		ctx = undefined;
 	});
 	api.on("agent_start", async () => {
@@ -348,4 +330,14 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		focused: () => (focus === "unknown" ? undefined : focus === "focused"),
 		lastInputAt: () => lastInputAt,
 	});
+}
+
+/** The text of the session's first user message, for a resumed session that has no name. */
+function firstPromptOf(ctx: ExtensionContext): string | undefined {
+	for (const entry of ctx.sessionManager?.getEntries() ?? []) {
+		if (entry.type !== "message" || entry.message.role !== "user") continue;
+		const text = contentText(entry.message.content).trim();
+		if (text) return text;
+	}
+	return undefined;
 }

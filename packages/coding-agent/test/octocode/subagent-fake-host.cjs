@@ -427,6 +427,11 @@ async function scenario() {
 			}
 		}
 		emit(say("done: finished the loop"));
+	} else if (task.startsWith("chain gate")) {
+		// Reports `done` once the file named after "chain gate" exists (a test opens it when the chain should go on).
+		const gate = command.slice("chain gate ".length).trim();
+		while (!fs.existsSync(gate)) await new Promise((resolve) => setTimeout(resolve, 20));
+		emit(say("done: gated work finished"));
 	} else if (task.startsWith("abortable")) {
 		// Settles, aborted, once it is told to abort; leaves when its input closes.
 		await nextCommand("abort");

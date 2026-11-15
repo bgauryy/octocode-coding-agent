@@ -7,7 +7,7 @@ import { loadMcpConfig } from "../src/config.ts";
 import { type McpServerPreset, presetEntries } from "../src/preset.ts";
 import { recommendedPresets } from "../src/recommended/index.ts";
 import { defaultPreset } from "./mcp-default-preset.ts";
-import { saveConfig, setExposure } from "../src/persistence.ts";
+import { saveConfig } from "../src/persistence.ts";
 import { reconnect } from "../src/connections.ts";
 import { getMcpSessionStatus } from "../src/status.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
@@ -232,14 +232,22 @@ describe("default MCP in the shared host", () => {
 		expect(await h.call("mcp__octocode__shout", { text: "again" })).toMatchObject({ content: [{ text: "AGAIN" }] });
 	});
 	it("honors explicit exposure over the preset's local-tool default", async () => {
-		const h = host({ updateConfig: () => {} });
+		const plain = host();
+		await plain.start();
+		await plain.prompt();
+		expect(plain.tools.get("mcp__octocode__localFetch").exposure).toBe("direct");
+		const agentDir = tmp(),
+			cwd = tmp();
+		const pin = { mcpServers: { octocode: { toolExposure: { localFetch: "hidden" } } } };
+		writeFileSync(join(agentDir, "mcp.json"), JSON.stringify(pin));
+		const h = host({
+			cwd,
+			loadConfig: () => loadMcpConfig({ agentDir, cwd, projectTrusted: true, defaults: defaults() }),
+		});
 		await h.start();
 		await h.prompt();
-		const server = h.state.findServer("octocode")!;
-		expect(h.tools.get("mcp__octocode__localFetch").exposure).toBe("direct");
-		expect(setExposure(h.state, server, "hidden")).toBeUndefined();
-		expect(h.tools.get("mcp__octocode__localFetch").exposure).toBe("hidden");
-		await expect(h.call("mcp__octocode__localFetch", { queries: [] })).rejects.toThrow(/no longer available/);
+		expect(h.tools.get("mcp__octocode__shout")?.exposure).toBe("direct");
+		expect(h.tools.get("mcp__octocode__localFetch")?.exposure).toBe("hidden");
 	});
 	it("does not launch a disabled preset", async () => {
 		const h = host({ presets: [defaultPreset({ OCTOCODE_MCP: "0" })] });

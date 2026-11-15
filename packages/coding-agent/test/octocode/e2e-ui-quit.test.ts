@@ -38,6 +38,8 @@ describe("/quit with running work", () => {
 
 		await quit();
 		await t.until(shows("Stop 1 bash job and quit?"), "the question again");
+		// No is preselected: accepting takes a deliberate move to Yes.
+		t.press(KEY.down);
 		t.press(KEY.enter);
 		await t.until(() => t!.shutdowns === 1, "shutdown");
 	});
@@ -51,6 +53,7 @@ describe("/quit with running work", () => {
 		await t.until(() => t!.host.session.isStreaming, "streaming");
 		await quit();
 		await t.until(shows("Stop the running reply and quit?"), "the question");
+		t.press(KEY.down);
 		t.press(KEY.enter);
 		await t.until(() => t!.shutdowns === 1, "shutdown");
 		expect(await t.text()).not.toContain("Running work");

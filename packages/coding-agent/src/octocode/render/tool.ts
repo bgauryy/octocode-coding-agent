@@ -1,25 +1,17 @@
-import {
-	Box,
-	type Component,
-	Text,
-	renderChanged,
-	stripTerminalSequences,
-	trackRenderChanges,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@octocodeai/octocode-tui";
+import { Box, type Component, Text, stripTerminalSequences } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
+import { styleShellLines } from "../../theme/output-style.ts";
 import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { contentText } from "../shared/util.ts";
-import type { UiState } from "../../theme/status.ts";
 import { TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
 import { rowMark, uiStateOf } from "./motion.ts";
+import { Lines, type Row } from "./lines.ts";
 import { phaseOf, rowState, runStart, track } from "./rows.ts";
-import { bodyLines, clip, expandKey, GUTTER, INDENT, plural } from "../shared/text.ts";
-import type { ColorToken, Phase, RenderContext } from "./types.ts";
+import { bodyLines, clip, expandHint, GUTTER, INDENT, plural } from "../shared/text.ts";
+import type { UiState } from "../../theme/status.ts";
+import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "./types.ts";
 
 /**
  * Shared tool presentation:
@@ -49,131 +41,16 @@ const SUMMARY_CHARS_EXPANDED = 200;
 const STOPPED =
 	/^(?:error:\s*)?(?:mcp )?(?:(?:the |this )?(?:operation|request|run) (?:was )?aborted|aborted|interrupted|cancell?ed|stopped\b|not run\b)/i;
 
-/**
- * One drawn row. `lead` (such as the `⎿` gutter) prefixes its first line only; a wrapped row's continuation lines take
- * `indent`, so the lead is drawn once per block and the text hangs under itself.
- */
-export interface Row {
-	text: string;
-	wrap?: boolean;
-	indent?: string;
-	lead?: string;
-}
-
-export interface Header {
-	left: string;
-	summary: string;
-	right: string;
-}
-
-/** The rows of one content version and their lines at the last width they were drawn at. */
-interface Version {
-	rows: Row[];
-	drawn: { width: number; lines: string[] } | undefined;
-}
-
-/** Versions kept per component: the collapsed and the expanded view, so ctrl+o back and forth re-wraps nothing. */
-const VERSIONS_KEPT = 2;
-
-function sameRows(a: readonly Row[], b: readonly Row[]): boolean {
-	if (a === b) return true;
-	if (a.length !== b.length) return false;
-	for (let index = 0; index < a.length; index++) {
-		const x = a[index];
-		const y = b[index];
-		if (x.text !== y.text || x.wrap !== y.wrap || x.indent !== y.indent || x.lead !== y.lead) return false;
-	}
-	return true;
-}
-
-function sameHeader(a: Header | undefined, b: Header | undefined): boolean {
-	return a === b || (!!a && !!b && a.left === b.left && a.summary === b.summary && a.right === b.right);
-}
-
-function headerLine({ left, summary, right }: Header, width: number): string {
-	const room = width - visibleWidth(left) - visibleWidth(right);
-	return room >= 4 || !summary
-		? truncateToWidth(`${left}${summary ? truncateToWidth(summary, Math.max(0, room), "…") : ""}${right}`, width, "…")
-		: truncateToWidth(`${left}${right}`, width, "…");
-}
-
-function drawRows(rows: readonly Row[], width: number): string[] {
-	const out: string[] = [];
-	for (const row of rows) {
-		const lead = row.lead ?? "";
-		if (!row.wrap) {
-			out.push(truncateToWidth(`${lead}${row.text}`, width, "…"));
-			continue;
-		}
-		const indent = row.indent ?? "";
-		const wrapped = wrapTextWithAnsi(row.text, Math.max(1, width - visibleWidth(indent)));
-		// A width narrower than the indent still gets lines that fit: the indent and text are clipped together.
-		(wrapped.length > 0 ? wrapped : [""]).forEach((line, index) => {
-			out.push(truncateToWidth(`${index === 0 ? (row.lead ?? indent) : indent}${line}`, width, "…"));
-		});
-	}
-	return out;
-}
-
-/**
- * A header and a list of lines clipped to the render width (`wrap` lines wrap instead). octocode-tui draws up to 60
- * frames a second and its Box compares a child's lines by identity, so the output is cached: the header per (text,
- * width), the rows per content version and width, for the last two versions. A `set` with the same content (a redraw of
- * an unchanged row, a clock tick in the header) keeps the drawn rows; `invalidate` (a theme change) drops everything.
- */
-export class Lines implements Component {
-	private header: Header | undefined;
-	private versions: Version[] = [];
-	private drawnHeader: { header: Header; width: number; line: string } | undefined;
-	private output: { width: number; head: string | undefined; body: string[]; lines: string[] } | undefined;
-
-	set(header: Header | undefined, rows: Row[]): this {
-		this.header = header;
-		const index = this.versions.findIndex((version) => sameRows(version.rows, rows));
-		const version = index === -1 ? { rows, drawn: undefined } : this.versions.splice(index, 1)[0];
-		this.versions.unshift(version);
-		this.versions.length = Math.min(this.versions.length, VERSIONS_KEPT);
-		renderChanged(this);
-		return this;
-	}
-
-	render(width: number): string[] {
-		const version = this.versions[0];
-		let body: string[] = [];
-		if (version) {
-			if (version.drawn?.width !== width) version.drawn = { width, lines: drawRows(version.rows, width) };
-			body = version.drawn.lines;
-		}
-		let head: string | undefined;
-		if (this.header) {
-			let drawn = this.drawnHeader;
-			if (drawn?.width !== width || !sameHeader(drawn.header, this.header)) {
-				drawn = { header: this.header, width, line: headerLine(this.header, width) };
-				this.drawnHeader = drawn;
-			}
-			head = drawn.line;
-		}
-		const output = this.output;
-		if (output && output.width === width && output.head === head && output.body === body) return output.lines;
-		const lines = head === undefined ? body : [head, ...body];
-		this.output = { width, head, body, lines };
-		return lines;
-	}
-
-	invalidate(): void {
-		// A look change restyles every row: older versions would never match again.
-		this.versions.length = Math.min(this.versions.length, 1);
-		for (const version of this.versions) version.drawn = undefined;
-		this.drawnHeader = undefined;
-		this.output = undefined;
-		renderChanged(this);
-	}
-}
-// Its rows read only what `set` stores (styled when set) and the width: a transcript keeps them between frames.
-trackRenderChanges(Lines.prototype);
+export { type Header, Lines, type Row } from "./lines.ts";
 
 function lines(context: RenderContext): Lines {
 	return context.lastComponent instanceof Lines ? context.lastComponent : new Lines();
+}
+
+/** `text`, then the expand hint when the key is bound. */
+function joinHint(text: string): string {
+	const hint = expandHint();
+	return hint ? `${text} ${hint}` : text;
 }
 
 /** Header sub-lines shown while collapsed, when more than one would be folded. */
@@ -206,25 +83,37 @@ export function toolHeader(
 		: duration !== undefined && phase !== "pending"
 			? formatDuration(duration, true)
 			: "";
-	const meta = [options.meta ? clip(options.meta, 60) : "", time, finished ? (state.waits ?? "") : ""].filter(Boolean);
+	const times = [time, finished ? (state.waits ?? "") : ""].filter(Boolean);
 	const text = clip(summary, context.expanded ? SUMMARY_CHARS_EXPANDED : SUMMARY_CHARS);
 	const mark = rowMark(theme, context, state, options.state ?? (waiting ? "waiting" : uiStateOf(phase)));
-	const left = `${mark} ${theme.fg("toolTitle", theme.bold(clip(name, 60)))}${text ? theme.fg("muted", "(") : ""}`;
-	const right = `${text ? theme.fg("muted", ")") : ""}${meta.length > 0 ? theme.fg("dim", ` · ${meta.join(" · ")}`) : ""}`;
+	const left = `${mark} ${theme.fg("toolTitle", theme.bold(clip(name, 60)))}`;
+	const right = times.length > 0 ? theme.fg("dim", ` · ${times.join(" · ")}`) : "";
+	const meta = options.meta ? theme.fg("dim", ` · ${clip(options.meta, 60)}`) : "";
 	const sub = options.lines ?? [];
 	// Folding one line would cost the line it saves.
 	const folded = !context.expanded && sub.length > COLLAPSED_SUB_LINES + 1;
 	const rows = (folded ? sub.slice(0, COLLAPSED_SUB_LINES) : sub).map((line) => ({ text: `  ${line}` }));
 	if (folded)
 		rows.push({
-			text: `  ${theme.fg("dim", `… +${sub.length - COLLAPSED_SUB_LINES} more (${expandKey()} to expand)`)}`,
+			text: `  ${theme.fg("dim", joinHint(`… +${sub.length - COLLAPSED_SUB_LINES} more`))}`,
 		});
-	return lines(context).set({ left, summary: text ? theme.fg("muted", text) : "", right }, rows);
+	return lines(context).set(
+		{
+			left,
+			summary: text ? theme.fg("muted", text) : "",
+			right,
+			meta,
+			...(text ? { parens: [theme.fg("muted", "("), theme.fg("muted", ")")] as const } : {}),
+		},
+		rows,
+	);
 }
 
 interface ResultBlockOptions {
 	/** The `⎿` line. Sanitized; only its first line is shown. */
 	summary: string;
+	/** The `⎿` line already styled (the caller sanitized its text), drawn instead of `summary` unless the row failed or stopped. */
+	styledSummary?: string;
 	summaryColor?: ColorToken;
 	/** Raw output: sanitized and coloured here. */
 	body?: string;
@@ -236,6 +125,8 @@ interface ResultBlockOptions {
 	preface?: string[];
 	/** What the collapsed hint calls the preface (`… +2 lines · prompt`); default `more`. */
 	prefaceLabel?: string;
+	/** Shell output: failure and warning lines, `path:line` heads and a unified diff are coloured as such. */
+	shell?: boolean;
 	/** Preview lines while collapsed (default 3). */
 	max?: number;
 	/** Preview the last lines instead of the first (command output). */
@@ -278,10 +169,12 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		}
 	}
 	const error = failed && !stopped;
-	const color = stopped ? "warning" : error ? "error" : "toolOutput";
+	const color = stopped ? STOPPED_COLOR : error ? "error" : "toolOutput";
 	const summaryColor = stopped || error ? color : (options.summaryColor ?? color);
 	const rows: Row[] = [];
-	if (summary)
+	if (summary && options.styledSummary && !error && !stopped)
+		rows.push({ lead: theme.fg("dim", GUTTER), text: options.styledSummary });
+	else if (summary)
 		rows.push({
 			lead: theme.fg("dim", GUTTER),
 			text: theme.fg(
@@ -296,9 +189,11 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 			...(error || stopped ? { wrap: true, indent: INDENT } : {}),
 		});
 	// Raw body lines are coloured only where shown: a collapsed preview colours its few lines, not the whole output.
-	const raw = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
+	const rawLines = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
+	const styled = options.shell && rawLines ? styleShellLines(theme, rawLines, color) : undefined;
+	const raw = styled ? undefined : rawLines;
 	const paint = (line: string) => (raw ? theme.fg(color, line) : line);
-	const body = options.lines ?? raw!;
+	const body = options.lines ?? styled ?? raw!;
 	const max = Math.max(0, options.max ?? TOOL_PREVIEW_LINES);
 	// The `⎿` gutter leads the first row of the block only; every later row (and each wrapped continuation) hangs under the text.
 	const lead = () => (rows.length === 0 ? theme.fg("dim", GUTTER) : INDENT);
@@ -331,7 +226,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		if (summary && (max === 0 ? folded || options.spill : !folded && options.spill))
 			rows[0] = {
 				...rows[0],
-				text: `${rows[0].text}${theme.fg("dim", `${max === 0 ? more : ""} (${expandKey()} to expand)`)}`,
+				text: `${rows[0].text}${theme.fg("dim", joinHint(max === 0 ? more : ""))}`,
 			};
 		if (max === 0 && summary) return lines(context).set(undefined, rows);
 		// A tail preview hides the lines before it: say so, so the hint does not read as more output below.
@@ -340,7 +235,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 			: `+${plural(hidden, "line")}`;
 		const hintText = theme.fg(
 			"dim",
-			`${hidden > 0 ? `… ${hiddenText}${more}` : `… ${options.prefaceLabel ?? "more"}`} (${expandKey()} to expand)`,
+			joinHint(hidden > 0 ? `… ${hiddenText}${more}` : `… ${options.prefaceLabel ?? "more"}`),
 		);
 		if (folded && options.tail) rows.push({ text: hintText, lead: lead() });
 		for (const line of shown) rows.push({ text: line, lead: lead() });

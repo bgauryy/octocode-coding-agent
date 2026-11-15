@@ -2,6 +2,7 @@ import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { providerAccessLabel } from "../../../core/provider-label.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
+import type { CredentialState } from "../../../core/provider-composer/credential-state.ts";
 import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
 
 type Runtime = Pick<
@@ -21,6 +22,8 @@ export function providerRows(
 	disabledProviders: readonly string[],
 	saved: readonly CredentialInfo[],
 	refused: ReadonlySet<string>,
+	/** Providers whose saved credential is expired; every other provider shows connected or not set. */
+	states: ReadonlyMap<string, CredentialState> = new Map(),
 ) {
 	const disabledIds = new Set(disabledProviders);
 	const counts = new Map<string, number>();
@@ -43,29 +46,36 @@ export function providerRows(
 		const defined = runtime.getProvider(id) !== undefined;
 		const count = counts.get(id) ?? 0;
 		const paused = runtime.getPlanDisabledReason(id);
-		const needsAttention = !defined || !configured || paused !== undefined || count === 0;
+		const expired = states.get(id) === "expired";
+		const needsAttention = !defined || !configured || expired || paused !== undefined || count === 0;
 		const state = !defined
 			? "saved credential · provider definition missing"
 			: refused.has(id)
 				? "Claude subscription token refused; use Claude Code in External agents"
 				: paused
 					? `plan paused: ${paused}`
-					: configured
-						? `${providerAccessLabel(runtime, id)} · ${credentialSourceLabel(runtime.getProviderAuthStatus(id))}`
-						: "saved credential unavailable; reconnect or remove it";
+					: expired
+						? `expired · ${credentialSourceLabel(runtime.getProviderAuthStatus(id))} · sign in again`
+						: configured
+							? `${providerAccessLabel(runtime, id)} · ${credentialSourceLabel(runtime.getProviderAuthStatus(id))}`
+							: "not set; reconnect or remove it";
 		const row: PageRow = {
 			id: `provider:${id}`,
 			name: nameOf(id),
 			detail: `${state} · ${count} ${count === 1 ? "model" : "models"}`,
 			badge: disabled
 				? "disabled"
-				: !defined || !configured
+				: !defined || refused.has(id)
 					? "unavailable"
-					: paused
-						? "paused"
-						: count === 0
-							? "no models"
-							: "configured",
+					: expired
+						? "expired"
+						: !configured
+							? "not set"
+							: paused
+								? "paused"
+								: count === 0
+									? "no models"
+									: "connected",
 			tone: !disabled && needsAttention ? "warning" : "muted",
 		};
 		groups[disabled ? "disabled" : needsAttention ? "attention" : "configured"].push(row);

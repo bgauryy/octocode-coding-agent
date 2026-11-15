@@ -1,4 +1,5 @@
 import type { BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
+import { clipText } from "../../../../common/src/clip.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 
 /** How many of the newest audit rows `get` shows; the board's Audit view and `store.audit` page through the rest. */
@@ -6,7 +7,7 @@ export const AUDIT_SHOWN = 8;
 
 const brief = (value: unknown): string => {
 	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+	return clipText(text, 60);
 };
 
 /** What an audit row changed: the fields of a `backlog` update that differ (before → after), else the entity and action. */

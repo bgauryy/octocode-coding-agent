@@ -23,14 +23,13 @@ describe("Together models", () => {
 		expect(model.reasoning).toBe(true);
 		expect(model.thinkingLevelMap).toEqual({ minimal: null, low: null, medium: null });
 		expect(model.input).toEqual(["text", "image"]);
-		expect(model.contextWindow).toBe(1048576);
-		expect(model.maxTokens).toBe(131072);
-		expect(model.cost).toEqual({
-			input: 3,
-			output: 15,
-			cacheRead: 0.3,
-			cacheWrite: 0,
-		});
+		// Window, output limit and prices come from the hydrated catalog, which a refresh rewrites: check they are
+		// usable, not their current values.
+		expect(model.contextWindow).toBeGreaterThan(0);
+		expect(model.maxTokens).toBeGreaterThan(0);
+		expect(model.maxTokens).toBeLessThanOrEqual(model.contextWindow);
+		expect(model.cost.input).toBeGreaterThan(0);
+		expect(model.cost.output).toBeGreaterThan(0);
 		expect(model.compat).toEqual({
 			supportsStore: false,
 			supportsDeveloperRole: false,

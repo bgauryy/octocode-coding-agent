@@ -32,6 +32,7 @@ import { appendRenderErrorLog, type RenderErrorListener, withRenderIsolation } f
 import { RenderScheduler } from "./tui/render-scheduler.ts";
 import { TerminalQueries } from "./tui/terminal-queries.ts";
 import type { TUI, TuiMode, TuiStopOptions } from "./tui/types.ts";
+import { clearWidthCache } from "./utils/width.ts";
 
 export * from "./tui/exports.ts";
 
@@ -99,6 +100,11 @@ export abstract class TuiBase extends Container implements TUI {
 
 	protected abstract doRender(): void;
 
+	/** Whether resize events wait for their frame: a frame painted now should keep the last settled size. */
+	protected get resizePending(): boolean {
+		return this.resizeDebounce.pending;
+	}
+
 	protected resetRenderState(): void {}
 
 	/** The lines last written to the terminal, scanned for image uploads to send again. */
@@ -124,10 +130,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.scheduler.setPacing(options);
 	}
 
-	/**
-	 * Queued output bytes past which fullscreen frames are dropped while the terminal is not reading, then repainted
-	 * whole once it drains; undefined keeps every frame. Regular mode never drops: its rows become scrollback.
-	 */
+	/** Queued bytes past which fullscreen frames drop while the terminal is not reading (repainted once it drains); regular mode never drops. */
 	setFrameOutputCap(bytes: number | undefined): void {
 		this.terminal.setFrameOutputCap?.(bytes);
 	}
@@ -157,11 +160,7 @@ export abstract class TuiBase extends Container implements TUI {
 		return this.clearOnShrink;
 	}
 
-	/**
-	 * Set whether to trigger full re-render when content shrinks.
-	 * When true, empty rows are cleared when content shrinks.
-	 * When false (default), empty rows remain (reduces redraws on slower terminals).
-	 */
+	/** Whether content that shrinks replays the transcript to clear the empty rows (default off: fewer redraws). */
 	setClearOnShrink(enabled: boolean): void {
 		this.clearOnShrink = enabled;
 	}
@@ -266,6 +265,7 @@ export abstract class TuiBase extends Container implements TUI {
 
 	stop(options: TuiStopOptions = {}): void {
 		this.stopped = true;
+		clearWidthCache();
 		this.resizeDebounce.stop();
 		this.scheduler.stop();
 		resetFocusReports();
@@ -277,6 +277,8 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	renderNow(force = false): void {
+		// An explicit paint is at the size the terminal has now: settle the resize it would otherwise wait for.
+		if (this.resizeDebounce.flush() && !this.stopped) this.onTerminalResized();
 		this.focus.rememberMountedFocus();
 		if (force) this.resetRenderState();
 		this.scheduler.paintNow();
@@ -364,30 +366,25 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	/**
-	 * Find and extract cursor position from rendered lines.
-	 * Strips every CURSOR_MARKER from every row and reports the bottom-most one in the bottom terminal height lines.
-	 * @param lines - Rendered lines; changed in place
-	 * @param height - Terminal height (visible viewport size)
-	 * @returns Cursor position { row, col } or null if no marker is in the viewport
+	 * Strip every CURSOR_MARKER from `lines` (in place) and report the bottom-most one within the bottom `height`
+	 * rows as { row, col }, or null when none is in view.
 	 */
 	protected extractCursorPosition(lines: string[], height: number): { row: number; col: number } | null {
 		return extractCursorPosition(lines, height);
 	}
 
 	/**
-	 * Resolve fake cursor markers to reverse video. When the hardware cursor is shown, a fake cursor
-	 * directly after CURSOR_MARKER is dropped because the terminal cursor is drawn there. Fake cursors
-	 * of components without focus have no CURSOR_MARKER and stay visible.
+	 * Resolve fake cursor markers to reverse video; with the hardware cursor shown, the fake cursor right after
+	 * CURSOR_MARKER is dropped. Fake cursors of components without focus have no marker and stay visible.
 	 */
 	protected resolveFakeCursors(lines: string[]): string[] {
 		return resolveFakeCursors(lines, this.showHardwareCursor);
 	}
 
 	/**
-	 * Query the terminal's theme colors: the default foreground (OSC 10), the default background
-	 * (OSC 11), and ANSI colors 0-15 (OSC 4), followed by a DA1 request that marks the end of the
-	 * replies. Resolves when the DA1 reply or all color replies arrive, or when the timeout expires.
-	 * Colors the terminal did not report are undefined; the palette is only set when all 16 arrived.
+	 * Query the terminal's default foreground (OSC 10), background (OSC 11) and ANSI colors 0-15 (OSC 4), then DA1 to
+	 * mark the end of the replies. Resolves on the DA1 reply, all replies or the timeout; colors the terminal did not
+	 * report are undefined, and the palette is only set when all 16 arrived.
 	 * @param timeoutMs Query timeout in milliseconds, for terminals that do not answer DA1 either.
 	 * @param onLateReply Receives the replies if the query completes after the timeout, e.g. over slow links.
 	 */

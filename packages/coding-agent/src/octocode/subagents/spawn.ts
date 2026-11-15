@@ -5,7 +5,7 @@ import { withIdentity } from "../instructions/task.ts";
 import type { Permission } from "../permission/ask.ts";
 import { assignmentText, parentArchive } from "./identity-reminder.ts";
 import { modelLookup, textResult } from "../shared/util.ts";
-import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
+import { configureIdentity } from "./run-identity.ts";
 import { checkGoal } from "../team/identity.ts";
 import { launchOverlap } from "../team/overlap.ts";
 import { type AgentRuns, claimRun, planRun, type Run } from "./claim.ts";
@@ -14,6 +14,7 @@ import { runSubagent } from "./process.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { buildRouteArgs, type ChildSession, childSession } from "./process/session.ts";
 import { type AgentProfile, askSpawn } from "./profiles.ts";
+import { spawnStillAllowed } from "./spawn-recheck.ts";
 import { startGate } from "./rate-gate.ts";
 import { type StaggerTurn, staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
@@ -28,7 +29,9 @@ import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
-import { itemLink } from "./item-link.ts";
+import { chainPlan, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
+import type { QueuedRun } from "./spawn-chain.ts";
+import { refuseSecondChild as refuseSecond } from "./second-child.ts";
 import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
 import type { Runners } from "./runner-port.ts";
@@ -36,7 +39,7 @@ import { runnerPlan } from "./runner-task.ts";
 import { reportInFlight, runForeground, startBackground } from "./run-execution.ts";
 import type { RunDetails } from "./run-types.ts";
 import { spawnRefusal } from "./spawn-limits.ts";
-import { childCacheGroup, taskSkillPlan, taskSkillText, withRoleSkills } from "./task-skills.ts";
+import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts";
 import { childTaskInput, taskReferences } from "./task-text.ts";
 import { resolveTaskServers } from "./task-servers.ts";
 import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking.ts";
@@ -85,6 +88,8 @@ export async function spawnAgent(
 	if (tooDeep) throw new Error(tooDeep);
 	if (params.workingCopy && !params.isolate) throw new Error("workingCopy requires isolate: true.");
 	const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
+	const startedHeld = params.resume ? startHeld(runs, params.resume) : undefined;
+	if (startedHeld) return startedHeld;
 	// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
 	const resumed = params.resume
 		? resumableChild(ctx.sessionManager.getEntries(), params.resume, new Set(runs.running.keys()))
@@ -99,20 +104,10 @@ export async function spawnAgent(
 	refuseOverSpend();
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
-	const linked = itemLink(ctx, params.item);
-	// One child per item: a second one would race the first on its paths and its completion. A child that reported and
-	// stays reachable still owns it, since a message continues it; the call that resumes that child passes.
-	const refuseSecondChild = () => {
-		if (!linked) return;
-		for (const [child, ref] of runs.items)
-			if (ref === linked.ref && child !== resumed?.child.id && runs.running.has(child))
-				throw new Error(`${ref} is being worked on by ${child}: message or resume it, or wait for its report.`);
-		const parked = lingering.onItem(linked.ref);
-		if (parked !== undefined && parked !== resumed?.child.id)
-			throw new Error(
-				`${linked.ref} is with ${parked}, which reported and stays reachable: resume it (\`resume\` ${parked}), or end it with \`coordinate\` action \`stop\` first.`,
-			);
-	};
+	const { linked, after } = chainPlan(runs, api.getSettings(), params, ctx, resumed !== undefined);
+	const chained = after.length > 0;
+	// One child per item (`second-child.ts`); the call that resumes a child passes for it.
+	const refuseSecondChild = (self?: string) => refuseSecond(runs, lingering, linked, [resumed?.child.id, self]);
 	refuseSecondChild();
 	const runner = params.runner;
 	const plan = runner
@@ -130,7 +125,6 @@ export async function spawnAgent(
 			: resolveTaskServers(api.events, params.mcp, plan.profile, resumed !== undefined);
 	let reserving = planReservation(team, plan.profile, params);
 	const replan = () => planReservation(team, plan.profile, params);
-	// A foreground start tells its row what it waits for; a background one says so in its result.
 	const waitingRow = (waiting: ReservationPlan) => {
 		const row = waitingUpdate(params.profile, goal, 0);
 		onUpdate?.({ ...row, content: [{ type: "text", text: waitingText(waiting) }] });
@@ -138,12 +132,12 @@ export async function spawnAgent(
 	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.getCommands());
 	const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
-	const referenced = await taskReferences(params.task, team, ctx, artifactAccess);
+	let referenced = await taskReferences(params.task, team, ctx, artifactAccess);
 	const slot = { held: false };
 	if (params.background) {
 		// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
 		// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
-		slot.held = startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
+		slot.held = !chained && startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
 	} else {
 		// Before a slot: a start that waits for a sibling's paths must not keep others from theirs.
 		reserving = await awaitSiblings(team, reserving, replan, launchSignal, waitingRow, (clear) => clear);
@@ -153,10 +147,12 @@ export async function spawnAgent(
 	}
 	let claimed: Run | undefined;
 	let grants: Awaited<ReturnType<typeof askSpawn>>;
+	let approvedVia: string | undefined;
 	try {
 		grants = await askSpawn(permission, ctx, plan.profile, params.task, launchSignal, api.getSettings().defaultTools, {
 			toolCallId: id,
 			goal,
+			answered: (via) => (approvedVia = via),
 		});
 		// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
 		const refs = params.isolate ? await pendingRefs(ctx.cwd) : [];
@@ -176,8 +172,8 @@ export async function spawnAgent(
 		// Parallel calls of one batch all passed the first check, and a foreground call may have waited long for its slot.
 		refuseOverSpend();
 		refuseSecondChild();
-		// The item is claimed only now: everything that could refuse the call has passed.
-		linked?.claim();
+		// The item is claimed only now: everything that could refuse the call has passed. A queued child claims it when it starts.
+		if (!chained) linked?.claim();
 		claimed = claimRun(
 			runs,
 			plan,
@@ -205,10 +201,13 @@ export async function spawnAgent(
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
 	let lateNote = "";
+	/** The run's place in the queue of children waiting for prerequisites. */
+	let queuedChild: QueuedRun | undefined;
 	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it; `lingers`: the child stays reachable after it.
 	const finish = (outcome?: SubagentOutcome, lingers?: boolean) =>
 		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers, current)
 			.then((note) => {
+				runs.chain?.gate.refresh();
 				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
 				if (params.background && linked?.notice) runs.graph?.mark(run.identity.id, linked.notice);
 				// A run that reported may take delegated cost past a new multiple of this session's own: its report says so.
@@ -221,40 +220,26 @@ export async function spawnAgent(
 			.finally(() => {
 				runs.live.delete(run.identity.id);
 				run.release();
+				queuedChild?.finish();
 			}));
 	let handedOff = false;
 	// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 	try {
 		const waitsForSiblings = reserving.waitOn.length > 0;
-		const reserved = waitsForSiblings ? `\n\n(${waitingText(reserving)}.)` : takeReservation(team, run, reserving);
-		if (resultContract) run.identity.resultContract = resultContract;
-		if (linked) {
-			run.identity.item = linked.ref;
-			runs.items.set(run.identity.id, linked.ref);
-		}
-		// A lean child reads its skills inlined in the task; it loads none itself.
-		if (!skillPlan.inline) run.identity.skillResources = skillResources;
-		run.identity.skillsInTask = skillPlan.inTask;
-		run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
-		// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
-		const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.events);
-		if (recent) run.identity.mcpRecent = recent;
-		const inherited = taskServers?.servers ?? addedServers;
-		if (Object.keys(inherited).length > 0) run.identity.mcpServers = inherited;
-		if (stopped.length > 0) run.identity.mcpStopped = stopped;
-		if (taskServers) {
-			run.identity.mcpOnly = taskServers.only;
-			run.identity.mcpNamed = taskServers.named;
-		}
-		// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
-		// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
-		run.identity.permission = {
-			mode: permission.mode,
-			grants: [...new Set([...grants, ...permission.childGrants()])],
-		};
-		// With a person to ask, the child's approval dialogs come here (this tool exists only in the main session).
-		run.identity.relay = ctx.hasUI;
-		if (!params.background) run.identity.parentWaits = true;
+		const reserved = chained
+			? ""
+			: waitsForSiblings
+				? `\n\n(${waitingText(reserving)}.)`
+				: takeReservation(team, run, reserving);
+		configureIdentity(run, runs, api, permission, ctx, {
+			resultContract,
+			linked,
+			skillPlan,
+			skillResources,
+			taskServers,
+			grants,
+			background: params.background,
+		});
 		const host = env.relayHost(ctx);
 		const session = resumed?.session ?? childSession(run.identity);
 		const details = runDetails(run, session);
@@ -336,9 +321,14 @@ export async function spawnAgent(
 		const sessionId = ctx.sessionManager.getSessionId();
 		if (queued) {
 			const whenFree = async (queueSignal: AbortSignal) => {
-				if (waitsForSiblings) {
+				if (queuedChild) {
+					const handed = await queuedChild.start(queueSignal, ctx, artifactAccess);
+					lateNote = handed.note;
+					if (handed.referenced) referenced = [referenced, handed.referenced].filter(Boolean).join("\n\n");
+				}
+				if (waitsForSiblings || queuedChild) {
 					// Leases first, then the slot: the run holds no lease while it waits here, and takes them in one step.
-					lateNote = await awaitSiblings(team, reserving, replan, queueSignal, undefined, (clear) =>
+					lateNote += await awaitSiblings(team, reserving, replan, queueSignal, undefined, (clear) =>
 						takeReservation(team, run, clear),
 					);
 				}
@@ -350,16 +340,30 @@ export async function spawnAgent(
 				lateNote = `${lateNote}${started.warning}`;
 				details.startedAt = Date.now();
 				delete details.queued;
+				delete details.after;
+				queuedChild?.started();
 				return started.staggered()(queueSignal);
 			};
+			if (chained)
+				queuedChild = queueRun(
+					runs,
+					run,
+					{ goal, item: linked?.ref, after, details },
+					() =>
+						spawnStillAllowed(permission, ctx, plan.profile, params.task, api.getSettings().defaultTools, approvedVia),
+					() => {
+						reserving = replan();
+						refuseOverSpend();
+						refuseSecondChild(run.identity.id);
+						linked?.claim();
+					},
+				);
 			startBackground(runs, run, details, params.task, whenFree, finish, sessionId, window);
 			handedOff = true;
 			details.status = "background";
 			details.queued = true;
-			return textResult(
-				`Queued ${run.identity.id} (${run.identity.role}: ${goal}) in the background: ${waitsForSiblings ? "it holds no paths yet: it waits for the children holding them, then for a slot" : `${runs.running.size - 1} subagents are ahead of it or running, and it starts when a slot frees`}. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`,
-				details,
-			);
+			if (chained) return queuedResult(runs, run, goal, after, details, notes);
+			return textResult(queuedText(runs, run, goal, waitsForSiblings, notes), details);
 		}
 		const started = await begin(launchSignal);
 		const warning = `${started.warning}${notes}`;

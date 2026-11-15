@@ -51,7 +51,6 @@ function modelDescription(model: LlamaModelInfo): string {
 
 function selectTheme(theme: Theme) {
 	return {
-		selectedPrefix: (text: string) => theme.fg("accent", text),
 		selectedText: (text: string) => theme.fg("accent", text),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("dim", text),
@@ -189,7 +188,7 @@ class LlamaView implements LlamaUi, Focusable {
 	}
 
 	async confirm(title: string, message: string): Promise<boolean> {
-		return (await this.select(`${title}\n${message}`, ["Yes", "No"])) === "Yes";
+		return (await this.select(`${title}\n${message}`, ["No", "Yes"])) === "Yes";
 	}
 
 	async connectionError(serverUrl: string, message: string): Promise<"retry" | "close"> {

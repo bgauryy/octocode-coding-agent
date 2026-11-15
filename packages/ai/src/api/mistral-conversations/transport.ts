@@ -109,7 +109,9 @@ function buildMistralHeaders(model: Model<"mistral-conversations">, apiKey: stri
 	const hasExplicitAffinity =
 		hasMistralHeaderOverride(model.headers, "x-affinity") || hasMistralHeaderOverride(options?.headers, "x-affinity");
 	if (shouldUsePromptCaching(options) && !hasExplicitAffinity) {
-		headers.set("x-affinity", options.sessionId);
+		// A fork continues its parent's conversation, so it pins to the replica holding the parent's prefix. A sibling
+		// child shares a cache key through the environment but keeps its own affinity.
+		headers.set("x-affinity", options.promptCacheKey ?? options.sessionId);
 	}
 
 	return headers;

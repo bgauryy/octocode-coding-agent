@@ -11,6 +11,7 @@ import { getSystemMessageText } from "../../utils/text.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import { getCurrentTools, getInitialSystemMessage, type TranscriptContext } from "../../utils/transcript.ts";
 import { transformMessages } from "../transform-messages.ts";
+import { DEFAULT_ANTHROPIC_VERSION } from "./client.ts";
 import { getAnthropicCompat, getLayeredCacheControl, shouldUseServerSideFallbackBeta } from "./compat.ts";
 import { addHistoryLookbackBreakpoint, countCacheBreakpoints } from "./cache-breakpoints.ts";
 import { buildCacheDiagnosticsParam } from "./cache-diagnostics.ts";
@@ -31,7 +32,7 @@ const INLINE_TOOLS_BETA = "inline-tools-2026-09-15";
 const SAMPLING_REMOVED_API_VERSION = "2026-10-21";
 
 function acceptsSamplingParameters(model: Model<"anthropic-messages">, options?: AnthropicOptions): boolean {
-	let version: string | null | undefined;
+	let version: string | null | undefined = DEFAULT_ANTHROPIC_VERSION;
 	for (const headers of [model.headers, options?.headers]) {
 		for (const [name, value] of Object.entries(headers ?? {})) {
 			if (name.toLowerCase() === "anthropic-version") version = value;
@@ -90,13 +91,19 @@ function getOwnBetaFeatures(
 	return [...new Set(features)];
 }
 
+/**
+ * The SDK's types stopped declaring `temperature` with API version 2026-10-21. Requests pin an older version, which still
+ * accepts it, and the SDK sends unknown body fields unchanged.
+ */
+export type AnthropicRequestParams = MessageCreateParamsStreaming & { temperature?: number };
+
 export function buildParams(
 	model: Model<"anthropic-messages">,
 	context: TranscriptContext,
 	options?: AnthropicOptions,
 	disablePreferredStrictTools = false,
 ): {
-	params: MessageCreateParamsStreaming;
+	params: AnthropicRequestParams;
 	hasPreferredStrictTools: boolean;
 	/** Effort of the final effort marker, recorded on the reply so later requests can replay it. */
 	providerThinkingLevel: AnthropicEffort | undefined;
@@ -162,7 +169,7 @@ export function buildParams(
 	);
 	const activeEffort = options?.effort ?? "high";
 	const betaFeatures = getBetaFeatures(model, context, nativeToolChanges, options);
-	const params: MessageCreateParamsStreaming = {
+	const params: AnthropicRequestParams = {
 		model: model.id,
 		messages: effortMessages ? insertThinkingLevelMessages(converted, activeEffort) : converted.messages,
 		max_tokens: options?.maxTokens ?? model.maxTokens,
@@ -202,7 +209,6 @@ export function buildParams(
 		compat.supportsTemperature &&
 		acceptsSamplingParameters(model, options)
 	) {
-		// oxlint-disable-next-line typescript/no-deprecated -- the SDK deprecates temperature for newer models; the compat checks above send it only where the model still accepts it
 		params.temperature = options.temperature;
 	}
 

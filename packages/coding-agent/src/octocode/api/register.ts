@@ -26,6 +26,7 @@ export function registerApi(
 
 	commands.add("api", {
 		description: "Show, start or stop the local session API",
+		argumentHint: "[on [http]|off]",
 		complete: (prefix) => wordCompletions(["on", "on http", "off"], prefix),
 		handler: async (args, ctx) => {
 			const line = args.trim();

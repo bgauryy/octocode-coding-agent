@@ -48,6 +48,31 @@ function stillRestored(messages: readonly unknown[]): Set<string> {
 	return names;
 }
 
+/** The text of a tool result made of text parts. */
+function resultText(message: Record<string, unknown>): string {
+	if (!Array.isArray(message.content)) return "";
+	return message.content.map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : "")).join("\n");
+}
+
+/**
+ * The tools whose full schema a tool result among `messages` already shows: a refused call (compact JSON) or the `mcp`
+ * tool's `tools` intent (indented JSON).
+ */
+function schemaInResults(messages: readonly unknown[], declared: readonly DeclaredTool[]): Set<string> {
+	const texts = messages.flatMap((message) =>
+		isRecord(message) && message.role === "toolResult" ? [resultText(message)] : [],
+	);
+	const names = new Set<string>();
+	if (texts.length === 0) return names;
+	for (const tool of declared) {
+		const schema = deferredInputSchema(tool.parameters);
+		if (schema === undefined) continue;
+		const forms = [JSON.stringify(schema), JSON.stringify(schema, null, 2)];
+		if (texts.some((text) => forms.some((form) => text.includes(form)))) names.add(tool.name);
+	}
+	return names;
+}
+
 interface DeclaredTool {
 	name: string;
 	parameters: unknown;
@@ -67,8 +92,7 @@ export function restoredSchemas(
 ): { content: string; tools: string[]; omitted: string[] } | undefined {
 	const byName = new Map(declared.map((tool) => [tool.name, tool]));
 	const intro = renderInstruction("notices/compaction/restored-schemas.md").trim();
-	const blocks: string[] = [];
-	const tools: string[] = [];
+	const picked: Array<{ name: string; block: string }> = [];
 	const omitted: string[] = [];
 	let left = budget - intro.length;
 	for (const name of called) {
@@ -80,10 +104,14 @@ export function restoredSchemas(
 			continue;
 		}
 		left -= block.length + 2;
-		blocks.push(block);
-		tools.push(name);
+		picked.push({ name, block });
 	}
-	return tools.length > 0 ? { content: [intro, ...blocks].join("\n\n"), tools, omitted } : undefined;
+	// Chosen by recency, rendered by name: the same tools give the same bytes whatever the call order.
+	picked.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+	const tools = picked.map((entry) => entry.name);
+	return tools.length > 0
+		? { content: [intro, ...picked.map((entry) => entry.block)].join("\n\n"), tools, omitted }
+		: undefined;
 }
 
 type RestoreContext = Pick<ExtensionContext, "sessionManager"> & Partial<Pick<ExtensionContext, "model">>;
@@ -97,8 +125,10 @@ export function restoreDeferredSchemas(
 		const branch = ctx.sessionManager.getBranch().flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
 		const called = calledTools(branch);
 		if (called.length === 0) return [];
-		// A compaction that kept the previous restore in its tail does not repeat those schemas.
-		const shown = stillRestored(contextMessages(ctx).map((entry) => entry.message));
+		// A compaction whose tail already shows a schema (an earlier restore or a tool result) does not repeat it.
+		const kept = contextMessages(ctx).map((entry) => entry.message);
+		const shown = stillRestored(kept);
+		for (const name of schemaInResults(kept, api.getAllTools())) shown.add(name);
 		const window = ctx.model?.contextWindow;
 		const budget =
 			typeof window === "number" && Number.isFinite(window) && window > 0

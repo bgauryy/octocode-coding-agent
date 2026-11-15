@@ -6,6 +6,7 @@ import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../../common/src/paths.ts";
 import { CONTEXT_FILE_CANDIDATES } from "../../../core/discovery/sources.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { toolEffect } from "../tool-effects.ts";
 import { runsLater } from "../file-access.ts";
 import { SHELL_TOOLS } from "../shell.ts";
 import { isNetworkCommand } from "./network.ts";
@@ -47,13 +48,14 @@ export function consequential(
 	if (toolName === "externalAgent") return input.action === "connect" || input.action === "prompt" ? leaves(input) : [];
 	// A task is an instruction to an agent with tools of its own.
 	if (toolName === "agent") return leaves(input);
-	if (toolName === "file" || toolName === "edit" || toolName === "write") {
-		if (toolName === "file" && typeof input.patch === "string") return leaves(input);
-		const changes = toolName === "file" ? (Array.isArray(input.queries) ? input.queries : []) : [input];
-		return changes.flatMap((change) => {
-			const target = isRecord(change) ? str(change.path) : undefined;
-			return target && storesData(target, cwd, workspaceRoot) ? [target] : leaves(change);
-		});
+	const declared = toolEffect(toolName);
+	if (declared?.kind === "write") {
+		// A change whose targets the tool cannot name is all consequential, as is a whole patch.
+		const changes = declared.changes?.(input);
+		if (changes === undefined) return leaves(input);
+		return changes.flatMap((change) =>
+			storesData(change.path, cwd, workspaceRoot) ? [change.path] : leaves(change.detail ?? change.path),
+		);
 	}
 	if (toolName === "memory") return input.op === "set" ? leaves(input) : [];
 	if (isMcpToolName(toolName)) return leaves(input);

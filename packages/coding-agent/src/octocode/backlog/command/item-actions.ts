@@ -24,7 +24,7 @@ const EDITABLE: Record<string, { text(item: Item): string; patch(text: string): 
 		patch: (text) => ({ dependsOn: text.split(/[\s,]+/).filter(Boolean) }),
 	},
 	Title: { text: (item) => item.title, patch: (text) => ({ title: text }) },
-	Goal: { text: (item) => item.goal, patch: (text) => ({ goal: text }) },
+	"Done when": { text: (item) => item.goal, patch: (text) => ({ goal: text }) },
 	Paths: { text: (item) => item.paths.join("\n"), patch: (text) => ({ paths: text.split("\n") }) },
 	Reason: { text: (item) => item.why, patch: (text) => ({ why: text }) },
 	Evidence: { text: (item) => item.evidence.join("\n"), patch: (text) => ({ evidence: text.split("\n") }) },

@@ -7,6 +7,8 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import type { ExtensionContext } from "../../core/features/index.ts";
+import { ruleLine } from "../../theme/dynamic-border.ts";
+import { fitHints, hintText, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { Breath } from "./dialog/marks.ts";
@@ -294,7 +296,7 @@ class AskDialog {
 				lines.push(`${index === 0 ? lead : " ".repeat(indent)}${line}`);
 			});
 		};
-		lines.push(theme.fg("accent", "─".repeat(w)));
+		lines.push(ruleLine(w, (text) => theme.fg("border", text)));
 		if (this.isMulti) {
 			add(" ", tabsLine(theme, questions, this.answers, this.tab));
 			lines.push("");
@@ -305,28 +307,35 @@ class AskDialog {
 		const q = questions[this.tab];
 		const confirm = shortcutText("tui.select.confirm", this.keybindings);
 		const cancel = shortcutText("tui.select.cancel", this.keybindings);
-		const enter = !q
-			? `${confirm} submit`
-			: q.type === "multi"
-				? `${shortcutText("app.ask.toggle", this.keybindings)}/${confirm} toggle · Submit selection to confirm`
-				: `${confirm} choose`;
-		const help = this.typing
-			? `${shortcutText("tui.input.submit", this.keybindings)} submit · ${cancel} back`
-			: [
-					this.isMulti
-						? `${shortcutText("app.ask.previous", this.keybindings)}/${shortcutText("app.ask.next", this.keybindings)} questions`
-						: "",
-					q
-						? `${shortcutText("tui.select.up", this.keybindings)}/${shortcutText("tui.select.down", this.keybindings)}/1-9 move`
-						: "",
-					enter,
-					q && !this.isMulti && hasMore(this.views[this.tab], w) ? `tab ${this.expanded ? "less" : "show all"}` : "",
-					`${cancel} cancel`,
+		const kb = this.keybindings;
+		const hints: RankedHint[] = this.typing
+			? [
+					[shortcutText("tui.input.submit", kb), "submit", 0],
+					[cancel, "back", 1],
 				]
-					.filter(Boolean)
-					.join(" · ");
-		add(" ", theme.fg("dim", help));
-		lines.push(theme.fg("accent", "─".repeat(w)));
+			: [
+					...(this.isMulti
+						? ([
+								[`${shortcutText("app.ask.previous", kb)}/${shortcutText("app.ask.next", kb)}`, "questions", 3],
+							] as RankedHint[])
+						: []),
+					...(q
+						? ([
+								[`${shortcutText("tui.select.up", kb)}/${shortcutText("tui.select.down", kb)}/1-9`, "move", 2],
+							] as RankedHint[])
+						: []),
+					!q
+						? [confirm, "submit", 0]
+						: q.type === "multi"
+							? [`${shortcutText("app.ask.toggle", kb)}/${confirm}`, "toggle", 0]
+							: [confirm, "choose", 0],
+					...(q && !this.isMulti && hasMore(this.views[this.tab], w)
+						? ([[shortcutText("tui.input.tab", kb), this.expanded ? "less" : "show all", 4]] as RankedHint[])
+						: []),
+					[cancel, "cancel", 1],
+				];
+		add(" ", theme.fg("dim", hintText(fitHints(hints, Math.max(1, w - 1)))));
+		lines.push(ruleLine(w, (text) => theme.fg("border", text)));
 		this.cache = lines;
 		this.cacheWidth = width;
 		return lines;

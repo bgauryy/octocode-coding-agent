@@ -13,7 +13,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * Prompt-cache lifetimes, in seconds, for a model that declares no `promptCache` (a custom-provider model in models.json)
- * but whose replies show caching: Anthropic's cache TTLs, 5 minutes for short retention and 1 hour for long.
+ * but whose replies show caching: 5 minutes for short retention and, where the model holds it, 1 hour for long (Anthropic's tiers).
  */
 export const INFERRED_CACHE_TTL_SECONDS = { short: 300, long: 3600 } as const;
 /** Idle gaps needed before this session's own history is trusted over Octocode's constant continuation estimate (fewer gaps are noise). */
@@ -23,25 +23,24 @@ type PromptCache = NonNullable<Model<Api>["promptCache"]>;
 type CacheModel = Pick<Model<Api>, "provider" | "id" | "api" | "promptCache" | "compat">;
 
 /**
- * The lifetimes of a model that declares none. A long request gets a 5-minute entry when the model cannot hold a long one
- * (`supportsLongCacheRetention: false`: octocode-ai then sends no `ttl`) or when its replies showed the provider granting only
- * 5 minutes (`grantedLong` false), so its long tier is then the short one.
+ * The lifetimes of a model that declares none. The long tier is a 1-hour entry only where the model is known to hold one:
+ * an Anthropic-protocol model whose adapter sends the 1h tier (the adapter's own rule, so the plan matches what is sent), or
+ * a model of another API that declares `supportsLongCacheRetention: true`. A model that declares neither, or whose replies
+ * showed the provider granting only 5 minutes (`grantedLong` false), gets the short tier for both, so nothing is planned
+ * around a 1-hour entry the adapter does not send.
  */
 export function inferredPromptCache(
 	model: Pick<Model<Api>, "compat"> & Partial<Pick<Model<Api>, "api" | "baseUrl" | "provider" | "id">>,
 	grantedLong = true,
 ): PromptCache {
-	// An Anthropic-protocol model on a known host follows the adapter's own rule (1h only where the host verifies it), so
-	// the plan matches what is sent. Not every other API's compat declares the flag (Bedrock and Mistral do not).
 	const compat = model.compat;
-	const deniesLong =
+	const holdsLong =
 		model.api === "anthropic-messages" && model.baseUrl
-			? !getAnthropicCompat(model as Model<"anthropic-messages">).supportsLongCacheRetention
-			: compat !== undefined && "supportsLongCacheRetention" in compat && compat.supportsLongCacheRetention === false;
-	const long = grantedLong && !deniesLong;
+			? getAnthropicCompat(model as Model<"anthropic-messages">).supportsLongCacheRetention
+			: compat !== undefined && "supportsLongCacheRetention" in compat && compat.supportsLongCacheRetention === true;
 	return {
 		short: INFERRED_CACHE_TTL_SECONDS.short,
-		long: long ? INFERRED_CACHE_TTL_SECONDS.long : INFERRED_CACHE_TTL_SECONDS.short,
+		long: grantedLong && holdsLong ? INFERRED_CACHE_TTL_SECONDS.long : INFERRED_CACHE_TTL_SECONDS.short,
 	};
 }
 

@@ -83,6 +83,18 @@ describe("mcpDefer roles", () => {
 		expect(loaded).toContain("shout [deferred]");
 	});
 
+	it("defers a judge tool with the readOnly role, as when it was listed there", async () => {
+		const { mcps } = await sessionOf(
+			entry({ roles: { reader: ["localFetch"], judge: ["shout"], readOnly: ["pick"] } }),
+			{
+				deferRoles: ["readOnly"],
+			},
+		);
+		expect(mcps).toContain("\n- shout:");
+		expect(mcps).toContain("\n- pick:");
+		expect(mcps).toContain("function localFetch(");
+	});
+
 	it("leaves a tool with its own direct exposure declared in full", async () => {
 		const { mcps } = await sessionOf(entry({ toolExposure: { shout: "direct" } }), { deferRoles: ["readOnly"] });
 		expect(mcps).not.toContain("\n- shout:");

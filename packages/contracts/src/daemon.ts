@@ -1,7 +1,7 @@
 import { Type, type Static } from "typebox";
 import { ApplicationCommandSchema, ApplicationCursorSchema } from "./application.ts";
 import { WorkspaceCommandSchema } from "./protocol.ts";
-import { TOOL_DECIDED_BY, ToolExposureStateSchema } from "./tool-exposure.ts";
+import { TOOL_DECIDED_BY, ToolAuditSchema, ToolExposureStateSchema } from "./tool-exposure.ts";
 import { StringEnum } from "./schema.ts";
 
 /** Version of the daemon's own HTTP surface and record; a launcher and daemon of different versions do not talk. */
@@ -195,6 +195,8 @@ export const AttachToolStatesSchema = Type.Object(
 			{
 				names: Type.Array(ToolName, { maxItems: 500 }),
 				deferred: Type.Record(Type.String({ maxLength: 256 }), Type.Boolean()),
+				/** Bytes each deferrable tool's deferral saves per request (full minus thin declaration). */
+				saved: Type.Optional(Type.Record(Type.String({ maxLength: 256 }), Type.Integer({ minimum: 0 }))),
 			},
 			{ additionalProperties: false },
 		),
@@ -209,7 +211,12 @@ export const AttachToolStatesSchema = Type.Object(
 						saved: Type.Boolean(),
 						tools: Type.Array(
 							Type.Object(
-								{ name: ToolName, state: ToolExposureStateSchema, decidedBy: StringEnum(TOOL_DECIDED_BY) },
+								{
+									name: ToolName,
+									state: ToolExposureStateSchema,
+									decidedBy: StringEnum(TOOL_DECIDED_BY),
+									audit: Type.Optional(ToolAuditSchema),
+								},
 								{ additionalProperties: false },
 							),
 							{ maxItems: 2000 },

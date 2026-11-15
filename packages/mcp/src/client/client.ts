@@ -261,13 +261,15 @@ export class McpClient {
 		}
 	}
 
+	/**
+	 * The SDK owns the idle timeout; `absoluteDeadline` alone owns the total one. The SDK's own `maxTotalTimeout`
+	 * is checked only when progress arrives and then rejects without `notifications/cancelled` or the total's value.
+	 */
 	private requestOptions(options: McpRequestOptions) {
-		const total = options.maxTotalTimeoutMs ?? this.options.maxTotalTimeoutMs ?? 30 * 60_000;
 		const idle = options.timeoutMs ?? this.options.requestTimeoutMs ?? 30_000;
 		return {
 			signal: options.signal,
 			timeout: Number.isFinite(idle) && idle > 0 ? Math.min(idle, MAX_IDLE_TIMEOUT_MS) : MAX_IDLE_TIMEOUT_MS,
-			maxTotalTimeout: Number.isFinite(total) && total > 0 ? total : undefined,
 			resetTimeoutOnProgress: true,
 			onprogress: options.onProgress
 				? (progress: Parameters<NonNullable<McpRequestOptions["onProgress"]>>[0]) => {

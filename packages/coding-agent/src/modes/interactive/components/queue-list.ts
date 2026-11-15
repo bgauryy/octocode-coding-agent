@@ -8,11 +8,13 @@ import {
 	type Component,
 	type Focusable,
 	getKeybindings,
+	GLYPH,
 	type KeyId,
 	matchesKey,
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { ruleLine } from "../../../theme/dynamic-border.ts";
 import { theme } from "../../../theme/theme.ts";
 import { formatKeyText, type RankedHint, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
 
@@ -113,7 +115,7 @@ export class QueueListComponent implements Component, Focusable {
 	render(width: number): string[] {
 		if (width <= 0) return [];
 		if (this.editor) return this.editor.render(width);
-		const border = theme.fg("border", "─".repeat(Math.max(1, width)));
+		const border = ruleLine(Math.max(1, width));
 		const fit = (line: string) => truncateToWidth(` ${line}`, width);
 		const steer = this.rows.filter((row) => row.mode === "steer").length;
 		const after = this.rows.length - steer;
@@ -137,7 +139,7 @@ export class QueueListComponent implements Component, Focusable {
 			const label = theme.fg(row.mode === "steer" ? "accent" : "muted", MODE_LABEL[row.mode]);
 			const notes = row.notes.length > 0 ? theme.fg("dim", ` (${row.notes.map(queuePreview).join(", ")})`) : "";
 			const preview = queuePreview(row.text);
-			const marker = isSelected ? theme.fg("accent", "›") : " ";
+			const marker = isSelected ? theme.fg("accent", GLYPH.cursor) : " ";
 			const text = isSelected ? theme.bold(preview) : theme.fg("text", preview);
 			lines.push(fit(`${marker} ${theme.fg("dim", `${index + 1}.`)} ${label}  ${text}${notes}`));
 		}
@@ -150,7 +152,7 @@ export class QueueListComponent implements Component, Focusable {
 			),
 		);
 		const editKey = formatKeyText(kb.getKeys("tui.select.confirm")[0] ?? "e");
-		const closeKey = formatKeyText(kb.getKeys("tui.select.cancel")[0] ?? "q").replace(/^escape$/, "esc");
+		const closeKey = formatKeyText(kb.getKeys("tui.select.cancel")[0] ?? "q");
 		const deleteKey = (["d", "delete", "backspace"] as const).find((key) => !claimed.has(key));
 		const hints: RankedHint[] = [];
 		if (this.rows.length > 0) {

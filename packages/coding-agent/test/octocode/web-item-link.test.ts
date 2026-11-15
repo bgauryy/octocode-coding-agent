@@ -1,6 +1,6 @@
 import type http from "node:http";
 import { expect, it, vi } from "vitest";
-import { styleBacklogLines } from "../../src/octocode/backlog/tool-style.ts";
+import { styleBacklogLines, styleBacklogSummary } from "../../src/octocode/backlog/tool-style.ts";
 import { openDoor, LaunchCodes } from "../../src/octocode/web-daemon/launch-code.ts";
 import { linkItem } from "../../src/octocode/shared/text.ts";
 import {
@@ -103,6 +103,21 @@ it("links the id on a backlog result line and leaves the text unchanged", () => 
 	expect(on[0]).toContain(itemLinkUrl("B90"));
 	expect(on.join("\n").replace(OSC8, "")).toBe(text);
 	expect(styleBacklogLines(theme, text, false).join("\n")).toBe(text);
+});
+
+it("highlights a one-item result line: linked id, state in its colour, the whole title", () => {
+	const theme = { fg: (c: string, t: string) => `<${c}>${t}</>`, bold: (t: string) => `*${t}*` } as never;
+	const title = "Audit terminal highlighting of every input and output path in the app";
+	const done = styleBacklogSummary(theme, `B289 → done · ${title}`, true)!;
+	expect(done).toContain(itemLinkUrl("B289"));
+	expect(done).toContain("*<success>done</>*");
+	expect(done).toContain(`*<text>${title}</>*`);
+	const plain = (styled: string) => styled.replace(OSC8, "").replace(/<[a-zA-Z]*>|<\/>|\*/g, "");
+	expect(plain(styleBacklogSummary(theme, `Added B3 · todo · ${title}`, false)!)).toBe(`Added B3 · todo · ${title}`);
+	expect(styleBacklogSummary(theme, "B4 → closed · x", false)).toContain("<dim>closed</>");
+	// Title text is model-written: terminal controls never reach the screen.
+	expect(styleBacklogSummary(theme, "B5 → todo · a\u001b]8;;http://x\u0007b", false)).not.toContain("\u001b");
+	expect(styleBacklogSummary(theme, "3 items", false)).toBeUndefined();
 });
 
 it("routes a clicked item link to the handler and any other URL to the fallback", () => {

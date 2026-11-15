@@ -3,7 +3,10 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
-import { settleNativeDeferral, withNativeDeferral } from "./native-deferral.ts";
+import { declareToolEffect, declaresEffect } from "./tool-effects.ts";
+import { redeclareLoadedNatives, settleNativeDeferral, withNativeDeferral } from "./native-deferral.ts";
+
+export { nativeToolsPort } from "./native-deferral.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
@@ -34,8 +37,11 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	],
 ]);
 
-/** Whether `name` is a native tool: one with a reviewed permission owner above (MCP and extension tools are not). */
-export const isNativeTool = (name: string): boolean => NATIVE_PERMISSION_OWNERS.has(name);
+/**
+ * Whether `name` is a native tool: one with a reviewed permission owner above, or one that declared its effect on its
+ * definition (`ToolDefinition.effect`) when it registered (MCP and extension tools are not).
+ */
+export const isNativeTool = (name: string): boolean => NATIVE_PERMISSION_OWNERS.has(name) || declaresEffect(name);
 
 export const getNativeToolNames = (): string[] => [...NATIVE_PERMISSION_OWNERS.keys()];
 
@@ -83,11 +89,15 @@ function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, 
  */
 export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
 	api.on("session_start", (_event, ctx) => settleNativeDeferral(api, ctx));
+	api.on("tool_execution_end", (_event, ctx) => redeclareLoadedNatives(api, ctx));
 	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
-		if (!isNativeTool(tool.name)) {
-			throw new Error(`Native tool ${tool.name} has no permission owner; register its gate or internal check first.`);
+		// Declaring an effect is the review: the permission layer reads it, so the tool needs no entry above.
+		if (!isNativeTool(tool.name) && !tool.effect) {
+			throw new Error(
+				`Native tool ${tool.name} has no permission owner; declare its effect on the definition or register its gate or internal check first.`,
+			);
 		}
-		api.registerTool(withNativeDeferral(api, withReasonArgument(tool)));
+		api.registerTool(withNativeDeferral(api, withReasonArgument(declareToolEffect(tool))));
 	};
 	return withRegisterTool(api, registerTool);
 }

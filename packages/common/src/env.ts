@@ -26,6 +26,9 @@ export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";
  */
 export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
 
+/** Disables startup network operations; `--offline` sets it for the process and its children. */
+export const OFFLINE_ENV = "OCTOCODE_OFFLINE";
+
 /** `0` turns automatic memory injection off for this process (`/memory auto off` turns it off everywhere). */
 export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
 

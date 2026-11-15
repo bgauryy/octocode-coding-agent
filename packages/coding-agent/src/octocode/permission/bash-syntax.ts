@@ -21,7 +21,8 @@ function asset(name: string): string {
 	const root = getPackageDir();
 	if (isBunBinary) return path.join(root, "bash-parser", name);
 	if (!import.meta.url.endsWith(".ts")) return path.join(root, "dist", "bash-parser", name);
-	if (name === "tree-sitter.wasm") return createRequire(import.meta.url).resolve("web-tree-sitter/tree-sitter.wasm");
+	if (name === "tree-sitter.wasm")
+		return createRequire(import.meta.url).resolve("web-tree-sitter/web-tree-sitter.wasm");
 	return path.join(root, "src", "octocode", "permission", "bash-parser", name);
 }
 

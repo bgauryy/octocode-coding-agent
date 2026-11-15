@@ -4,6 +4,7 @@ import { stream as streamOpenAICompletions } from "../src/api/openai-completions
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
+import { withCacheCapabilities } from "../src/utils/cache-capabilities.ts";
 
 interface CapturedRequest {
 	url: string;
@@ -59,11 +60,12 @@ describe("openai-completions prompt caching", () => {
 
 	function createModel(overrides: Partial<Model<"openai-completions">> = {}): Model<"openai-completions"> {
 		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4.1");
-		return {
+		// The catalog stamps the documented 24h-retention flag on the models OpenAI lists.
+		return withCacheCapabilities({
 			...(baseModel as Omit<Model<"openai-completions">, "api">),
 			api: "openai-completions",
 			...overrides,
-		};
+		});
 	}
 
 	async function captureRequest(

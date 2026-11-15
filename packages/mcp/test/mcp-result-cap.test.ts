@@ -69,3 +69,31 @@ describe("the model-facing text budget of an MCP result", () => {
 		}
 	});
 });
+
+describe("the structuredContent of an MCP result", () => {
+	afterEach(() => publishToolRoles(resolveToolRoles([])));
+
+	it("is replaced by a bounded stub pointing to the saved full JSON when over the host text cap", async () => {
+		const big = { rows: ["x".repeat(hostOutput().textMaxChars + 1)] };
+		const { saved, saveOutput } = saver();
+		const converted = await convertMcpResult(
+			"notes",
+			"dump",
+			{ content: [{ type: "text", text: "ok" }], structuredContent: big },
+			{ saveOutput },
+		);
+		expect(saved).toEqual([JSON.stringify(big)]);
+		const kept = converted.structuredContent as { content: unknown; structuredContent: Record<string, unknown> };
+		expect(JSON.stringify(kept).length).toBeLessThan(hostOutput().textMaxChars);
+		expect(kept.content).toEqual([{ type: "text", text: "ok" }]);
+		expect(kept.structuredContent).toMatchObject({ truncated: true, fullOutputPath: "/tmp/full.txt" });
+	});
+
+	it("stays unchanged when small", async () => {
+		const { saved, saveOutput } = saver();
+		const result = { content: [{ type: "text" as const, text: "ok" }], structuredContent: { n: 1 } };
+		const converted = await convertMcpResult("notes", "dump", result, { saveOutput });
+		expect(converted.structuredContent).toEqual(result);
+		expect(saved).toEqual([]);
+	});
+});

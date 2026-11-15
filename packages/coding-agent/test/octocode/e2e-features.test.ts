@@ -345,7 +345,7 @@ describe("Native features through the SDK", () => {
 		// Restoring overwrites files and cannot be undone, so `/rewind` asks first when a UI can answer (`checkpoint-command.ts`).
 		ui.confirms.push(false);
 		await session.prompt("/rewind");
-		expect(ui.notes.at(-1)?.message).toBe("Nothing was rewound.");
+		expect(ui.notes.at(-1)?.message).toBe("Cancelled: nothing was rewound.");
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 42;\n");
 		ui.confirms.push(true);
 		await session.prompt("/rewind");

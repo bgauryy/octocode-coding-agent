@@ -376,7 +376,6 @@ describe("TuiAltScreen", () => {
 			],
 			2,
 			{
-				selectedPrefix: (text) => text,
 				selectedText: (text) => text,
 				description: (text) => text,
 				scrollInfo: (text) => text,

@@ -129,6 +129,8 @@ describe("messages queued before a session switch", () => {
 		await t!.type("/new");
 		t!.press(KEY.enter);
 		await t!.until(shows(/Stop the running reply and start a new session/), "confirmation");
+		// No is preselected: accepting takes a deliberate move to Yes.
+		t!.press(KEY.down);
 		t!.press(KEY.enter);
 		await t!.until(() => !t!.host.session.isStreaming && t!.host.session.messages.length === 0, "new session");
 		// Time for anything that would auto-send to do so.

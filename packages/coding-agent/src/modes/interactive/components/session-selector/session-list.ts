@@ -1,11 +1,4 @@
-import {
-	type Component,
-	type Focusable,
-	getKeybindings,
-	Input,
-	matchesKey,
-	truncateToWidth,
-} from "@octocodeai/octocode-tui";
+import { type Component, type Focusable, getKeybindings, Input, matchesKey } from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { sessionTitle } from "../../../../core/session-manager/title.ts";
@@ -22,7 +15,7 @@ import { canonicalizePath } from "../../../../../../common/src/paths.ts";
 import { checkoutLabel } from "../../../../core/worktree-path.ts";
 import type { SessionCounts } from "./header.ts";
 import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";
-import { emptyMessage, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
+import { emptyLine, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
 import { DeleteFlow } from "./marks.ts";
 import { renderPreview } from "./preview.ts";
 import { renderSessionRow } from "./row.ts";
@@ -226,12 +219,7 @@ export class SessionList implements Component, Focusable {
 		const lines = renderSearchBox(this.searchInput, width);
 
 		if (this.filteredSessions.length === 0) {
-			lines.push(
-				theme.fg(
-					"muted",
-					truncateToWidth(emptyMessage(this.nameFilter, this.showCwd, this.searchInput.getValue()), width, "…"),
-				),
-			);
+			lines.push(emptyLine(this.nameFilter, this.showCwd, this.searchInput.getValue(), width));
 			return lines;
 		}
 

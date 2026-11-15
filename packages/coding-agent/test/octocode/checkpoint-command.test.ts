@@ -78,7 +78,7 @@ describe("/rewind when an older change cannot be undone", () => {
 		const declined = fakeCtx({ cwd, ui: { confirms: [false] } });
 		await commands.get("rewind")!.handler("2", declined);
 		expect(fs.readFileSync(file, "utf8")).toBe("v2");
-		expect(declined.ui.notes.at(-1)!.message).toBe("Nothing was rewound.");
+		expect(declined.ui.notes.at(-1)!.message).toBe("Cancelled: nothing was rewound.");
 		const ctx = fakeCtx({ cwd, ui: { confirms: [true] } });
 		await commands.get("rewind")!.handler("2", ctx);
 

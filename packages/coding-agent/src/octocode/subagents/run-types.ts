@@ -57,6 +57,12 @@ export interface RunDetails {
 	status: "waiting" | "running" | "background" | "done" | "failed";
 	/** With `background`: every slot was taken, so it starts when one frees. Cleared as it starts. */
 	queued?: boolean;
+	/** With `queued`: what it waits for by name (`B12`, `agent:sly-mantle`), when it waits for prerequisites rather than a slot. */
+	after?: string[];
+	/** Set when a queued run starts: what it waited for, so its row says "Started after …". */
+	startedAfter?: string[];
+	/** With `after`: why it is held instead of waiting (a prerequisite failed, or its start was refused); cleared when it starts. */
+	held?: string;
 	/** The child waits for the user's answer to one of its dialogs (shown in this session). */
 	waiting?: boolean;
 	/** The child compacts its context now. */

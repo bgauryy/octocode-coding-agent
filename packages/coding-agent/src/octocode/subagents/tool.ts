@@ -20,6 +20,10 @@ import { LateReports } from "./late.ts";
 import { Lingering } from "./linger.ts";
 import { GraphWake } from "./graph-wake.ts";
 import { GraphWatch, linkedWhileWorking } from "./graph-watch.ts";
+import { ChainQueue } from "./chain.ts";
+import { PrerequisiteGate } from "./prerequisites.ts";
+import { AGENT_CHAIN_CHANNEL, BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.ts";
+import { AGENT_LIFECYCLE_CHANNEL, type AgentLifecycleNotice } from "../shared/agent-lifecycle.ts";
 import { GRAPH_NOTICE_TYPE } from "../shared/messages.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
 import { dbStamp } from "../../../../db/src/api.ts";
@@ -55,6 +59,8 @@ export interface AgentControl {
 	merge(id: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<MergeResult>;
 	/** The request budgets of the children running now (`coordinate` `grant` and `list`). */
 	budgets: RunningBudgets;
+	/** The children queued behind prerequisites, one row each: what they wait on, or why they are held. */
+	queued(): string[];
 	/** Background subagents running now (a session switch would stop them). */
 	background(): number;
 	/** Names of the subagents running now, foreground and background (a narrowing permission change stops them). */
@@ -78,6 +84,8 @@ export const budgetsThrough = (agents: () => AgentControl | undefined) => ({
 	grant: (id: string, requests: number): BudgetStanding | string =>
 		agents()?.budgets.grant(id, requests) ?? "Agent controls are unavailable.",
 	usage: (id: string): BudgetStanding | undefined => agents()?.budgets.usage(id),
+	/** The queued and held children, one row each, for `coordinate list`. */
+	queued: (): string[] => agents()?.queued() ?? [],
 	cost: (id: string): number | undefined => agents()?.budgets.cost(id),
 });
 
@@ -142,7 +150,28 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		),
 	};
 	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file));
+	// The prerequisites of queued children: items read from the backlog on each event, agents from the lifecycle channel and the parent's own record of each run's end.
+	runs.chain = new ChainQueue(
+		new PrerequisiteGate({
+			item: (ref) => {
+				const item = (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined)?.store.get(ref);
+				return !item ? "missing" : item.state !== "done" ? "open" : item.closed ? "closed" : "done";
+			},
+			lifecycle: (listener) =>
+				api.events.on(AGENT_LIFECYCLE_CHANNEL, (value) => listener(value as AgentLifecycleNotice)),
+			follow: (poke) => follower.subscribe(poke),
+		}),
+		(notice) => api.events.emit(AGENT_CHAIN_CHANNEL, notice),
+	);
+	runs.chain.watch(() => panel.setQueued(runs.chain!.work(runs.items)));
+	// The coordinator's own backlog write completed an item: queued children waiting on it start now, and its result names
+	// no ready item they will start (`backlog/ended-signal.ts`).
+	api.events.on(BACKLOG_ENDED_CHANNEL, (value) => {
+		for (const ref of runs.chain?.items() ?? []) (value as BacklogEnded).queued.add(ref);
+		runs.chain?.gate.refresh();
+	});
 	const watch = new GraphWatch({
+		queued: () => runs.chain?.items() ?? new Set(),
 		backlog: () => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined),
 		linked: (ref) => linkedWhileWorking(runs.items, (id) => runs.running.has(id) || runs.background.has(id), ref),
 		tell: (notice) => runs.graph?.tell(notice),
@@ -278,6 +307,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
 		runs.reports.persist();
 		await stopAll(event.reason);
+		overlapWarned.clear();
 		runs.graph?.stop();
 		watch.stop();
 		runs.reports.persist();
@@ -360,6 +390,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 			Promise.race([...background.values()].map((entry) => entry.done)).then(() => runs.reports.flush()),
 		merge: (id, ctx, signal) => mergeChild(team, permission, id, ctx, signal),
 		budgets,
+		queued: () => runs.chain?.rows() ?? [],
 		background: () => background.size,
 		running: () => [...runs.foreground.keys(), ...background.keys()],
 		stopAll,

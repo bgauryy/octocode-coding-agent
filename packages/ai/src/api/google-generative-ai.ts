@@ -3,6 +3,7 @@ import type { Model, ProviderHeaders, SimpleStreamOptions, StreamFunction, Trans
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getUserAgent } from "../utils/user-agent.ts";
+import { baseUrlIncludesApiVersion } from "./google-shared/api-version.ts";
 import { buildGoogleParams, type GoogleBaseOptions, resolveGoogleSimpleThinking } from "./google-shared/params.ts";
 import { streamGoogle } from "./google-shared/stream.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -44,15 +45,22 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
 	} satisfies GoogleOptions);
 };
 
+const GOOGLE_API_VERSION = "v1beta";
+
 function createClient(
 	model: Model<"google-generative-ai">,
 	apiKey?: string,
 	optionsHeaders?: ProviderHeaders,
 ): GoogleGenAI {
-	const httpOptions: { baseUrl?: string; apiVersion?: string; headers?: Record<string, string> } = {};
+	// Pin the version the SDK used by default so an SDK upgrade cannot move requests to another API version.
+	const httpOptions: { baseUrl?: string; apiVersion?: string; headers?: Record<string, string> } = {
+		apiVersion: GOOGLE_API_VERSION,
+	};
 	if (model.baseUrl) {
 		httpOptions.baseUrl = model.baseUrl;
-		httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
+		if (baseUrlIncludesApiVersion(model.baseUrl)) {
+			httpOptions.apiVersion = "";
+		}
 	}
 	const headers = providerHeadersToRecord({ "User-Agent": getUserAgent(), ...model.headers, ...optionsHeaders });
 	if (headers) {
@@ -61,6 +69,6 @@ function createClient(
 
 	return new GoogleGenAI({
 		apiKey,
-		httpOptions: Object.keys(httpOptions).length > 0 ? httpOptions : undefined,
+		httpOptions,
 	});
 }

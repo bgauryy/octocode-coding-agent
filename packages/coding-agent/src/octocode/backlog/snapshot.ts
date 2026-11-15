@@ -1,6 +1,7 @@
 import { storedSecret } from "../../../../common/src/sanitize.ts";
 import { refuseExportSecrets } from "./export-secrets.ts";
 import { IDLE_MS } from "./release.ts";
+import { queuedItems } from "../shared/queued-items.ts";
 import { refText } from "./row.ts";
 import { BacklogError, type BacklogStore, type Item, priorityName } from "./store.ts";
 
@@ -102,7 +103,10 @@ export function backlogSnapshot(store: BacklogStore, repo: string, now: number, 
 	for (const item of snapshot.items)
 		if (item.parentId)
 			(childrenOf.get(item.parentId) ?? childrenOf.set(item.parentId, []).get(item.parentId)!).push(item);
+	const queued = queuedItems();
 	for (const item of snapshot.items) {
+		const by = item.state === "done" ? undefined : queued.get(item.ref);
+		if (by) item.queuedBy = by;
 		item.children = (childrenOf.get(item.ref) ?? []).map((child) => child.ref);
 		item.blockedBy = (item.dependsOn ?? []).filter((ref) => byRef.get(ref.id)?.state !== "done").map((ref) => ref.id);
 		const openDescendant = (parent: string, seen = new Set<string>()): boolean => {

@@ -8,6 +8,7 @@ import {
 	compact,
 	type SummaryRequestPolicy,
 } from "../compaction/index.ts";
+import { splitSummary } from "../compaction/summary-view.ts";
 import type { CompactionReason } from "../session-compaction.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import type { SessionPublic } from "./host.ts";
@@ -44,8 +45,13 @@ export async function runDefaultCompaction(
 	const sessionStream = session.agent.streamFunction ?? streamSimple;
 	// Watched inside the usage record, so a silent attempt that was ended still has its usage recorded.
 	const streamFn = summaryRequest ? summaryRequest.watch(sessionStream) : sessionStream;
+	// The sections code appends to a checkpoint (user messages, recovery lines, saved results) are carried by code again;
+	// the summarizer updates only the checkpoint's own text.
+	const { previousSummary } = preparation;
 	const result = await compact(
-		preparation,
+		previousSummary === undefined
+			? preparation
+			: { ...preparation, previousSummary: splitSummary(previousSummary).body },
 		request.model,
 		request.apiKey,
 		request.headers,

@@ -84,6 +84,7 @@ export function registerSkillTool(api: ExtensionAPI): SkillCatalog {
 	api.registerTool(
 		timedTool({
 			name: "skill",
+			roleVariant: true,
 			label: "Skill",
 			// The skills section owns the trigger; the snippet only points to it and this text says what the tool does.
 			promptSnippet: renderInstruction("tools/skill/snippet.md"),

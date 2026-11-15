@@ -207,6 +207,7 @@ export class Lingering {
 	close(): void {
 		for (const entry of this.entries.values()) clearTimeout(entry.timer);
 		this.entries.clear();
+		this.generations.clear();
 		this.sessionId = undefined;
 		this.notifier = undefined;
 	}

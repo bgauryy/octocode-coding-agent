@@ -301,9 +301,10 @@ describe("message hooks", () => {
 		team.join();
 		const receiver = peer.join().id;
 		team.setMessageHook(async (message) => void seen.push(message));
-		await team.send(receiver, "fyi");
-		await team.send(receiver, "look", { wake: true });
+		await team.send(receiver, "fyi", { wake: false });
+		await team.send(receiver, "look");
 		await team.send(receiver, "question", { replyRequired: true });
+		// A new message to a named agent wakes it by default; `wake: false` leaves it for the recipient's next turn.
 		expect(seen.map(({ replyRequired, wake, interrupt }) => ({ replyRequired, wake, interrupt }))).toEqual([
 			{ replyRequired: false, wake: false, interrupt: false },
 			{ replyRequired: false, wake: true, interrupt: false },

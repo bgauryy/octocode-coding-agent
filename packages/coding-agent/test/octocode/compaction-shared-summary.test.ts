@@ -99,6 +99,7 @@ function setup(options: Setup = {}) {
 		},
 		sessionManager: {
 			getSessionId: () => "sid-1",
+			getHeader: () => null,
 			getSessionFile: () => options.sessionFile,
 			getBranch: () => options.branch ?? [],
 			buildSessionProjection:

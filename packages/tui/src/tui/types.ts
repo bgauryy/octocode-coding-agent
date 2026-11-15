@@ -32,6 +32,12 @@ export interface TUI extends Component {
 	 */
 	isAboveViewport?(component: Component): boolean;
 	/**
+	 * Regular mode: a row the reader collapsed will shrink the transcript in the next frame. If rows above the screen
+	 * left it, the terminal keeps them in scrollback and only the screen is repainted, instead of clearing scrollback
+	 * and replaying the transcript. One frame only; without the call a shrink above the screen replays.
+	 */
+	keepScrollbackOnCollapse?(): void;
+	/**
 	 * Regular mode: the most rows a replay of the transcript writes (after a width change, a resume from the background,
 	 * or a change above the viewport); earlier rows are left out behind one marker row. 0 replays every row.
 	 */

@@ -107,7 +107,8 @@ const ProviderConfigSchema = Type.Object({
 	apiKey: Type.Optional(
 		Type.String({
 			minLength: 1,
-			description: 'Literal key, "$NAME" environment interpolation, or "!command" output.',
+			description:
+				'Literal key, "$NAME" environment interpolation, or "!command" output (the command runs on first use, not at startup).',
 		}),
 	),
 	api: Type.Optional(

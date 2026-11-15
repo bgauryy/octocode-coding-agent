@@ -1,15 +1,12 @@
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { envInt } from "../../../../../common/src/env.ts";
-import { isKnownLongCommand, LONG_COMMAND_AFTER_SECONDS, neverExits } from "./long-commands.ts";
+import { isKnownLongCommand, type LongCommandSettings, neverExits } from "./long-commands.ts";
 import { effectiveTimeout } from "./results.ts";
 
 /** When a foreground command moves to the background by itself: the threshold, and which calls it applies to. */
 
 /** Overrides the `bashBackgroundAfterSeconds` setting; 0 turns the automatic move off. */
 export const BACKGROUND_AFTER_ENV = "OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS";
-
-/** The longest a foreground wait with its own timeout holds the turn before the command moves to the background. */
-const DELIBERATE_MAX_SECONDS = 600;
 
 /** A command starting with `sleep` is stopped at its deadline, not moved to the background. */
 const SLEEP_COMMAND = /^\s*sleep(?:\s|$)/;
@@ -28,15 +25,16 @@ export function backgroundAfterSeconds(setting: number | undefined, env: NodeJS.
  * command is stopped then (`deliberate`): the timeout is a stop time, whatever `background` says. A call that names none
  * moves to the background at the threshold, unless it is a `sleep` (never moved) or the threshold is off or not shorter
  * than the default deadline. A known long command (test runner, `yarn run check`, build, server, stream follower) moves
- * after `LONG_COMMAND_AFTER_SECONDS` when that is sooner than the threshold. Two calls with a timeout still move, so the
+ * after `bash.longCommandAfterSeconds` when that is sooner than the threshold. Two calls with a timeout still move, so the
  * turn is not held, and their job is stopped at the timeout all the same (`stopAfterSeconds`, counted from the command's
  * start): a command that never exits by itself (`tail -f`), since waiting for it only runs out the timeout, and a
- * timeout longer than `DELIBERATE_MAX_SECONDS`, which waits that long first (`capped`).
+ * timeout longer than `bash.deliberateMaxSeconds`, which waits that long first (`capped`).
  */
 export function foregroundPlan(
 	params: { command: string; timeout?: unknown; background?: boolean },
 	afterSetting: number | undefined,
 	env: NodeJS.ProcessEnv = process.env,
+	long: LongCommandSettings = {},
 ): {
 	timeout: number;
 	clamped: boolean;
@@ -50,13 +48,14 @@ export function foregroundPlan(
 	const { seconds, clamped } = effectiveTimeout(params.timeout);
 	const movable = !SLEEP_COMMAND.test(params.command);
 	const base = backgroundAfterSeconds(afterSetting, env);
-	const after = base > 0 && isKnownLongCommand(params.command) ? Math.min(base, LONG_COMMAND_AFTER_SECONDS) : base;
+	const longAfter = long.afterSeconds ?? SETTINGS_DEFAULTS.bash.longCommandAfterSeconds;
+	const deliberateMax = long.deliberateMaxSeconds ?? SETTINGS_DEFAULTS.bash.deliberateMaxSeconds;
+	const after = base > 0 && isKnownLongCommand(params.command, long.patterns) ? Math.min(base, longAfter) : base;
 	const explicit = typeof params.timeout === "number" && Number.isFinite(params.timeout) && params.timeout > 0;
 	const stop = explicit ? { stopAfterSeconds: seconds } : {};
 	const waits = explicit && !neverExits(params.command);
-	const capped = waits && movable && seconds > DELIBERATE_MAX_SECONDS;
-	if (capped)
-		return { timeout: DELIBERATE_MAX_SECONDS, clamped, movable, auto: true, deliberate: false, capped, ...stop };
+	const capped = waits && movable && seconds > deliberateMax;
+	if (capped) return { timeout: deliberateMax, clamped, movable, auto: true, deliberate: false, capped, ...stop };
 	const auto = movable && !waits && after > 0 && after < seconds;
 	return { timeout: auto ? after : seconds, clamped, movable, auto, deliberate: explicit && !auto, capped, ...stop };
 }

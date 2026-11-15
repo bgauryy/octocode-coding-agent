@@ -34,6 +34,8 @@ const opus = (extra: Partial<TestModel> = {}): TestModel => ({
 	provider: "gateway",
 	id: "claude-opus",
 	api: "anthropic-messages",
+	// The catalog flag that marks a model as holding the 1h tier; a model without it is planned on 5 minutes.
+	compat: { supportsLongCacheRetention: true },
 	...extra,
 });
 const reply = (model: TestModel, usage: Record<string, number>, extra: Record<string, unknown> = {}) => ({
@@ -154,10 +156,19 @@ describe("request size", () => {
 });
 
 describe("prompt-cache lifetimes for models that declare none", () => {
-	it("infers the Anthropic lifetimes, and the short one for long retention where the model cannot hold a long entry", () => {
-		expect(inferredPromptCache({})).toEqual({
-			short: INFERRED_CACHE_TTL_SECONDS.short,
-			long: INFERRED_CACHE_TTL_SECONDS.long,
+	it("infers the 1h tier only where the model is known to hold it, and the short one otherwise", () => {
+		const { short, long } = INFERRED_CACHE_TTL_SECONDS;
+		// A model that declares nothing about its long tier takes the safe default.
+		expect(inferredPromptCache({})).toEqual({ short, long: short });
+		expect(inferredPromptCache({ api: "openai-responses", provider: "x", id: "new-model" })).toEqual({
+			short,
+			long: short,
+		});
+		// A catalog flag marks a new model as holding it, whatever its id or API.
+		expect(inferredPromptCache({ compat: { supportsLongCacheRetention: true } })).toEqual({ short, long });
+		expect(inferredPromptCache({ compat: { supportsLongCacheRetention: true } }, false)).toEqual({
+			short,
+			long: short,
 		});
 		expect(inferredPromptCache({ compat: { supportsLongCacheRetention: false } })).toEqual({ short: 300, long: 300 });
 		// An Anthropic-protocol gateway gets the adapter's 5-minute default; Anthropic's own host keeps 1h.
@@ -233,7 +244,8 @@ describe("prompt-cache lifetimes for models that declare none", () => {
 			short: 300,
 			long: 3600,
 		});
-		expect(lifetimes.of(opus({ id: "never-cached" }) as never)).toEqual({ short: 300, long: 300 });
+		expect(lifetimes.of(opus({ id: "never-cached", compat: undefined }) as never)).toEqual({ short: 300, long: 300 });
+		expect(lifetimes.of(opus({ id: "never-cached" }) as never)).toEqual({ short: 300, long: 3600 });
 		expect(lifetimes.of(opus({ id: "never-cached", api: "mistral-conversations" }) as never)).toBeUndefined();
 		expect(lifetimes.of(opus({ id: "never-cached", compat: { supportsLongCacheRetention: false } }) as never)).toEqual({
 			short: 300,

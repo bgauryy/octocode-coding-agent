@@ -28,7 +28,6 @@ type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorCom
 const editorTheme: EditorTheme = {
 	borderColor: identity,
 	selectList: {
-		selectedPrefix: identity,
 		selectedText: identity,
 		description: identity,
 		scrollInfo: identity,

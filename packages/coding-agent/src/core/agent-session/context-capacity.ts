@@ -83,7 +83,10 @@ export class SessionContextCapacity {
 		const key = this.key(model);
 		if (tokens === undefined) this.budgets.delete(key);
 		else this.budgets.set(key, tokens);
-		session.agent.state.model = this.budgeted(this.original(model));
+		// A model the catalog does not hold exists only as this definition, which the budgeted copy replaces: keep it.
+		const original = this.original(model);
+		this.selected = original;
+		session.agent.state.model = this.budgeted(original);
 		this.host.emit({ type: "session_context_changed" });
 		return session.agent.state.model.contextWindow;
 	}

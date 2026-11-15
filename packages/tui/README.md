@@ -19,7 +19,7 @@ const tui: TUI = new TuiMainScreen(new ProcessTerminal());
 tui.addChild(new Text("Welcome to my app!"));
 const editor = new Editor(tui, {
 	borderColor: id,
-	selectList: { selectedPrefix: id, selectedText: id, description: id, scrollInfo: id, noMatch: id },
+	selectList: { selectedText: id, description: id, scrollInfo: id, noMatch: id },
 });
 editor.onSubmit = (text) => tui.addChild(new Text(`You said: ${text}`));
 tui.addChild(editor);

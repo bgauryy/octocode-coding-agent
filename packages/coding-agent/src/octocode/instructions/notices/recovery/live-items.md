@@ -1,1 +1,1 @@
-Live state, read from the backlog when this summary was written. Backlog items this session holds{{#if items}}: {{items}}{{else}}: none{{/if}}. This list may be shortened; run `backlog get` before relying on an unlisted id.
+Live state, read from the backlog when this summary was written. Backlog items this session holds: none.

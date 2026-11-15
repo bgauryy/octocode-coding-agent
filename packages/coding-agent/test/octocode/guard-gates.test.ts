@@ -53,6 +53,19 @@ async function cli(args: string[], env?: NodeJS.ProcessEnv) {
 	return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
+describe("security usage errors", () => {
+	it("names an unknown word and prints usage with no folder notice first", async () => {
+		const bogus = await cli(["bogus"]);
+		expect(bogus.code).toBe(1);
+		expect(bogus.err.split("\n")[0]).toBe('Unknown security command "bogus".');
+		expect(bogus.err).toContain("Usage:");
+		expect(bogus.err).not.toContain("not trusted");
+		const noId = await cli(["approve"]);
+		expect(noId.code).toBe(1);
+		expect(noId.err.startsWith("Usage:")).toBe(true);
+	});
+});
+
 const hookId = async () => /hook:[0-9a-f]+/.exec((await cli(["check"])).out)?.[0] ?? "";
 
 describe("hook gate", () => {

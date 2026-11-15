@@ -34,6 +34,7 @@ import { staggerPays } from "./stagger.ts";
 import type { ReportGroups } from "./report-groups.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools } from "./profiles.ts";
 import type { RunDetails } from "./run-types.ts";
+import type { ChainQueue } from "./chain.ts";
 import type { GraphWake } from "./graph-wake.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
@@ -170,6 +171,8 @@ export interface AgentRuns {
 	session: number;
 	/** Wakes the parent for a report that says what became ready or what is stuck (`graph-wake.ts`). */
 	graph?: GraphWake;
+	/** The children waiting for prerequisites (`subagents.queuedStarts`), and the gate that releases them. */
+	chain?: ChainQueue;
 }
 
 /** What a call asks for: its goal (already checked by `checkGoal`), a profile and model to plan with. */

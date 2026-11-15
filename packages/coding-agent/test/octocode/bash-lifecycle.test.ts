@@ -154,6 +154,16 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 		const job = jobs.jobs.get("bash-1")!;
 		await commands.get("jobs")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^bash-1 · \d+s · pid \d+ · trap /);
+		await commands.get("jobs")!.handler("kill", ctx);
+		expect(ctx.ui.notes.at(-1)).toMatchObject({
+			type: "warning",
+			message: expect.stringContaining("Usage: /jobs kill <id>"),
+		});
+		// Declining the confirmation (the default answer) leaves the job running.
+		await commands.get("jobs")!.handler("kill bash-1", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toBe("Cancelled: nothing was stopped.");
+		expect(groupAlive(job.pid)).toBe(true);
+		ctx.ui.confirms.push(true);
 		await commands.get("jobs")!.handler("kill bash-1", ctx);
 		await until(() => sent.length === 1);
 		expect(sent[0].message.content).toMatch(/bash-1 stopped \(user\)[\s\S]*ready\ncleaned-up/);

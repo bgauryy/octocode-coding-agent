@@ -66,7 +66,7 @@ describe("native cleanup regressions", () => {
 							expect(narrow.every((line) => visibleWidth(line) <= width)).toBe(true);
 						}
 						const tall = board.render(80);
-						expect(tall.join("\n")).toContain("escape/ctrl+c/q close");
+						expect(tall.join("\n")).toContain("esc/ctrl+c/q close");
 						// The help is one line: at 80 columns the lowest-priority keys give way to the close key.
 						expect(tall.filter((line) => line.includes(" close"))).toHaveLength(1);
 						terminal.rows = 14;

@@ -1,3 +1,6 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { recommendedPreset, recommendedPresets } from "../src/recommended/index.ts";
 import { resolveToolRoles } from "../src/roles.ts";
@@ -28,6 +31,19 @@ describe("resolveToolRoles", () => {
 		});
 	});
 
+	it("counts a judge tool as read-only and exposes the research server's first one", () => {
+		const roles = resolveToolRoles([
+			server("research", { reader: ["read"], search: ["find"], judge: ["classify", "other"] }),
+			server("plain", { judge: ["score"] }),
+		]);
+		expect([...roles.judges].sort()).toEqual(["mcp__plain__score", "mcp__research__classify", "mcp__research__other"]);
+		expect(roles.readOnly.has("mcp__plain__score")).toBe(true);
+		expect(roles.research?.judge).toBe("mcp__research__classify");
+		expect(resolveToolRoles([server("r", { reader: ["read"], search: ["find"] })]).research).not.toHaveProperty(
+			"judge",
+		);
+	});
+
 	it("counts a project entry's roles only when the project is trusted", () => {
 		const entry = { ...server("proj", { reader: ["read"], search: ["find"] }), scope: "project" };
 		expect(resolveToolRoles([{ ...entry, trusted: false }]).readOnly.size).toBe(0);
@@ -45,6 +61,7 @@ describe("roles and install validation", () => {
 				install: { npm: "@a/b", version: "1.0.0" },
 			}),
 		).toBe("object");
+		expect(typeof validateMcpServerConfig("s", { command: "x", roles: { judge: ["j"] } })).toBe("object");
 		expect(validateMcpServerConfig("s", { command: "x", roles: { writer: ["w"] } })).toMatch(
 			/roles\.writer is not a role/,
 		);
@@ -72,5 +89,35 @@ describe("recommended servers", () => {
 		expect(recommendedPreset(data, { REC_FLAG: "0" }).config?.enabled).toBe(false);
 		expect(recommendedPreset(data, {}).config?.enabled).toBe(true);
 		expect(() => recommendedPreset({ name: "rec", command: 1 })).toThrow(/recommended server data/);
+	});
+
+	it("with enabledWhenOnPath, are on only while that command is on PATH and the session is online", () => {
+		const bin = mkdtempSync(join(tmpdir(), "octocode-rec-path-"));
+		try {
+			const tool = join(bin, "localtool");
+			writeFileSync(tool, "#!/bin/sh\n");
+			chmodSync(tool, 0o755);
+			const data = { name: "rec", enabledEnv: "REC_FLAG", enabledWhenOnPath: "localtool", command: "x" };
+			const enabled = (env: NodeJS.ProcessEnv) => recommendedPreset(data, env).config?.enabled;
+			expect(enabled({ PATH: bin })).toBe(true);
+			expect(enabled({})).toBe(false);
+			expect(enabled({ PATH: bin, OCTOCODE_OFFLINE: "1" })).toBe(false);
+			// The environment flag decides either way.
+			expect(enabled({ PATH: bin, REC_FLAG: "0" })).toBe(false);
+			expect(enabled({ REC_FLAG: "1" })).toBe(true);
+			expect(() => recommendedPreset({ ...data, enabledWhenOnPath: 1 }, {})).toThrow(/enabledWhenOnPath must be/);
+		} finally {
+			rmSync(bin, { recursive: true, force: true });
+		}
+	});
+
+	it("include FreeLlama, on by default only where ollama is installed", () => {
+		const freellama = (env: NodeJS.ProcessEnv) => recommendedPresets(env).find(({ name }) => name === "freellama");
+		expect(freellama({})?.config).toMatchObject({
+			enabled: false,
+			install: { npm: "@octocodeai/freellama-mcp-server", bin: "freellama-mcp-server" },
+		});
+		expect(freellama({ OCTOCODE_MCP_FREELLAMA: "1" })?.config?.enabled).toBe(true);
+		expect(recommendedPresets({})[0]?.name).toBe("octocode");
 	});
 });

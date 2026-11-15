@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveModelCapabilities } from "../src/models/capabilities.ts";
 import { builtinModels } from "../src/providers/all.ts";
+import { withCacheCapabilities } from "../src/utils/cache-capabilities.ts";
 import type { Api, Model } from "../src/types.ts";
 
 function model<TApi extends Api>(api: TApi, overrides: Partial<Model<TApi>> = {}): Model<TApi> {
@@ -91,7 +92,9 @@ describe("model capabilities", () => {
 		["OpenAI implicit", model("openai-responses"), "key", {}],
 		[
 			"OpenAI implicit with extended retention",
-			model("openai-responses", { id: "gpt-4.1", provider: "openai", baseUrl: "https://api.openai.com/v1" }),
+			withCacheCapabilities(
+				model("openai-responses", { id: "gpt-4.1", provider: "openai", baseUrl: "https://api.openai.com/v1" }),
+			),
 			"key",
 			{ long: 86_400 },
 		],

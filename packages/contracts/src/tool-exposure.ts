@@ -12,15 +12,45 @@ export const TOOL_EXPOSURE_STATES = ["direct", "deferred", "hidden"] as const;
 export const ToolExposureStateSchema = StringEnum(TOOL_EXPOSURE_STATES);
 export type ToolExposureState = Static<typeof ToolExposureStateSchema>;
 
-/** The native tools a pin can defer; every other native tool is always declared in full. */
+/** The native tools a pin can defer under every `mcpExposure` value; every other native tool is declared in full. */
 export const NATIVE_PINNABLE_TOOLS = ["web", "archive", "models", "backlogPlan"] as const;
 
 /**
- * What decided a tool's state: its own pin, a `toolExposure` pattern, its server's `exposure`, use in the last 24 hours
- * (`mcpExposure: "recent"`), another value of that setting, nothing (`default`), or `core` for a native tool that is
- * never deferred.
+ * Native tools deferred only under `mcpExposure: "usage"` or by a `nativeToolExposure` setting, never by `recent`. With
+ * `NATIVE_PINNABLE_TOOLS` they are the one list of tools the coding agent can defer.
  */
-export const TOOL_DECIDED_BY = ["pin", "pattern", "server", "recent", "setting", "default", "core"] as const;
+export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "timer"] as const;
+
+/**
+ * What decided a tool's state: its own pin, a `toolExposure` pattern, its server's `exposure`, use in the last 24 hours
+ * (`mcpExposure: "recent"`), the promotion snapshot (`"usage"`, with the reason in the row's `audit`), another value of
+ * that setting, nothing (`default`), or `core` for a native tool that is never deferred.
+ */
+export const TOOL_DECIDED_BY = ["pin", "pattern", "server", "recent", "usage", "setting", "default", "core"] as const;
+
+/** Why `mcpExposure: "usage"` left a tool as it is: direct by the snapshot, or deferred with no use in the kept days. */
+export const TOOL_AUDIT_REASONS = ["promoted", "unused"] as const;
+
+/**
+ * What the usage record (`tool-usage.json`, the kept 7 days of the session's role group) says of one tool: sessions
+ * that declared, called (`called`, every call counts once per session), used it, calls refused by the deferred schema,
+ * the share of declaring sessions that used it (`rate`), the last day (UTC) it was used, and the bytes its deferral
+ * saves per request (full declaration minus thin; 0 while declared in full; absent when the declaration is unknown).
+ */
+export const ToolAuditSchema = Type.Object(
+	{
+		declared: Type.Integer({ minimum: 0 }),
+		called: Type.Integer({ minimum: 0 }),
+		used: Type.Integer({ minimum: 0 }),
+		refused: Type.Integer({ minimum: 0 }),
+		rate: Type.Number({ minimum: 0, maximum: 1 }),
+		lastUsed: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+		bytesSaved: Type.Optional(Type.Integer({ minimum: 0 })),
+		reason: Type.Optional(StringEnum(TOOL_AUDIT_REASONS)),
+	},
+	{ additionalProperties: false },
+);
+export type ToolAudit = Static<typeof ToolAuditSchema>;
 
 /** A server or tool name the page can send back: no control characters, bounded. */
 const ToolNameSchema = Type.String({ minLength: 1, maxLength: 256, pattern: "^[^\\u0000-\\u001f\\u007f]+$" });
@@ -33,6 +63,8 @@ export const ToolExposureRowSchema = Type.Object(
 		/** What the running session declares when the list is `live`; otherwise what the configuration says. */
 		state: ToolExposureStateSchema,
 		decidedBy: StringEnum(TOOL_DECIDED_BY),
+		/** Present when the usage record is read: unused tools sort first. */
+		audit: Type.Optional(ToolAuditSchema),
 	},
 	{ additionalProperties: false },
 );

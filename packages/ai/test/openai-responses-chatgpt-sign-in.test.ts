@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
 import type { Model } from "../src/types.ts";
+import { withCacheCapabilities } from "../src/utils/cache-capabilities.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
-const model: Model<"openai-responses"> = {
+const model: Model<"openai-responses"> = withCacheCapabilities({
 	id: "gpt-5",
 	name: "GPT-5",
 	api: "openai-responses",
@@ -14,7 +15,7 @@ const model: Model<"openai-responses"> = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 400000,
 	maxTokens: 128000,
-};
+});
 
 const context = normalizeContext({
 	systemPrompt: "",

@@ -29,6 +29,13 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		return true;
 	}
 
+	// A bare `auth` names no command: usage on stderr, like any other missing or unknown word.
+	if (args[0] === "auth" && args[1] === undefined) {
+		printAuthCommandHelp((text) => console.error(text));
+		process.exitCode = 1;
+		return true;
+	}
+
 	let command: AuthCommand | undefined;
 	try {
 		command = parseAuthCommand(args);

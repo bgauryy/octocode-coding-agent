@@ -159,7 +159,7 @@ function wrapSingleLine(line: string, width: number): string[] {
 
 		// Token itself is too long - break it character by character
 		if (tokenVisibleLength > width && !isWhitespace) {
-			if (currentLine) {
+			if (currentVisibleLength > 0) {
 				// Add specific reset for underline only (preserves background)
 				const lineEndReset = tracker.getLineEndReset();
 				if (lineEndReset) {

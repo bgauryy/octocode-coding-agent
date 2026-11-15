@@ -2,7 +2,7 @@ import { memoryMutation } from "../shared/archive-operation.ts";
 import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../../../../common/src/env.ts";
-import { mutatedPaths } from "../tool-input/file-input.ts";
+import { toolEffect } from "./tool-effects.ts";
 import { resolveToolPath, workspacePaths } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { SHELL_TOOLS } from "./shell.ts";
@@ -96,16 +96,19 @@ export function readOnlyRoleRefusal(
 		const change = mcpCallChange(event.toolName);
 		return change === undefined ? undefined : refusal(`${event.toolName} (${change})`);
 	}
-	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
-		const files = mutatedPaths(event.toolName, input);
-		if (event.toolName === "file" && files.length === 0 && (input.patch !== undefined || input.queries !== undefined))
-			return refusal("A file change that names no readable path");
-		const outside = files.find((file) => !mayWrite(canonicalPath(resolveToolPath(cwd, file)), cwd, env));
-		return outside === undefined ? undefined : refusal(`Changing ${outside}`);
+	const declared = toolEffect(event.toolName);
+	if (declared?.kind === "write") {
+		const changes = declared.changes?.(input);
+		if (changes === undefined) return refusal("A change that names no readable path");
+		const outside = changes.find((change) => !mayWrite(canonicalPath(resolveToolPath(cwd, change.path)), cwd, env));
+		return outside === undefined ? undefined : refusal(`Changing ${outside.path}`);
 	}
+	// A tool that runs programs the guard cannot parse, or changes things no argument names, is refused here.
+	if ((declared?.kind === "opaque" || declared?.kind === "exec") && !SHELL_TOOLS.has(event.toolName))
+		return refusal(`${event.toolName} (a tool whose effect cannot be checked)`);
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
 	const command = optionalString(input.command) ?? "";
-	if (event.toolName === "powershell" || input.type === "powershell")
+	if (input.type === "powershell")
 		return readOnlyCommand(command, "powershell")
 			? undefined
 			: refusal("This PowerShell command (its effects cannot be parsed)");

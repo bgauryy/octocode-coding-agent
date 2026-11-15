@@ -54,6 +54,8 @@ export interface CapturedTool {
 	parameters: unknown;
 	/** What a provider with strict tool mode would send for it: strict, not strict, or the error that refuses it. */
 	strict?: boolean | { refused: string };
+	/** The tool's definition is `roleVariant`: not every role declares it. */
+	roleVariant?: true;
 }
 
 export function strictResolution(tool: Tool): boolean | { refused: string } {
@@ -141,6 +143,8 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		OCTOCODE_MODELS_DEV: "0",
 		// The default follows the machine, and the rendered tool descriptions must not.
 		OCTOCODE_MAX_SUBAGENTS: "6",
+		// The FreeLlama server is on only where `ollama` is on PATH: off, so the capture is the same on every machine.
+		OCTOCODE_MCP_FREELLAMA: "0",
 		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the
 		// fixture home is empty. A real session declares both: opt in so the capture lists the same tools. The listing
 		// makes no call; the API host is a placeholder that is never contacted.
@@ -248,7 +252,10 @@ async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
 		]);
 		await session.prompt(request);
 		if (!captured) throw new Error("The scripted model received no request");
-		return captured;
+		return {
+			context: captured,
+			roleVariant: new Set(session.agent.state.tools.filter((t) => t.roleVariant).map((t) => t.name)),
+		};
 	} finally {
 		session.dispose?.();
 	}
@@ -275,7 +282,7 @@ function describeRequest(
 	name: string,
 	kind: AgentContext["kind"],
 	role: string | undefined,
-	context: TranscriptContext,
+	{ context, roleVariant }: Awaited<ReturnType<typeof firstRequest>>,
 	normalize: (text: string) => string,
 ): AgentContext {
 	const system = getCurrentSystemMessage(context.messages);
@@ -295,6 +302,7 @@ function describeRequest(
 			description: normalize(tool.description ?? ""),
 			parameters: JSON.parse(normalize(JSON.stringify(tool.parameters ?? null))) as unknown,
 			strict: strictResolution(tool),
+			...(roleVariant.has(tool.name) ? { roleVariant: true as const } : {}),
 		})),
 		// The system messages are the prompt and tool deltas shown above; these are the conversation.
 		messages: context.messages

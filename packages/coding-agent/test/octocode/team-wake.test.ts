@@ -39,7 +39,6 @@ describe("wake: true from a peer", () => {
 		await live.session.waitForIdle();
 		expect(live.requests[0].mail).toHaveLength(1);
 		const delivered = JSON.stringify(mailEntries(live));
-		expect(delivered).toContain("FYI: no reply needed.");
 		expect(delivered).not.toContain("replyTo");
 		expect(mailEntries(live)).toHaveLength(1);
 

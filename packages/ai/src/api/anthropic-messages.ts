@@ -4,7 +4,7 @@ import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveCacheAffinityId } from "../utils/cache-policy.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { redactProviderText, withNetworkCauseCode } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -65,8 +65,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
 				const copilotDynamicHeaders = copilotDynamicHeadersFor(model.provider, normalizedContext.messages);
 
-				const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-				const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
+				const cacheSessionId = resolveCacheAffinityId(options);
 
 				client = createClient(
 					model,

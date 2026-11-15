@@ -4,7 +4,6 @@ import { SelectList } from "../src/components/select-list.ts";
 
 const identity = (text: string) => text;
 const theme = {
-	selectedPrefix: identity,
 	selectedText: identity,
 	description: identity,
 	scrollInfo: identity,

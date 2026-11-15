@@ -1,5 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
+import type { ToolChange, ToolEffect } from "../../core/features/types.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";
@@ -48,16 +49,30 @@ export function validateFileInput(input: Record<string, unknown>): void {
 	if (input.patch !== undefined && typeof input.patch !== "string") throw new Error("Patch must be a string");
 	if (input.queries !== undefined && !Array.isArray(input.queries)) throw new Error("Queries must be an array");
 }
+/**
+ * What a `file` call changes, as its declared effect: each change's path and type, a move's destination as a write.
+ * `undefined` when the call names changes but none can be read (a patch that does not parse), so a guard cannot treat
+ * it as a call that changes nothing.
+ */
+function fileToolChanges(input: Record<string, unknown>): ToolChange[] | undefined {
+	const changes = fileChanges(input).flatMap((query): ToolChange[] => {
+		if (typeof query.path !== "string") return [];
+		const type = query.type === "write" || query.type === "edit" || query.type === "delete" ? query.type : undefined;
+		return [
+			{ path: query.path, ...(type ? { type } : {}), detail: query },
+			...(typeof query.movePath === "string" ? [{ path: query.movePath, type: "write" as const, detail: query }] : []),
+		];
+	});
+	return changes.length === 0 && (input.patch !== undefined || input.queries !== undefined) ? undefined : changes;
+}
+
+/** The `file` tool's declared effect: it writes the files its queries or patch name. */
+export const FILE_TOOL_EFFECT: ToolEffect = { kind: "write", changes: fileToolChanges };
+
 /** Files a `file` call is about to change; empty for any other tool. */
 export function mutatedPaths(toolName: string, input: unknown): string[] {
-	if (typeof input !== "object" || input === null) return [];
-	const record = input as Record<string, unknown>;
-	if (toolName !== "file") return [];
-	return fileChanges(record).flatMap((query) =>
-		typeof query === "object" && query !== null && typeof query.path === "string"
-			? [(query as { path: string }).path, ...(typeof query.movePath === "string" ? [query.movePath] : [])]
-			: [],
-	);
+	if (typeof input !== "object" || input === null || toolName !== "file") return [];
+	return (fileToolChanges(input as Record<string, unknown>) ?? []).map((change) => change.path);
 }
 
 export function fileChanges(input: Record<string, unknown>): Record<string, unknown>[] {

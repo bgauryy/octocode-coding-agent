@@ -401,6 +401,7 @@ describe("collaboration schema", () => {
 				registerCommand: () => undefined,
 				registerMessageRenderer: () => undefined,
 				on: () => undefined,
+				events: { on: () => () => undefined, emit: () => undefined },
 			} as never,
 			{
 				profiles: () => new Map(),
@@ -494,7 +495,7 @@ describe("Team", () => {
 			await child.send("parent", "found it", { replyTo: (asked as { id: number }).id });
 			vi.advanceTimersByTime(1_000);
 			expect(mainLog[0].message.content).toContain("agent researcher-1234");
-			expect(mainLog[0].message.content).toContain("FYI: no reply needed");
+			expect(mainLog[0].message.content).not.toContain("replyTo");
 			expect(main.members().find((m) => m.id === "researcher-1234")?.pending).toBe(0);
 
 			// Reservations: the child's edit is refused while the parent holds the file.

@@ -1,4 +1,13 @@
-import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@octocodeai/octocode-tui";
+import { emptyState, HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
+import {
+	type Component,
+	Container,
+	getKeybindings,
+	GLYPH,
+	Spacer,
+	Text,
+	truncateToWidth,
+} from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { plainText } from "./styled-line.ts";
@@ -35,7 +44,7 @@ class UserMessageList implements Component {
 		const lines: string[] = [];
 
 		if (this.messages.length === 0) {
-			lines.push(theme.fg("muted", "  No user messages found"));
+			lines.push(emptyState("No user messages"));
 			return lines;
 		}
 
@@ -53,7 +62,7 @@ class UserMessageList implements Component {
 			const normalizedMessage = plainText(message.text);
 
 			// First line: cursor + message
-			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
+			const cursor = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
 			const maxMsgWidth = width - 2; // Account for cursor (2 chars)
 			const truncatedMsg = truncateToWidth(normalizedMessage, maxMsgWidth);
 			const messageLine = cursor + (isSelected ? theme.bold(truncatedMsg) : truncatedMsg);
@@ -113,7 +122,7 @@ export class UserMessageSelectorComponent extends Container {
 		super();
 
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.bold("Fork from Message"), 1, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Fork from Message")), 1, 0));
 		this.addChild(
 			new Text(
 				theme.fg("muted", "Select a user message to copy the active path up to that point into a new session"),
@@ -132,11 +141,13 @@ export class UserMessageSelectorComponent extends Container {
 		this.addChild(this.messageList);
 
 		this.addChild(new Spacer(1));
+		this.addChild(
+			new HintBar([
+				[keyText("tui.select.confirm"), "fork", 1],
+				[keyText("tui.select.cancel"), "cancel", 0],
+			]),
+		);
 		this.addChild(new DynamicBorder());
-
-		if (messages.length === 0) {
-			setTimeout(() => onCancel(), 100);
-		}
 	}
 
 	getMessageList(): UserMessageList {

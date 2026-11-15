@@ -68,6 +68,7 @@ export function createMemoryTool(
 	const writeNoteOp = <R>(run: () => R) => queued(run) as Promise<Awaited<R>>;
 	return timedTool({
 		name: "memory",
+		roleVariant: true,
 		label: "Memory",
 		promptSnippet: renderInstruction("tools/memory/snippet.md"),
 		// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.

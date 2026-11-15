@@ -89,9 +89,9 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 	};
 	commands.add("plan", {
 		description: builtinDescription("plan"),
-		argumentHint: "[description|--off|--approve <revision>]",
+		argumentHint: "[description|--show|--off|--approve <revision>]",
 		dialog: "interaction",
-		complete: (prefix) => wordCompletions(["--off", "--approve"], prefix),
+		complete: (prefix) => wordCompletions(["--show", "--off", "--approve"], prefix),
 		handler: async (args, ctx) => {
 			ensureState(ctx);
 			if (args === "--show") {

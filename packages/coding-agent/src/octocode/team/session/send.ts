@@ -4,7 +4,7 @@ import { visibleControls } from "../../../../../common/src/sanitize.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
-import { interruptRefusal, isProcessName, outside, resolveTarget } from "../routing.ts";
+import { interruptRefusal, isProcessName, nextStep, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
 import { patiently } from "../store/patient.ts";
 import type { Vouches } from "./vouches.ts";
@@ -68,6 +68,22 @@ export interface SendHost {
 }
 
 const CHANGED = "The session or team membership changed before the message could be sent.";
+
+/** The next step for each recipient that can no longer read: a child of this session's report and resume, else a peer's. */
+const nextSteps = (host: SendHost, gone: readonly string[]): string =>
+	[
+		...new Set(
+			gone.map((who) =>
+				nextStep(who, { child: host.finished.has(who) || host.reporting(who), reported: host.finished.has(who) }),
+			),
+		),
+	].join(" ");
+
+/** `to` names an agent whose last run ended: the refusal says so with the next step; undefined for a name no agent had. */
+function endedRefusal(host: SendHost, db: TeamStore, to: string): string | undefined {
+	const run = db.presence.runs({ agentId: to, limit: 1 })[0];
+	return run?.endedAt === undefined ? undefined : `${to} left the team; nothing was sent. ${nextSteps(host, [to])}`;
+}
 
 /**
  * The checks every outbound message passes, bound to the moment the send started: `check` runs the message hook for one
@@ -201,10 +217,14 @@ export async function sendMessage(
 	const starting = to === "all" ? (host.starting?.() ?? []).filter((id) => id !== from && !known.has(id)) : [];
 	// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 	const replyRequired = options.replyRequired ?? false;
+	// A new message to a named agent starts its turn when idle (paced on its side), so evidence it must act on does not sit
+	// unread. Replies wake only an asker still waiting on them (`insertMessage`), so an acknowledgement starts no turn; a
+	// broadcast would start every idle agent, and `wake: false` leaves the message for the recipient's next turn.
+	const wakes = outside(from) || (options.wake ?? (to !== "all" && options.replyTo === undefined));
 	// What a PreMessageSend hook sees: the question, the wake (a question wakes, and so does `wake`) and the interrupt.
 	const hookFlags = {
 		replyRequired,
-		wake: outside(from) || options.wake === true || replyRequired,
+		wake: wakes || replyRequired,
 		interrupt: options.interrupt === true,
 	};
 	const reply = options.replyTo !== undefined ? { replyTo: options.replyTo } : {};
@@ -245,7 +265,8 @@ export async function sendMessage(
 					error: `${to} is running but cannot read messages yet: it is still starting, or already writing its report. Nothing was sent; send it again on your next step.`,
 				};
 			// An answer its asker can no longer read: the question closes, so it stops waiting on this agent.
-			if (options.replyTo === undefined || to !== answered?.from) return { error: targets };
+			if (options.replyTo === undefined || to !== answered?.from)
+				return { error: endedRefusal(host, db, to) ?? targets };
 			db.refs.closeQuestion(options.replyTo, from);
 			return { error: `${targets} Its question #${options.replyTo} is closed; nothing was sent.` };
 		}
@@ -275,7 +296,8 @@ export async function sendMessage(
 	}
 	const refused = options.interrupt ? interruptRefusal(members, targets, from, to, scope) : undefined;
 	if (refused) return { error: refused };
-	if (targets.some(runnerMember) && (options.interrupt || options.wake))
+	const runner = targets.some(runnerMember);
+	if (runner && (options.interrupt || options.wake))
 		return {
 			error:
 				"Vendor runner mail is cooperative: it cannot interrupt or wake a turn. Send without those flags, or stop the task with coordinate stop. Nothing was sent.",
@@ -297,7 +319,8 @@ export async function sendMessage(
 				: undefined;
 	const flags = {
 		replyRequired,
-		wake: outside(from) || options.wake === true,
+		// Vendor runner mail is cooperative: it never starts a turn, so the default leaves it unflagged.
+		wake: wakes && !runner,
 		interrupt: options.interrupt === true,
 		...reply,
 		...(sign ? { sign } : {}),
@@ -314,7 +337,10 @@ export async function sendMessage(
 			),
 		signal,
 	);
-	if (id === undefined) return { error: `${departed.join(", ")} left the team; the message was not sent.` };
+	if (id === undefined)
+		return {
+			error: `${departed.join(", ")} left the team; the message was not sent. ${nextSteps(host, departed)}`,
+		};
 	const sent = targets.map((target) => target.id).filter((target) => !departed.includes(target));
 	// How each recipient meets the message, so a sender is told when an idle FYI only waits for its next turn. A recipient
 	// that got the message (its process runs) but is no longer listed has not been seen for `STALE_MS`: it may only be stalled.

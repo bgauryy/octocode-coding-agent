@@ -115,8 +115,12 @@ export function applyEntities(
 				: input.completion;
 		if (!c.summary.trim() || !c.verification.summary.trim())
 			throw new BacklogError("Completion needs a summary and verification explanation.");
-		// `not_stated` is a result whose words name no status: recorded as that, never as passed.
-		if (actor.kind !== "human" && !["passed", "not_applicable", "not_stated"].includes(c.verification.status))
+		// `not_stated` names no result ("ran the check", "37 passed, 2 failed"): an agent must say whether it passed.
+		if (actor.kind !== "human" && c.verification.status === "not_stated")
+			throw new BacklogError(
+				`The verification names no result: start it with passed or not applicable and name the check. If it failed or did not run, keep ${before.ref} ongoing and add a note saying what failed.`,
+			);
+		if (actor.kind !== "human" && !["passed", "not_applicable"].includes(c.verification.status))
 			throw new BacklogError(
 				`An agent closes an item only with verification passed or not_applicable, not ${c.verification.status}: keep ${before.ref} ongoing, add a note saying what failed, and close it after a passing check.`,
 			);

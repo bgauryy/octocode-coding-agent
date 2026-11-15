@@ -59,7 +59,7 @@ describe("one row formatter for /mcp list, /harness and /configuration list mcp"
 			.filter((entry) => ["docs", "off", "base", "idle", "tracker"].includes(entry.name))
 			.map((entry): McpServer => {
 				if (entry.name === "idle") return { entry, unselected: true };
-				return { entry, ...(entry.name === "off" ? {} : { connection: connected }) };
+				return { entry, ...(entry.name === "off" || entry.name === "base" ? {} : { connection: connected }) };
 			});
 		expect(servers.map((server) => server.entry.name).sort()).toEqual(["base", "docs", "idle", "off", "tracker"]);
 		const status: McpServerStatus[] = servers.map((server) => ({

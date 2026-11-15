@@ -18,6 +18,7 @@ import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { ApplicationAssets } from "../../../core/application/assets.ts";
 import { normalizeApplicationMessage } from "../../../core/application/normalize.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
 import { AssistantMarkdown } from "./assistant-markdown.ts";
 import { LongResponse } from "./long-response.ts";
@@ -30,8 +31,8 @@ import {
 	type ContentOptions,
 } from "./application-content.ts";
 import {
-	durationSuffix,
-	thoughtDuration,
+	finishedLabel,
+	THINKING_LABEL,
 	interruptedText,
 	isAbortWording,
 	LiveThinkingLabel,
@@ -304,9 +305,8 @@ export class AssistantMessageComponent extends Container {
 				const active = this.isStreaming && i === blocks.length - 1;
 				const interrupted = !this.isStreaming && ["aborted", "error", "length"].includes(message.stopReason ?? "");
 				const elapsed = thinkingMs(spanIds);
-				// A collapsed, finished block reads as a past event ("Thought for 4s"); an open one titles its text.
-				const label = interrupted ? "Reasoning interrupted" : hidden ? "Thought" : "Reasoning";
-				const time = hidden && !interrupted ? thoughtDuration(elapsed) : durationSuffix(elapsed);
+				// One label for a finished block, folded or open: only the fold glyph differs.
+				const label = finishedLabel(interrupted, elapsed);
 				const hint = hidden ? revealHint(this.mouseHint) : "";
 				const thinkingComponent = new Container();
 				if (active) {
@@ -316,16 +316,18 @@ export class AssistantMessageComponent extends Container {
 					thinkingComponent.addChild(
 						new Text(
 							theme.fg(
-								interrupted ? "warning" : "thinkingText",
-								`${hidden ? GLYPH.collapsed : GLYPH.expanded} ${label}${time}`,
+								interrupted ? STOPPED_COLOR : "thinkingText",
+								`${hidden ? GLYPH.collapsed : GLYPH.expanded} ${label}`,
 							) + (hint ? theme.fg("dim", ` ${hint}`) : ""),
 							this.outputPad,
 							0,
 						),
 					);
 				}
-				if (hidden && this.hiddenThinkingLabel !== "Thinking…") {
-					thinkingComponent.addChild(new Text(this.hiddenThinkingLabel, this.outputPad, 0));
+				if (hidden && this.hiddenThinkingLabel !== THINKING_LABEL) {
+					thinkingComponent.addChild(
+						new Text(theme.fg("thinkingText", sanitizeTerminalText(this.hiddenThinkingLabel)), this.outputPad, 0),
+					);
 				}
 				if (!hidden) {
 					thinkingComponent.addChild(this.markdownBlock(content.id, thinkingBlocks.join("\n\n"), true));
@@ -376,7 +378,11 @@ export class AssistantMessageComponent extends Container {
 			if (!this.interruptShownByTool) {
 				this.contentContainer.addChild(new Spacer(1));
 				this.contentContainer.addChild(
-					new Text(theme.fg("warning", sanitizeTerminalText(interruptedText(message.errorMessage))), this.outputPad, 0),
+					new Text(
+						theme.fg(STOPPED_COLOR, sanitizeTerminalText(interruptedText(message.errorMessage))),
+						this.outputPad,
+						0,
+					),
 				);
 			}
 		}

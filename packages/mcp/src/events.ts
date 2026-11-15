@@ -25,6 +25,7 @@ import {
 	mcpServerPurposes,
 	renderMcpStatusSection,
 	renderMcpsSection,
+	mcpBlockContracts,
 } from "./section.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { declaredParameters, redeclaresInPlace } from "./redeclare.ts";
@@ -60,6 +61,7 @@ function serverListings(state: McpExtensionState): McpServerListing[] {
 		const declared = [...(state.serverTools.get(server.entry.name) ?? [])]
 			.filter((name) => active.has(name) && state.definitions.get(name)?.exposure === "direct")
 			.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name);
+		state.recordToolsDeclared(server.entry.name, declared);
 		const connectionState = server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting");
 		const described = state.presentation.describe(
 			server.entry.name,
@@ -103,6 +105,10 @@ function describeServers(
 	const mcps = renderMcpsSection(listings, { declared: state.presentation.declared });
 	if (mcps) options.baseSections[MCPS_SECTION] = mcps;
 	else delete options.baseSections[MCPS_SECTION];
+	state.promptContracts.clear();
+	if (mcps)
+		for (const [name, contract] of mcpBlockContracts(listings, { declared: state.presentation.declared }))
+			state.promptContracts.set(name, contract);
 	const status = renderMcpStatusSection(listings, {
 		canManage: state.api.getActiveTools().includes("mcp"),
 		// A server the user switched off is not awaiting approval: only switched-on servers the review holds back are named.

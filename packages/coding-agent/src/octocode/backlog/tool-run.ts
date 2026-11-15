@@ -40,6 +40,8 @@ interface RunOptions {
 	/** The operation as the caller named it (`claim`, `edit`), for messages; the store operation otherwise. */
 	word?: string;
 	audits?: BacklogAudit[];
+	/** The items queued children start once the one a write completed is done (`endedNotice`). */
+	queued?: (ref: string) => ReadonlySet<string>;
 }
 
 /** The descriptive fields a call sets, only those it names. */
@@ -182,10 +184,6 @@ export function runBacklog(backlog: Backlog, args: RunParams, options: RunOption
 	// Reopening is allowed (a regression turns up after the fact); the done items that waited on this one are named.
 	const review = reopened ? store.reviewNeeded(item) : [];
 	const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";
-	const graph = subagent ? "" : endedNotice(backlog, item, before); // a child's report carries it instead
-	const unstated =
-		params.completion?.verification.status === "not_stated"
-			? "\n(Verification recorded as not stated: it names no result. Start it with passed, failed, not run or not applicable.)"
-			: "";
-	return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${unstated}${flagged}${graph}`, { item });
+	const graph = subagent ? "" : endedNotice(backlog, item, before, options.queued); // a child's report carries it instead
+	return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}${graph}`, { item });
 }

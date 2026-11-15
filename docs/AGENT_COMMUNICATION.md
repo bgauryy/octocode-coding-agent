@@ -138,13 +138,13 @@ stateDiagram-v2
     NoticeAccepted --> [*]
 ```
 
-| Message kind                | When the recipient reads it                                                             |
-| --------------------------- | --------------------------------------------------------------------------------------- |
-| `replyRequired`             | Wakes an idle teammate                                                                  |
-| FYI with `wake: true`       | Wakes an idle teammate, at most one agent-started turn per 30 s on the recipient's side |
-| Other FYI                   | An idle teammate reads it with its next prompt                                          |
-| Any mail to a busy teammate | In its next model request                                                               |
-| Interrupt                   | Reaches only the sender's own child or the user's session tree                          |
+| Message kind                                                               | When the recipient reads it                                                                                                                  |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `replyRequired`, or the answer to the recipient's open question            | Wakes an idle teammate                                                                                                                       |
+| A new FYI to a named teammate (`parent` included)                          | Wakes an idle teammate; agent-started turns are paced to one per 30 s and six per 10 minutes on its side, and mail meanwhile joins that turn |
+| A reply that answers no open question, a broadcast to `all`, `wake: false` | An idle teammate reads it with its next prompt                                                                                               |
+| Any mail to a busy teammate                                                | In its next model request                                                                                                                    |
+| Interrupt                                                                  | Reaches only the sender's own child or the user's session tree                                                                               |
 
 Delivery stages are not a task state machine. A broadcast makes one delivery per recipient; a reply is another message. A rejection after context acknowledgment does not replay mail; old session callbacks cannot acknowledge a new inbox. Retries use the regular tick without backoff. This is agent mail, not email.
 

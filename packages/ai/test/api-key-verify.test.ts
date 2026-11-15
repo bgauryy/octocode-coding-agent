@@ -9,7 +9,7 @@ import { openaiProvider } from "../src/providers/openai.ts";
 import type { AuthEvent } from "../src/auth/types.ts";
 import { verifyByRequest } from "../src/auth/verify.ts";
 
-async function signIn(id: string, key: string, status: number | Error) {
+async function signIn(id: string, key: string, status: number | Error, choice = "save") {
 	const fetchMock = vi.fn(async () => {
 		if (status instanceof Error) throw status;
 		return new Response("{}", { status });
@@ -23,14 +23,19 @@ async function signIn(id: string, key: string, status: number | Error) {
 		"opencode-go": opencodeGoProvider,
 	};
 	const providers = new Map([[id, (factories[id] ?? openaiProvider)()]]);
+	const questions: string[] = [];
 	const outcome = await loginProvider(providers as never, store, id, "api_key", {
-		prompt: async () => key,
+		prompt: async (request) => {
+			if (request.type !== "select") return key;
+			questions.push(request.message);
+			return choice;
+		},
 		notify: (event) => events.push(event),
 	}).then(
 		() => "saved",
 		(error: Error) => error.message,
 	);
-	return { outcome, saved: await store.read(id), events, fetchMock };
+	return { outcome, saved: await store.read(id), events, fetchMock, questions };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -67,6 +72,38 @@ describe("API key verification at sign-in", () => {
 		},
 	);
 
+	it("does not ask when the key is accepted or rejected", async () => {
+		expect((await signIn("openai", "sk-good", 200)).questions).toEqual([]);
+		expect((await signIn("openai", "sk-bad", 401)).questions).toEqual([]);
+	});
+
+	it("treats a check that outlives its 10 s bound as unreachable, without following redirects", async () => {
+		vi.useFakeTimers();
+		try {
+			const fetchMock = vi.fn(
+				(_url: string, init: RequestInit) =>
+					new Promise<Response>((_resolve, reject) => {
+						init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+					}),
+			);
+			vi.stubGlobal("fetch", fetchMock);
+			const verdict = verifyByRequest("https://example.test/models", {}, new AbortController().signal);
+			await vi.advanceTimersByTimeAsync(9_999);
+			expect(fetchMock).toHaveBeenCalledWith(
+				"https://example.test/models",
+				expect.objectContaining({ redirect: "error" }),
+			);
+			let settled = false;
+			void verdict.then(() => (settled = true));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(settled).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			await expect(verdict).resolves.toBe("unreachable");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("saves a key the model list accepts, asking the free endpoint with the key", async () => {
 		const { outcome, saved, fetchMock } = await signIn("openai", "sk-good", 200);
 		expect(outcome).toBe("saved");
@@ -77,7 +114,15 @@ describe("API key verification at sign-in", () => {
 		);
 	});
 
-	it("saves with a warning when the network fails", async () => {
+	it("asks before saving when the network fails, and saves nothing when declined", async () => {
+		const declined = await signIn("openai", "sk-good", new TypeError("fetch failed"), "cancel");
+		expect(declined.questions).toEqual([expect.stringContaining("Save it without checking?")]);
+		expect(declined.outcome).toContain("could not be checked. Nothing was saved");
+		expect(declined.outcome).not.toContain("sk-good");
+		expect(declined.saved).toBeUndefined();
+	});
+
+	it("saves after the user confirms an unchecked key", async () => {
 		const { outcome, saved, events } = await signIn("openai", "sk-good", new TypeError("fetch failed"));
 		expect(outcome).toBe("saved");
 		expect(saved).toBeDefined();
@@ -86,8 +131,9 @@ describe("API key verification at sign-in", () => {
 		);
 	});
 
-	it("saves with a warning on a server error, which is not a refusal", async () => {
-		const { outcome, events } = await signIn("openai", "sk-good", 503);
+	it("asks, then saves with a warning on a server error, which is not a refusal", async () => {
+		const { outcome, events, questions } = await signIn("openai", "sk-good", 503);
+		expect(questions).toHaveLength(1);
 		expect(outcome).toBe("saved");
 		expect(events).toContainEqual(expect.objectContaining({ message: expect.stringContaining("saved anyway") }));
 	});

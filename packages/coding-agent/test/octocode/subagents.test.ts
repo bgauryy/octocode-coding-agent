@@ -520,6 +520,7 @@ describe("subagents", () => {
 			registerCommand: (name: string, command: never) => commands.set(name, command),
 			registerMessageRenderer: () => undefined,
 			on: () => undefined,
+			events: { on: () => () => undefined, emit: () => undefined },
 			sendMessage: () => undefined,
 		} as never;
 		const control = registerAgentTool(api, {

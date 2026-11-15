@@ -214,6 +214,7 @@ describe("registerTurnSetup", () => {
 		expect(first.options.cwd).toBe("/repo/packages/app");
 		expect(first.prompt).toContain('<project_instructions path="/repo/AGENTS.md">');
 		expect(first.prompt).toContain('<project_instructions path="/home/user/.octocode/AGENTS.md">');
-		expect(first.prompt).not.toContain("worktrees");
+		expect(first.prompt).not.toContain(".octocode/worktrees/");
+		expect(first.prompt).not.toContain("researcher-1a2b");
 	});
 });

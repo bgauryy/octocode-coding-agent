@@ -46,6 +46,7 @@ export function registerModelsTool(
 ): void {
 	api.registerTool({
 		name: "models",
+		roleVariant: true,
 		label: "Models",
 		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:

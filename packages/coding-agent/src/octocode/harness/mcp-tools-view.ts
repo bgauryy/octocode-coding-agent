@@ -3,6 +3,7 @@ import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text
 import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { formatAudit } from "../../../../common/src/tool-audit.ts";
 import { MCP_EXPOSURES } from "../../../../mcp/src/api.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { shortcutText } from "../shared/keys.ts";
@@ -134,7 +135,8 @@ export class McpToolsView {
 					: t.fg("dim", "[ ]");
 		const name = sanitizeTerminalText(row.name);
 		const pending = row.live !== undefined && row.live !== row.state ? " · from the next session" : "";
-		const note = `${row.state}${row.pin ? " · pinned" : ""}${pending}`;
+		const audit = row.audit ? ` · ${formatAudit(row.audit)}${row.audit.reason ? ` · ${row.audit.reason}` : ""}` : "";
+		const note = `${row.state}${row.pin ? " · pinned" : ""}${pending}${audit}`;
 		return `${selected ? t.fg("accent", "> ") : "  "}${box} ${selected ? t.bold(name) : name}  ${t.fg("dim", note)}`;
 	}
 

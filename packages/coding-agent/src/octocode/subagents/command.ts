@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { agentDetailText, recentRunsText } from "./run-text.ts";
-import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_STOP } from "./process/outcome.ts";
@@ -115,7 +115,7 @@ export function agentsCommand(
 			ids.includes(id) &&
 			!(await ctx.ui.confirm("Stop subagent?", `Stop ${id}? Work it has not reported is lost.`))
 		)
-			return say(ctx, "Nothing stopped.");
+			return say(ctx, cancelledText("stopped"));
 		const refused = !id
 			? `Usage: /agents kill <id>. ${ids.length ? `Running: ${ids.join(", ")}` : "None is running."}`
 			: foreground.has(id)

@@ -77,6 +77,7 @@ function setup(replyAfter?: Promise<void>) {
 		},
 		sessionManager: {
 			getSessionId: () => "sid-1",
+			getHeader: () => null,
 			getSessionFile: () => undefined,
 			getBranch: () => [],
 			buildSessionProjection: () => ({ entries, messages: entries.flatMap((item) => item.messages) }),

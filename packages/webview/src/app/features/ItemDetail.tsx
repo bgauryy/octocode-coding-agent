@@ -144,7 +144,7 @@ export function ItemDetail({
 			</dl>
 
 			{it.goal && (
-				<Section title="Goal">
+				<Section title="Done when">
 					<LongText text={it.goal} label="goal" />
 				</Section>
 			)}

@@ -67,6 +67,11 @@ export function CardMeta({
 					Blocked by {it.blockedBy?.join(", ")}
 				</Badge>
 			)}
+			{it.queuedBy && (
+				<Badge tone="warning" title={`Agent ${it.queuedBy} starts this item when its prerequisites are done`}>
+					queued: {it.queuedBy}
+				</Badge>
+			)}
 			{it.needsReview && <Badge tone="warning">Needs review</Badge>}
 			<StaleBadge item={it} />
 			{comments > 0 && (

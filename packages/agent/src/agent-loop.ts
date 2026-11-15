@@ -44,6 +44,11 @@ export function runFailureMessage(
 }
 
 /** End a stream whose loop threw the way a failed run ends: an error message, then `agent_end`. */
+/**
+ * Ends the stream with a failure message when the loop throws. It does not abort `signal`: the caller owns the signal and
+ * its controller, and also uses it to decide whether the failure was a user abort, so the loop only reads it. A caller that
+ * wants other work stopped after a failure aborts its own controller when it sees the failure message.
+ */
 function endWithFailure(
 	stream: EventStream<AgentEvent, AgentMessage[]>,
 	config: AgentLoopConfig,

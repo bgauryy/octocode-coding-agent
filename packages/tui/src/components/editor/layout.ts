@@ -1,3 +1,4 @@
+import { ELLIPSIS } from "../../tokens/design.ts";
 import { visibleWidth } from "../../utils/width.ts";
 import { sliceByColumn } from "../../utils/columns.ts";
 import type { EditorState, LayoutLine } from "./types.ts";
@@ -16,7 +17,7 @@ export function createScrollBorder(direction: "↑" | "↓", hiddenLineCount: nu
 	const remaining = availableWidth - visibleWidth(indicator);
 	if (remaining >= 0) return indicator + "─".repeat(remaining);
 
-	const ellipsis = "...".slice(0, availableWidth);
+	const ellipsis = ELLIPSIS.slice(0, availableWidth);
 	const indicatorWidth = availableWidth - visibleWidth(ellipsis);
 	return sliceByColumn(indicator, 0, indicatorWidth, true) + ellipsis;
 }

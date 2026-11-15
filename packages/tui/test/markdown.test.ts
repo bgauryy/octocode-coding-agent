@@ -526,7 +526,8 @@ describe("Markdown component", () => {
 			try {
 				for (const hyperlinks of [true, false]) {
 					setCapabilities({ images: null, trueColor: false, hyperlinks });
-					const terminal = new VirtualTerminal(24, 16);
+					// Wide enough for the fallback URL beside the plain column: narrower, the table stacks into records.
+					const terminal = new VirtualTerminal(34, 16);
 					const tui: TUI = new TuiMainScreen(terminal);
 					tui.addChild(new Markdown(source, 0, 0, defaultMarkdownTheme));
 					tui.start();

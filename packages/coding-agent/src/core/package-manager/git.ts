@@ -63,7 +63,7 @@ function hasMissingGitDependencies(targetDir: string): boolean {
 	if (!existsSync(packageJsonPath)) return false;
 
 	try {
-		const manifest = readJsonFile(packageJsonPath) as { dependencies?: unknown };
+		const manifest = readJsonFile<{ dependencies?: unknown }>(packageJsonPath);
 		if (!manifest.dependencies || typeof manifest.dependencies !== "object" || Array.isArray(manifest.dependencies)) {
 			return false;
 		}

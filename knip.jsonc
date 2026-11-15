@@ -1,5 +1,5 @@
 {
-	"$schema": "https://unpkg.com/knip@6.42.1/schema.json",
+	"$schema": "https://unpkg.com/knip@6.45.1/schema.json",
 	"workspaces": {
 		".": {
 			// `scripts/build-workspace-state.mjs` reads Mermaid from the webview workspace's dependency (listed there).
@@ -45,7 +45,7 @@
 				"@octocodeai/octocode-common",
 				"@octocodeai/octocode-db",
 				"@octocodeai/octocode-terminal",
-				// Imported only by the private common workspace, whose sources compile into this package.
+				// Imported by the private common and MCP workspaces, whose sources compile into this package.
 				"cross-spawn",
 				"@types/cross-spawn",
 				"@octocodeai/octocode-mcp",
@@ -56,9 +56,8 @@
 				"highlight.js-browser",
 			],
 			// Platform commands and optional test prerequisites, not npm packages.
-			// `pgrep` lists an MCP server's process group in `test/octocode/mcp-owner-killed.test.ts`.
 			// `sqlite3` reads Cursor's chat databases in the `resume-external-harness` skill script and its test.
-			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "pgrep", "sqlite3"],
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "sqlite3"],
 			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
 			"entry": [
 				"src/index.ts",
@@ -89,8 +88,6 @@
 		"packages/webview": {
 			// The offline bundle substitutes its own entry through a Rolldown resolver.
 			"entry": ["src/{state,markdown}.ts", "src/page.tsx", "src/app/live/offline.ts"],
-			// Mermaid is read only by `scripts/build-workspace-state.mjs` (its prebuilt script becomes `mermaid.generated.ts`).
-			"ignoreDependencies": ["mermaid"],
 		},
 	},
 }

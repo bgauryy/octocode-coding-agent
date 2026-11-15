@@ -52,24 +52,43 @@ export function renderMcpsSection(
 	options: { declared?: boolean } = {},
 ): string | undefined {
 	const { instruction } = hostRender();
-	// In `declared` mode a server with no instructions and no deferred tool has nothing to say here: its tools say it all.
-	const blocks = listedServers(servers)
-		.filter((server) => !options.declared || !server.declared || server.contract || server.defers || server.deferred)
-		.map((server) =>
-			instruction("sections/mcp-server.md", {
-				name: attribute(server.entry.name),
-				tools: `${mcpNamespace(server.entry.name)}__*`,
-				declared: server.declared,
-				contract: server.contract,
-				purpose: oneLine(server.entry.config.description),
-				pending: server.pending === true,
-				deferred: server.deferred === true,
-			}),
-		);
+	const blocks = renderedServers(servers, options).map((server) =>
+		instruction("sections/mcp-server.md", {
+			name: attribute(server.entry.name),
+			tools: `${mcpNamespace(server.entry.name)}__*`,
+			declared: server.declared,
+			contract: server.contract,
+			purpose: oneLine(server.entry.config.description),
+			pending: server.pending === true,
+			deferred: server.deferred === true,
+		}),
+	);
 	const deferred = servers.some((server) => server.deferred || server.defers);
 	return blocks.length > 0
 		? instruction("sections/mcps.md", { blocks: blocks.join("\n"), deferred, declared: options.declared === true })
 		: undefined;
+}
+
+/** The servers `renderMcpsSection` gives a block. In `declared` mode a server with no instructions and no deferred tool has nothing to say: its tools say it all. */
+function renderedServers(servers: readonly McpServerListing[], options: { declared?: boolean }): McpServerListing[] {
+	return listedServers(servers).filter(
+		(server) => !options.declared || !server.declared || server.contract || server.defers || server.deferred,
+	);
+}
+
+/**
+ * The contract each block of `renderMcpsSection` prints, by server name, from the same selection: a block prints its
+ * contract only for a server with described tools (`sections/mcp-server.md`).
+ */
+export function mcpBlockContracts(
+	servers: readonly McpServerListing[],
+	options: { declared?: boolean } = {},
+): Map<string, string> {
+	return new Map(
+		renderedServers(servers, options).flatMap((server) =>
+			server.declared && server.contract ? [[server.entry.name, server.contract] as const] : [],
+		),
+	);
 }
 
 /**

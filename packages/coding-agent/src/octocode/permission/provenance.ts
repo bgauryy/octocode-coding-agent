@@ -2,7 +2,6 @@ import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.t
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { homeTilde } from "../../../../common/src/home-tilde.ts";
-import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { isWorkspaceReader, readerLocations } from "../shared/local-reads.ts";
 import { secretProblem } from "../../../../common/src/sanitize.ts";
 import { contentText } from "../shared/util.ts";
@@ -12,10 +11,10 @@ import { workspaceRoot } from "../../utils/git-repository.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { archiveRead } from "../shared/archive-operation.ts";
 import { KeyTable } from "./key-table.ts";
-import { commandNames, SHELL_TOOLS } from "./shell.ts";
+import { SHELL_TOOLS } from "./shell.ts";
 import { type AllowedSource, type CheckContext, type IgnorableScope, maskIgnorable } from "./provenance/ignorable.ts";
-import { isNetworkCommand, NETWORK } from "./provenance/network.ts";
-import { atoms, capBytes, decoded, normalize, RUN, shingles, tokens, URL_PATTERN } from "./provenance/keys.ts";
+import { untrustedResultOrigin } from "./result-origin.ts";
+import { atoms, capBytes, decoded, normalize, RUN, shingles, tokens } from "./provenance/keys.ts";
 import { outsideShellRead } from "./provenance/shell-reads.ts";
 import { consequential, egress, leaves, str } from "./provenance/arguments.ts";
 
@@ -186,8 +185,8 @@ class Provenance {
 
 	private origin(event: ToolResultEvent, cwd: string): { kind: Kind; label: string; agent?: string } | undefined {
 		const { toolName, input } = event;
-		if (toolName === "web")
-			return { kind: "untrusted", label: `web ${str(input.url) ?? `search "${str(input.query) ?? ""}"`}` };
+		const external = untrustedResultOrigin(toolName, input, event.details, { requireRan: false });
+		if (toolName === "web" && external !== undefined) return { kind: "untrusted", label: external };
 		if (toolName === "externalAgent" && input.action === "prompt")
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
 		// A child reads web pages and repositories of its own, and its index dies with its process: what it reports here is
@@ -217,18 +216,16 @@ class Provenance {
 			if (named.length > 0 && !unnamed) return undefined;
 		}
 		if (toolName === "archive" && readsSessionText(input)) return { kind: "untrusted", label: "archive" };
-		if (isMcpToolName(toolName)) return { kind: "untrusted", label: toolName };
+		if (external !== undefined && !SHELL_TOOLS.has(toolName)) return { kind: "untrusted", label: external };
 		if (SHELL_TOOLS.has(toolName)) {
 			const command = str(input.command) ?? "";
-			if (!isNetworkCommand(command)) {
+			if (external === undefined) {
 				// A command that reads a file outside the workspace is private, like the native read of it.
 				const shell = toolName === "powershell" || input.type === "powershell" ? "powershell" : "bash";
 				const outside = outsideShellRead(command, cwd, (file) => this.inWorkspace(file, cwd), shell);
 				return outside === undefined ? undefined : { kind: "private", label: `${toolName} ${homeTilde(outside)}` };
 			}
-			const name = commandNames(command).find((program) => NETWORK.has(program.toLowerCase()));
-			const url = command.match(URL_PATTERN)?.[0];
-			return { kind: "untrusted", label: [toolName, name, url].filter(Boolean).join(" ") };
+			return { kind: "untrusted", label: external };
 		}
 		const target =
 			toolName === "read"

@@ -5,6 +5,7 @@
  * this session declared.
  */
 
+import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
 import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { currentMcpToolStates, type McpServerToolStates } from "../../../../mcp/src/api.ts";
 import { homeTilde } from "../../../../common/src/home-tilde.ts";
@@ -26,6 +27,8 @@ export interface McpToolRow {
 	state: McpExposure;
 	/** What the running session declares; absent when it does not list the tool. */
 	live?: McpExposure;
+	/** What the usage record says of the tool (`tool-states.ts`); absent while the session reports none. */
+	audit?: ToolAudit;
 }
 
 export interface McpServerView {
@@ -76,7 +79,13 @@ export function createMcpToolsSource(options: McpToolsSourceOptions): McpToolsSo
 				const pin = pins[tool.name];
 				// A pin the session declared by that has since been removed: the tool falls back to the server's setting.
 				const state = pin ?? (tool.decidedBy === "pin" ? defaultState : tool.state);
-				tools.set(tool.name, { name: tool.name, ...(pin ? { pin } : {}), state, live: tool.state });
+				tools.set(tool.name, {
+					name: tool.name,
+					...(pin ? { pin } : {}),
+					state,
+					live: tool.state,
+					...(tool.audit ? { audit: tool.audit } : {}),
+				});
 			}
 			for (const [name, pin] of Object.entries(pins))
 				if (!name.includes("*") && !tools.has(name)) tools.set(name, { name, pin, state: pin });

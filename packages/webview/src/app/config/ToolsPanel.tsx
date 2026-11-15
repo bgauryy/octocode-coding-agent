@@ -22,9 +22,30 @@ const TONE = { direct: "success", deferred: "accent", hidden: "neutral" } as con
 const NATIVE_PINS: readonly Pin[] = ["direct", "deferred"];
 const MCP_PINS: readonly Pin[] = ["direct", "deferred", "hidden"];
 
+const size = (bytes: number): string => (bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`);
+
+/** What the usage record says of the tool: share of declaring sessions, calls, last use, refusals and bytes saved. */
+function usage(row: ToolExposureRow): string {
+	const audit = row.audit;
+	if (!audit) return "—";
+	return [
+		`${(audit.rate * 100).toFixed(1)}% of ${audit.declared} sessions`,
+		`${audit.called} calls`,
+		audit.lastUsed ? `last ${audit.lastUsed}` : "unused in 7 days",
+		...(audit.refused > 0 ? [`${audit.refused} refused`] : []),
+		...(audit.bytesSaved ? [`saves ${size(audit.bytesSaved)}`] : []),
+	].join(" · ");
+}
+
 /** Why the tool has its state, in the words of the page. */
 function reason(row: ToolExposureRow): string {
 	switch (row.decidedBy) {
+		case "usage":
+			return row.audit?.reason === "promoted"
+				? "Promoted by use"
+				: row.audit?.reason === "unused"
+					? "Not used in 7 days"
+					: "Below the promotion rate";
 		case "pin":
 			return "Pinned";
 		case "pattern":
@@ -77,6 +98,7 @@ function ToolRow({
 				{reason(row)}
 				{row.pin && row.pin !== row.state && ` · ${STATE[row.pin]} from the next session`}
 			</td>
+			<td className="muted">{usage(row)}</td>
 			<td>
 				{pinnable ? (
 					<select
@@ -206,6 +228,7 @@ export function ToolsPanel({ api, repoId, reloadKey }: { api?: ToolsApi; repoId?
 											<th scope="col">Tool</th>
 											<th scope="col">{list.live ? "This session" : "Next session"}</th>
 											<th scope="col">Decided by</th>
+											<th scope="col">Use (7 days)</th>
 											<th scope="col">Pin</th>
 										</tr>
 									</thead>

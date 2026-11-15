@@ -3,6 +3,7 @@ import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/back
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
+import { ruleLine } from "../../theme/dynamic-border.ts";
 import { onSecond } from "../shared/clock.ts";
 import { headerLine, helpLine } from "./board-chrome.ts";
 import { type BoardData, type BoardRow, boardLayout } from "./board-model.ts";
@@ -172,7 +173,7 @@ export function showBoard(
 			const w = Math.max(1, width);
 			const lines: string[] = [];
 			const push = (text: string) => lines.push(truncateToWidth(text, w, "…"));
-			push(theme.fg("accent", "─".repeat(w)));
+			push(ruleLine(w, (text) => theme.fg("border", text)));
 			push(headerLine(source.title, layout.counts, data.tasks.length, theme, w));
 
 			// Item rows share one grid so their columns line up across the sections; tasks hang two cells deeper in their own.
@@ -212,7 +213,7 @@ export function showBoard(
 			lines.push("");
 			if (flash) push(` ${theme.fg("warning", sanitizeTerminalText(flash))}`);
 			push(helpLine(keybindings, theme, w));
-			push(theme.fg("borderMuted", "─".repeat(w)));
+			push(ruleLine(w, (text) => theme.fg("border", text)));
 			cache = lines;
 			cacheWidth = width;
 			cacheHeight = height;

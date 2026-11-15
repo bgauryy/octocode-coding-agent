@@ -58,6 +58,31 @@ describe("SDK request lifetime compatibility", () => {
 		expect(client.connectionState).toBe("closed");
 	});
 
+	it("ends a call whose progress outlasts the total deadline with that deadline, and cancels it", async () => {
+		vi.useFakeTimers();
+		const { client, server, sent } = await fixture();
+		const cancelled: unknown[] = [];
+		server.onMessage((message) => {
+			if ("method" in message && message.method === "notifications/cancelled") cancelled.push(message.params);
+		});
+		const result = client.callTool("slow", {}, { timeoutMs: 1000, maxTotalTimeoutMs: 100, onProgress: () => {} });
+		const rejected = expect(result).rejects.toMatchObject({ name: "McpTimeoutError", timeoutMs: 100 });
+		await vi.advanceTimersByTimeAsync(0);
+		const request = sent[0];
+		const token = (request.params as { _meta: { progressToken: number } })._meta.progressToken;
+		// The clock passes the total deadline before its timer runs, then a progress notification arrives.
+		vi.setSystemTime(Date.now() + 150);
+		await server.send({
+			jsonrpc: "2.0",
+			method: "notifications/progress",
+			params: { progressToken: token, progress: 1 },
+		});
+		await vi.advanceTimersByTimeAsync(100);
+		await rejected;
+		expect(cancelled).toEqual([expect.objectContaining({ requestId: request.id })]);
+		await client.close();
+	});
+
 	it("isolates progress and error observer failures from request completion", async () => {
 		const { client, server, sent } = await fixture();
 		const observed: string[] = [];

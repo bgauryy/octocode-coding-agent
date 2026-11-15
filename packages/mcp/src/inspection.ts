@@ -5,6 +5,10 @@ import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./pat
 import type { McpServerEntry } from "./config.ts";
 import { type McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { isEnabled, type McpServer } from "./server.ts";
+import { formatAudit, sortByAudit } from "../../common/src/tool-audit.ts";
+import type { UsageAuditSource } from "../../common/src/tool-audit.ts";
+import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
+import { auditReader, sessionUsage } from "./usage-audit.ts";
 
 /** What `toolCatalog` reads of the extension state, so inspection does not depend on the state module. */
 interface McpToolCatalogSource {
@@ -12,17 +16,26 @@ interface McpToolCatalogSource {
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure;
 	/** Registered tool name to the `<server>\0<tool>` it was assigned to. */
 	toolOwners?: ReadonlyMap<string, string>;
+	/** Each server's contract as the prompt's `<mcps>` block shows it. */
+	promptContracts?: ReadonlyMap<string, string>;
+	/** The usage record, default: the session's own. */
+	usage?(): UsageAuditSource | undefined;
+	/** The session's in-use set (the promotion snapshot under `mcpExposure: "usage"`). */
+	recentTools?(): ReadonlySet<string> | undefined;
+	exposureSetting?(): unknown;
 }
 
 export type McpToolListing = Pick<Tool, "name" | "description" | "inputSchema" | "outputSchema"> & {
 	exposure: McpExposure;
 	/** The name the model calls the tool by (`mcp__<server>__<tool>`), once registered. */
 	callName?: string;
+	/** What the usage record says of the tool; absent while it holds no data (and the setting is not `usage`). */
+	audit?: ToolAudit;
 };
 
 export function formatMcpTool(tool: McpToolListing, schema = false): string {
 	return [
-		`${tool.name} [${tool.exposure}]${tool.description ? ` — ${schema ? tool.description : tool.description.split("\n", 1)[0]}` : ""}`,
+		`${tool.name} [${tool.exposure}]${tool.description ? ` — ${schema ? tool.description : tool.description.split("\n", 1)[0]}` : ""}${tool.audit && !schema ? ` (${formatAudit(tool.audit)})` : ""}`,
 		...(schema ? [`Input schema:\n${JSON.stringify(tool.inputSchema, null, 2)}`] : []),
 		...(schema && tool.outputSchema ? [`Output schema:\n${JSON.stringify(tool.outputSchema, null, 2)}`] : []),
 	].join("\n");
@@ -79,14 +92,28 @@ export function toolCatalog(state: McpToolCatalogSource, name: string): McpToolL
 	const server = state.findServer(name);
 	if (!server || server.connection?.state !== "connected" || !isEnabled(server)) return [];
 	const calls = new Map([...(state.toolOwners ?? [])].map(([call, owner]) => [owner, call]));
-	return server.connection.tools.map((tool) => {
+	const audit = auditReader((state.usage ?? sessionUsage)(), state.exposureSetting?.(), state.recentTools?.());
+	const listed = server.connection.tools.map((tool): McpToolListing => {
 		const callName = calls.get(`${server.entry.name}\0${tool.name}`);
-		return { ...tool, exposure: state.toolExposure(server.entry, tool.name), ...(callName ? { callName } : {}) };
+		const exposure = state.toolExposure(server.entry, tool.name);
+		return {
+			...tool,
+			exposure,
+			...(callName ? { callName } : {}),
+			...(audit ? { audit: audit(server.entry.name, tool, exposure) } : {}),
+		};
 	});
+	return sortByAudit(listed);
 }
 
 /** The server's own instructions from its current connection, which the `mcp` tool resends on request. */
 export function serverInstructions(state: McpToolCatalogSource, name: string): string | undefined {
 	const server = state.findServer(name);
 	return server?.connection?.state === "connected" ? server.connection.instructions?.trim() || undefined : undefined;
+}
+
+/** Whether the prompt's `<mcps>` block for the server already holds its current instructions word for word. */
+export function instructionsInPrompt(state: McpToolCatalogSource, name: string): boolean {
+	const instructions = serverInstructions(state, name);
+	return instructions !== undefined && state.promptContracts?.get(name)?.includes(instructions) === true;
 }

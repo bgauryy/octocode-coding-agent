@@ -34,6 +34,13 @@ export const SubagentSettingsSchema = Type.Object(
 					"US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running.",
 			}),
 		),
+		queuedStarts: Type.Optional(
+			Type.Boolean({
+				description:
+					"Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
+				default: true,
+			}),
+		),
 		checkInSeconds: Type.Optional(
 			Type.Number({
 				minimum: 0,

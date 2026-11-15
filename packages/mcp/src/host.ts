@@ -157,6 +157,15 @@ export interface McpRenderPort {
 		result: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> } | undefined,
 		showImages: boolean,
 	): string;
+	/**
+	 * Output text coloured by what it is: code by the file `path` the call named, a unified diff. Only the first
+	 * `previewLines` lines are coloured when not `expanded`. Undefined when the text is neither (it stays plain).
+	 */
+	colorOutput(
+		theme: McpTheme,
+		text: string,
+		options: { path?: string; expanded: boolean; previewLines: number },
+	): string | undefined;
 }
 
 /** One page of the shared list → detail → action pattern: facts, one section of rows, notes and the key hints. */

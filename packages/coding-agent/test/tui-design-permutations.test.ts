@@ -34,11 +34,21 @@ describe("production TUI terminal permutations", () => {
 			expect(text).toContain("enter resume");
 		} else if (config.state === "tool-queries" || config.state === "tool-results") {
 			const unfolded = text.replace(/\s+/g, " ");
-			expect(frame.text.some((line) => line.trim() === "Call")).toBe(true);
+			// A 40-column result is taller than the 24-row screen: the top scrolls off and the tail (the result) stays.
+			const headerShown = frame.text.some((line) => line.includes("mcp__octocode__localSearch"));
+			expect(headerShown || (config.width === 40 && config.state === "tool-results")).toBe(true);
 			if (config.state === "tool-results") expect(frame.text.some((line) => line.trim() === "Result")).toBe(true);
-			expect(unfolded).toMatch(/Query\s+1/);
-			expect(unfolded).toMatch(/Query\s+2/);
-			for (const purpose of [...QA_CALL_PURPOSES, ...(config.state === "tool-results" ? QA_RESULT_PURPOSES : [])]) {
+			if (headerShown) {
+				// One `↳` purpose row per query, under the tool header.
+				expect(frame.text.filter((line) => line.trim().startsWith("↳"))).toHaveLength(QA_CALL_PURPOSES.length);
+				expect(unfolded).toMatch(/Query\s+1/);
+				expect(unfolded).toMatch(/Query\s+2/);
+			}
+			const shownPurposes = [
+				...(headerShown ? QA_CALL_PURPOSES : []),
+				...(config.state === "tool-results" ? QA_RESULT_PURPOSES : []),
+			];
+			for (const purpose of shownPurposes) {
 				expect(unfolded).toContain(purpose.mainGoal);
 				expect(unfolded).toContain(purpose.reasoning);
 			}

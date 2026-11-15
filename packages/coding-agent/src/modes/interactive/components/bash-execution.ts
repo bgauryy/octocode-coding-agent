@@ -10,10 +10,13 @@ import {
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { styleShellLines } from "../../../theme/output-style.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { foldHint, hintText, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { foldHint, hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
+import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
+import { expandHint } from "../../../octocode/shared/text.ts";
 
 // Last lines of a user `!` command shown while collapsed: more than an agent's tool row, since the user asked for this
 // output and reads it directly.
@@ -67,7 +70,7 @@ export class BashExecutionComponent extends Container {
 			ui,
 			(spinner) => theme.fg(STATE_COLOR.running, spinner),
 			(text) => theme.fg("muted", text),
-			`Running… · ${hintText([[keyText("tui.select.cancel"), "cancel"]])}`, // Plain text for loader
+			`Running… · ${hintText([[interruptKey(), "cancel"]])}`, // Plain text for loader
 		);
 
 		this.bottomBorder = new DynamicBorder(borderColor);
@@ -234,7 +237,7 @@ export class BashExecutionComponent extends Container {
 		const mark = state ? `${stateMark(theme, state)} ` : "";
 		// Without a result header, the outcome joins the command line: `✗ $ cmd · exit 1`.
 		const outcome = !this.header && state === "failed" ? theme.fg("error", ` · exit ${this.exitCode}`) : "";
-		const cancelled = !this.header && state === "stopped" ? theme.fg("muted", " · cancelled") : "";
+		const cancelled = !this.header && state === "stopped" ? theme.fg(STOPPED_COLOR, " · interrupted") : "";
 		const header = new Text(
 			mark + theme.fg(this.colorKey, theme.bold(`$ ${sanitizeTerminalText(this.command)}`)) + outcome + cancelled,
 			this.outputPad,
@@ -252,11 +255,11 @@ export class BashExecutionComponent extends Container {
 		const outputColor = state === "failed" ? "text" : "muted";
 		if (availableLines.length > 0) {
 			if (this.expanded) {
-				const displayText = availableLines.map((line) => theme.fg(outputColor, line)).join("\n");
+				const displayText = styleShellLines(theme, availableLines, outputColor).join("\n");
 				this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
 			} else {
 				// Use shared visual truncation utility with width-aware caching
-				const styledOutput = previewLogicalLines.map((line) => theme.fg(outputColor, line)).join("\n");
+				const styledOutput = styleShellLines(theme, previewLogicalLines, outputColor).join("\n");
 				const styledInput = `\n${styledOutput}`;
 				let cachedWidth: number | undefined;
 				let cachedLines: string[] | undefined;
@@ -284,9 +287,8 @@ export class BashExecutionComponent extends Container {
 
 			if (hiddenLineCount > 0) {
 				if (this.expanded) {
-					statusParts.push(
-						`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`,
-					);
+					const hint = expandHint("collapse");
+					if (hint) statusParts.push(theme.fg("dim", hint));
 				} else {
 					statusParts.push(foldHint(hiddenLineCount, true));
 				}

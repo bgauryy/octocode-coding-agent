@@ -1,4 +1,4 @@
-import { type Component, Text, TuiMainScreen } from "@octocodeai/octocode-tui";
+import { type Component, GLYPH, Text, TuiMainScreen } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
@@ -98,7 +98,8 @@ describe("outputPad", () => {
 	test.each(components)("$name renders at outputPad 0 and 1", ({ create }) => {
 		const component = create(0);
 		const lines = renderLines(component);
-		expect(lines.filter((line) => line.startsWith(" "))).toEqual([]);
+		// The `⎿` result gutter is part of a row's own layout; nothing else is indented at pad 0.
+		expect(lines.filter((line) => line.startsWith(" ") && !line.startsWith(`  ${GLYPH.gutter}  `))).toEqual([]);
 		component.setOutputPad(1);
 		expect(renderLines(component)).toEqual(lines.map((line) => ` ${line}`));
 	});

@@ -5,7 +5,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CheckIn, type CheckInConfig } from "./check-in.ts";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
-import type { Message } from "./model.ts";
+import type { Message, RecipientKind } from "./model.ts";
 import { EXTERNAL_SENDER } from "../shared/messages.ts";
 import { outside } from "./routing.ts";
 import type { TeamStore } from "./store.ts";
@@ -36,6 +36,8 @@ interface DeliveryHost {
 	relays(db: TeamStore): void;
 	/** Whether a subagent of this session has not filed its report yet: its report may still answer what it was asked (`Mail.reportDeadLetters`). */
 	reporting(id: string): boolean;
+	/** Whether agent `id` is a subagent of this session and has filed its report: the next step a dead-letter notice names (without it, a peer's). */
+	recipientKind?(id: string): RecipientKind;
 	/** The check-in's setting, read when a step ends. */
 	checkIn(): CheckInConfig;
 }
@@ -141,7 +143,17 @@ export class Delivery {
 			);
 		}
 		this.checkWake();
-		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id, (recipient) => this.host.reporting(recipient));
+		if (this.host.heartbeat(db)) {
+			// Members whose process is gone are retired at every heartbeat, not only at the minute's prune, so the senders of
+			// their unread mail hear within a heartbeat (this agent in this same tick).
+			db.sweep(Date.now(), true);
+			this.mail.reportDeadLetters(
+				db,
+				id,
+				(recipient) => this.host.reporting(recipient),
+				this.host.recipientKind?.bind(this.host),
+			);
+		}
 		this.mail.pruneForUser(db);
 	}
 

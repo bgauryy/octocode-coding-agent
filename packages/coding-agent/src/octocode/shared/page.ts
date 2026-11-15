@@ -26,6 +26,7 @@ export async function showCommandPage(
 	const { ManagePageComponent } = await import("../../theme/manage-page.ts");
 	return ui.custom<PageChoice | undefined>((tui, _theme, _keybindings, done) => {
 		const page = new ManagePageComponent({
+			viewportRows: () => tui.terminal.rows - 1,
 			...options,
 			onSelect: (id) => done({ id }),
 			onKey: (key, id) => done({ id, key }),

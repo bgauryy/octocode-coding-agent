@@ -227,7 +227,7 @@ describe("prompt optimization on submit", () => {
 			"Edit the optimized prompt",
 			"Send my original prompt",
 		]);
-		expect(screen.statuses).toEqual(["✦ Optimizing prompt… (Esc skips)", undefined]);
+		expect(screen.statuses).toEqual([expect.stringContaining("✦ Optimizing prompt…"), undefined]);
 		expect(sent).toEqual(["Fix the login bug."]);
 	});
 

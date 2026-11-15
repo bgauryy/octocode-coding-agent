@@ -37,6 +37,7 @@
 {{> shared/beyond-scope.md}}
 {{> shared/evidence.md}}
 {{> shared/mcp-fields.md}}
+{{> shared/spend.md}}
 {{> shared/reorient.md}}
 {{> shared/until-done.md}}
 

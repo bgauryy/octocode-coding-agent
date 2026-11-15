@@ -1042,7 +1042,7 @@ describe("agent tool with a scripted child", () => {
 		const accept = s.ctx.ui.confirm;
 		s.ctx.ui.confirm = async () => false;
 		await kill.handler(id, s.ctx);
-		expect(s.ctx.ui.notes.at(-1)!.message).toBe("Nothing stopped.");
+		expect(s.ctx.ui.notes.at(-1)!.message).toBe("Cancelled: nothing was stopped.");
 		expect(settled).toBe(false);
 		s.ctx.ui.confirm = accept;
 		await kill.handler(id, s.ctx);

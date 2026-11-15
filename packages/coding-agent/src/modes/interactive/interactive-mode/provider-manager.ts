@@ -4,7 +4,13 @@ import { describeProviderSources } from "../../../core/provider-sources/index.ts
 import type { ProviderSourceEnvironment } from "../../../core/provider-sources/types.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import type { PageSection } from "../../../theme/manage-page.ts";
-import { claudeSubscriptionRefusal, isProviderDisabled, setProviderEnabled } from "./provider-actions.ts";
+import type { CredentialState } from "../../../core/provider-composer/credential-state.ts";
+import {
+	claudeSubscriptionRefusal,
+	isProviderDisabled,
+	providerCredentialState,
+	setProviderEnabled,
+} from "./provider-actions.ts";
 import { showProviderDetail } from "./provider-detail.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
@@ -106,7 +112,13 @@ export async function showProviderManager(
 					if (await claudeSubscriptionRefusal(host, providerId)) refused.add(providerId);
 				}),
 		);
-		const rows = providerRows(runtime, settingsManager.getDisabledProviders(), saved, refused);
+		const states = new Map<string, CredentialState>();
+		await Promise.all(
+			saved
+				.filter((entry) => entry.type === "oauth")
+				.map(async ({ providerId }) => states.set(providerId, await providerCredentialState(host, providerId))),
+		);
+		const rows = providerRows(runtime, settingsManager.getDisabledProviders(), saved, refused, states);
 		const sections: PageSection[] = [
 			...(rows.attention.length ? [{ heading: "Needs attention", rows: rows.attention }] : []),
 			{ heading: "Configured", rows: rows.configured, empty: "none yet — choose Add a provider" },

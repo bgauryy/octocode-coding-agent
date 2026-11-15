@@ -79,6 +79,13 @@ export async function runSecurityCommand(args: string[], io: SecurityCommandIo):
 		out(USAGE);
 		return 0;
 	}
+	// Judge the words before loading anything: a typo must not first print a notice about the folder.
+	const wantsId = sub === "show" || sub === "approve" || sub === "deny" || sub === "forget";
+	const known = sub === "list" || sub === "check" || wantsId;
+	if (!known || (wantsId && !words[0])) {
+		err(known ? USAGE : `Unknown security command "${sub}".\n${USAGE}`);
+		return 1;
+	}
 	const verb = sub === "approve" || sub === "deny" || sub === "forget" ? sub : undefined;
 	const records = verb !== undefined;
 	// The agent can run commands in its shell, and a decision is the user's: refuse there, and below a running session.

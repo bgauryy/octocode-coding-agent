@@ -506,8 +506,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 
 		const collapsed = stripAnsi(component.render(300).join("\n"));
-		expect(collapsed).toContain('custom_tool query="octocode" long="xxx');
-		expect(collapsed).toContain("…");
+		expect(collapsed).toContain("custom_tool(octocode)");
 		expect(collapsed).not.toContain(longValue);
 
 		component.setExpanded(true);
@@ -593,7 +592,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(stripAnsi(component.render(width).join("\n"))).toContain("line-15");
 	});
 
-	test("a finished tool without a renderer shows its mark and duration, and reads a failure in text colour", () => {
+	test("a finished tool without a renderer shows its mark and duration, and reads a failure in error colour", () => {
 		const finished = (isError: boolean) => {
 			const component = new ToolExecutionComponent(
 				"plain_tool",
@@ -609,7 +608,7 @@ describe("ToolExecutionComponent parity", () => {
 		};
 		const failed = finished(true);
 		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1\.2s)/);
-		expect(failed).toContain(theme.fg("text", "kaboom"));
+		expect(failed).toContain(theme.fg("error", "kaboom"));
 		const passed = finished(false);
 		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1\.2s)/);
 		expect(passed).toContain(theme.fg("toolOutput", "kaboom"));

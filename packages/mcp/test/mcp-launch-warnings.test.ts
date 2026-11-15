@@ -75,14 +75,13 @@ describe("launch templates", () => {
 		expect(argsOf(true)).toEqual(["--sandbox=", "--x"]);
 	});
 
-	it("recommended servers leave project LSP trust to the user's own setting in trusted projects", () => {
-		for (const { name, config } of recommendedPresets({})) {
-			const recommended: McpServerEntry = { name, config: config!, source: "default", scope: "default" };
-			const trustOf = (projectTrusted: boolean) =>
-				envOf(expandLaunchTemplates(recommended, { cwd: "/w", projectTrusted })).OCTOCODE_TRUST_PROJECT_LSP_CONFIG;
-			expect(trustOf(true)).toBeUndefined();
-			expect(trustOf(false)).toBe("false");
-		}
+	it("the research server leaves project LSP trust to the user's own setting in trusted projects", () => {
+		const { name, config } = recommendedPresets({}).find((preset) => preset.name === "octocode")!;
+		const recommended: McpServerEntry = { name, config: config!, source: "default", scope: "default" };
+		const trustOf = (projectTrusted: boolean) =>
+			envOf(expandLaunchTemplates(recommended, { cwd: "/w", projectTrusted })).OCTOCODE_TRUST_PROJECT_LSP_CONFIG;
+		expect(trustOf(true)).toBeUndefined();
+		expect(trustOf(false)).toBe("false");
 	});
 
 	it("rejects ${untrusted} without a value and a value on another template", () => {

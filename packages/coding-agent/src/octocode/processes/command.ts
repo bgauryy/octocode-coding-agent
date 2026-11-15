@@ -1,7 +1,7 @@
 import type { Db } from "../../../../db/src/api.ts";
 import { processSamples } from "../../../../db/src/api.ts";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
-import { type Subcommand, say } from "../shared/commands.ts";
+import { cancelledText, type Subcommand, say } from "../shared/commands.ts";
 import { plural } from "../shared/text.ts";
 import { type Orphan, type ProcessReport, classifyProcesses } from "./classify.ts";
 import { formatReport } from "./format.ts";
@@ -47,7 +47,7 @@ export function processesCommand(options: ProcessesCommandOptions): Subcommand {
 			`Stop ${plural(orphans.length, "orphaned process", "orphaned processes")}?`,
 			`${lines.join("\n")}\n\nEach gets SIGTERM, then SIGKILL if it is still running after a short grace period.`,
 		);
-		if (!confirmed) return say(ctx, "Nothing stopped.");
+		if (!confirmed) return say(ctx, cancelledText("stopped"));
 		const results = await stopOrphans(orphans, {
 			current: async () => (await report())?.orphans ?? [],
 			match: options.match,

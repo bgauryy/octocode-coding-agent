@@ -3,7 +3,7 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import { notify } from "../shared/commands.ts";
-import { RunningWork, type WorkRow, workCounts } from "../shared/running-work.ts";
+import { type QueuedWork, RunningWork, type WorkRow, workCounts } from "../shared/running-work.ts";
 import { ENTITY } from "../shared/entity.ts";
 import { STATUS } from "../shared/status.ts";
 import { needsYou } from "./panel/attention.ts";
@@ -56,7 +56,9 @@ export class AgentsView {
 				...(entry.doneAt === undefined ? {} : { since: entry.doneAt }),
 			})),
 			// Running work moves too: its spinner and second clock show it is alive while the main agent idles.
-			...this.workItems().map((): Moving => ({ state: "running" })),
+			...this.workItems()
+				.filter((row) => !row.mark)
+				.map((): Moving => ({ state: "running" })),
 		],
 		() => this.render?.(),
 		// With no mark moving, still-running work repaints once a minute, on the oldest row's boundary.
@@ -98,15 +100,26 @@ export class AgentsView {
 		this.work.setBackground(names);
 	}
 
+	/** The children queued behind prerequisites: they show as `queued` and `held` rows and count as `N queued`. */
+	setQueued(rows: readonly QueuedWork[]): void {
+		this.work.setQueued(rows);
+	}
+
 	/** Background subagents with no live team row: the rows the work block draws for them. */
 	private unlisted(): WorkRow[] {
 		// A child that just finished (or still has a row) is a team row, not also a work row.
 		const gone = new Set(this.finished.finished.map((entry) => entry.member.id));
 		const present = new Set(this.members.map((member) => member.id));
+		const queued = new Map(this.work.queued().map((row) => [row.id, row]));
 		return this.work
 			.background()
 			.filter((name) => !this.liveIds.has(name) && !gone.has(name) && !present.has(name))
-			.map((id) => ({ kind: "agent", id, title: "running in the background" }));
+			.map((id): WorkRow => {
+				const wait = queued.get(id);
+				return wait
+					? { kind: "agent", id, title: wait.title, mark: wait.held ? "held" : "queued" }
+					: { kind: "agent", id, title: "running in the background" };
+			});
 	}
 
 	/** Every row of running work outside the team's tree. */
@@ -116,10 +129,10 @@ export class AgentsView {
 
 	/** The footer's typed counts: live subagents (and unlisted background ones), bash jobs, timers. */
 	private showRunning(ctx: ExtensionContext): void {
-		const agents = this.liveIds.size + this.unlisted().length;
+		const agents = this.liveIds.size + this.unlisted().filter((row) => !row.mark).length;
 		// The tab title counts the same agents.
 		this.work.setAgents(agents);
-		const text = workCounts(agents, this.work.all()) || undefined;
+		const text = workCounts(agents, this.work.all(), this.work.queued().length) || undefined;
 		if (text === this.runningStatus) return;
 		this.runningStatus = text;
 		try {

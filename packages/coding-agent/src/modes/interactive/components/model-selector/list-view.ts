@@ -9,6 +9,7 @@ import {
 import { modelsAreEqual, type Model } from "@octocodeai/octocode-ai";
 import { providerAccessLabel } from "../../../../core/provider-label.ts";
 import type { ModelRuntime } from "../../../../core/model-runtime.ts";
+import { positionLabel, hintText, keyText } from "../../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { compactModelDetails, modelDetails } from "./details.ts";
 import { emptyModelListText } from "./empty-state.ts";
@@ -71,7 +72,7 @@ export function updateModelList(container: Container, view: ModelListView): numb
 				new TruncatedText(
 					theme.fg(
 						"muted",
-						` ${offset + 1}–${Math.min(details.length, offset + count)}/${details.length} · PgUp/PgDn details`,
+						` ${positionLabel(offset + 1, Math.min(details.length, offset + count), details.length)} · ${hintText([[`${keyText("tui.select.pageUp")}/${keyText("tui.select.pageDown")}`, "details"]])}`,
 					),
 					0,
 					0,

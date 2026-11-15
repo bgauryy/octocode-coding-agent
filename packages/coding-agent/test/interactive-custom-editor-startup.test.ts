@@ -56,7 +56,7 @@ describe("custom editor installed during startup", () => {
 		const host = createStartupHost();
 		await host.editor.onSubmit?.("early prompt");
 		expect(host.editor.getText()).toBe("early prompt");
-		expect(host.showStatus).toHaveBeenCalledWith("Sends when startup finishes · escape cancels");
+		expect(host.showStatus).toHaveBeenCalledWith("Sends when startup finishes · esc cancels");
 		host.editor.setText("");
 		host.showStatus.mockClear();
 

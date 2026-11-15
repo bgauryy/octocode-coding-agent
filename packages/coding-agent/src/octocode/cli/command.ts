@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
+import { hintText, interruptKey } from "../../theme/theme-tui-helpers.ts";
 import { type Subcommand, type Subcommands, say } from "../shared/commands.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { completeCliArgs, isCliCommand } from "./help.ts";
@@ -25,7 +26,11 @@ async function captured(ctx: ExtensionCommandContext, bin: string, argv: string[
 		return { consume: true };
 	});
 	const signal = ctx.signal ? AbortSignal.any([cancel.signal, ctx.signal]) : cancel.signal;
-	ctx.ui.setStatus(STATUS_KEY, `${label}… (Esc cancels)`, "accent");
+	ctx.ui.setStatus(
+		STATUS_KEY,
+		`${label}…${interruptKey() ? ` · ${hintText([[interruptKey(), "cancel"]])}` : ""}`,
+		"accent",
+	);
 	try {
 		const { output, code, truncated, cancelled } = await captureCli(bin, argv, {
 			cwd: ctx.cwd,

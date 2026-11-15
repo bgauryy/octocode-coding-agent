@@ -18,7 +18,7 @@ flowchart TB
 | `fullscreen` (default) | Own screen. The transcript scrolls inside Octocode and the mouse works.     | `--tui-mode fullscreen` or `"tuiMode": "fullscreen"` |
 | `regular`              | Writes into your terminal's normal scrollback; the terminal owns the mouse. | `--tui-mode regular` or `"tuiMode": "regular"`       |
 
-In regular mode, rows that scrolled into the terminal's scrollback stay as the terminal holds them: a status that changes there is not rewritten, and `ctrl+o` expands or collapses only the output that starts in view. A resize or a theme change repaints everything.
+In regular mode, rows that scrolled into the terminal's scrollback stay as the terminal holds them: a status that changes there is not rewritten, and `ctrl+o` expands or collapses only the output that starts in view. Clicking an expanded tool result that has scrolled partly off the screen collapses it without clearing scrollback: only the screen is repainted, so the expanded output you scrolled past stays in the terminal's scrollback above the collapsed row until the next resize or theme change repaints everything. A resize or a theme change repaints everything.
 
 Fullscreen-only settings (see [settings](settings.md)):
 
@@ -74,7 +74,8 @@ flowchart TD
     I -->|yes, CLI found| C["IDE CLI: --reuse-window --goto file:line:col"]
     I -->|no| P{GUI CLI on PATH, with a display?}
     P -->|yes| G["code, cursor, code-insiders, codium, zed or subl"]
-    P -->|no| E[prompt editor]
+    P -->|none found, with a display| S["system default app (open, xdg-open)"]
+    P -->|over SSH or no display| E[prompt editor]
     R -->|editor| E
     R -->|a command| X[that command]
 ```
@@ -127,7 +128,7 @@ Tool cards show supplied goals and reasons, including individual queries in a ba
 | Images        | Inline when the terminal supports them.                                                                                        | `terminal.showImages`, `terminal.images`, `OCTOCODE_IMAGE_PROTOCOL`; see [terminal images](configuration.md#terminal-images) |
 | Notifications | Desktop notice when an answer is ready, a run fails or Octocode asks you something.                                            | `OCTOCODE_NOTIFY=off\|unfocused\|always`, `OCTOCODE_NOTIFY_METHOD`; see [tmux](tmux.md#notifications)                        |
 | Motion        | Spinners and shimmer freeze; elapsed times keep ticking.                                                                       | `terminal.reduceMotion`, `OCTOCODE_REDUCE_MOTION=1`                                                                          |
-| Mermaid       | Mermaid blocks in replies draw as Unicode diagrams.                                                                            | `markdown.mermaid` (`off`, `final`, `streaming`)                                                                             |
+| Mermaid       | Mermaid blocks in replies draw as Unicode diagrams; the agent is told so and writes them only while this is on.                | `markdown.mermaid` (`off`, `final`, `streaming`)                                                                             |
 
 All variables: [environment variables](environment-variables.md).
 
@@ -160,7 +161,18 @@ Octocode adapts to any terminal on its own:
 - When the terminal falls behind drawing (measured from its replies, above the normal delay of an SSH or mosh link), spinners and shimmer pause and streaming text repaints once per reply; keystrokes always repaint at once. A terminal that does not answer is paced as before. Inside tmux, Zellij or mosh the multiplexer answers, so pacing follows the multiplexer rather than the terminal around it.
 - While the terminal window is not focused, animation runs slower; a focus report or any keystroke returns it to normal speed.
 
-The tab title shows Octocode's state: `✻` thinking, `◐` running, including background subagents and jobs after the answer, `◇` waiting for you, then `✓` or `✗` once everything has finished. While background subagents run, the subagent mark follows the state mark, with their number when more than one runs: `◐ 🐙3 Octocode · repo`.
+The tab title starts with 🐙 and Octocode's state, then the session's name (else its first prompt) and folder: `🐙⠋ Running - fix login · repo · 2 agents`. While background subagents run, the title ends with their number.
+
+| Title            | When                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `🐙⠋ Thinking`   | the model is answering; the footer's loader turns once a second                            |
+| `🐙⠋ Running`    | a tool runs, or background subagents and jobs still run after the answer; the loader turns |
+| `🐙⚠️ Needs you` | a question or approval waits for you                                                       |
+| `🐙🟢 Done`      | everything has finished; stays until you come back (focus the terminal or press a key)     |
+| `🐙🔴 Error`     | the run failed; stays until you come back                                                  |
+| `🐙 Idle`        | nothing runs                                                                               |
+
+When Octocode exits, the title keeps only the name and folder. VS Code shows the process name on tabs by default; set `terminal.integrated.tabs.title` to `${sequence}` to see this title.
 
 Octocode marks who is working the same way everywhere: 🦑 is the main agent (your session), 🐙 a subagent it started.
 
@@ -169,7 +181,7 @@ Octocode marks who is working the same way everywhere: 🦑 is the main agent (y
 | Agents panel under the editor | its top row: `🦑 name`     | each row, from 120 columns wide: `├ ⠋ 🐙 name`; narrower rows keep the room for the goal and state |
 | Footer                        | `🦑 name`                  | the running count: `🐙 2 agents`                                                                   |
 | Transcript                    |                            | `🐙 Agent(goal)` rows and background reports                                                       |
-| `/processes`                  | main, RPC and ACP sessions | every subagent process                                                                             | VS Code shows the process name on tabs by default; set `terminal.integrated.tabs.title` to `${sequence}` to see this title. |
+| `/processes`                  | main, RPC and ACP sessions | every subagent process                                                                             |
 
 | Symptom of a frozen session                                                                                                                                                                                                                          | Recovery                                                                                                                                 |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |

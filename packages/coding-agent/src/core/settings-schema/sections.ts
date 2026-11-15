@@ -45,6 +45,14 @@ export const RetrySettingsSchema = Type.Object({
 	),
 	maxAgentDelayMs: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxAgentDelayMs })),
 	provider: Type.Optional(ProviderRetrySettingsSchema),
+	fallbackCooldownMs: Type.Optional(
+		Type.Number({
+			minimum: 0,
+			description:
+				"Milliseconds a model that failed on a usage limit or a refused credential is skipped as a fallback or router target (limits usually reset after hours; `/model` can still pick it). 0 retries it at once.",
+			default: SETTINGS_DEFAULTS.retry.fallbackCooldownMs,
+		}),
+	),
 	fallbackModels: Type.Optional(
 		Type.Array(Type.String(), {
 			description:

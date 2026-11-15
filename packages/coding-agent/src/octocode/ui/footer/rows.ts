@@ -175,6 +175,9 @@ export function footerLines(
 	);
 
 	const place = plainRow(state.home ? homeTilde(state.cwd, state.home) : state.cwd);
+	// The root (`~` or `/`) and the last two directories: where the session works, before only its basename.
+	const segments = place.split(/(?<=[\\/])/);
+	const elided = segments.length > 3 ? `${segments[0]}…${path.sep}${segments.slice(-2).join("")}` : undefined;
 	// A third of the row, like the shortened model: long branch names fit wide terminals whole.
 	const shownBranch = branch
 		? plainRow(truncateToWidth(plainRow(branch), Math.max(1, Math.floor(width / 3)), "…"))
@@ -193,7 +196,13 @@ export function footerLines(
 		.filter(([key]) => !(Object.values(OWN) as string[]).includes(key))
 		.sort(([a], [b]) => a.localeCompare(b));
 	const bottomParts: Part[] = [
-		{ text: where(place), priority: 100, keep: true, short: where(plainRow(path.basename(state.cwd))) },
+		{
+			text: where(place),
+			priority: 100,
+			keep: true,
+			...(elided ? { middle: where(elided) } : {}),
+			short: where(plainRow(path.basename(state.cwd))),
+		},
 		// Session names come from anywhere (RPC, other extensions); Octocode strips only newlines.
 		{ text: state.sessionName ? theme.fg("muted", plainRow(state.sessionName)) : "", priority: 50 },
 		{
@@ -217,6 +226,8 @@ export function footerLines(
 			text: status(key),
 			priority: entry.tone === "error" ? 110 : entry.tone === "warning" ? 105 : 20,
 			keep: entry.tone === "error" || entry.tone === "warning",
+			// An alert that does not fit whole gets the alert rows below instead of cutting the location.
+			spills: entry.tone === "error" || entry.tone === "warning",
 			details: true,
 		})),
 	];

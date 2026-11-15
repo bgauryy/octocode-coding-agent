@@ -1,6 +1,6 @@
 # Prompt caching
 
-Octocode keeps reusable instructions cached longer than the growing history when the API has separate cache boundaries. What the request contains and what changes it: [Context management](../../../docs/CONTEXT.md). A hit needs a matching eligible prefix and the provider's minimum length. A byte-identical prefix only enables reuse; only the provider's cached-token usage fields prove a hit.
+Octocode keeps reusable instructions cached longer than the growing history when the API has separate cache boundaries. What the request contains and what changes it: [Context management](../../../docs/CONTEXT.md); each optimization with its saving, cost and setting: [request flows](harness-flows.md). A hit needs a matching eligible prefix and the provider's minimum length. A byte-identical prefix only enables reuse; only the provider's cached-token usage fields prove a hit.
 
 ```mermaid
 flowchart LR
@@ -166,9 +166,9 @@ Tested offline, not against the live Mistral API. Child identity belongs to the 
 
 An isolated subagent (`isolate: true`) runs in its own git worktree, but its system prompt keeps the main checkout's working directory and `AGENTS.md` paths, so every isolated child of one profile builds a byte-identical leading prompt. The child's task names its real worktree; tools, permissions and file access use the real directory.
 
-Siblings in one parent session and prefix group share an opaque `OCTOCODE_PROMPT_CACHE_KEY`. OpenAI Responses, Codex, Azure Responses, Mistral and supported Chat Completions endpoints use it as `prompt_cache_key`; each child's session headers, WebSocket pool, transcript and cancellation stay separate. The key is replaced when a child is launched, kept for its message-based continuation, and never contains task text or paths. Provider routing, minimum cache length, expiry and an exact prefix match still decide hits. Disabling caching omits the key (and other generated affinity data), though a provider can still cache implicitly.
+Siblings in one parent session and prefix group share an opaque `OCTOCODE_PROMPT_CACHE_KEY`. OpenAI Responses, Codex, Azure Responses, Mistral and supported Chat Completions endpoints use it as `prompt_cache_key`; where a provider routes by header (Codex, xAI, OpenAI Responses, OpenRouter-style endpoints), the routing header carries the same key, so siblings reach the replica holding the shared prefix; Mistral siblings keep their own `x-affinity`. Each child's WebSocket pool, transcript and cancellation stay separate. The key is replaced when a child is launched, kept for its message-based continuation, and never contains task text or paths. Provider routing, minimum cache length, expiry and an exact prefix match still decide hits. Disabling caching omits the key (and other generated affinity data), though a provider can still cache implicitly.
 
-A fork (`/fork`, a branch to a new session) has its own session id but its parent's history, so its requests use the id of the first session in its fork chain as `prompt_cache_key`; an explicit key or a subagent's shared key wins. Unrelated sessions keep separate keys.
+A fork (`/fork`, a branch to a new session) has its own session id but its parent's history, so its requests use the id of the first session in its fork chain as `prompt_cache_key` and as the routing header's value (Mistral: `x-affinity`); an explicit key or a subagent's shared key wins. Unrelated sessions keep separate keys.
 
 ### Second instruction block
 

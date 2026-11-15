@@ -8,6 +8,7 @@
 
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
 import { foldHint, TOOL_PREVIEW_LINES } from "../../../theme/theme-tui-helpers.ts";
+import { styleShellLines } from "../../../theme/output-style.ts";
 import { stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { formatDuration } from "../../../utils/duration.ts";
@@ -22,7 +23,7 @@ function formatShellCall(args: { command?: string; timeout?: number } | undefine
 	const command = str(args?.command);
 	const timeout = args?.timeout;
 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
-	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
+	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "…");
 	return theme.fg("toolTitle", theme.bold(`${prompt} ${commandDisplay}`)) + timeoutSuffix;
 }
 /** How a finished run ended: a nonzero exit or timeout failed, an abort or kill was stopped. */
@@ -106,10 +107,9 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (output) {
-		const styledOutput = output
-			.split("\n")
-			.map((line) => theme.fg(state === "failed" ? "text" : "toolOutput", line))
-			.join("\n");
+		const styledOutput = styleShellLines(theme, output.split("\n"), state === "failed" ? "text" : "toolOutput").join(
+			"\n",
+		);
 
 		if (options.expanded) {
 			addLine(styledOutput);

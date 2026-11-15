@@ -192,6 +192,7 @@ describe("llama.cpp waits without a stop control", () => {
 		await showing("Restoring model");
 		press("\x1b");
 		await showing("Stop restoring?");
+		press("\x1b[B"); // The dialog opens on No
 		press("\r"); // Yes
 		await showing("Download model");
 		press("\x1b");

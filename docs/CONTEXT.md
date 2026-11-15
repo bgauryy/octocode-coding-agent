@@ -18,7 +18,7 @@ flowchart TD
 | Tool declarations                            | Role-invariant tools in fixed order, other built-in and extension tools, MCP tools by server and name, role tools | sessions with the same tools and MCP servers |
 | Block 1 (base)                               | `preamble`, `tools`, `rules`, `docs`, `mcps`                                                                      | sessions with the same tools and MCP servers |
 | Block 2 (session)                            | `addendum`, policy, `children`, `coordinator`, `project_context`, `skills`, `hooks`, `role`, `harnesses`          | one project and role, any day                |
-| Block 3 (volatile, no breakpoint of its own) | `cwd`, `environment`, `planning`, `mcp_status`                                                                    | one directory, day and MCP state             |
+| Block 3 (volatile, no breakpoint of its own) | `cwd`, `environment`, `planning`, `mcp_status`                                                                    | one directory, day, surface and MCP state    |
 | History                                      | Checkpoint, messages, tool calls and results, section updates, memory, restored files                             | one session                                  |
 
 A cache hit also needs matching settings, adapter support and a live provider entry; see [Limits](#limits).
@@ -27,22 +27,22 @@ A cache hit also needs matching settings, adapter support and a live provider en
 
 In prompt order. An empty section is left out. `SYSTEM.md` replaces `preamble` and drops `docs` ([instructions](../packages/coding-agent/docs/instructions.md)).
 
-| Section                                                     | Content                                                                                                                                     |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preamble`                                                  | Built-in text, `SYSTEM.md` or a custom prompt                                                                                               |
-| `tools`, `rules`                                            | One `- name: trigger` line and the guidelines of each declared non-MCP tool                                                                 |
-| `docs`                                                      | Where Octocode's own documentation lives; not under a custom prompt or in subagents                                                         |
-| `mcps`                                                      | Per enabled server: name, purpose, `mcp__<server>__*` prefix, instructions; tool contracts too under `mcpPresentation: "compact"` or `json` |
-| `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                          |
-| `work`, `research`, `delegation`, `safety`, `communication` | Policy, adapted to the tools and to main or child agent; `lean` replaces it for lean profiles                                               |
-| `children`                                                  | Main session only: running children and using their reports; added at the first child or agent message                                      |
-| `coordinator`                                               | A writable child's execution and reporting policy, in place of `delegation`; its identity and task arrive in history                        |
-| `project_context`                                           | [Project context](#project-context)                                                                                                         |
-| `skills`                                                    | Name, description and path of each skill; the body loads on `skill`                                                                         |
-| `hooks`                                                     | One line per event and matcher that may act on a call; never a command, URL or prompt                                                       |
-| `role`                                                      | The subagent's profile                                                                                                                      |
-| `harnesses`                                                 | Which other agent products Octocode reads; main session only                                                                                |
-| `cwd`, `environment`, `planning`, `mcp_status`              | Working directory; platform, shell, date; plan mode; servers not ready or partly undeclared                                                 |
+| Section                                                     | Content                                                                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preamble`                                                  | Built-in text, `SYSTEM.md` or a custom prompt                                                                                                     |
+| `tools`, `rules`                                            | One `- name: trigger` line and the guidelines of each declared non-MCP tool                                                                       |
+| `docs`                                                      | Where Octocode's own documentation lives; not under a custom prompt or in subagents                                                               |
+| `mcps`                                                      | Per enabled server: name, purpose, `mcp__<server>__*` prefix, instructions; tool contracts too under `mcpPresentation: "compact"` or `json`       |
+| `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                                |
+| `work`, `research`, `delegation`, `safety`, `communication` | Policy, adapted to the tools and to main or child agent; `lean` replaces it for lean profiles                                                     |
+| `children`                                                  | Main session only: running children and using their reports; added at the first child or agent message                                            |
+| `coordinator`                                               | A writable child's execution and reporting policy, in place of `delegation`; its identity and task arrive in history                              |
+| `project_context`                                           | [Project context](#project-context)                                                                                                               |
+| `skills`                                                    | Name, description and path of each skill; the body loads on `skill`                                                                               |
+| `hooks`                                                     | One line per event and matcher that may act on a call; never a command, URL or prompt                                                             |
+| `role`                                                      | The subagent's profile                                                                                                                            |
+| `harnesses`                                                 | Which other agent products Octocode reads; main session only                                                                                      |
+| `cwd`, `environment`, `planning`, `mcp_status`              | Working directory; platform, shell, date, process, surface, terminal host, what replies render; plan mode; servers not ready or partly undeclared |
 
 Memory (pinned and matching notes, up to 2,400 characters per notice) and a child's task arrive in history, not as sections. Notices accumulate until compaction. The `mcps` section never includes raw `mcp.json`, launch commands, environment values or credentials; server instructions, tool descriptions and results are still model-visible.
 
@@ -88,7 +88,7 @@ After each run and before each prompt (counting the incoming message). `/compact
 
 | Situation                                                                 | Action                                           |
 | ------------------------------------------------------------------------- | ------------------------------------------------ |
-| Disabled; or the response predates the latest compaction or was aborted   | None                                             |
+| The response predates the latest compaction or was aborted                | None                                             |
 | Overflow or recoverable length stop, response failed, first time this run | Drop the failed attempt, compact, retry the turn |
 | Same, failed again                                                        | Report that recovery failed                      |
 | Same, response completed                                                  | Compact, keep the response                       |

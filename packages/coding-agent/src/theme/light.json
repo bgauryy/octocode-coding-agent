@@ -16,7 +16,7 @@
 	},
 	"colors": {
 		"accent": "violet",
-		"border": "okhsl(231 67% 55%)",
+		"border": "okhsl(231 67% 50%)",
 		"borderAccent": "okhsl(295 59% 55%)",
 		"borderMuted": "okhsl(235 7% 66%)",
 		"success": "green",

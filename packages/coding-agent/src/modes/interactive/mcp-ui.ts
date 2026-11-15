@@ -13,12 +13,16 @@ import { ManagePageComponent } from "../../theme/manage-page.ts";
 
 type Keybinding = Parameters<typeof keyHint>[0];
 
+/** The terminal of the view the `/mcp` command runs in: its pages are sized to its rows. */
+let viewTerminal: { rows: number } | undefined;
+
 const ui: McpHostPorts["ui"] = {
 	keyHint: (keybinding, description) => keyHint(keybinding as Keybinding, description),
 	frame: (theme, title, body, footer) => frame(theme as Theme, title, body, footer),
 	renderClipped,
 	page: (options) =>
 		new ManagePageComponent({
+			viewportRows: () => (viewTerminal ? viewTerminal.rows - 1 : (process.stdout.rows ?? 24)),
 			title: options.title,
 			facts: options.facts,
 			alerts: options.alerts,
@@ -40,7 +44,10 @@ const ui: McpHostPorts["ui"] = {
 	runInView: (ctx, create, run) =>
 		runInView(
 			ctx as unknown as ExtensionCommandContext,
-			(tui, theme, keybindings) => create(tui, theme, keybindings),
+			(tui, theme, keybindings) => {
+				viewTerminal = tui.terminal;
+				return create(tui, theme, keybindings);
+			},
 			run,
 		),
 };

@@ -175,7 +175,7 @@ export async function showExtensionConfirm(
 	message: string,
 	opts?: ExtensionUIDialogOptions,
 ): Promise<boolean> {
-	const result = await host.showExtensionSelector(`${title}\n${message}`, ["Yes", "No"], opts, {
+	const result = await host.showExtensionSelector(`${title}\n${message}`, ["No", "Yes"], opts, {
 		kind: "question",
 		message: title,
 	});

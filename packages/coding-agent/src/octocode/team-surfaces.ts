@@ -8,6 +8,7 @@ import type { messagePolicy } from "./message-policy.ts";
 import type { Permission } from "./permission/ask.ts";
 import { parsedShell, reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
 import { readOnlyCommand } from "./permission/shell/read-only.ts";
+import { describeWorktrees } from "./worktrees/summary.ts";
 import type { registerPlanning } from "./plan/register.ts";
 import { registerSessions } from "./sessions/register.ts";
 import type { Subcommands } from "./shared/commands.ts";
@@ -38,8 +39,9 @@ export function registerTeamSessions(
 }
 
 /** The shell checks the collaboration tools run before a command: its reservation targets, read-only status and changes. */
-export function shellCollaboration() {
+export function collaborationPorts() {
 	return {
+		describeWorktrees,
 		shellWrites: (command: string) => shellParserReady().then(() => reservationTargets(command)),
 		shellReadOnly: readOnlyCommand,
 		shellCommands: parsedShell,

@@ -69,6 +69,7 @@ describe("octocode mcp", () => {
 		expect(await runMcpCommand(["list", "--json"], options)).toBe(0);
 		expect(JSON.parse(output.join("\n")).servers).toMatchObject([
 			{ name: "octocode", state: "disabled", scope: "default" },
+			{ name: "freellama", scope: "default" },
 			{ name: "browser", scope: "default" },
 		]);
 	});

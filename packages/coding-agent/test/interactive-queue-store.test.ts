@@ -89,9 +89,9 @@ describe("queue state binding", () => {
 		const { host, rows } = setup();
 		const store = host.uiStore.getState();
 		store.holdMessage({ text: "typed", mode: "steer" });
-		expect(rows()).not.toContain("Enter sends");
+		expect(rows()).not.toContain("enter sends");
 		store.holdMessage({ text: "carried", mode: "followUp", carried: true });
-		expect(rows()).toContain("Enter sends");
+		expect(rows()).toContain("enter sends");
 
 		expect(store.takeHeldMessages(false)).toEqual([{ text: "typed", mode: "steer" }]);
 		expect(host.uiStore.getState().queue.compaction).toEqual([{ text: "carried", mode: "followUp", carried: true }]);

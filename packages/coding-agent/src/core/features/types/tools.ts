@@ -102,6 +102,28 @@ export interface ToolAnnotations {
 	openWorldHint?: boolean;
 }
 
+/** One change a call makes to a file: the path as the model wrote it, and how it changes it when the tool says. */
+export interface ToolChange {
+	path: string;
+	type?: "edit" | "write" | "delete";
+	/** The part of the arguments that describes this change (its content, replacements), for guards that read it. */
+	detail?: unknown;
+}
+
+/**
+ * What a native tool does to the machine, declared on its definition so the permission layer reads it instead of
+ * keeping a list of tool names. `read` changes nothing; `write` changes files, named by `changes`; `exec` runs a
+ * program of the model's choosing; `opaque` changes things no argument names.
+ */
+export interface ToolEffect {
+	kind: "read" | "write" | "exec" | "opaque";
+	/**
+	 * For `write`: the files a call changes, from its arguments. Return `undefined` when the call changes something but
+	 * its targets cannot be read from the arguments; the permission layer then treats the write as unresolvable.
+	 */
+	changes?: (input: Record<string, unknown>) => ToolChange[] | undefined;
+}
+
 /** A group of related tools, such as the tools of one MCP server. */
 interface ToolNamespace {
 	/** For example `mcp__docs`. */
@@ -175,6 +197,12 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	validationHint?: (failure: { envelope: boolean; properties: string[] }) => string | undefined;
 	/** False: arguments are validated as the model sent them and reach `execute` unchanged, with no coercion (MCP tools). */
 	coerceArguments?: false;
+	/**
+	 * True: whether agents declare this tool depends on their role (a child may lack it), or its declaration differs
+	 * between roles. It is declared after every role-invariant tool, outside the cache prefix that agents of every role
+	 * share. Set it on any tool that is not given alike to every role. Never sent to the provider.
+	 */
+	roleVariant?: boolean;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
 	renderShell?: "default" | "self";
 
@@ -197,6 +225,9 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 
 	/** Hints about what the tool does, for example from an MCP server. */
 	annotations?: ToolAnnotations;
+
+	/** What the tool changes, read by the permission gate, the read-only role and provenance. Native tools only. */
+	effect?: ToolEffect;
 
 	/**
 	 * Whether registering the tool activates it. Default: `true` for `direct` and `model-only` tools;

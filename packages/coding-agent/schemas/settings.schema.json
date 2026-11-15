@@ -189,6 +189,12 @@
             }
           }
         },
+        "fallbackCooldownMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Milliseconds a model that failed on a usage limit or a refused credential is skipped as a fallback or router target (limits usually reset after hours; `/model` can still pick it). 0 retries it at once.",
+          "default": 900000
+        },
         "fallbackModels": {
           "type": "array",
           "items": {
@@ -225,7 +231,7 @@
     },
     "referenceOpener": {
       "type": "string",
-      "description": "How file references and /diff --editor open: \"auto\" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the prompt editor; \"editor\" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.",
+      "description": "How file references and /diff --editor open: \"auto\" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the system default app for the file (open, xdg-open); over SSH or on Linux without a display, the prompt editor; \"editor\" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.",
       "default": "auto"
     },
     "shellPath": {
@@ -274,6 +280,26 @@
           "minimum": 0,
           "description": "Most bytes the saved full output of one foreground bash command holds (commands the agent runs and the user's own `!` commands). Past it the file keeps the first half and the end of the output around a marker, and the result's header says how much was dropped, so a command stuck in a loop cannot fill the disk. What reaches the model below the cap does not change. 0 lifts the cap.",
           "default": 1073741824
+        },
+        "longCommandAfterSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds a known long command (test runner, `yarn run check`, build, server, stream follower, or a `longCommandPatterns` match) may run in the foreground before it moves to the background as a job. It applies only when sooner than `bashBackgroundAfterSeconds`.",
+          "default": 30
+        },
+        "deliberateMaxSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "The longest a foreground bash call that names its own `timeout` holds the turn before the command moves to the background (it is still stopped at its timeout).",
+          "default": 600
+        },
+        "longCommandPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Regular expressions for commands that count as long, added to the built-in runners (vitest, jest, pytest, cargo, go, yarn test/check/build/dev…), for example `[\"bazel\\s+(?:test|build)\", \"make\\s+(?:test|check)\"]`. Each is matched where a command starts (the line, or after `;`, `&`, `|`, `(` and `VAR=value` words) and must end at a space or the end of a part. An entry that is not a valid regular expression is ignored.",
+          "default": []
         }
       },
       "additionalProperties": false
@@ -336,10 +362,14 @@
         },
         {
           "type": "string",
+          "const": "usage"
+        },
+        {
+          "type": "string",
           "pattern": "^auto:[0-9]+$"
         }
       ],
-      "description": "How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). \"direct\": the full description and schema. \"deferred\": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. \"recent\" (the default): a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. \"auto:<bytes>\": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool.",
+      "description": "How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). \"direct\": the full description and schema. \"deferred\": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. \"recent\" (the default): a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. \"usage\": every tool is deferred with its whole description unless the promotion snapshot names it: a tool that at least 10% of the last 7 days' sessions with the same role (main or subagent) that declared it called or loaded, with 20 or more such sessions, or whose first calls the deferred schema often refused; with no usage data nothing is promoted. The snapshot is computed at session start when the saved one is over an hour old, and then fixed for the session, its resumptions and its subagents. \"auto:<bytes>\": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool.",
       "default": "recent"
     },
     "nativeToolExposure": {
@@ -358,7 +388,7 @@
           ]
         }
       },
-      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema."
+      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and timer under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema."
     },
     "research": {
       "type": "object",
@@ -1198,6 +1228,11 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "description": "US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running."
+        },
+        "queuedStarts": {
+          "type": "boolean",
+          "description": "Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
+          "default": true
         },
         "checkInSeconds": {
           "type": "number",

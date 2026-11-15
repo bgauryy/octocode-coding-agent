@@ -1,7 +1,6 @@
-import { envFlag } from "../../../common/src/env.ts";
+import { envFlag, OFFLINE_ENV } from "../../../common/src/env.ts";
 
-/** Disables startup network operations; `--offline` sets it for the process and its children. */
-export const OFFLINE_ENV = "OCTOCODE_OFFLINE";
+export { OFFLINE_ENV };
 
 /** True for `1`, `true`, `on` and `yes` (any case, surrounding space ignored); unset, empty or anything else is false. */
 export function isTruthyEnvFlag(value: string | undefined): boolean {

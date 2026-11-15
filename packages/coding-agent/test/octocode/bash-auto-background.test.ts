@@ -12,7 +12,7 @@ import {
 	foregroundPlan,
 	timeLeft,
 } from "../../src/octocode/files/bash/auto.ts";
-import { sleepHint } from "../../src/octocode/files/bash/long-commands.ts";
+import { isKnownLongCommand, sleepHint } from "../../src/octocode/files/bash/long-commands.ts";
 import type { ShellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
@@ -114,6 +114,28 @@ describe("the background threshold", () => {
 			expect(foregroundPlan({ command }, 90, {})).toMatchObject({ timeout: 90, auto: true });
 		},
 	);
+
+	it("recognises configured long-command patterns and ignores invalid ones", () => {
+		const long = { patterns: ["bazel\\s+(?:test|build)", "make\\s+(?:test|check)", "(unclosed"] };
+		for (const command of ["bazel test //...", "cd x && make check", "FOO=1 bazel build //app"]) {
+			expect(isKnownLongCommand(command, long.patterns)).toBe(true);
+			expect(foregroundPlan({ command }, 90, {}, long)).toMatchObject({ timeout: 30, auto: true });
+			// Without the setting these run for the full threshold.
+			expect(foregroundPlan({ command }, 90, {})).toMatchObject({ timeout: 90, auto: true });
+		}
+		expect(isKnownLongCommand("echo bazel test", long.patterns)).toBe(false);
+		expect(isKnownLongCommand("make", long.patterns)).toBe(false);
+	});
+
+	it("takes the long-command and deliberate-wait thresholds from the settings", () => {
+		expect(foregroundPlan({ command: "yarn test" }, 90, {}, { afterSeconds: 5 })).toMatchObject({
+			timeout: 5,
+			auto: true,
+		});
+		const own = { command: "./slow-task", timeout: 3000, background: false };
+		expect(foregroundPlan(own, 90, {}, { deliberateMaxSeconds: 120 })).toMatchObject({ timeout: 120, capped: true });
+		expect(foregroundPlan(own, 90, {})).toMatchObject({ timeout: 600, capped: true });
+	});
 
 	it("leaves a known long command alone when the threshold is off, shorter, or the call waits on purpose", () => {
 		expect(foregroundPlan({ command: "yarn test" }, 0, {})).toMatchObject({ timeout: 900, auto: false });

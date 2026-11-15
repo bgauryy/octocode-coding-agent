@@ -35,7 +35,7 @@ octocode --mode json --no-session "Summarize README.md" > events.jsonl
 
 ### Text mode
 
-Sends the first message and any further positional messages as separate prompts, then prints the text of the last assistant message. Exit code `1` when a prompt ends in an error or abort or the reply was cut at the model's output limit; the reason goes to stderr (including an unrecoverable context overflow). A provider retry writes one stderr line with the wait.
+Sends the first message and any further positional messages as separate prompts, then prints the text of the last assistant message. Exit code `1` when a prompt ends in an error or abort or the reply was cut at the model's output limit; the reason goes to stderr (including an unrecoverable context overflow). Exit code `2` when text or JSON mode gets no prompt (no message, `@file` or piped stdin). A provider retry writes one stderr line with the wait.
 
 ### JSON mode
 

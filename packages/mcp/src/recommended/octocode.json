@@ -14,8 +14,8 @@
 	"roles": {
 		"reader": ["localFetch"],
 		"search": ["localSearch", "structureSearch", "astSearch", "lspSearch"],
+		"judge": ["clasify"],
 		"readOnly": [
-			"clasify",
 			"ghSearchRepo",
 			"ghSearchCode",
 			"ghStructure",

@@ -132,6 +132,7 @@ export function registerCompactTool(api: ExtensionAPI, requests: CompactRequests
 	api.registerTool(
 		timedTool({
 			name: COMPACT_TOOL,
+			roleVariant: true,
 			label: "Compact",
 			promptSnippet: renderInstruction("tools/compact/snippet.md"),
 			description:

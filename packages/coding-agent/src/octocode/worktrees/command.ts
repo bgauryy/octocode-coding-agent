@@ -5,22 +5,15 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hasTmuxSession } from "@octocodeai/octocode-tui";
 import { type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { gitQuiet } from "../../utils/git-run.ts";
-import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
+import type { TmuxPane } from "../terminal-launch/tmux.ts";
 import { worktreeTrustTitle } from "./approval.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";
 import { worktreeNames } from "./names.ts";
-import {
-	agentLabel,
-	innermostWorktree,
-	paneLabel,
-	parkedLabel,
-	placeOccupants,
-	type ParkedResident,
-} from "./occupants.ts";
+import { agentLabel, innermostWorktree, paneLabel, parkedLabel, type ParkedResident } from "./occupants.ts";
 import { type OpenDependencies, type OpenPlacement, openInTmux, parsePlacement } from "./open.ts";
 import { removeWorktree } from "./remove.ts";
 import { canonical } from "./repo.ts";
-import { worktreeStatuses, type WorktreeStatus } from "./status.ts";
+import { whoIsWhere, worktreeLines } from "./summary.ts";
 import { MAIN_CHECKOUT, switchToWorktree } from "./switch.ts";
 import { existingWorktree } from "./target.ts";
 
@@ -39,43 +32,6 @@ export interface WorktreeCommandDependencies extends OpenDependencies {
 	merge?: (branch: string, ctx: ExtensionCommandContext) => Promise<{ ok: boolean; text: string }>;
 }
 
-/** Line breaks in a path or git message, shown as `\n` and `\r` so each worktree stays on its own line. */
-const oneLine = (text: string): string => text.replace(/\r|\n/gu, (brk) => (brk === "\r" ? "\\r" : "\\n"));
-
-/** `name · branch · state · path` for one worktree. */
-function listLine(status: WorktreeStatus, main: string, current: boolean): string {
-	const { entry } = status;
-	const state = entry.prunable
-		? ["folder missing (git worktree prune)"]
-		: status.error
-			? [`unreadable: ${oneLine(status.error)}`]
-			: [
-					status.dirty > 0 ? `${status.dirty} changed` : "",
-					status.untracked > 0 ? `${status.untracked} untracked` : "",
-					status.unmerged > 0
-						? `${status.unmerged} commit${status.unmerged === 1 ? "" : "s"} not on another branch`
-						: "",
-				].filter(Boolean);
-	const label = status.main ? "main" : (status.name ?? "other");
-	const branch = entry.branch ? `branch ${entry.branch}` : "detached";
-	const where = path.relative(main, entry.path) || ".";
-	const here = current ? " · current" : "";
-	return `  ${label} · ${branch} · ${state.length > 0 ? state.join(", ") : "clean"} · ${oneLine(where.startsWith("..") ? entry.path : where)}${here}`;
-}
-
-/** The team's live agents and tmux panes, sorted into the worktree `roots` each works in. */
-async function whoIsWhere(roots: readonly string[], deps: WorktreeCommandDependencies, askTmux = false) {
-	const members = deps.members?.() ?? [];
-	const env = deps.env ?? process.env;
-	// `list` asks tmux only when this session or an agent runs in it, so a list outside tmux spawns nothing; `remove`
-	// always asks, because a shell in that folder matters wherever Octocode runs.
-	const panes: TmuxPane[] =
-		askTmux || hasTmuxSession(env) || members.some((member) => member.tmuxPane)
-			? await listTmuxPanes({ env, ...(deps.tmux?.runner ? { runner: deps.tmux.runner } : {}) })
-			: [];
-	return { members, panes, ...placeOccupants(roots, members, panes) };
-}
-
 /** `agents: …; tmux: …` for one worktree's occupants, in the words `list` uses; undefined when nobody is there. */
 function occupantsText(
 	agents: readonly Member[],
@@ -92,21 +48,8 @@ function occupantsText(
 }
 
 async function list(ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
-	const { main, statuses } = await worktreeStatuses(ctx.cwd);
-	const roots = statuses.filter((status) => !status.entry.prunable).map((status) => status.entry.path);
-	const { members, panes, byRoot, unplaced } = await whoIsWhere(roots, deps);
-	// Linked worktrees sit inside the main one, so the session's worktree is the innermost holding its directory.
-	const current = innermostWorktree(roots, ctx.cwd);
-	const lines = [`Worktrees of ${main}:`];
-	for (const status of statuses) {
-		lines.push(listLine(status, main, status.entry.path === current));
-		const here = byRoot.get(status.entry.path);
-		if (here?.agents.length)
-			lines.push(`      agents: ${here.agents.map((member) => agentLabel(member, panes)).join("; ")}`);
-		if (here?.panes.length) lines.push(`      tmux: ${here.panes.map(paneLabel).join("; ")}`);
-	}
-	if (unplaced.length > 0)
-		lines.push(`  Agents in no listed worktree: ${unplaced.map((member) => agentLabel(member, panes)).join("; ")}`);
+	const { main, statuses, members, lines } = await worktreeLines(ctx.cwd, deps);
+	lines.unshift(`Worktrees of ${main}:`);
 	if (!statuses.some((status) => status.name)) lines.push("  No worktrees yet: /worktree new <name> creates one.");
 	if (statuses.some((status) => !status.main && !status.name))
 		lines.push("  other: a linked worktree not made by /worktree");

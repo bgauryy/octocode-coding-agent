@@ -1,6 +1,5 @@
 import {
 	type Component,
-	Container,
 	renderChanged,
 	trackRenderChanges,
 	truncateToWidth,
@@ -12,8 +11,9 @@ import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { theme } from "../../theme/theme.ts";
 import { takesCallReason } from "../permission/native-tools.ts";
 import { itemTitle, withItemTitles } from "../render/item-titles.ts";
-import { returnedPurposeBlock, suppliedPurposeBlock } from "./purpose-block.ts";
-import { callReasonText } from "./call-reason.ts";
+import { expandHint, plural } from "../shared/text.ts";
+import { returnedPurposeBlock } from "./purpose-block.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import {
 	cleanPurposeText,
 	purposeArguments,
@@ -21,20 +21,40 @@ import {
 	statedPurposes,
 	type StatedPurpose,
 } from "./purpose-data.ts";
-import { keyHint } from "../../theme/theme-tui-helpers.ts";
 
 /** Aligned with the `⎿` of the result gutter, under the title. */
 const INDENT = "  ";
+/** Query lines shown before the rest fold into `+K more queries`. */
+const MAX_QUERY_LINES = 3;
+/** Characters of an agent's goal its title shows; a longer goal is cut there. */
+const AGENT_TITLE_GOAL_CHARS = 60;
 
-/** The call's supplied reason: a compact preview, or its full wrapped text when expanded. */
+interface ReasonEntry {
+	/** `2 · ` on a numbered query line. */
+	prefix: string;
+	goal: string;
+	/** Reasoning after the goal, in the secondary shade. */
+	rest?: string;
+	/** A native call's own reason: a backlog ID in it is drawn with its title, once, when the row is built. */
+	ours: boolean;
+}
+
+/** The call's purpose: one `↳` line per call, or per query when a call has several; a compact preview, or every line wrapped when expanded. */
 class ReasonLine implements Component {
-	private readonly text: string;
+	private readonly lines: string[];
+	private readonly hidden: number;
 	private readonly expanded: boolean;
-	/** `ours`: the text is our own native call's reason, so a backlog ID in it is drawn with its title, once, when the row is built. A server's returned text is never decorated. */
-	constructor(reason: string, ours: boolean, expanded: boolean) {
+	constructor(entries: ReasonEntry[], hidden: number, expanded: boolean) {
 		this.expanded = expanded;
-		const flat = sanitizeTerminalText(reason).replace(/\s+/g, " ").trim();
-		this.text = `↳ ${ours ? withItemTitles(flat, itemTitle) : flat}`;
+		this.hidden = hidden;
+		const flat = (text: string, ours: boolean) => {
+			const clean = sanitizeTerminalText(text).replace(/\s+/g, " ").trim();
+			return ours ? withItemTitles(clean, itemTitle) : clean;
+		};
+		this.lines = entries.map((entry) => {
+			const lead = theme.italic(theme.fg("toolReason", `↳ ${entry.prefix}${flat(entry.goal, entry.ours)}`));
+			return entry.rest ? lead + theme.italic(theme.fg("dim", ` — ${flat(entry.rest, entry.ours)}`)) : lead;
+		});
 	}
 	/** The row at the last width, returned as the same array while nothing changed: a transcript draws every row on every frame. */
 	private drawn: { width: number; lines: string[] } | undefined;
@@ -43,12 +63,22 @@ class ReasonLine implements Component {
 		const indent = width > INDENT.length ? INDENT : "";
 		const room = width - indent.length;
 		const rows =
-			room <= 0 ? [] : this.expanded ? wrapTextWithAnsi(this.text, room) : [truncateToWidth(this.text, room)];
-		const lines = rows.map((line) => `${indent}${theme.italic(theme.fg("toolReason", line))}`);
-		if (!this.expanded && room > 0 && visibleWidth(this.text) > room)
+			room <= 0
+				? []
+				: this.lines.flatMap((line) => (this.expanded ? wrapTextWithAnsi(line, room) : [truncateToWidth(line, room)]));
+		const lines = rows.map((line) => `${indent}${line}`);
+		// What the one-line view cuts off, in columns.
+		const cut = this.expanded ? 0 : this.lines.reduce((sum, line) => sum + Math.max(0, visibleWidth(line) - room), 0);
+		if (room > 0 && (this.hidden > 0 || cut > 0)) {
+			const note =
+				this.hidden > 0 ? `… +${this.hidden} more quer${this.hidden === 1 ? "y" : "ies"}` : `… +${plural(cut, "char")}`;
+			const hint = expandHint();
 			lines.push(
-				...wrapTextWithAnsi(keyHint("app.tools.expand", "to expand purpose"), room).map((line) => indent + line),
+				...wrapTextWithAnsi(`${theme.fg("muted", note)}${hint ? ` ${theme.fg("dim", hint)}` : ""}`, room).map(
+					(line) => indent + line,
+				),
 			);
+		}
 		this.drawn = { width, lines };
 		return lines;
 	}
@@ -71,11 +101,14 @@ export function toolArgsForDisplay(toolName: string, args: unknown, compactQueri
 	return purposeArguments(args, callPurposes(toolName, args), compactQueries);
 }
 
-function legacyReason(toolName: string, supplied: StatedPurpose[]): string | undefined {
-	if (!takesCallReason(toolName)) return undefined;
-	const top = supplied.find((entry) => entry.row === undefined);
-	const safeArgs = top?.reason ? { reason: top.reason } : undefined;
-	return cleanPurposeText(callReasonText(toolName, safeArgs));
+/** A purpose as one line: the goal (a native call's own reason leads), then the other statements, without repeats or the text the title already shows. */
+function entryOf(purpose: StatedPurpose, prefix: string, ours: boolean, shown?: string): ReasonEntry | undefined {
+	const order = ours
+		? [purpose.reason, purpose.mainGoal, purpose.reasoning]
+		: [purpose.mainGoal, purpose.reason, purpose.reasoning];
+	const texts = [...new Set(order.filter((text) => text !== undefined && text !== shown))];
+	const [goal, ...rest] = texts;
+	return goal === undefined ? undefined : { prefix, goal, ...(rest.length ? { rest: rest.join(" — ") } : {}), ours };
 }
 
 /** The reason row of a tool call, shared by the terminal tool view and the HTML export (which receives it from the session, since `core/` cannot import the tool views). */
@@ -87,22 +120,33 @@ export function reasonRow(
 	shownReason?: string,
 ): Component | undefined {
 	const supplied = callPurposes(toolName, args);
-	const reason = legacyReason(toolName, supplied);
-	const native = takesCallReason(toolName);
-	const legacy =
-		reason && reason !== cleanPurposeText(shownReason) ? new ReasonLine(reason, native, expanded) : undefined;
-	const remaining = native && reason ? remainingPurposes(supplied, [{ reason }]) : supplied;
-	const metadata = suppliedPurposeBlock(
-		remaining,
-		expanded,
-		remaining.some((entry) => entry.row !== undefined) ? "Call" : undefined,
-	);
-	if (!legacy) return metadata;
-	if (!metadata) return legacy;
-	const rows = new Container();
-	rows.addChild(legacy);
-	rows.addChild(metadata);
-	return rows;
+	const ours = takesCallReason(toolName);
+	const queries = supplied.filter((entry) => entry.row !== undefined);
+	const numbered = queries.length >= 2;
+	const shown = cleanPurposeText(shownReason);
+	const fullGoal = expanded && toolName === "agent" ? agentGoal(args) : undefined;
+	const entries = [
+		...(fullGoal ? [{ prefix: "", goal: fullGoal, ours: false }] : []),
+		...supplied.flatMap((purpose) => {
+			if (purpose.row !== undefined && queries.indexOf(purpose) >= (expanded ? queries.length : MAX_QUERY_LINES))
+				return [];
+			const entry = entryOf(
+				purpose,
+				numbered && purpose.row !== undefined ? `${purpose.row + 1} · ` : "",
+				ours && purpose.row === undefined,
+				shown,
+			);
+			return entry ? [entry] : [];
+		}),
+	];
+	if (entries.length === 0) return undefined;
+	return new ReasonLine(entries, expanded ? 0 : Math.max(0, queries.length - MAX_QUERY_LINES), expanded);
+}
+
+/** An agent's goal when its title cut it. */
+function agentGoal(args: unknown): string | undefined {
+	const goal = isRecord(args) ? cleanPurposeText(args.goal) : undefined;
+	return goal && goal.length > AGENT_TITLE_GOAL_CHARS ? goal : undefined;
 }
 
 /**

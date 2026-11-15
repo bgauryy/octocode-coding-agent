@@ -216,7 +216,7 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	backlog: {
 		ok: [
 			answers(call("backlog", { op: "claim", id: "B1" }), "Updated B1 [ongoing"),
-			answers(call("backlog", { op: "get", id: "B1" }), "Goal: It is proven", "Why: because"),
+			answers(call("backlog", { op: "get", id: "B1" }), "Done when: It is proven", "Why: because"),
 			answers(
 				call("backlog", { op: "close", id: "B2", close: { kind: "obsolete", text: "no longer needed" } }),
 				"Updated B2",
@@ -226,13 +226,13 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(
 				call("backlog", { op: "get", ids: ["B1", "B2"] }),
 				"Prove it",
-				"Goal: It is proven",
+				"Done when: It is proven",
 				"Close me",
-				"Goal: gone",
+				"Done when: gone",
 				"\n\n---\n",
 			),
 			// A missing id is reported on its own row and does not hide the others.
-			answers(call("backlog", { op: "get", ids: ["B1", "B999"] }), "Goal: It is proven", "No backlog item B999"),
+			answers(call("backlog", { op: "get", ids: ["B1", "B999"] }), "Done when: It is proven", "No backlog item B999"),
 		],
 		fail: [
 			answers(call("backlog", { op: "get", id: "B999" }), "No backlog item B999"),

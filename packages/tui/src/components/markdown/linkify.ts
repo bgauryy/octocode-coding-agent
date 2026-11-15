@@ -32,6 +32,8 @@ const BARE_FILE_EXTENSIONS = new Set(
 /** The `path:line[:col]` references in `text`; none for versions (`v1.2.3`), times (`12:30`), URLs and emails. */
 export function findFileReferences(text: string): FileReference[] {
 	const found: FileReference[] = [];
+	// Every reference has a colon before its line number: most prose has none, and the scan is the costly part.
+	if (!text.includes(":")) return found;
 	for (const match of text.matchAll(REFERENCE)) {
 		const path = match[1];
 		if (!/[\\/]/.test(path) && !BARE_FILE_EXTENSIONS.has(match[2].toLowerCase())) continue;

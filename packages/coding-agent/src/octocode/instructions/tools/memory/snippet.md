@@ -1,1 +1,1 @@
-Before recalling preferences and decisions
+Search or read saved preferences and decisions before recalling them

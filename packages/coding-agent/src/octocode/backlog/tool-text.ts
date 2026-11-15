@@ -12,7 +12,7 @@ export interface BacklogToolDetails {
 /** The operations that change one item; `update` is the name calls stored before the tool was split carry. */
 const CHANGES = ["claim", "note", "done", "close", "edit", "update"];
 
-/** The `⎿` line: `B12 → done`, `Added B3`, `3 items`. */
+/** The `⎿` line: `B12 → done · Title`, `Added B3 · todo · Title`, `3 items`. */
 export function backlogSummary(op: unknown, details: BacklogToolDetails, text: string): string {
 	const item = details.item;
 	if (op === "list" && details.total !== undefined)
@@ -21,8 +21,9 @@ export function backlogSummary(op: unknown, details: BacklogToolDetails, text: s
 			: details.total > (details.shown ?? 0)
 				? `${details.shown} of ${plural(details.total, "item")}`
 				: plural(details.total, "item");
-	if (item && op === "add") return `Added ${item.ref} · ${item.state}`;
-	if (item && CHANGES.includes(op as string)) return `${item.ref} → ${item.closed ? "closed" : item.state}`;
+	if (item && op === "add") return `Added ${item.ref} · ${item.state} · ${item.title}`;
+	if (item && CHANGES.includes(op as string))
+		return `${item.ref} → ${item.closed ? "closed" : item.state} · ${item.title}`;
 	if (item) return `${item.ref} · ${item.state} · ${item.title}`;
 	return text.split("\n", 1)[0] ?? "";
 }

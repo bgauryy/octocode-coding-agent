@@ -69,7 +69,7 @@ describe("AssistantMessageComponent", () => {
 		const answer = { ...message, content: [...message.content, { type: "text" as const, text: "Tests passed." }] };
 		component.updateContent(answer, true);
 		const rendered = stripAnsi(component.render(60).join("\n"));
-		expect(rendered).toContain("▾ Reasoning");
+		expect(rendered).toContain("▾ Thought");
 		expect(rendered).not.toContain("Thinking…");
 		expect(rendered).toContain("Inspect the test results.");
 		expect(rendered).toContain("Tests passed.");
@@ -117,7 +117,7 @@ describe("AssistantMessageComponent", () => {
 			const calls = requestRender.mock.calls.length;
 			vi.advanceTimersByTime(500);
 			expect(requestRender.mock.calls.length).toBe(calls);
-			expect(stripAnsi(component.render(60).join("\n"))).toMatch(/▾ Reasoning/);
+			expect(stripAnsi(component.render(60).join("\n"))).toMatch(/▾ Thought/);
 		});
 
 		test("dispose and a later non-streaming update both release the clock", () => {
@@ -172,7 +172,7 @@ describe("AssistantMessageComponent", () => {
 		test("labels a finished block with how long the model reasoned", () => {
 			initTheme("dark");
 			const component = streamedReasoning(4_000);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Thought for 4s");
 			component.setHideThinkingBlock(true);
 			const lines = stripAnsi(component.render(80).join("\n")).split("\n");
 			expect(lines.filter((line) => line.includes("Thought"))).toEqual([
@@ -186,7 +186,7 @@ describe("AssistantMessageComponent", () => {
 			initTheme("dark");
 			// The thought's last token came at +2s; the answer began at +3s, which ends the reasoning.
 			const component = streamedReasoning(2_000, 1_000);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Reasoning · 3s");
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Thought for 3s");
 		});
 
 		test("keeps the time when the transcript rebuilds the message's component", () => {
@@ -200,7 +200,7 @@ describe("AssistantMessageComponent", () => {
 				]),
 				false,
 			);
-			expect(stripAnsi(rebuilt.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
+			expect(stripAnsi(rebuilt.render(80).join("\n"))).toContain("▾ Thought for 4s");
 		});
 
 		test("omits the time when unknown (a resumed block) or under a second", () => {
@@ -212,9 +212,9 @@ describe("AssistantMessageComponent", () => {
 				]),
 				false,
 			);
-			expect(stripAnsi(resumed.render(80).join("\n"))).toMatch(/▾ Reasoning\s*\n/);
+			expect(stripAnsi(resumed.render(80).join("\n"))).toMatch(/▾ Thought\s*\n/);
 			const brief = streamedReasoning(100);
-			expect(stripAnsi(brief.render(80).join("\n"))).toMatch(/▾ Reasoning\s*\n/);
+			expect(stripAnsi(brief.render(80).join("\n"))).toMatch(/▾ Thought\s*\n/);
 		});
 
 		test("offers a click only where the terminal reports the mouse", () => {
@@ -237,7 +237,7 @@ describe("AssistantMessageComponent", () => {
 			expect(byDefault).toContain("▸ Thought");
 			expect(byDefault).not.toContain("Hidden reasoning.");
 			const explicit = stripAnsi(new AssistantMessageComponent(message, false).render(80).join("\n"));
-			expect(explicit).toContain("▾ Reasoning");
+			expect(explicit).toContain("▾ Thought");
 			expect(explicit).toContain("Hidden reasoning.");
 		});
 	});
@@ -328,7 +328,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(rendered).toContain("Reasoning interrupted");
+		expect(rendered).toContain("Thinking stopped");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 

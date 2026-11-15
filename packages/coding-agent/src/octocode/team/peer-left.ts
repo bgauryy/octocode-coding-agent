@@ -6,16 +6,16 @@ export interface PeerNoticeHost {
 	/** This agent's name while it is in the team. */
 	self: () => string | undefined;
 	db: () =>
-		| { correspondence(me: string, other: string, since?: number): { exchanged: boolean; asked: boolean } }
+		| { correspondence(me: string, other: string, since?: number): { exchanged: boolean; dead: boolean } }
 		| undefined;
-	mail: { peerLeft(text: string, wake: boolean): boolean };
+	mail: { notice(text: string): boolean };
 }
 
 /**
  * Tells an agent that a peer it corresponded with has ended: one line, `<agent> ended: <reason>`, when the
- * peer's AgentOff is heard. A correspondent is one this agent sent mail to or received mail from; the line is an FYI unless a
- * question of this agent's to that peer is still unanswered, which wakes it (the answer is not coming). A subagent's parent
- * hears its children's ends in their reports, so those get no line.
+ * peer's AgentOff is heard. A correspondent is one this agent sent mail to or received mail from; the line is an FYI that
+ * starts no turn. When mail this agent sent that peer went unread or unanswered, its dead-letter notice is the one notice
+ * (`Mail.reportDeadLetters`), so no line. A subagent's parent hears its children's ends in their reports, so those get none.
  */
 export class PeerNotices {
 	private unwatch: (() => void) | undefined;
@@ -42,8 +42,8 @@ export class PeerNotices {
 		const db = this.host.db();
 		if (event.kind !== "off" || !me || !db || event.agent === me || event.parent === me) return;
 		const joined = typeof event.stats?.joinedAt === "number" ? event.stats.joinedAt : 0;
-		const { exchanged, asked } = db.correspondence(me, event.agent, joined);
-		if (!exchanged && !asked) return;
-		this.host.mail.peerLeft(`${event.agent} ended: ${event.reason ?? "left"}`, asked);
+		const { exchanged, dead } = db.correspondence(me, event.agent, joined);
+		if (!exchanged || dead) return;
+		this.host.mail.notice(`${event.agent} ended: ${event.reason ?? "left"}`);
 	}
 }

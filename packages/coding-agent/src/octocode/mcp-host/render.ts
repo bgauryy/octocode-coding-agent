@@ -9,6 +9,7 @@ import { formatToolCallWithArgs, getTextOutput } from "../../core/tools/render-u
 import type { Theme } from "../../theme/theme.ts";
 import { resultBlock, resultText, toolHeader } from "../render/tool.ts";
 import { timedTool, timingOf } from "../render/rows.ts";
+import { colorToolOutput } from "../../theme/output-style.ts";
 
 const render: McpHostPorts["render"] = {
 	instruction: renderInstruction,
@@ -21,6 +22,7 @@ const render: McpHostPorts["render"] = {
 	formatToolCallWithArgs: (title, args, theme, expanded) =>
 		formatToolCallWithArgs(title, args, theme as Theme, expanded),
 	getTextOutput,
+	colorOutput: (theme, text, options) => colorToolOutput(theme as Theme, text, options),
 };
 
 export function installMcpRenderPort(): void {

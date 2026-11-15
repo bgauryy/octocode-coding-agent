@@ -16,6 +16,7 @@
 	"devDependencies": {
 		"@octocodeai/octocode-common": "workspace:*",
 		"@types/node": "24.19.2",
-		"vitest": "4.1.12"
+		"vite": "8.3.5",
+		"vitest": "5.1.0"
 	}
 }

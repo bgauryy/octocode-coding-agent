@@ -22,7 +22,7 @@ export const STATE_COLOR = {
 	waiting: "warning",
 	done: "success",
 	failed: "error",
-	stopped: "muted",
+	stopped: "warning",
 } as const satisfies Readonly<Record<UiState, ThemeColor>>;
 
 /** A footer status (text and tone as data) painted in the live theme; a status without a tone as written. */

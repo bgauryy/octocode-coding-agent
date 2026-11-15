@@ -5,8 +5,8 @@
  * tool an entry gives a role (`roles.ts`: those tools page their own output) over the host's text cap, keeps its start and
  * end with the middle cut out, and the full text is saved to a temp file the model
  * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
- * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is
- * the tool's `structuredContent`, and every MCP tool declares a `CallToolResult` output schema. MCP
+ * (supported `content` blocks, `structuredContent`, `isError`). A `structuredContent` over the host text cap (`textMaxChars`) is
+ * saved whole to a file and replaced by a small `{ truncated, chars, fullOutputPath }` stub. MCP
  * errors (`isError`) are error results for the model, but programmatic consumers retain the structured result.
  */
 
@@ -218,6 +218,19 @@ interface ConvertMcpResultOptions {
 	saveOutput?: McpOutputSaver;
 }
 
+/** The structured result, or when its JSON exceeds the host text cap a stub naming the file that holds the full JSON. */
+function boundStructured(structured: Record<string, unknown>, saveOutput?: McpOutputSaver): Record<string, unknown> {
+	const value = structured.structuredContent;
+	if (value === undefined) return structured;
+	const json = JSON.stringify(value);
+	if (json === undefined || json.length <= hostOutput().textMaxChars) return structured;
+	const file = saveOutput ? saveOutput(json, ".json") : hostOutput().saveFullOutput(json, "mcp-structured");
+	return {
+		...structured,
+		structuredContent: { truncated: true, chars: json.length, ...(file ? { fullOutputPath: file } : {}) },
+	};
+}
+
 /** Convert an MCP result. `isError` results become error results that keep the structured result. */
 export async function convertMcpResult(
 	server: string,
@@ -235,12 +248,11 @@ export async function convertMcpResult(
 	const { _meta: _ignored, ...structuredResult } = result;
 	// A server that sends its JSON result as one text block gets it as `structuredContent` too, for programmatic readers.
 	const parsed = result.structuredContent === undefined ? jsonText(result, hostOutput().textMaxChars) : undefined;
+	const structured = parsed ? { ...structuredResult, structuredContent: sanitizeJson(parsed) } : structuredResult;
 	return {
 		content,
 		details: { server, tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
-		structuredContent: (parsed
-			? { ...structuredResult, structuredContent: sanitizeJson(parsed) }
-			: structuredResult) as unknown as JsonValue,
+		structuredContent: boundStructured(structured, options.saveOutput) as unknown as JsonValue,
 		...(result.isError ? { isError: true } : {}),
 	};
 }

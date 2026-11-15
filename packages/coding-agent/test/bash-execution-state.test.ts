@@ -5,6 +5,7 @@
 import { GLYPH, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
+import { STOPPED_COLOR } from "../src/octocode/render/types.ts";
 import { STATE_COLOR } from "../src/theme/status.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 
@@ -36,14 +37,17 @@ describe("BashExecutionComponent outcome", () => {
 		const row = new BashExecutionComponent("sleep 9", ui);
 		row.setComplete(undefined, true);
 		const text = plain(row.render(60));
-		expect(text).toContain(`${GLYPH.stopped} $ sleep 9 · cancelled`);
+		expect(text).toContain(`${GLYPH.stopped} $ sleep 9 · interrupted`);
+		expect(row.render(60).join("\n")).toContain(theme.fg(STOPPED_COLOR, " · interrupted"));
 	});
 
-	test("paints failure output in text colour and a quiet success in muted", () => {
+	test("paints failure output in text colour, a failure line in error and a quiet success in muted", () => {
 		const failed = new BashExecutionComponent("a", ui);
-		failed.appendOutput("FAIL x\n");
+		failed.appendOutput("FAIL x\ndetail z\n");
 		failed.setComplete(2, false);
-		expect(failed.render(60).join("\n")).toContain(theme.fg("text", "FAIL x"));
+		const failedText = failed.render(60).join("\n");
+		expect(failedText).toContain(theme.fg("text", "detail z"));
+		expect(failedText).toContain(theme.fg("error", "FAIL x"));
 
 		const passed = new BashExecutionComponent("b", ui);
 		passed.appendOutput("ok y\n");

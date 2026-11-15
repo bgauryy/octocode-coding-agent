@@ -25,7 +25,13 @@ export function rendererFailure(
 ): Component {
 	const container = new Container();
 	if (fallback) container.addChild(fallback);
-	container.addChild(new Text(theme.fg("warning", `${slot} failed: ${rendererError(error)}`), 0, 0));
+	container.addChild(
+		new Text(
+			theme.fg("warning", `${slot === "renderCall" ? "Call" : "Result"} renderer failed: ${rendererError(error)}`),
+			0,
+			0,
+		),
+	);
 	return container;
 }
 
@@ -53,7 +59,7 @@ export function rendererFailureText(
 	output: string,
 	expanded: boolean,
 ): string {
-	return `Tool renderer failed (${rendererError(error)}); showing plain output.\n${formatToolExecution(toolName, args, output, expanded)}`;
+	return `${theme.fg("warning", `${toolName} renderer failed: ${rendererError(error)}`)}\n${formatToolExecution(toolName, args, output, expanded)}`;
 }
 
 /** Generic display for a tool with no renderer definition: title, JSON arguments and text output. */

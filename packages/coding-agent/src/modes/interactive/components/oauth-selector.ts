@@ -9,9 +9,9 @@ import {
 	Spacer,
 	TruncatedText,
 } from "@octocodeai/octocode-tui";
+import { emptyState, hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
 
 export type AuthSelectorProvider = {
 	detail?: string;
@@ -206,7 +206,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 						? "No providers available"
 						: "No providers logged in. Use /providers first."
 					: "No matching providers";
-			this.listContainer.addChild(new TruncatedText(theme.fg("muted", `  ${message}`), 1, 0));
+			this.listContainer.addChild(new TruncatedText(emptyState(message), 0, 0));
 		}
 	}
 

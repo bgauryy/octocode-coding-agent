@@ -84,6 +84,7 @@ async function sharedRequest(
 		},
 		sessionManager: {
 			getSessionId: () => "sid",
+			getHeader: () => null,
 			getBranch: () => branch,
 			buildSessionProjection: () => ({ entries, messages: entries.flatMap((entry) => entry.messages) }),
 		},
@@ -251,6 +252,7 @@ describe("a model switch right before compaction", () => {
 			},
 			sessionManager: {
 				getSessionId: () => "sid",
+				getHeader: () => null,
 				getSessionFile: () => undefined,
 				getBranch: () => branch,
 				buildSessionProjection: () => ({ entries, messages: entries.flatMap((entry) => entry.messages) }),

@@ -12,8 +12,9 @@ import type { InventoryItem } from "./inventory.ts";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { shortcutText } from "../shared/keys.ts";
-import { type RankedHint, renderHintLine } from "../../theme/theme-tui-helpers.ts";
+import { detailHints, errorHints, listHints } from "./picker-hints.ts";
+import { emptyState, noMatchMessage, positionLabel, renderHintLine } from "../../theme/theme-tui-helpers.ts";
+import { ruleLine } from "../../theme/dynamic-border.ts";
 import { HARNESS_SECTIONS, type HarnessSection } from "./sections.ts";
 import { overviewLine } from "./overview.ts";
 import { itemDetailLines, itemRowLine, pickerRows, type Row, sectionNav } from "./picker-rows.ts";
@@ -299,11 +300,12 @@ export class HarnessPicker implements Component, Focusable {
 			height = this.height;
 		const lines: string[] = [],
 			push = (line: string) => lines.push(truncateToWidth(line, w, "…"));
-		push(t.fg("border", "─".repeat(w)));
+		const rule = ruleLine(w, (text) => t.fg("border", text));
+		push(rule);
 		const open = this.confirming?.view ?? this.tools;
-		if (open) return [...lines, ...open.render(w, height - 2), t.fg("border", "─".repeat(w))];
+		if (open) return [...lines, ...open.render(w, height - 2), rule];
 		push(
-			` ${t.fg("accent", t.bold(this.details ? `Harness › ${HARNESS_SECTIONS[this.section].title} › Details` : "Harness — skills, MCPs, hooks and sources"))}`,
+			` ${t.fg("accent", t.bold(this.details ? `Harness › ${HARNESS_SECTIONS[this.section].title} › Details` : "Harness"))}${this.details ? "" : t.fg("muted", " · skills, MCPs, hooks and sources")}`,
 		);
 		if (this.details) {
 			const detail = this.detailLines(w);
@@ -314,10 +316,10 @@ export class HarnessPicker implements Component, Focusable {
 			push(
 				t.fg(
 					"dim",
-					` ${this.detailOffset + 1}–${Math.min(detail.length, this.detailOffset + this.visibleRows)}/${detail.length}`,
+					` ${positionLabel(this.detailOffset + 1, Math.min(detail.length, this.detailOffset + this.visibleRows), detail.length)}`,
 				),
 			);
-			push(t.fg("muted", " ↑↓ / PgUp PgDn scroll · F2 / Esc back"));
+			push(renderHintLine(detailHints(this.keys), w));
 		} else {
 			const nav = sectionNav(this.options.items, this.section, this.state === "ready", t);
 			for (const line of wrapTextWithAnsi(nav, w).slice(0, height < 12 ? 1 : 2)) push(line);
@@ -331,7 +333,7 @@ export class HarnessPicker implements Component, Focusable {
 					Math.max(1, height - lines.length - 2),
 				))
 					push(` ${t.fg(this.state === "error" ? "warning" : "muted", line)}`);
-				push(t.fg("muted", this.state === "error" && this.options.retry ? " Ctrl+R retry · Esc close" : " Esc close"));
+				push(renderHintLine(errorHints(this.keys, this.state === "error" && !!this.options.retry), w));
 			} else {
 				const overview = this.section === "overview";
 				const mcpTools = this.section === "mcp" && !!this.options.mcpTools;
@@ -349,18 +351,7 @@ export class HarnessPicker implements Component, Focusable {
 				if (this.flash) footer.push(t.fg(this.flash.level, ` ${sanitizeTerminalText(this.flash.text)}`));
 				if (this.options.summary && height >= 20)
 					footer.push(t.fg("muted", ` ${this.options.summary} · /harness list`));
-				const hints: RankedHint[] = [
-					[shortcutText("tui.select.cancel", this.keys), "close", 0],
-					["←/→", "section", 1],
-					["Enter", overview ? "open" : mcpTools ? "tools" : "toggle", 1],
-					...(mcpTools ? ([["Space", "switch", 1]] as RankedHint[]) : []),
-					...(overview
-						? []
-						: ([
-								["F2", "details", 1],
-								[shortcutText("tui.input.tab", this.keys), "scope", 2],
-							] as RankedHint[])),
-				];
+				const hints = listHints(this.keys, { overview, mcpTools });
 				footer.push(renderHintLine(hints, w));
 				const available = height - lines.length - footer.length - 1;
 				const position = this.rows.length > available && available > 1;
@@ -371,11 +362,11 @@ export class HarnessPicker implements Component, Focusable {
 				);
 				const shown = this.rows.slice(start, start + this.visibleRows);
 				if (!this.rows.length) {
-					const message = this.search.getValue().trim()
-						? "Nothing matches this filter. Clear it to see this section."
-						: HARNESS_SECTIONS[this.section].empty;
-					for (const line of wrapTextWithAnsi(message, w - 2).slice(0, this.visibleRows))
-						push(t.fg("muted", ` ${line}`));
+					const query = this.search.getValue().trim();
+					if (query) push(emptyState(noMatchMessage("items", query), ["backspace", "edit search"], w));
+					else
+						for (const line of wrapTextWithAnsi(HARNESS_SECTIONS[this.section].empty, w - 2).slice(0, this.visibleRows))
+							push(`  ${t.fg("muted", line)}`);
 				}
 				for (const [offset, row] of shown.entries()) {
 					if (row.type === "section") {
@@ -390,11 +381,12 @@ export class HarnessPicker implements Component, Focusable {
 					push(itemRowLine(row.item, { selected, scope: this.scope, expanded: this.expanded.has(row.item.id) }, t));
 				}
 				if (position && this.rows.length > shown.length)
-					push(t.fg("dim", ` ${this.selected + 1}/${this.rows.length} · ↑↓ / PgUp PgDn`));
+					push(t.fg("dim", ` ${positionLabel(start + 1, start + shown.length, this.rows.length)}`));
 				for (const line of footer) push(line);
 			}
 		}
-		push(t.fg("border", "─".repeat(w)));
-		return lines.slice(0, height);
+		push(rule);
+		// A short terminal cuts the list, never the hint line and the closing rule.
+		return lines.length <= height ? lines : [...lines.slice(0, Math.max(0, height - 2)), ...lines.slice(-2)];
 	}
 }

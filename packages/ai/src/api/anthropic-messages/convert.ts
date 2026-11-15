@@ -3,6 +3,9 @@ import type {
 	BetaCacheControlEphemeral as CacheControlEphemeral,
 	BetaContentBlockParam as ContentBlockParam,
 	BetaMessageParam as MessageParam,
+	BetaRequestToolAdditionBlock,
+	BetaRequestToolRemovalBlock,
+	BetaTextBlockParam,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { ImageContent, Message, TextContent, Tool, ToolResultMessage } from "../../types.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
@@ -10,6 +13,9 @@ import { renderSystemMessageUpdate } from "../../utils/text.ts";
 import { splitErrorToolResultImages } from "../transform-messages.ts";
 import { isCacheableBlock } from "./cache-breakpoints.ts";
 import { type AnthropicEffort, isAnthropicEffort } from "./types.ts";
+
+/** The blocks a system message carries: text and native tool changes. */
+type SystemBlock = BetaTextBlockParam | BetaRequestToolAdditionBlock | BetaRequestToolRemovalBlock;
 
 function convertImageBlock(image: ImageContent) {
 	return {
@@ -109,7 +115,7 @@ export function convertMessages(
 			// Later system messages only reach this point when the model accepts them natively;
 			// otherwise the transcript was collapsed into the leading message before conversion.
 			const text = renderSystemMessageUpdate(msg);
-			const blocks: ContentBlockParam[] = [];
+			const blocks: SystemBlock[] = [];
 			// Whitespace-only text is rejected by the API and cannot carry a cache breakpoint.
 			if (text.trim().length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
 			if (convertToolDefinitions) {
@@ -262,7 +268,7 @@ export function convertMessages(
 			if (Array.isArray(lastMessage.content)) {
 				const lastBlock = lastMessage.content[lastMessage.content.length - 1];
 				if (isCacheableBlock(lastBlock)) lastBlock.cache_control = cacheControl;
-			} else if (lastMessage.content.trim().length > 0) {
+			} else if (lastMessage.content !== undefined && lastMessage.content.trim().length > 0) {
 				lastMessage.content = [{ type: "text", text: lastMessage.content, cache_control: cacheControl }];
 			}
 		}

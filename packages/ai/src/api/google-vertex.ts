@@ -11,6 +11,7 @@ import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getUserAgent } from "../utils/user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
+import { baseUrlIncludesApiVersion } from "./google-shared/api-version.ts";
 import { buildGoogleParams, type GoogleBaseOptions, resolveGoogleSimpleThinking } from "./google-shared/params.ts";
 import { streamGoogle } from "./google-shared/stream.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -109,15 +110,6 @@ function resolveCustomBaseUrl(baseUrl: string): string | undefined {
 		return undefined;
 	}
 	return trimmed;
-}
-
-function baseUrlIncludesApiVersion(baseUrl: string): boolean {
-	try {
-		const url = new URL(baseUrl);
-		return url.pathname.split("/").some((part) => /^v\d+(?:beta\d*)?$/.test(part));
-	} catch {
-		return /(?:^|\/)v\d+(?:beta\d*)?(?:\/|$)/.test(baseUrl);
-	}
 }
 
 function buildGoogleAuthOptions(env?: ProviderEnv): { keyFilename: string } | undefined {

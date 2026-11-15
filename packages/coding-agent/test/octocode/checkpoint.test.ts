@@ -539,7 +539,8 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 			confirm: async () => true,
 			select: async (title: string, options: string[]) => {
 				selects.push(title);
-				return options[0];
+				// The offer lists No first and Yes second; these tests accept.
+				return options.find((option) => option.startsWith("Yes")) ?? options[0];
 			},
 		},
 	};

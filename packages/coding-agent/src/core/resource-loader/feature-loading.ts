@@ -137,9 +137,7 @@ export class FeatureSetLoader {
 			const root = item.metadata.packageRoot;
 			if (!root) return undefined;
 			if (!packageNames.has(root)) {
-				const manifest = readJsonFile(join(root, "package.json")) as {
-					name?: string;
-				};
+				const manifest = readJsonFile<{ name?: string }>(join(root, "package.json"));
 				packageNames.set(root, manifest.name);
 			}
 			return packageNames.get(root);

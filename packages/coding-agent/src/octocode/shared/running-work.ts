@@ -24,6 +24,16 @@ export interface WorkRow {
 	startedAt?: number;
 	/** A timer's next wake, or the deadline of one that waits for a condition: its time left is drawn from this. */
 	dueAt?: number;
+	/** A subagent that waits for prerequisites (`queued`) or is held; it has no clock and the panel draws its own mark. */
+	mark?: "queued" | "held";
+}
+
+/** One child queued behind prerequisites, as the panel shows it. */
+export interface QueuedWork {
+	id: string;
+	/** `queued · after B12 (sly-mantle)`, or `held · B12 failed`. */
+	title: string;
+	held: boolean;
 }
 
 const sameRow = (a: WorkRow, b: WorkRow) =>
@@ -32,12 +42,15 @@ const sameRow = (a: WorkRow, b: WorkRow) =>
 	a.title === b.title &&
 	a.detail === b.detail &&
 	a.startedAt === b.startedAt &&
-	a.dueAt === b.dueAt;
+	a.dueAt === b.dueAt &&
+	a.mark === b.mark;
 
 interface WorkState {
 	byKind: Readonly<Partial<Record<WorkKind, readonly WorkRow[]>>>;
 	/** Background subagents this session runs now, by name, whether or not the team lists them yet. */
 	background: readonly string[];
+	/** The children queued behind prerequisites, a subset of `background`. */
+	queued: readonly QueuedWork[];
 	/** The agents the footer counts (live team subagents plus unlisted background ones), once a view publishes it. */
 	agents: number | undefined;
 }
@@ -50,7 +63,12 @@ const BUSY_KINDS: readonly WorkKind[] = ["bash", "external"];
  * they change. Listeners hear of a change only when something differs.
  */
 export class RunningWork {
-	private readonly store = createStore<WorkState>()(() => ({ byKind: {}, background: [], agents: undefined }));
+	private readonly store = createStore<WorkState>()(() => ({
+		byKind: {},
+		background: [],
+		queued: [],
+		agents: undefined,
+	}));
 
 	/** Replaces the rows of `kind`. */
 	set(kind: WorkKind, rows: readonly WorkRow[]): void {
@@ -68,6 +86,18 @@ export class RunningWork {
 		const before = this.store.getState().background;
 		if (before.length === names.length && before.every((name, index) => name === names[index])) return;
 		this.store.setState({ background: [...names] });
+	}
+
+	/** Replaces the children queued behind prerequisites. */
+	setQueued(rows: readonly QueuedWork[]): void {
+		const before = this.store.getState().queued;
+		if (before.length === rows.length && before.every((row, i) => row.id === rows[i].id && row.title === rows[i].title))
+			return;
+		this.store.setState({ queued: [...rows] });
+	}
+
+	queued(): readonly QueuedWork[] {
+		return this.store.getState().queued;
 	}
 
 	/** Publishes the agent count the footer shows, so the tab title counts the same agents; `undefined` withdraws it. */
@@ -117,11 +147,12 @@ export function runningWorkOf(owner: object): RunningWork {
  * The footer's typed counts, `2 agents · 1 bash · 1 timer`; empty when nothing runs. `agents` is the team's live
  * subagents of this session plus background ones it does not list yet.
  */
-export function workCounts(agents: number, rows: readonly WorkRow[]): string {
+export function workCounts(agents: number, rows: readonly WorkRow[], queued = 0): string {
 	const count = (kind: WorkKind) => rows.filter((row) => row.kind === kind).length;
 	const [bash, timers, external] = [count("bash"), count("timer"), count("external")];
 	return [
 		...(agents > 0 ? [`${ENTITY.subagent} ${plural(agents, "agent")}`] : []),
+		...(queued > 0 ? [`${queued} queued`] : []),
 		...(bash > 0 ? [`${bash} bash`] : []),
 		...(timers > 0 ? [plural(timers, "timer")] : []),
 		...(external > 0 ? [`${external} external`] : []),

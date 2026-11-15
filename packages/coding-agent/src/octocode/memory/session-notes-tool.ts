@@ -1,6 +1,8 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
 import { clipText, textResult } from "../shared/util.ts";
+import { SESSION_NOTE_BODY_MAX } from "./limits.ts";
 import { MemoryError, MEMORY_KINDS, type MemoryKind, refuseMemorySecrets } from "./store.ts";
 import {
 	noteLabel,
@@ -17,9 +19,9 @@ import {
 /** What a write to a session note asks of the session: appending its entry. */
 export type AppendEntry = (customType: string, data?: unknown) => void;
 
-/** Longest body a session note keeps: a note is sent whole until a line of an injection cuts it at 600 characters. */
-const BODY_MAX = 2000;
 const TITLE_MAX = 200;
+/** Longest search pattern: a model-written regular expression stays short enough to be cheap. */
+const QUERY_MAX = 200;
 /** Characters of a body on a list or search line. */
 const PREVIEW_CHARS = 160;
 
@@ -53,8 +55,11 @@ function noteOf(fold: NoteFold, id: number): SessionNote {
 	return note;
 }
 
+/** The session and, when known, the model whose window sizes the note limits. */
+type NoteContext = Pick<ExtensionContext, "sessionManager"> & { model?: { contextWindow?: number } | undefined };
+
 interface SaveCall {
-	ctx: Pick<ExtensionContext, "sessionManager">;
+	ctx: NoteContext;
 	append: AppendEntry | undefined;
 	/** The note to update; undefined for a new one. */
 	id: number | undefined;
@@ -75,9 +80,10 @@ export function saveNote({ ctx, append, id, params }: SaveCall): NoteResult {
 	refuseMemorySecrets({ title, body });
 	if (!current && !title) throw new MemoryError("A new session note needs a title.");
 	if (title === "") throw new MemoryError("A session note needs a title.");
-	if ((body ?? current?.body ?? "").length > BODY_MAX)
+	const bodyMax = SESSION_NOTE_BODY_MAX;
+	if ((body ?? current?.body ?? "").length > bodyMax)
 		throw new MemoryError(
-			`A session note body is at most ${BODY_MAX} characters: keep the constraint, not its history.`,
+			`A session note body is at most ${bodyMax} characters: keep the constraint, not its history.`,
 		);
 	if (params.kind !== undefined && !MEMORY_KINDS.includes(params.kind))
 		throw new MemoryError(`Unknown kind ${params.kind}.`);
@@ -104,30 +110,43 @@ export function saveNote({ ctx, append, id, params }: SaveCall): NoteResult {
 }
 
 /** Removes a session note (no approval: nothing outlives the session). */
-export function deleteNote(ctx: SaveCall["ctx"], append: AppendEntry | undefined, id: number): NoteResult {
+export function deleteNote(ctx: NoteContext, append: AppendEntry | undefined, id: number): NoteResult {
 	const note = noteOf(sessionNotes(ctx.sessionManager), id);
 	appendNote(append, { op: "delete", id });
 	return textResult<NoteDetails>(`Deleted ${noteSummary(note, PREVIEW_CHARS)}`, { ids: [], sessionNotes: [] });
 }
 
 /** The whole note `id` names. */
-export function getNote(ctx: SaveCall["ctx"], id: number): NoteResult {
+export function getNote(ctx: NoteContext, id: number): NoteResult {
 	const note = noteOf(sessionNotes(ctx.sessionManager), id);
 	return textResult<NoteDetails>(noteSummary(note), { mode: "get", hits: 1, sessionNotes: shown(note) });
 }
 
 /** The note `id` names as the write path's parameters, to promote it, and the call that removes it once that write succeeded. */
-export function noteForPromotion(ctx: SaveCall["ctx"], id: number): SessionNote {
+export function noteForPromotion(ctx: NoteContext, id: number): SessionNote {
 	return noteOf(sessionNotes(ctx.sessionManager), id);
+}
+
+/** The case-insensitive pattern a search `query` names; a pattern that is not a valid regular expression, or is too long, is the caller's error. */
+function noteFilter(query: string | undefined): RegExp | undefined {
+	const pattern = query?.trim();
+	if (!pattern) return undefined;
+	if (pattern.length > QUERY_MAX)
+		throw new MemoryError(`The query is a regular expression of at most ${QUERY_MAX} characters.`);
+	try {
+		return new RegExp(pattern, "i");
+	} catch (error) {
+		throw new MemoryError(`The query is not a valid regular expression: ${errorMessage(error)}`);
+	}
 }
 
 /** The session notes a list (all of them) or a search (`query` regex, or `keywords` by word overlap) shows, at most `limit`. */
 export function readNotes(
-	ctx: SaveCall["ctx"],
+	ctx: NoteContext,
 	params: { query?: string | undefined; keywords?: string | undefined; limit?: number | undefined },
 ): { text: string; hits: number } {
 	const limit = Math.min(50, Math.max(1, Math.floor(params.limit ?? 10)));
-	const filter = params.query?.trim() ? new RegExp(params.query.trim(), "i") : undefined;
+	const filter = noteFilter(params.query);
 	const words = params.keywords?.trim() ? params.keywords.toLowerCase().split(/\s+/).filter(Boolean) : [];
 	const scored = noteList(sessionNotes(ctx.sessionManager)).flatMap((note) => {
 		const text = `${note.title}\n${note.body}`;

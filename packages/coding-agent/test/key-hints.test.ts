@@ -12,7 +12,7 @@ afterEach(() => setKeybindings(previous));
 describe("key hint casing", () => {
 	it("writes every key lowercase, whatever case a binding was configured in", () => {
 		expect(formatKeyText("shift+tab")).toBe("shift+tab");
-		expect(formatKeyText("Ctrl+Shift+P/Escape")).toBe("ctrl+shift+p/escape");
+		expect(formatKeyText("Ctrl+Shift+P/Escape")).toBe("ctrl+shift+p/esc");
 	});
 
 	it("shows the same lowercase text in chips, hints and selector footers", () => {

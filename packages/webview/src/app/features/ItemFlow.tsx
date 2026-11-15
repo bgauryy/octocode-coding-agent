@@ -29,6 +29,12 @@ export function ItemFlow({ item }: { item: SnapshotItem }) {
 							: "No owner assigned."}
 				</p>
 			)}
+			{item.queuedBy && !item.closed && (
+				<p className="item-flow-pending" data-pending="true">
+					{item.blockedBy?.length ? `${item.blockedBy.join(", ")} → ${item.ref}` : item.ref} (pending): queued for{" "}
+					{item.queuedBy}
+				</p>
+			)}
 		</section>
 	);
 }

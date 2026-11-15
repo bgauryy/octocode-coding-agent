@@ -15,17 +15,17 @@ import type { Theme } from "./theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-/** An accent-bordered screen: the bold title, the body and an optional dim footer line. */
+/** A screen between neutral rules: the bold title, the body and an optional dim footer line. */
 export function frame(theme: Theme, title: string, body: Component[], footer?: string): Container {
 	const container = new Container();
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+	container.addChild(new DynamicBorder((text: string) => theme.fg("border", text)));
 	container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 	for (const child of body) container.addChild(child);
 	if (footer) {
 		container.addChild(new Spacer(1));
 		container.addChild(new Text(theme.fg("dim", footer), 1, 0));
 	}
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+	container.addChild(new DynamicBorder((text: string) => theme.fg("border", text)));
 	return container;
 }
 

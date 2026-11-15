@@ -295,7 +295,7 @@ describe("octocode trust", () => {
 	it("rejects unknown options and subcommands", async () => {
 		expect((await cli(root, ["add", "--force"])).exit).toBe(1);
 		expect((await cli(root, ["add", "--scope", "cousin"])).exit).toBe(1);
-		expect((await cli(root, ["frob"])).err).toContain("Unknown trust command frob");
+		expect((await cli(root, ["frob"])).err).toContain(`Unknown trust command "frob"`);
 		expect((await cli(root, ["help"])).out).toContain("trust remove");
 	});
 });

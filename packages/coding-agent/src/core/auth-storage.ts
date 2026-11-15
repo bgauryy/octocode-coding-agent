@@ -231,6 +231,17 @@ export class AuthStorage implements CredentialStore {
 		}
 	}
 
+	/**
+	 * Where `auth.json` keeps this provider's secret: `keychain` when the entry is this keychain's own reference (an API
+	 * key's or an OAuth stub's), else `auth.json`. Reads the last loaded file, never the keychain; no entry: undefined.
+	 */
+	storedIn(provider: string): "keychain" | "auth.json" | undefined {
+		const credential = ownCredential(this.readState.data, provider);
+		if (!credential) return undefined;
+		const entry = keychainEntry(provider, credential);
+		return entry && this.keychain()?.isOwnReference(entry.reference, entry.account) ? "keychain" : "auth.json";
+	}
+
 	async read(provider: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		const credential = ownCredential(await this.readLatestData(options), provider);
 		options?.signal?.throwIfAborted();

@@ -19,11 +19,11 @@ describe("stateMark", () => {
 		expect(states.map((state) => markMoves(state))).toEqual(states.map(() => false));
 	});
 
-	it("gives waiting (needs you) a warning tone no other state shares, and stopped a neutral one", () => {
+	it("tones stopped like the stopped row text, with a glyph waiting does not share", () => {
 		expect(STATE_COLOR.waiting).toBe("warning");
-		expect(STATE_COLOR.stopped).not.toBe(STATE_COLOR.waiting);
+		expect(STATE_COLOR.stopped).toBe("warning");
 		expect(STATE_COLOR.stopped).not.toBe(STATE_COLOR.pending);
-		expect(states.filter((state) => STATE_COLOR[state] === "warning")).toEqual(["waiting"]);
+		expect(GLYPH.stopped).not.toBe(GLYPH.waiting);
 	});
 
 	it("spins while running, breathes while waiting, and glows only right after done", () => {

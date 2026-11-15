@@ -224,7 +224,11 @@ export function startBackground(
 			// Its report is queued, or the run ended without one: reports held for it go now.
 			runs.groups.leave(identity.id);
 			runs.reports.reportingChanged();
-			if (audit) finishRun(runs, identity.id, audit);
+			if (audit) {
+				finishRun(runs, identity.id, audit);
+				// The parent's own record of how it ended releases or holds the children queued behind it.
+				runs.chain?.gate.noteEnd(identity.id, { reason: audit.reason, outcome: audit.outcome });
+			}
 			if (end) runs.ended?.(identity.id, end);
 			runs.changed();
 		}

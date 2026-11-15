@@ -16,7 +16,7 @@ Each key under `providers` is a provider ID. A built-in provider ID changes that
 | `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
 | `name` | string |  | Display name. |
 | `baseUrl` | string |  | API base URL. Also applies to the provider's built-in models. |
-| `apiKey` | string |  | Literal key, "$NAME" environment interpolation, or "!command" output. |
+| `apiKey` | string |  | Literal key, "$NAME" environment interpolation, or "!command" output (the command runs on first use, not at startup). |
 | `api` | string |  | API for the provider's models, such as "openai-completions", "openai-responses", "anthropic-messages", or "google-generative-ai". |
 | `headers` | object |  | Request headers. Values resolve like apiKey. |
 | `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
@@ -166,6 +166,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `sendSessionAffinityHeaders` | boolean |  | Whether to send session-affinity data from options.sessionId. Default: true for OpenRouter endpoints, false otherwise. |
 | `sessionAffinityFormat` | `"openai" \| "openai-nosession" \| "openrouter"` |  | Session-affinity header format. openai sends session_id, x-client-request-id, and x-session-affinity; openai-nosession sends x-client-request-id and x-session-affinity; openrouter sends x-session-id. Does not affect prompt_cache_key. Default: auto-detected. |
 | `supportsLongCacheRetention` | boolean |  | Whether the provider supports long prompt cache retention (prompt_cache_retention: "24h" or Anthropic-style cache_control.ttl: "1h", depending on format). Default: auto-detected from provider and URL. |
+| `supportsExplicitPromptCacheMode` | boolean | `false` | Whether the model is GPT-5.6 or later, which replaces prompt_cache_retention with prompt_cache_options. Chat Completions then sends no long-retention field. The generated catalog sets it for verified models; unset means false. |
 | `vllmPriority` | number |  | vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog. |
 | `toolSchemaFlavor` | `"standard" \| "moonshot"` |  | Tool parameter schema flavor. "moonshot" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. "standard" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints. |
 
@@ -185,6 +186,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | `supportsAdditionalTools` | boolean | `false` | Whether the model supports message-anchored additional_tools input items. |
 | `supportsToolSearch` | boolean | `false` | Whether the model supports client-executed tool search for transcript-anchored additions. |
 | `supportsExplicitPromptCacheMode` | boolean | `false` | Whether the model accepts prompt_cache_options. Older OpenAI models reject the parameter. |
+| `supportsInstructionBreakpoints` | boolean | `false` | Whether the model takes 30m prompt cache breakpoints on its leading instructions without explicit cache mode (Azure deployments of GPT-6 Astra). The generated catalog sets it for verified models; unset means false. |
 | `supportsMidConvoEffort` | boolean | `false` | Whether thinking level changes are sent as configuration_update input items instead of changing reasoning.effort, so a change keeps the prompt cache. Only used by the openai-responses API, and ignored with Sign in with ChatGPT on the openai provider. |
 | `supportsMaxOutputTokens` | boolean | `true` | Whether the provider accepts max_output_tokens. Some Codex-protocol gateways reject it. |
 

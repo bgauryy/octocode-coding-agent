@@ -1,7 +1,7 @@
 import { type Component, Markdown, renderChanged, trackRenderChanges, visibleWidth } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import { getMarkdownTheme, type Theme } from "../../theme/theme.ts";
-import { expandKey, INDENT, plural } from "../shared/text.ts";
+import { expandHint, INDENT, plural } from "../shared/text.ts";
 
 /** Rendered report lines shown before folding: a report is the deliverable, so only a long one folds. */
 const REPORT_LINES = 24;
@@ -37,7 +37,7 @@ export class ReportView implements Component {
 		while (body.length > 0 && body.at(-1)!.trim() === "") body.pop();
 		const hidden = this.expanded ? 0 : body.length - REPORT_LINES;
 		const more = this.more && !this.expanded ? ` · ${this.more}` : "";
-		const hint = (text: string) => `${INDENT}${this.theme.fg("dim", `${text} (${expandKey()} to expand)`)}`;
+		const hint = (text: string) => `${INDENT}${this.theme.fg("dim", [text, expandHint()].filter(Boolean).join(" "))}`;
 		const earlier = this.earlier > 0 ? [hint(`+${plural(this.earlier, "earlier report")}`)] : [];
 		const lines = earlier.concat(
 			hidden > 0

@@ -24,7 +24,7 @@ export {
 	type McpServerEntry,
 } from "./config.ts";
 export { addMcpServerConfig, removeMcpServerConfig, updateMcpServerConfig } from "./config-write.ts";
-export { listVendorMcpServers, type McpFileServer } from "./file-servers.ts";
+export { listVendorMcpServers } from "./file-servers.ts";
 export { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 export { presetEntries } from "./preset.ts";
 export { browserPreset } from "./presets/browser/index.ts";
@@ -57,6 +57,8 @@ export { createMcpToolName } from "./tool-names.ts";
 export { deferredInputSchema, deferredParameters } from "./deferred-schema.ts";
 export { thinParameters } from "./presentation/declaration.ts";
 export { MCPS_SECTION, renderMcpsSection } from "./section.ts";
+export { redeclaresInPlace } from "./redeclare.ts";
+export type { McpNativeTools } from "./manage-tool.ts";
 export type { Tool } from "./client/index.ts";
 export type { CallToolResult } from "./client/protocol/content.ts";
 

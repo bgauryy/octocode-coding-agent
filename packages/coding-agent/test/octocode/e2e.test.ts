@@ -92,9 +92,7 @@ type Reply = ReturnType<typeof fauxAssistantMessage>;
 
 /** An MCP tool result as the model reads it: wrapped as untrusted data, with the server's text inside. */
 const UNTRUSTED = (tool: string, body: string) =>
-	new RegExp(
-		`^Result of ${tool}:\\n<<<untrusted-(\\w+) \\(text from a web page or an MCP server[^\\n]*\\n${body}\\nuntrusted-\\1>>>$`,
-	);
+	new RegExp(`^Result of ${tool}:\\n<<<untrusted-(\\w+) \\([^\\n]*\\n${body}\\nuntrusted-\\1>>>$`);
 
 /** A real Octocode agent session running the Octocode extension against a scripted model. */
 async function startSession(
@@ -685,12 +683,12 @@ describe("compaction", () => {
 		}>;
 	/** Answers every summary request, recording the model and prompt text of each. */
 	const script = (reply: string) => {
-		const log: Array<{ model: string; text: string }> = [];
+		const log: Array<{ model: string; text: string; messages: TranscriptContext["messages"] }> = [];
 		s.faux.setResponses(
 			Array.from(
 				{ length: 10 },
 				() => (context: TranscriptContext, _options: unknown, _state: unknown, model: { id: string }) => {
-					log.push({ model: model.id, text: JSON.stringify(context.messages) });
+					log.push({ model: model.id, text: JSON.stringify(context.messages), messages: context.messages });
 					return fauxAssistantMessage(reply);
 				},
 			),
@@ -738,7 +736,13 @@ describe("compaction", () => {
 		).toBe(true);
 		// The summary is asked for inside the session's own request (its messages, then one more), not as a standalone prompt.
 		expect(log[0].text).toContain("Please read notes.txt and create todo.txt");
-		expect(log[0].text).toContain("Stop here and write a context checkpoint");
+		// The checkpoint request is one more user message after the session's own history, not a rewrite of it.
+		const users = log[0].messages.filter((message) => message.role === "user");
+		expect(JSON.stringify(users[0])).toContain("Please read notes.txt and create todo.txt");
+		expect(users.length).toBeGreaterThan(1);
+		const request = log[0].messages.at(-1)!;
+		expect(request.role).toBe("user");
+		expect(JSON.stringify(request)).not.toContain("Please read notes.txt and create todo.txt");
 		expect(log[0].text).not.toContain("<conversation>");
 		// The handoff sections are `SUMMARY_CHECKPOINT_FORMAT` (`core/compaction/summary-format.ts`); "## TL;DR" replaced "## Follow-ups".
 		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## TL;DR", "Do not rely on those copies"])

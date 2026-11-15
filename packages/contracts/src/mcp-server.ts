@@ -46,7 +46,9 @@ export interface McpToolRolesConfig {
 	reader?: string[];
 	/** Return matched lines. */
 	search?: string[];
-	/** Never write the workspace; `reader` and `search` are implied. */
+	/** Judge unread text by meaning (a page, a log, many files) before it is read; never writes. Counts as `readOnly`. */
+	judge?: string[];
+	/** Never write the workspace; `reader`, `search` and `judge` are implied. */
 	readOnly?: string[];
 }
 

@@ -40,6 +40,7 @@ import { recordCompactionNote } from "./record.ts";
 import { TooLargeRecovery } from "./recovery.ts";
 import {
 	deliverRestoredFiles,
+	restoreLimits,
 	type PendingRestore,
 	RESTORE_SHARE,
 	RESTORE_TOTAL_CHARS,
@@ -172,7 +173,7 @@ export function registerCompaction(
 			ctx.model?.contextWindow,
 			event.preparation.settings.reserveTokens,
 			RESTORE_SHARE,
-			RESTORE_TOTAL_CHARS,
+			restoreLimits(ctx.model?.contextWindow).totalChars,
 		);
 		// The file lists know only Octocode's read/write/edit and drop a hook summary's lists: both are added first, so Octocode's
 		// default summary (when Octocode's fails) has them too.
@@ -290,8 +291,14 @@ export function registerCompaction(
 			const usage = ctx.getContextUsage();
 			clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
 				rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
-				// A usage without a known window reports 0.
-				contextWindow: usage !== undefined && usage.contextWindow > 0 ? usage.contextWindow : ctx.model?.contextWindow,
+				// Compaction summarizes the old results at the threshold, before the window fills. A usage without a known
+				// window reports 0; one without a threshold falls back to the window.
+				contextWindow:
+					usage?.compactionThreshold !== undefined && usage.compactionThreshold > 0
+						? usage.compactionThreshold
+						: usage !== undefined && usage.contextWindow > 0
+							? usage.contextWindow
+							: ctx.model?.contextWindow,
 				...(typeof usage?.tokens === "number" ? { contextTokens: usage.tokens } : {}),
 			});
 			if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;

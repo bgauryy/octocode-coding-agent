@@ -87,6 +87,8 @@ describe("/export then /import", () => {
 
 		await command(`/import ${file}`);
 		await t.until(shows("Replace current session"), "import confirmation");
+		// No is preselected: accepting takes a deliberate move to Yes.
+		t.press(KEY.down);
 		t.press(KEY.enter);
 		await t.until(shows("Session imported from:"), "import status");
 		await t.until(shows("reply about kumquats"), "transcript restored");
@@ -119,6 +121,7 @@ describe("/export then /import", () => {
 		t = await startUi();
 		await command(`/import ${path.join(t.root, "missing.jsonl")}`);
 		await t.until(shows("Replace current session"), "import confirmation");
+		t.press(KEY.down);
 		t.press(KEY.enter);
 		await t.until(shows(/Failed to import session/), "error shown");
 		expect(await t.text()).toMatch(/Failed to import session/);

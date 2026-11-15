@@ -286,6 +286,25 @@ describe("environment section", () => {
 		expect(text).toBe(`Platform: ${process.platform} ${process.arch}\nShell: zsh\nDate: 2026-10-28`);
 	});
 
+	test("mentions Mermaid only where replies draw it, names the host, and tells surfaces apart", () => {
+		const day = new Date(2026, 9, 28);
+		const env = (surface: Parameters<typeof currentEnvironment>[3]) =>
+			currentEnvironment(day, { SHELL: "sh" }, undefined, surface);
+		const plain = env({});
+		const on = env({ surface: "tui", host: "kitty, tmux", mermaid: true });
+		const off = env({ surface: "tui", host: "kitty, tmux", mermaid: false });
+
+		expect(on).toMatch(/mermaid/i);
+		expect(off).not.toMatch(/mermaid/i);
+		expect(env({ surface: "subagent" })).not.toMatch(/mermaid/i);
+		expect(on).toContain("kitty, tmux");
+		// The machine facts stay first; the surface only adds to them.
+		expect(on.startsWith(plain)).toBe(true);
+		const kinds = ["tui", "print", "json", "rpc", "subagent"] as const;
+		const texts = kinds.map((surface) => env({ surface }));
+		expect(new Set([plain, ...texts]).size).toBe(kinds.length + 1);
+	});
+
 	test("names a linked worktree with its main checkout and branch, and says nothing in a main checkout", () => {
 		const root = mkdtempSync(join(tmpdir(), "env-worktree-"));
 		try {

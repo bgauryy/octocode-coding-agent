@@ -10,6 +10,18 @@ export function resolvePromptCacheKey(
 ): string | undefined {
 	return options?.promptCacheKey ?? getProviderEnvValue(PROMPT_CACHE_KEY_ENV, options?.env) ?? options?.sessionId;
 }
+/**
+ * The id routing headers carry: the prompt cache key (a fork's root, a child's group key) or else the session id, and
+ * nothing when history caching is off. Headers and the body key must agree, or the same prefix is routed to another
+ * replica than the one holding it.
+ */
+export function resolveCacheAffinityId(
+	options?: Pick<StreamOptions, "promptCacheKey" | "sessionId" | "env" | "cacheRetention">,
+): string | undefined {
+	return resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
+		? undefined
+		: resolvePromptCacheKey(options);
+}
 export type CachePreferences = Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention">;
 export interface CachePreferenceLayer {
 	source: string;

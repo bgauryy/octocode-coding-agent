@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
+import { GLYPH, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { DialogTheme } from "./dialog/theme.ts";
 import { type AskView, PREVIEW_LINES } from "../shared/ask-view.ts";
@@ -97,7 +97,10 @@ export function renderAskCard(view: AskView, state: CardState, theme: CardTheme,
 	const notes = view.notes ?? [];
 	if (notes.length && state.expanded)
 		for (const note of notes)
-			add(" ", theme.fg(note.tone === "warning" ? "warning" : "dim", `▸ ${sanitizeTerminalText(note.text)}`));
+			add(
+				" ",
+				theme.fg(note.tone === "warning" ? "warning" : "dim", `${GLYPH.note} ${sanitizeTerminalText(note.text)}`),
+			);
 	else if (notes.length) {
 		const warn = notes.some((note) => note.tone === "warning");
 		const asks = notes
@@ -111,7 +114,7 @@ export function renderAskCard(view: AskView, state: CardState, theme: CardTheme,
 		const tail = " · tab details";
 		const room = Math.max(1, w - visibleWidth(tail) - 3);
 		lines.push(
-			`${truncateToWidth(` ▸ ${summary}`, room + 3, "…").replace(/^(.*)$/, (m) => theme.fg(warn ? "warning" : "dim", m))}${theme.fg("dim", tail)}`,
+			`${truncateToWidth(` ${GLYPH.note} ${summary}`, room + 3, "…").replace(/^(.*)$/, (m) => theme.fg(warn ? "warning" : "dim", m))}${theme.fg("dim", tail)}`,
 		);
 	}
 	if (state.answer) add(" ", theme.fg("success", `Current answer: ${sanitizeTerminalText(state.answer)}`));

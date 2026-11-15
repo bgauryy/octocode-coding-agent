@@ -4,7 +4,14 @@ import type { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
-import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
+import {
+	clampTimeoutSeconds,
+	leadsProcessGroup,
+	resolveShell,
+	spawnShell,
+	trackDetachedChildPid,
+	untrackDetachedChildPid,
+} from "../../utils/shell.ts";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";
@@ -233,7 +240,12 @@ export class BashJobs {
 			timer.unref();
 		}
 		this.jobs.set(id, job);
+		// A crash or `process.exit` that skips the session's shutdown still kills the job's group; a graceful shutdown
+		// stops it first (`stopAll`), so a signal spares it.
+		const grouped = leadsProcessGroup();
+		if (grouped) trackDetachedChildPid(pid, { graceful: true });
 		void done.then((exit) => {
+			if (grouped) untrackDetachedChildPid(pid);
 			this.jobs.delete(id);
 			try {
 				fs.rmSync(record, { force: true });

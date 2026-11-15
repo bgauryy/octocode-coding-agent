@@ -16,11 +16,12 @@ export const McpSettingsProperties = {
 				Type.Literal("direct"),
 				Type.Literal("deferred"),
 				Type.Literal("recent"),
+				Type.Literal("usage"),
 				Type.String({ pattern: "^auto:[0-9]+$" }),
 			],
 			{
 				description:
-					'How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server\'s or tool\'s own `exposure` wins). "direct": the full description and schema. "deferred": the server\'s purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. "recent" (the default): a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. "auto:<bytes>": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server\'s full schema either way, and nothing is deferred for an agent without the `mcp` tool.',
+					'How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server\'s or tool\'s own `exposure` wins). "direct": the full description and schema. "deferred": the server\'s purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. "recent" (the default): a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. "usage": every tool is deferred with its whole description unless the promotion snapshot names it: a tool that at least 10% of the last 7 days\' sessions with the same role (main or subagent) that declared it called or loaded, with 20 or more such sessions, or whose first calls the deferred schema often refused; with no usage data nothing is promoted. The snapshot is computed at session start when the saved one is over an hour old, and then fixed for the session, its resumptions and its subagents. "auto:<bytes>": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server\'s full schema either way, and nothing is deferred for an agent without the `mcp` tool.',
 				default: SETTINGS_DEFAULTS.mcpExposure,
 			},
 		),
@@ -28,7 +29,7 @@ export const McpSettingsProperties = {
 	nativeToolExposure: Type.Optional(
 		Type.Record(Type.String(), Type.Union([Type.Literal("direct"), Type.Literal("deferred")]), {
 			description:
-				'Pins a deferrable native tool (web, archive, models, backlogPlan): "direct" always declares its full schema, "deferred" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure "recent" until this working directory calls it, and direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema.',
+				'Pins a deferrable native tool (web, archive, models, backlogPlan; memory and timer under "usage" only): "direct" always declares its full schema, "deferred" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure "recent" until this working directory calls it, and under "usage" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema.',
 		}),
 	),
 };

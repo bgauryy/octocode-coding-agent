@@ -35,12 +35,21 @@ function closedNotice(backlog: Backlog, ref: string): string | undefined {
  * working on it, the open items left waiting and what to do: the owner ended, or it `lingers` (still reachable, so a
  * second child waits until it is stopped). Undefined when nothing depends on it, or it is open with no owner gone.
  */
-export function graphNotice(backlog: Backlog, ref: string, owner?: string, lingers = false): string | undefined {
+export function graphNotice(
+	backlog: Backlog,
+	ref: string,
+	owner?: string,
+	lingers = false,
+	queued: ReadonlySet<string> = new Set(),
+): string | undefined {
 	const item = backlog.store.get(ref);
 	if (!item) return undefined;
 	if (item.state === "done" && item.closed) return closedNotice(backlog, item.ref);
 	if (item.state === "done") {
-		const ready = dependents(backlog, item.ref, ["backlog", "todo"], false).map((each) => each.ref);
+		// An item a queued child waits for starts by itself: its started notice (`startedNotice`) replaces this one.
+		const ready = dependents(backlog, item.ref, ["backlog", "todo"], false)
+			.map((each) => each.ref)
+			.filter((each) => !queued.has(each));
 		if (!ready.length) return undefined;
 		return renderInstruction("notices/subagents/item-ready.md", {
 			ready: ready.join(", "),
@@ -60,12 +69,28 @@ export function graphNotice(backlog: Backlog, ref: string, owner?: string, linge
 }
 
 /** The `graphNotice` line of a write that completed or closed an item (`before` was open); never throws, since the write succeeded. */
-export function endedNotice(backlog: Backlog, after: Item, before: Item | undefined): string {
+export function endedNotice(
+	backlog: Backlog,
+	after: Item,
+	before: Item | undefined,
+	/** The items a queued child will start by itself once `ref` is done (the subagents domain answers). */
+	queued?: (ref: string) => ReadonlySet<string>,
+): string {
 	if (after.state !== "done" || before?.state === "done") return "";
 	try {
-		const notice = graphNotice(backlog, after.ref);
+		const notice = graphNotice(backlog, after.ref, undefined, false, queued?.(after.ref));
 		return notice ? `\n${notice}` : "";
 	} catch {
 		return "";
 	}
+}
+
+/** What the coordinator is told when a queued child started by itself: `after` names what it waited for (`B12`, `agent:sly-mantle`). */
+export function startedNotice(child: string, item: string | undefined, after: readonly string[]): string {
+	return renderInstruction("notices/subagents/item-started.md", { child, item, after: after.join(", ") }).trim();
+}
+
+/** What the coordinator is told when a queued child is held: `why` names the prerequisites that failed, or the refusal at its start. */
+export function heldNotice(child: string, item: string | undefined, why: string): string {
+	return renderInstruction("notices/subagents/item-held.md", { child, item, why }).trim();
 }

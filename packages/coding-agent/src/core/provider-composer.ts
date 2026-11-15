@@ -13,6 +13,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { getApiProvider } from "@octocodeai/octocode-ai/compat";
+import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { classifierErrorResult, imageErrorResult } from "@octocodeai/octocode-ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonProvider } from "./model-config.ts";
 import { composeApiKeyAuth, composeOAuthAuth, configuredApiKey, configuredHeaders } from "./provider-composer/auth.ts";
@@ -98,8 +99,11 @@ export function composeModelProvider(
 			];
 		}
 		return models.map((model) => {
+			if (!isModelType(model, "chat")) return model;
+			// Custom models never passed through the catalog's stamping: declare their cache compat here (explicit values win).
+			const stamped = withCacheCapabilities(model);
 			const override = config?.modelOverrides?.[model.id];
-			return override && isModelType(model, "chat") ? applyModelOverride(model, override) : model;
+			return override ? applyModelOverride(stamped, override) : stamped;
 		});
 	};
 	// Validate eagerly so registration/reload reports structural errors immediately.

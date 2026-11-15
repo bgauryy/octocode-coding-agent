@@ -135,6 +135,30 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 	return { mechanism, lifetimes: tiers(declared.short, declared.long) };
 }
 
+/**
+ * APIs whose reasoning setting does not depend on the output cap, so a one-token replay keeps the original's cache key.
+ * Google sends a thinking level or a fixed per-family budget, so its replay differs only in `maxOutputTokens`.
+ */
+const REPLAY_STABLE_APIS: ReadonlySet<Api> = new Set<Api>([
+	"openai-responses",
+	"openai-codex-responses",
+	"azure-openai-responses",
+	"openai-completions",
+	"mistral-conversations",
+	"google-generative-ai",
+	"google-vertex",
+]);
+
+/**
+ * Whether a one-token replay of a request that asks for reasoning leaves its cache entry untouched. False where the
+ * reasoning budget derives from the output cap (Anthropic budget thinking, Bedrock) and for an API this table does
+ * not know: the replay would differ from the original, so it is not priced as one.
+ */
+export function replaysWithReasoningUnchanged(model: Model<Api>): boolean {
+	if (model.api === "anthropic-messages") return thinkingControl(model) !== "budget";
+	return REPLAY_STABLE_APIS.has(model.api);
+}
+
 function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 	switch (model.api) {
 		case "anthropic-messages":

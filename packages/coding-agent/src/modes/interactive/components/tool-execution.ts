@@ -13,12 +13,10 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
-import { rowMark, uiStateOf } from "../../../octocode/render/motion.ts";
-import { phaseOf } from "../../../octocode/render/rows.ts";
 import { theme } from "../../../theme/theme.ts";
 import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
-import { GenericToolContent } from "./tool-execution/content.ts";
-import { purposeRows, reasonRow } from "../../../octocode/ui/reason-row.ts";
+import { withGenericRenderers } from "./tool-execution/generic.ts";
+import { purposeRows, reasonRow, toolArgsForDisplay } from "../../../octocode/ui/reason-row.ts";
 import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 import { displayRenderers, rowDisplay } from "./tool-execution/display.ts";
@@ -37,8 +35,6 @@ function argsKey(args: unknown): string | undefined {
 
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
-	private contentText: GenericToolContent;
-	private contentTextRegion: MouseRegion;
 	private selfRenderContainer: Container;
 	private selfRenderHeight = 0;
 	private callRendererComponent?: Component;
@@ -52,6 +48,8 @@ export class ToolExecutionComponent extends Container {
 	private args: any;
 	private argsKey: string | undefined;
 	private expanded = false;
+	/** The tool draws no rows of its own: expanded, the row lists every argument the header only summarizes. */
+	private generic: boolean;
 	/** Expanded or collapsed since the display was built: it is built again when the row next renders. */
 	private displayStale = false;
 	private showImages: boolean;
@@ -80,15 +78,19 @@ export class ToolExecutionComponent extends Container {
 		this.toolCallId = toolCallId;
 		this.args = args;
 		this.argsKey = argsKey(args);
-		this.toolDefinition = displayRenderers(toolDefinition, () =>
-			rowDisplay({
-				live: this.liveDisplay,
-				definition: toolDefinition,
-				toolName,
-				args: this.args,
-				result: this.result,
-				isPartial: this.isPartial,
-			}),
+		this.generic = !(toolDefinition?.renderCall ?? toolDefinition?.renderResult) && !toolDefinition?.display;
+		this.toolDefinition = withGenericRenderers(
+			displayRenderers(toolDefinition, () =>
+				rowDisplay({
+					live: this.liveDisplay,
+					definition: toolDefinition,
+					toolName,
+					args: this.args,
+					result: this.result,
+					isPartial: this.isPartial,
+				}),
+			),
+			toolName,
 		);
 		this.showImages = options.showImages ?? true;
 		this.imageWidthCells = options.imageWidthCells ?? 60;
@@ -100,17 +102,10 @@ export class ToolExecutionComponent extends Container {
 
 		// Always create all shell variants. contentBox is used for default renderer-based composition.
 		// selfRenderContainer is used when the tool renders its own framing.
-		// contentText is reserved for generic fallback rendering when no tool definition exists.
 		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
-		this.contentText = new GenericToolContent(() => this.ui.requestRender());
-		this.contentTextRegion = this.createResultRegion(this.contentText);
 		this.selfRenderContainer = new Container();
 
-		if (this.hasRendererDefinition()) {
-			this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
-		} else {
-			this.addChild(this.contentTextRegion);
-		}
+		this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
 
 		this.updateDisplay();
 	}
@@ -207,6 +202,8 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	setExpanded(expanded: boolean): void {
+		// A result that scrolled away leaves its rows in scrollback when it collapses; only the screen is repainted.
+		if (this.expanded && !expanded) this.ui.keepScrollbackOnCollapse?.();
 		this.expanded = expanded;
 		// Expand-all reaches every row of a long transcript: only the rows that are drawn rebuild their display now.
 		this.displayStale = true;
@@ -319,6 +316,15 @@ export class ToolExecutionComponent extends Container {
 			const { toolName, args, expanded } = this;
 			const reason = reasonRow(toolName, args, resultPurposeData(this.result), expanded);
 			if (reason) renderContainer.addChild(this.createResultRegion(reason));
+			if (this.generic && expanded && args !== undefined && args !== null) {
+				const detail = formatToolCallWithArgs("", reason ? toolArgsForDisplay(toolName, args, true) : args, theme, true)
+					.split("\n")
+					.slice(1)
+					// The 2-column gutter moves to the Text padding so a wrapped line keeps it too.
+					.map((line) => (line.startsWith("  ") ? line.slice(2) : line))
+					.join("\n");
+				if (detail) renderContainer.addChild(new Text(detail, 2, 0));
+			}
 			if (this.result) {
 				const purpose = purposeRows(toolName, args, resultPurposeData(this.result), expanded);
 				if (purpose) renderContainer.addChild(this.createResultRegion(purpose));
@@ -352,24 +358,6 @@ export class ToolExecutionComponent extends Container {
 					}
 				}
 			}
-		} else {
-			// A tool without a renderer wears the same mark as every other row.
-			const context = this.getRenderContext(undefined);
-			const mark = rowMark(theme, context, this.rendererState, uiStateOf(phaseOf(context)));
-			this.contentText.update({
-				mark,
-				toolName: this.toolName,
-				toolCallId: this.toolCallId,
-				args: this.args,
-				result: this.result,
-				expanded: this.expanded,
-				showImages: this.showImages,
-				imageWidthCells: this.imageWidthCells,
-				outputPad: this.outputPad,
-				background: bgFn,
-				...(this.result && !this.isPartial ? { isError: this.result.isError, durationMs: this.result.durationMs } : {}),
-			});
-			return;
 		}
 
 		this.images = updateImageRows(this, this.images, this.result?.content, {

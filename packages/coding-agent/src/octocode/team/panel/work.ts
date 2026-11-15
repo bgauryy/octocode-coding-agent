@@ -33,6 +33,9 @@ export interface Marks {
 	waiting: string;
 }
 
+/** The marks of a child waiting for prerequisites and of one held; both draw in the warning tone, with no clock. */
+const WAIT_MARK = { queued: "◷", held: "⏸" } as const;
+
 const MINUTE_MS = 60_000;
 
 /** Whole minutes of `ms`, rounded `down` (elapsed: never more than has passed) or up (time left: never less than remains); `<1m` below one. */
@@ -118,7 +121,9 @@ export function workRows(
 	const lines = shown.map((row, index) => {
 		const type = TYPE[row.kind];
 		const label = type.label + " ".repeat(Math.max(0, LABEL_WIDTH - visibleWidth(type.label)));
-		const lead = ` ${theme.fg(type.color, marks[type.mark])} ${theme.fg(type.color, label)}${GAP}${theme.fg("text", ids[index] + " ".repeat(Math.max(0, idWidth - visibleWidth(ids[index]))))}`;
+		const color: Color = row.mark ? "warning" : type.color;
+		const glyph = row.mark ? WAIT_MARK[row.mark] : marks[type.mark];
+		const lead = ` ${theme.fg(color, glyph)} ${theme.fg(color, label)}${GAP}${theme.fg("text", ids[index] + " ".repeat(Math.max(0, idWidth - visibleWidth(ids[index]))))}`;
 		const right = clocks[index] ? GAP + clocks[index].padStart(clockWidth) : "";
 		const room = width - visibleWidth(lead) - GAP.length - visibleWidth(right);
 		const [title, tail] = room >= TEXT_MIN ? fitText(safe(row.title), safe(row.detail), room) : ["", ""];

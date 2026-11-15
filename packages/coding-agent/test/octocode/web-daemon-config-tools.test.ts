@@ -16,6 +16,7 @@ import { DEFERRABLE_NATIVE_TOOLS, nativeToolDeferred } from "../../src/octocode/
 import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { listToolExposure, pinTool } from "../../src/octocode/web-daemon/tool-exposure.ts";
+import { UsageRecorder, USAGE_FILE_NAME } from "../../../common/src/usage-counts.ts";
 import { trustFolder } from "./helpers.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
 
@@ -71,6 +72,95 @@ afterEach(async () => {
 	vi.unstubAllEnvs();
 	for (const fn of cleanup.splice(0).reverse()) await fn();
 	fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe("tool exposure usage audit", () => {
+	it("orders native rows unused first, then by rate, and reports usage as the decider with its reason and savings", async () => {
+		writeJson(globalSettings(), { mcpExposure: "usage" });
+		const file = path.join(agentDir, USAGE_FILE_NAME);
+		const seed = (name: string, declaring: number, callers: number, refusals = 0) => {
+			for (let i = 0; i < declaring; i++) {
+				const recorder = new UsageRecorder(
+					() => file,
+					() => "main",
+				);
+				recorder.record("declared", [`native/${name}`]);
+				if (i < callers) recorder.record("called", [`native/${name}`]);
+				if (i === 0) for (let r = 0; r < refusals; r++) recorder.record("refused", [`native/${name}`]);
+			}
+		};
+		seed("web", 25, 5);
+		seed("archive", 25, 0);
+		seed("models", 3, 1, 3);
+		seed("backlogPlan", 25, 1);
+		const list = await listToolExposure({
+			agentDir,
+			native: () => ({
+				names: [...NATIVE_PINNABLE_TOOLS, "bash"],
+				declared: new Map([
+					["web", false],
+					["archive", true],
+					["models", false],
+					["backlogPlan", true],
+				]),
+				saved: new Map(NATIVE_PINNABLE_TOOLS.map((name) => [name, 700])),
+			}),
+		});
+		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
+		const rows = group(list, "native")!.tools;
+		expect(rows.map((row) => row.name)).toEqual(["archive", "backlogPlan", "web", "models", "bash"]);
+		expect(rows.slice(0, 4).map((row) => row.decidedBy)).toEqual(["usage", "usage", "usage", "usage"]);
+		expect(tool(list, "native", "archive")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 700 });
+		expect(tool(list, "native", "backlogPlan")?.audit).toMatchObject({ bytesSaved: 700, called: 1 });
+		expect(tool(list, "native", "backlogPlan")?.audit?.reason).toBeUndefined();
+		expect(tool(list, "native", "web")?.audit).toMatchObject({ reason: "promoted", rate: 0.2, bytesSaved: 0 });
+		expect(tool(list, "native", "models")?.audit).toMatchObject({ reason: "promoted", refused: 3 });
+		expect(tool(list, "native", "bash")?.audit).toBeUndefined();
+	});
+});
+
+describe("audit rows of the usage-only native tools", () => {
+	const live = {
+		names: [...NATIVE_PINNABLE_TOOLS, "memory", "timer", "bash"],
+		declared: new Map([
+			["memory", true],
+			["timer", false],
+		]),
+		saved: new Map([["memory", 400]]),
+	};
+	const seed = (name: string, declaring: number, callers: number) => {
+		for (let i = 0; i < declaring; i++) {
+			const recorder = new UsageRecorder(
+				() => path.join(agentDir, USAGE_FILE_NAME),
+				() => "main",
+			);
+			recorder.record("declared", [`native/${name}`]);
+			if (i < callers) recorder.record("called", [`native/${name}`]);
+		}
+	};
+
+	it("shows memory and timer with their audit under usage", async () => {
+		writeJson(globalSettings(), { mcpExposure: "usage" });
+		seed("memory", 25, 0);
+		seed("timer", 25, 10);
+		const list = await listToolExposure({ agentDir, native: () => live });
+		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
+		expect(tool(list, "native", "memory")).toMatchObject({ state: "deferred", decidedBy: "usage" });
+		expect(tool(list, "native", "memory")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 400 });
+		expect(tool(list, "native", "timer")).toMatchObject({ state: "direct" });
+		expect(tool(list, "native", "timer")?.audit).toMatchObject({ reason: "promoted", rate: 0.4 });
+	});
+
+	it("shows them when pinned under another setting, and lists an unpinned one as a core tool otherwise", async () => {
+		writeJson(globalSettings(), { mcpExposure: "recent", nativeToolExposure: { memory: "deferred" } });
+		seed("memory", 3, 1);
+		const list = await listToolExposure({ agentDir, native: () => live });
+		expect(tool(list, "native", "memory")).toMatchObject({ pin: "deferred", state: "deferred", decidedBy: "pin" });
+		expect(tool(list, "native", "memory")?.audit).toMatchObject({ called: 1, declared: 3 });
+		// Unpinned and not under usage, timer is a plain core row with no audit.
+		expect(tool(list, "native", "timer")).toMatchObject({ decidedBy: "core" });
+		expect(tool(list, "native", "timer")?.audit).toBeUndefined();
+	});
 });
 
 describe("tool exposure read model", () => {

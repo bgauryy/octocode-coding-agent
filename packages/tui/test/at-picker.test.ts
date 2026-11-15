@@ -193,7 +193,6 @@ describe("@ file picker keys and rows", () => {
 
 describe("SelectList path rows", () => {
 	const theme = {
-		selectedPrefix: (t: string) => t,
 		selectedText: (t: string) => `<S>${t}</S>`,
 		description: (t: string) => `<D>${t}</D>`,
 		scrollInfo: (t: string) => t,

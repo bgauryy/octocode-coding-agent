@@ -1,3 +1,4 @@
+import { GLYPH } from "@octocodeai/octocode-tui/text";
 import type { ToolDefinition } from "../../core/features/index.ts";
 import { displayText, textResultDisplay } from "../render/display.ts";
 import { itemTitle, withItemTitles } from "../render/item-titles.ts";
@@ -5,7 +6,7 @@ import { timingOf } from "../render/rows.ts";
 import { resultBlock, toolHeader } from "../render/tool.ts";
 import { clip } from "../shared/text.ts";
 import { contentText } from "../shared/util.ts";
-import { styleBacklogLines } from "./tool-style.ts";
+import { styleBacklogLines, styleBacklogSummary } from "./tool-style.ts";
 import { type BacklogToolDetails, backlogSummary } from "./tool-text.ts";
 
 /** The operations whose whole result is the body: the others start with a line the summary already says. */
@@ -28,7 +29,7 @@ function target(call: Record<string, unknown>, limit?: number): string {
 		args.op,
 		args.id,
 		items.length > 1 ? `${items.length} items` : "",
-		args.state ? `→ ${shown(args.state, 20)}` : "",
+		args.state ? `${GLYPH.arrow} ${shown(args.state, 20)}` : "",
 		origin ? `from ${shown(origin, 20)}` : "",
 		args.title ? `"${shown(args.title, 80)}"` : "",
 		words ? `"${shown(words, 80)}"` : "",
@@ -56,18 +57,21 @@ export function backlogRenderers(title: string): Renderers {
 		},
 		renderCall(args, theme, context) {
 			const call = (args ?? {}) as Record<string, unknown>;
-			return toolHeader(theme, context, title, withItemTitles(target(call, 80), itemTitle));
+			// The item's title is on the result line, whole; the header names only the operation and the item.
+			return toolHeader(theme, context, title, target(call, 80));
 		},
 		renderResult(result, _options, theme, context) {
 			const text = contentText(result.content);
 			const details = (result.details ?? {}) as BacklogToolDetails;
 			const op = (context.args as { op?: unknown } | undefined)?.op;
-			const summary = context.isError
-				? (text.split("\n", 1)[0] ?? "")
-				: withItemTitles(backlogSummary(op, details, text), itemTitle);
+			const plain = context.isError ? undefined : backlogSummary(op, details, text);
+			const styledSummary = plain === undefined ? undefined : styleBacklogSummary(theme, plain);
+			const summary =
+				plain === undefined ? (text.split("\n", 1)[0] ?? "") : styledSummary ? plain : withItemTitles(plain, itemTitle);
 			const body = context.isError || !isRead(op) ? text.split("\n").slice(1).join("\n") : text;
 			return resultBlock(theme, context, {
 				summary,
+				...(styledSummary ? { styledSummary } : {}),
 				// Item and task lines get the board's colours; the text is the one the model read.
 				...(context.isError ? { body } : { lines: body ? styleBacklogLines(theme, body) : [] }),
 				...timingOf(result.details),

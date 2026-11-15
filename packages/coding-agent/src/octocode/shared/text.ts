@@ -9,8 +9,19 @@ export { clip, plural, queryTarget };
 export const GUTTER = "  ⎿  ";
 export const INDENT = "     ";
 
+const UNBOUND = "unbound";
+
 export function expandKey(): string {
 	return appKey("app.tools.expand");
+}
+
+/**
+ * The one expand hint, `(ctrl+o to expand)`, as plain text for the caller to style; empty when the key is unbound, so a
+ * row never advertises a key that does nothing. Say it only where content is hidden.
+ */
+export function expandHint(verb = "expand"): string {
+	const key = expandKey();
+	return key === UNBOUND ? "" : `(${key} to ${verb})`;
 }
 
 /** Compact shortcut text, including an explicit unbound state. */

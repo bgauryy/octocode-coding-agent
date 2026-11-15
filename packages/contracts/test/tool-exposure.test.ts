@@ -41,6 +41,20 @@ describe("tool exposure contract", () => {
 		expect(Value.Check(ToolExposureListSchema, { ...list, schema: {} })).toBe(false);
 	});
 
+	it("accepts the usage decider with an audit and refuses an audit that is out of range or has unknown fields", () => {
+		const audit = { declared: 25, called: 0, used: 0, refused: 0, rate: 0, reason: "unused", bytesSaved: 812 };
+		const withRow = (row: unknown) => ({ ...list, groups: [{ ...list.groups[0], tools: [row] }] });
+		const row = { name: "web", state: "deferred", decidedBy: "usage", audit };
+		expect(Value.Check(ToolExposureListSchema, withRow(row))).toBe(true);
+		for (const bad of [
+			{ ...audit, rate: 2 },
+			{ ...audit, reason: "idle" },
+			{ ...audit, lastUsed: "today" },
+			{ ...audit, x: 1 },
+		])
+			expect(Value.Check(ToolExposureListSchema, withRow({ ...row, audit: bad }))).toBe(false);
+	});
+
 	it("accepts a pin and an unpin of one MCP tool or one deferrable native tool", () => {
 		for (const command of [
 			{ kind: "mcp", server: "docs", tool: "search", pin: "hidden", scope: "global" },

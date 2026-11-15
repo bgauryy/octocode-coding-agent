@@ -1,6 +1,6 @@
 import { type Input, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { keyText } from "../../../../theme/theme-tui-helpers.ts";
+import { emptyState, noMatchMessage, keyText } from "../../../../theme/theme-tui-helpers.ts";
 import type { NameFilter } from "../session-selector-search.ts";
 import type { GroupMode } from "./groups.ts";
 import { folderColumn } from "./utils.ts";
@@ -18,20 +18,18 @@ export function renderSearchBox(input: Input, width: number): string[] {
 	].map((line) => truncateToWidth(line, width, ""));
 }
 
-/** What the list says when nothing is shown. */
-export function emptyMessage(nameFilter: NameFilter, allFolders: boolean, query = ""): string {
-	if (query.trim()) {
-		const what = nameFilter === "named" ? "named sessions" : "sessions";
-		return `  No ${what} match this search. Edit or clear the search.`;
-	}
-	if (nameFilter === "named") {
-		const toggleKey = keyText("app.session.toggleNamedFilter");
-		return allFolders
-			? `  No named sessions found. Press ${toggleKey} to show all.`
-			: `  No named sessions in current folder. Press ${toggleKey} to show all, or Tab to view all.`;
-	}
-	if (allFolders) return "  No sessions found";
-	return "  No sessions in current folder. Press Tab to view all.";
+/** What the list says when nothing is shown, with the one key that recovers. */
+export function emptyLine(nameFilter: NameFilter, allFolders: boolean, query: string, width: number): string {
+	const what = nameFilter === "named" ? "named sessions" : "sessions";
+	if (query.trim())
+		return emptyState(noMatchMessage(what, query), [keyText("tui.editor.deleteCharBackward"), "edits search"], width);
+	const toggleNamed: [string, string] = [keyText("app.session.toggleNamedFilter"), "shows all"];
+	const folders: [string, string] = [keyText("tui.input.tab"), "views all folders"];
+	if (nameFilter === "named")
+		return emptyState(`No named sessions${allFolders ? "" : " in this folder"}`, toggleNamed, width);
+	return allFolders
+		? emptyState("No sessions found", undefined, width)
+		: emptyState("No sessions in this folder", folders, width);
 }
 
 /** A group label line: a day bucket, or a folder (`key` is its path) with its checkout. */

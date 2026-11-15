@@ -204,7 +204,7 @@ export function Editor({ item, correction, onClose }: EditorProps) {
 					)}
 				</div>
 				{text("why", "Reason — why it matters", { disabled: intentLocked })}
-				{text("goal", "Goal — what done means", {
+				{text("goal", "Done when — a check someone else can run", {
 					disabled: intentLocked,
 					hint: intentLocked ? "Reopen the item to change its goal or reason." : undefined,
 				})}

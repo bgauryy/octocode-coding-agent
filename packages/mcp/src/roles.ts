@@ -12,10 +12,19 @@ export interface ResolvedRoles {
 	/** Full names, `mcp__<ns>__<tool>`. */
 	readers: ReadonlySet<string>;
 	searches: ReadonlySet<string>;
-	/** readers ∪ searches ∪ readOnly. */
+	/** Tools that judge unread text by meaning; also in `readOnly`. */
+	judges: ReadonlySet<string>;
+	/** readers ∪ searches ∪ judges ∪ readOnly. */
 	readOnly: ReadonlySet<string>;
 	/** The first server, in name order, with both a reader and a search role: the one the research policy names. */
-	research?: { server: string; prefix: string; reader: string; search: readonly string[]; description?: string };
+	research?: {
+		server: string;
+		prefix: string;
+		reader: string;
+		search: readonly string[];
+		judge?: string;
+		description?: string;
+	};
 }
 
 export interface RoleEntry {
@@ -26,11 +35,12 @@ export interface RoleEntry {
 	trusted?: boolean;
 }
 
-const EMPTY: ResolvedRoles = { readers: new Set(), searches: new Set(), readOnly: new Set() };
+const EMPTY: ResolvedRoles = { readers: new Set(), searches: new Set(), judges: new Set(), readOnly: new Set() };
 
 export function resolveToolRoles(entries: readonly RoleEntry[]): ResolvedRoles {
 	const readers = new Set<string>();
 	const searches = new Set<string>();
+	const judges = new Set<string>();
 	const readOnly = new Set<string>();
 	let research: ResolvedRoles["research"];
 	const counted = entries
@@ -43,18 +53,21 @@ export function resolveToolRoles(entries: readonly RoleEntry[]): ResolvedRoles {
 		const search = (roles.search ?? []).map(full);
 		for (const tool of reader) readers.add(tool);
 		for (const tool of search) searches.add(tool);
-		for (const tool of [...reader, ...search, ...(roles.readOnly ?? []).map(full)]) readOnly.add(tool);
+		const judge = (roles.judge ?? []).map(full);
+		for (const tool of judge) judges.add(tool);
+		for (const tool of [...reader, ...search, ...judge, ...(roles.readOnly ?? []).map(full)]) readOnly.add(tool);
 		if (!research && reader.length > 0 && search.length > 0) {
 			research = {
 				server: name,
 				prefix: `${mcpNamespace(name)}__`,
 				reader: reader[0],
 				search,
+				...(judge.length > 0 ? { judge: judge[0] } : {}),
 				...(config.description ? { description: config.description } : {}),
 			};
 		}
 	}
-	return { readers, searches, readOnly, ...(research ? { research } : {}) };
+	return { readers, searches, judges, readOnly, ...(research ? { research } : {}) };
 }
 
 let current: ResolvedRoles = EMPTY;

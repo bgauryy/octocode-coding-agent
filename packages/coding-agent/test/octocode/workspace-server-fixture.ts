@@ -85,7 +85,7 @@ export async function workspaceServerFixture() {
 		repoRoot: directory,
 	};
 	const workspace = runtime.bind(ctx, backlog);
-	const changed = vi.fn();
+	const changed = vi.fn<(...args: never[]) => void>();
 	let server!: http.Server;
 	let upgrading: MemorySocket | undefined;
 	vi.spyOn(http.Server.prototype, "listen").mockImplementation(function (this: http.Server, ...args: unknown[]) {

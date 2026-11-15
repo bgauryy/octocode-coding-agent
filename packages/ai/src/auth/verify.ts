@@ -1,6 +1,7 @@
 import type { ApiKeyVerdict } from "./types.ts";
 
-const VERIFY_TIMEOUT_MS = 8_000;
+/** How long one key check may take; redirects are refused. */
+const VERIFY_TIMEOUT_MS = 10_000;
 
 /**
  * Asks a provider's free endpoint whether it accepts a credential. A 401 refuses it; a 403 can instead mean a valid

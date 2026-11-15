@@ -4,7 +4,6 @@ import { SelectList } from "../src/components/select-list.ts";
 import { visibleWidth } from "../src/utils/width.ts";
 
 const testTheme = {
-	selectedPrefix: (text: string) => text,
 	selectedText: (text: string) => text,
 	description: (text: string) => text,
 	scrollInfo: (text: string) => text,

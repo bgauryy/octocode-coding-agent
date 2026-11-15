@@ -67,6 +67,8 @@ type CacheOptions = ReturnType<typeof resolveConfiguredCache>["options"];
  */
 export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
 	resolveCache?: (model: Model<Api>) => CacheOptions;
+	/** Names of the declared tools whose definition is `roleVariant`: the tool cache breakpoint sits before the first. */
+	roleVariantTools?: ReadonlySet<string>;
 };
 
 /** Resolve a model's auth and merge the headers configured for it in models.json or by its extension. */
@@ -209,11 +211,11 @@ export function streamSimpleChatModel(
 	return lazyStream(model, async () => {
 		assertChatModel(model);
 		assertImageRequestContext(model, transcript.messages);
-		const { resolveCache, ...requestOptions } = options ?? {};
+		const { resolveCache, roleVariantTools, ...requestOptions } = options ?? {};
 		const prepared = await prepareModelRequest(host, model, {
 			...requestOptions,
 			...(resolveCache?.(model) ?? host.getCachePolicy(model, requestOptions).options),
-			...instructionCacheBoundaryOption(transcript.messages, requestOptions),
+			...instructionCacheBoundaryOption(transcript.messages, { ...requestOptions, roleVariantTools }),
 		});
 		return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 	});

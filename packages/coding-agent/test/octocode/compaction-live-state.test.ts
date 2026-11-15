@@ -61,28 +61,9 @@ const backgroundJob = (id: string, command: string, log: string) => [
 ];
 
 describe("the live state a compaction summary carries", () => {
-	it("lists the items this session holds with their state, never another session's or an unclaimed one", () => {
+	it("leaves the items this session holds to the session-state brief, so no item is listed twice", () => {
 		seed();
-		const [line] = liveStateLines(ctx(), [], 0);
-		expect(line).toContain('B1 ongoing "Held by this session"');
-		expect(line).not.toContain("B2");
-		expect(line).not.toContain("B3");
-		expect(line).toContain("run `backlog get` before relying on an unlisted id");
-	});
-
-	it("does not deny ownership of held items omitted from a shortened list", () => {
-		const agent = sharedAgentDb();
-		const store = new BacklogStore(() => agent, registeredWorkspace(cwd(), agent).id);
-		for (let index = 1; index <= 9; index++) {
-			store.add({ title: `Held item ${index}`, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
-			store.update(`B${index}`, { state: "ongoing" }, { id: SESSION });
-		}
-		const [line] = liveStateLines(ctx(), [], 0);
-		expect(line.match(/\bB\d+ ongoing/g)).toHaveLength(8);
-		expect(line).toContain("1 more (backlogPlan list shows them)");
-		expect(line).toContain("This list may be shortened");
-		expect(line).toContain("run `backlog get` before relying on an unlisted id");
-		expect(line).not.toContain("not held by this session");
+		expect(liveStateLines(ctx(), [], 0)).toEqual([]);
 	});
 
 	it("says none when the session holds nothing, so an id the summary invented is not confirmed", () => {
@@ -160,14 +141,13 @@ describe("the live state a compaction summary carries", () => {
 			branchEntries: [],
 			signal: { aborted: false },
 		} as never;
-		seed();
 		const out = await writeSummary(api, event, sessionCtx, undefined, undefined, undefined, undefined, () =>
 			liveStateLines(ctx(), [], 0),
 		);
 		const { summary } = out!.compaction!;
 		const recovery = summary.slice(summary.indexOf("## Recovery"));
 		expect(recovery).toContain("- Live state, read from the backlog when this summary was written.");
-		expect(recovery).toContain('B1 ongoing "Held by this session"');
+		expect(recovery).toContain("Backlog items this session holds: none.");
 		const split = splitSummary(summary);
 		expect(split.body).toBe("## Goal\nAdded B7 and B6");
 		expect(split.messages).toEqual(["go"]);

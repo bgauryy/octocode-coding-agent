@@ -202,9 +202,7 @@ describe("team tools on a fake Octocode", () => {
 		const send = a.tools.get("sendMessage");
 		const sent = await run(send, { to: b.team.id, message: "please review src/a.ts", replyRequired: false }, a.ctx);
 		expect(text(sent)).toMatch(
-			new RegExp(
-				`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
-			),
+			new RegExp(`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is woken`),
 		);
 		expect(sent.details).toMatchObject({ to: [b.team.id] });
 		await vi.waitFor(
@@ -228,8 +226,8 @@ describe("team tools on a fake Octocode", () => {
 		await run(a.tools.get("coordinate"), { action: "join" }, a.ctx);
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const send = a.tools.get("sendMessage");
-		const sent = await run(send, { to: b.team.id, message: "which file?" }, a.ctx);
-		// An unmarked message goes out as an FYI, and the sender is told it will not act on it alone.
+		const sent = await run(send, { to: b.team.id, message: "which file?", wake: false }, a.ctx);
+		// A message with wake: false goes out as an FYI, and the sender is told it will not act on it alone.
 		expect(text(sent)).toMatch(
 			new RegExp(
 				`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
@@ -262,7 +260,9 @@ describe("team tools on a fake Octocode", () => {
 			/Say who to send to: `to`.*or `replyTo`.*Nothing was sent/,
 		);
 		await expect(run(send, { replyTo: 987654, message: "x" }, a.ctx)).rejects.toThrow(/No message #987654/);
-		expect(rendered(send.renderCall({ replyTo: 41, message: "m" }, theme, {}))).toBe("○ Send(reply to #41)");
+		expect(rendered(send.renderCall({ replyTo: 41, message: "m" }, theme, {}))).toBe(
+			"○ Send(you → sender of #41 · reply)",
+		);
 		const properties = send.parameters.properties;
 		expect(send.parameters.required ?? []).toEqual([]);
 		expect(properties.forward.type).toBe("integer");
@@ -362,7 +362,7 @@ describe("team tools on a fake Octocode", () => {
 			},
 		};
 		const collapsed = rendered(renderer(message, { expanded: false }, theme));
-		expect(collapsed).toMatch(/^ ✉ reviewer-1a2b → you · #133 · \d\d:\d\d(:\d\d)? · reply requested$/m);
+		expect(collapsed).toMatch(/^ ✉ 🐙 reviewer-1a2b → you · #133 · request · \d\d:\d\d(:\d\d)?$/m);
 		// The sender's role and goal are on its Agent row, not repeated here.
 		expect(collapsed).not.toContain("audit auth token refresh");
 		expect(collapsed).not.toContain("from ");
@@ -410,26 +410,26 @@ describe("team tools on a fake Octocode", () => {
 		).toBe("  ⎿  Error: Not reserved; nothing was locked:\n     - a.ts is covered");
 		const send = a.tools.get("sendMessage");
 		const long = `hello\n${"x".repeat(500)}`;
-		expect(rendered(send.renderCall({ to: "all", message: long }, theme, {}), 1_000)).toBe("○ Send(→ all)");
+		expect(rendered(send.renderCall({ to: "all", message: long }, theme, {}), 1_000)).toBe("○ Send(you → all · FYI)");
 		expect(rendered(send.renderCall({ to: "x", replyTo: 41, message: "m" }, theme, {}))).toBe(
-			"○ Send(→ x · reply to #41)",
+			"○ Send(you → x · reply to #41)",
 		);
 		expect(rendered(send.renderCall({}, theme, {}))).toBe("○ Send");
 		// Queueing is instant: a duration under a second is not shown, a slower send keeps its time.
 		const done = { isPartial: false, durationMs: 24 };
-		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, done))).toMatch(/^✓ Send\(→ x\)$/);
+		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, done))).toMatch(/^✓ Send\(you → x · FYI\)$/);
 		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, { ...done, durationMs: 1_500 }))).toMatch(
-			/^✓ Send\(→ x\) · 1\.5s$/,
+			/^✓ Send\(you → x · FYI\) · 1\.5s$/,
 		);
 		const delivered = {
 			content: [{ type: "text", text: "Queued message #42 for b." }],
 			details: { id: 42, to: ["b"] },
 		};
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: false }))).toBe(
-			'  ⎿  Queued #42 · "hello" (ctrl+o to expand)',
+			'  ⎿  #42 queued for b · "hello" (ctrl+o to expand)',
 		);
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: true }), 1_000)).toBe(
-			`  ⎿  Queued #42\n     hello\n     ${"x".repeat(500)}`,
+			`  ⎿  #42 queued for b\n     hello\n     ${"x".repeat(500)}`,
 		);
 	});
 

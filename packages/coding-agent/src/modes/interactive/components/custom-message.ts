@@ -31,8 +31,6 @@ export class CustomMessageComponent extends Container {
 		this.markdownTheme = markdownTheme;
 		this.outputPad = outputPad;
 
-		this.addChild(new Spacer(1));
-
 		// Create box with purple background (used for default rendering)
 		this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
 
@@ -70,11 +68,8 @@ export class CustomMessageComponent extends Container {
 	}
 
 	private rebuild(): void {
-		if (this.customComponent) {
-			this.removeChild(this.customComponent);
-			this.customComponent = undefined;
-		}
-		this.removeChild(this.box);
+		this.clear();
+		this.customComponent = undefined;
 
 		// Try custom renderer first - it handles its own styling
 		if (this.customRenderer) {
@@ -86,6 +81,8 @@ export class CustomMessageComponent extends Container {
 				);
 				if (component) {
 					this.customComponent = component;
+					// One blank row above, like the box's padding on the default rendering.
+					this.addChild(new Spacer(1));
 					this.addChild(component);
 					return;
 				}
@@ -100,13 +97,19 @@ export class CustomMessageComponent extends Container {
 		this.box.setPaddingX(this.outputPad);
 
 		// Default rendering: label + content
-		const label = theme.fg(
-			"customMessageLabel",
-			theme.bold(
-				`[${sanitizeTerminalText(this.message.customType)}]${this.rendererFailed ? " Renderer failed; showing message." : ""}`,
-			),
-		);
+		const label = theme.fg("customMessageLabel", theme.bold(`[${sanitizeTerminalText(this.message.customType)}]`));
 		this.box.addChild(new Text(label, 0, 0));
+		if (this.rendererFailed)
+			this.box.addChild(
+				new Text(
+					theme.fg(
+						"dim",
+						`The ${sanitizeTerminalText(this.message.customType)} renderer failed; showing the message as text.`,
+					),
+					0,
+					0,
+				),
+			);
 		this.box.addChild(new Spacer(1));
 
 		let text: string;

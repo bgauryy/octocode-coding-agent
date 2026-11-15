@@ -8,6 +8,7 @@ import type {
 	ModelsStore,
 } from "@octocodeai/octocode-ai";
 import type { VirtualModelDefinition } from "../virtual-models.ts";
+import type { KeychainBackend } from "../auth-storage/keychain.ts";
 import type { CredentialWriteTransform } from "../runtime-credentials.ts";
 
 export interface RegisteredVirtualModel {
@@ -29,6 +30,8 @@ export interface CreateModelRuntimeOptions {
 	authPath?: string;
 	/** Keep default credential discovery read-only, including legacy fallback sources. */
 	readOnlyCredentials?: boolean;
+	/** Keychain behind `!` references in the default credential store; default: this platform's. */
+	keychain?: KeychainBackend;
 	modelsPath?: string | null;
 	modelsStore?: ModelsStore;
 	modelsStorePath?: string;

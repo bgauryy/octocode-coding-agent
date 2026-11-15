@@ -22,7 +22,7 @@ import { hookReviewItems } from "../hooks/review.ts";
  * rating here is the rating `/security` shows later. Nothing is started, installed or looked up, and nothing is saved.
  */
 
-export interface PreviewRow {
+interface PreviewRow {
 	kind: ReviewKind;
 	label: string;
 	rating: Rating;

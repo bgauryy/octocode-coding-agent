@@ -4,6 +4,7 @@ import {
 } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
+import { type CredentialState, credentialState } from "../../../core/provider-composer/credential-state.ts";
 import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
 import { providerAccessLabel } from "../../../core/provider-label.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
@@ -13,13 +14,26 @@ import { confirmAction, successNotice } from "./provider-ui.ts";
 export async function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): Promise<string> {
 	const runtime = host.session.modelRuntime;
 	const status = runtime.getProviderAuthStatus(id);
+	const state = await providerCredentialState(host, id);
+	if (state === "signed out") return "Signed out";
+	if (state === "expired") return `Expired · ${credentialSource(host, id)} · sign in again`;
 	if (!status.configured) {
 		const refusal = await claudeSubscriptionRefusal(host, id);
-		return refusal ? `Not configured: ${refusal}` : "Not configured";
+		return refusal ? `Not set: ${refusal}` : "Not set";
 	}
 	const kind = await runtime.getCredentialKind(id);
 	const label = kind === "key" ? providerAccessLabel(runtime, id) : KIND_LABELS[kind];
-	return `${label} configured · ${credentialSource(host, id)}`;
+	return `Connected · ${label} · ${credentialSource(host, id)}`;
+}
+
+/** Connected, expired, signed out or not set; a credential that cannot be read counts as none saved. */
+export async function providerCredentialState(
+	host: Pick<ProviderManagerHost, "session">,
+	id: string,
+): Promise<CredentialState> {
+	const runtime = host.session.modelRuntime;
+	const credential = await runtime.readCredential(id, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
+	return credentialState(runtime.getProviderAuthStatus(id), credential);
 }
 
 /**
@@ -83,12 +97,16 @@ export function setProviderEnabled(host: ProviderManagerHost, id: string, name: 
 
 /** Remove the saved (and session) credential for a provider after one confirmation. Returns true when it was removed. */
 export async function removeProviderCredential(host: ProviderManagerHost, id: string, name: string): Promise<boolean> {
-	const sessionOverride = host.session.modelRuntime.getProviderAuthStatus(id).source === "runtime";
+	const authStatus = host.session.modelRuntime.getProviderAuthStatus(id);
+	const sessionOverride = authStatus.source === "runtime";
 	const what = sessionOverride ? "saved and session credentials" : "saved credential";
+	// A credential that lives in Pi's or a legacy auth file is signed out in Octocode only; that file is never edited.
+	const fileNote =
+		authStatus.source === "stored" && authStatus.label ? `${authStatus.label}; that file stays unchanged` : "";
 	const confirmed = await confirmAction(host, `Remove ${what} for ${name}?`, [
 		sessionOverride
 			? "Remove saved and session credentials — environment and models.json stay unchanged"
-			: "Remove credential — environment and models.json stay unchanged",
+			: `Remove credential — ${fileNote ? `${fileNote}; ` : ""}environment and models.json stay unchanged`,
 	]);
 	if (!confirmed) return false;
 	try {

@@ -23,6 +23,7 @@ export { type CreateProviderOptions, createProvider } from "./models/create-prov
 export {
 	type CacheMechanism,
 	type ModelCapabilities,
+	replaysWithReasoningUnchanged,
 	resolveModelCapabilities,
 	type ThinkingControl,
 } from "./models/capabilities.ts";

@@ -14,9 +14,9 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { getModelSearchText } from "../model-search.ts";
+import { emptyState, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { shortcutsFooter } from "./scoped-models-selector/footer.ts";
 import {
 	clearAll,
@@ -194,7 +194,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		this.listContainer.clear();
 
 		if (this.filteredItems.length === 0) {
-			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+			this.listContainer.addChild(new Text(emptyState("No matching models"), 0, 0));
 			return;
 		}
 

@@ -5,7 +5,6 @@ import { getKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
 
 const identity = (text: string) => text;
 const theme = {
-	selectedPrefix: identity,
 	selectedText: identity,
 	description: identity,
 	scrollInfo: identity,

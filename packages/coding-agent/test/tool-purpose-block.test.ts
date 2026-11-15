@@ -135,13 +135,12 @@ describe("the purpose block below a tool result", () => {
 			const external = jsonText(MCP, withRenderer);
 			expect(external, String(withRenderer)).toEqual(
 				expect.arrayContaining([
-					"Reason: look around the parser",
+					"↳ look around the parser",
 					"Query 1 · Goal: map the parser",
 					"Query 1 · Reason: entry point",
 					"Query 2 · Reason: its callers",
 				]),
 			);
-			expect(external).not.toContain("↳ look around the parser");
 			// The same native tool with structured data.
 			const structured = text(resultRow("web", { reason: "look around the parser" }, returned(rows), withRenderer));
 			expect(structured.map((line) => line.trim())).toEqual(

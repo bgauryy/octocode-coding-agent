@@ -401,6 +401,28 @@ describe("web tool", () => {
 		expect(await call(["read", "bash"])).toMatch(/is in \S+: search it or read it by line range\]$/);
 	});
 
+	it("leads with the research server's judge tool when it is active, and only then", async () => {
+		vi.stubEnv("OCTOCODE_HOME", tmp());
+		publishRoles([
+			{
+				...RESEARCH_ENTRY,
+				config: { ...RESEARCH_ENTRY.config, roles: { ...RESEARCH_ENTRY.config.roles, judge: ["classify"] } },
+			},
+		]);
+		onTestFinished(() => publishRoles([]));
+		const base = await serve((_req, res) => {
+			res.writeHead(200, { "content-type": "text/plain" });
+			res.end("y".repeat(30_000));
+		});
+		const call = async (active: string[]) =>
+			text(await webTool(active).execute("id", { url: `${base}/`, maxChars: 1_000 }));
+		const judged = await call(["mcp__research__classify", RESEARCH.search, RESEARCH.reader]);
+		expect(judged).toMatch(
+			/is in \/\S+: judge it with `mcp__research__classify`[^;]*; search it with `mcp__research__search_code`/,
+		);
+		expect(await call([RESEARCH.search, RESEARCH.reader])).not.toContain("classify");
+	});
+
 	it("returns 20 KB of a page by default, more with maxChars, and says how to get the rest", async () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp());
 		const page = "x".repeat(80_000);
@@ -585,18 +607,18 @@ describe("web tool", () => {
 		);
 
 		status["html.duckduckgo.com"] = 202;
-		expect(text(await tool.execute("id", { query: "example" }))).toBe(
+		expect(text(await tool.execute("id", { query: "example 2" }))).toBe(
 			"1. Bing hit\n   https://example.com/b\n   From bing\n\n(via bing; skipped duckduckgo: HTTP 202 from html.duckduckgo.com (rate limited))",
 		);
 
 		body["www.bing.com"] = "<html>nothing</html>";
-		expect(text(await tool.execute("id", { query: "example" }))).toBe(
+		expect(text(await tool.execute("id", { query: "example 3" }))).toBe(
 			"No results (bing, duckduckgo-lite). (skipped duckduckgo: HTTP 202 from html.duckduckgo.com (rate limited))",
 		);
 
 		status["www.bing.com"] = 429;
 		status["lite.duckduckgo.com"] = 202;
-		await expect(tool.execute("id", { query: "example" })).rejects.toThrow(
+		await expect(tool.execute("id", { query: "example 4" })).rejects.toThrow(
 			/^Search failed: every provider failed \(duckduckgo: HTTP 202 .*; bing: HTTP 429 .*; duckduckgo-lite: HTTP 202 .*\)\. Do not repeat the same search: fetch a URL you already know with `web`, or ask the user to set TAVILY_API_KEY/,
 		);
 

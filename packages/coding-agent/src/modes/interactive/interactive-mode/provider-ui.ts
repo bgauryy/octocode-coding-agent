@@ -4,7 +4,7 @@ import type { ProviderManagerHost } from "./provider-manager-host.ts";
 
 /** Show a page and resolve with the user's choice, or undefined when they pressed Escape. The page closes first. */
 export function showPage(
-	host: Pick<ProviderManagerHost, "showSelector">,
+	host: Pick<ProviderManagerHost, "showSelector" | "ui">,
 	options: Omit<ManagePageOptions, "onSelect" | "onKey" | "onCancel">,
 ): Promise<PageChoice | undefined> {
 	return new Promise((resolve) => {
@@ -15,6 +15,7 @@ export function showPage(
 			};
 			const page = new ManagePageComponent({
 				responsive: true,
+				viewportRows: () => host.ui.terminal.rows - 1,
 				...options,
 				onSelect: (id) => finish({ id }),
 				onKey: (key, id) => finish({ id, key }),

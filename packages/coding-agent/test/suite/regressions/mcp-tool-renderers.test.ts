@@ -27,7 +27,7 @@ describe("MCP tool renderers", () => {
 			const call = resolve("mcp__my_docs__search")?.renderCall?.({ query: "octocode" }, theme, {
 				expanded: false,
 			} as unknown as ToolRenderContext);
-			expect(stripAnsi(call?.render(100).join("\n") ?? "")).toContain('my_docs/search query="octocode"');
+			expect(stripAnsi(call?.render(100).join("\n") ?? "")).toContain("○ my_docs/search(query=octocode)");
 			expect(resolve("not_mcp")).toBeUndefined();
 			// Registered tools keep their own renderers.
 			expect(resolve("read")?.renderCall).toBe(harness.session.getToolDefinition("read")?.renderCall);

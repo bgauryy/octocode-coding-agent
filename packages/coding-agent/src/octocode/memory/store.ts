@@ -21,6 +21,7 @@ export { MemoryError, noMemory } from "./errors.ts";
 /** `reference`: a pointer to something outside the repository (a URL, dashboard or ticket). */
 export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure", "reference"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
+export const isMemoryKind = (value: unknown): value is MemoryKind => MEMORY_KINDS.some((kind) => kind === value);
 export interface Memory {
 	id: number;
 	scope: MemoryScope;
@@ -63,6 +64,8 @@ export function refuseMemorySecrets(input: Pick<MemoryInput, "title" | "body" | 
 const PROJECT_BOOST = 1.15;
 /** Token overlap (title + keywords + body) at which a new memory counts as a duplicate of an existing one. */
 const DUPLICATE_JACCARD = 0.6;
+/** Full-text matches checked per query when looking for a duplicate. */
+const DUPLICATE_CANDIDATES = 25;
 /** Rows the LIKE fallback scores in memory (newest first); far more than a person keeps. */
 const LIKE_SCAN_LIMIT = 2000;
 const SETTING_AUTO = "memory_auto";
@@ -239,7 +242,7 @@ export class MemoryStore {
 		const body = storedText(input.body);
 		const scope = input.scope ?? (this.workspaceId ? "workspace" : "project");
 		const keywords = storedText(input.keywords);
-		const duplicate = this.duplicateOf(scope, `${title} ${keywords} ${body}`, title);
+		const duplicate = this.duplicateOf(`${title} ${keywords} ${body}`, title);
 		if (duplicate)
 			throw new MemoryError(
 				`Similar memory ${memoryLabel(duplicate.id)} exists: "${duplicate.title}". Call set with id:"${memoryLabel(duplicate.id)}" to update it, or change the title.`,
@@ -275,7 +278,7 @@ export class MemoryStore {
 		const keywords = input.keywords === undefined ? current.keywords : storedText(input.keywords);
 		// Moving to another scope is an insert there: refuse it when it repeats a memory already in that scope.
 		if (scope !== current.scope) {
-			const duplicate = this.duplicateOf(scope, `${title} ${keywords} ${body}`, title);
+			const duplicate = this.duplicateOf(`${title} ${keywords} ${body}`, title);
 			if (duplicate && duplicate.id !== id)
 				throw new MemoryError(
 					`Similar memory ${memoryLabel(duplicate.id)} exists in ${scope} scope: "${duplicate.title}". Update or delete one of them instead.`,
@@ -295,11 +298,17 @@ export class MemoryStore {
 		return { memory: this.get(id)!, created: false };
 	}
 
-	/** An existing memory in `scope` with the same normalized title, or whose title, keyword and body words (`text`) mostly match. */
-	private duplicateOf(scope: MemoryScope, text: string, title: string): Memory | undefined {
+	/**
+	 * An existing memory in any visible scope (a workspace memory repeating a global one is redundant too) with the same
+	 * normalized title, or whose title, keyword and body words (`text`) mostly match, among the full-text matches.
+	 */
+	private duplicateOf(text: string, title: string): Memory | undefined {
 		const normalized = normalizeTitle(title);
 		const words = terms(text);
-		const candidates = [...this.search(text, scope, 5), ...this.list(scope, 200)];
+		const candidates = [
+			...this.search(text, "all", DUPLICATE_CANDIDATES),
+			...this.search(title, "all", DUPLICATE_CANDIDATES),
+		];
 		return candidates.find(
 			(memory) =>
 				(normalized !== "" && normalizeTitle(memory.title) === normalized) ||

@@ -162,6 +162,13 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 			description:
 				'Whether the provider supports long prompt cache retention (prompt_cache_retention: "24h" or Anthropic-style cache_control.ttl: "1h", depending on format). Default: auto-detected from provider and URL.',
 		}),
+		supportsExplicitPromptCacheMode: Type.Optional(
+			Type.Boolean({
+				description:
+					"Whether the model is GPT-5.6 or later, which replaces prompt_cache_retention with prompt_cache_options. Chat Completions then sends no long-retention field. The generated catalog sets it for verified models; unset means false.",
+				default: false,
+			}),
+		),
 		vllmPriority: Type.Optional(
 			Type.Number({
 				description:
@@ -232,6 +239,11 @@ export const OpenAIResponsesCompatSchema = Type.Object(
 				default: false,
 			}),
 		),
+		supportsInstructionBreakpoints: optionalCompatBoolean({
+			description:
+				"Whether the model takes 30m prompt cache breakpoints on its leading instructions without explicit cache mode (Azure deployments of GPT-6 Astra). The generated catalog sets it for verified models; unset means false.",
+			default: false,
+		}),
 		supportsMidConvoEffort: Type.Optional(
 			Type.Boolean({
 				description:

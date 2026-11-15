@@ -35,7 +35,8 @@ import {
 	updateSkillsStore,
 } from "./skills-store.ts";
 
-const CONTEXT_USAGE = `${APP_NAME} context list [--json]
+const CONTEXT_USAGE = `Usage:
+  ${APP_NAME} context list [--json]
   ${APP_NAME} context check --overrides <file>
   ${APP_NAME} context apply --overrides <file> [--optimized-by <model>]
 

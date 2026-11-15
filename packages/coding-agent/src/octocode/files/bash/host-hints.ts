@@ -14,7 +14,12 @@ const HOST_QUIRKS: ReadonlyArray<{ failure: RegExp; command?: RegExp; hint: stri
 	},
 ];
 
-/** The hint for a failed command's output when it shows one of the known host quirks, else undefined. */
-export function hostQuirkHint(output: string, command: string): string | undefined {
+/** The hint for a failed command's output when it shows one of the known host quirks, else undefined; the quirks are macOS's, so other platforms get none. */
+export function hostQuirkHint(
+	output: string,
+	command: string,
+	platform: NodeJS.Platform = process.platform,
+): string | undefined {
+	if (platform !== "darwin") return undefined;
 	return HOST_QUIRKS.find((quirk) => quirk.failure.test(output) && (quirk.command?.test(command) ?? true))?.hint;
 }

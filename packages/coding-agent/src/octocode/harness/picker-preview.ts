@@ -1,4 +1,5 @@
-import { type KeybindingsManager, truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
+import type { KeybindingsManager } from "@octocodeai/octocode-tui";
+import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { shortcutText } from "../shared/keys.ts";
@@ -8,12 +9,16 @@ import { shortcutText } from "../shared/keys.ts";
  * Enter switches it on; Esc leaves everything as it was.
  */
 export class SwitchOnPreview {
-	constructor(
-		readonly title: string,
-		private readonly lines: readonly string[],
-		private readonly theme: Theme,
-		private readonly keys: KeybindingsManager,
-	) {}
+	readonly title: string;
+	private readonly lines: readonly string[];
+	private readonly theme: Theme;
+	private readonly keys: KeybindingsManager;
+	constructor(title: string, lines: readonly string[], theme: Theme, keys: KeybindingsManager) {
+		this.title = title;
+		this.lines = lines;
+		this.theme = theme;
+		this.keys = keys;
+	}
 
 	/** `confirm` switches on, `cancel` writes nothing; undefined: the key is not for this page. */
 	handleInput(data: string): "confirm" | "cancel" | undefined {

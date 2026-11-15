@@ -1,7 +1,7 @@
 /**
  * The Tools panel of the configuration page: what a session declares of each tool (`direct`, `deferred`, `hidden`),
  * what decided it, and the pin that fixes it. Pins are read from the files a new session reads and written where
- * `/mcp exposure` and the Harness panel write (`mcp.json` for MCP tools, the settings key `nativeToolExposure` for
+ * `/harness mcp` and the Harness panel write (`mcp.json` for MCP tools, the settings key `nativeToolExposure` for
  * native ones). What a running session declares comes from that session and never changes with a pin: the declared set
  * is part of its cached prompt, so a pin applies from the next session.
  */
@@ -9,6 +9,7 @@
 import path from "node:path";
 import {
 	NATIVE_PINNABLE_TOOLS,
+	NATIVE_USAGE_ONLY_TOOLS,
 	ToolExposureRowSchema,
 	type ToolExposureGroup,
 	type ToolExposureList,
@@ -18,6 +19,8 @@ import {
 import { Value } from "typebox/value";
 import type { AttachToolStates } from "@octocodeai/octocode-contracts/daemon";
 import { recentlyUsed } from "../../../../common/src/recent-use.ts";
+import { hasUsageData, readUsageAudit, sortByAudit, toolAudit } from "../../../../common/src/tool-audit.ts";
+import { USAGE_FILE_NAME, usageSnapshot } from "../../../../common/src/usage-counts.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { isEnabled, currentMcpToolStates } from "../../../../mcp/src/api.ts";
 import { loadMcpServers } from "../../configuration/adapters/mcp.ts";
@@ -36,6 +39,8 @@ type LiveMcpStates = NonNullable<AttachToolStates["mcp"]>;
 export interface NativeToolsLive {
 	names: readonly string[];
 	declared: ReadonlyMap<string, boolean>;
+	/** Bytes each deferrable tool's deferral saves per request; absent when the session did not measure. */
+	saved?: ReadonlyMap<string, number>;
 }
 
 export interface ToolExposureOptions {
@@ -59,8 +64,6 @@ export interface ToolPinOptions extends ToolExposureOptions {
 	/** Receives one entry per attempt. It must not throw; the write does not depend on it. */
 	audit?: (entry: ConfigAuditEntry) => void;
 }
-
-const PINNABLE: ReadonlySet<string> = new Set(NATIVE_PINNABLE_TOOLS);
 
 function open(options: ToolExposureOptions) {
 	const trusted = options.cwd !== undefined && resolveFolderTrust(options.cwd).state === "trusted";
@@ -87,25 +90,51 @@ const valid = (rows: ToolExposureRow[]): ToolExposureRow[] =>
  */
 function nativeGroup(ctx: ConfigContext, setting: string, live: NativeToolsLive | undefined): ToolExposureGroup {
 	const pins: Record<string, unknown> = ctx.settings.getSettings().nativeToolExposure ?? {};
-	const recent = setting === "recent";
-	const inUse = recent ? recentlyUsed(path.join(ctx.agentDir, "tool-use.json"), ctx.cwd) : new Set<string>();
-	const rows = NATIVE_PINNABLE_TOOLS.map((name): ToolExposureRow => {
+	const usage = setting === "usage";
+	const recent = setting === "recent" || usage;
+	const inUse = usage
+		? usageSnapshot(path.join(ctx.agentDir, USAGE_FILE_NAME), "main")
+		: recent
+			? recentlyUsed(path.join(ctx.agentDir, "tool-use.json"), ctx.cwd)
+			: new Set<string>();
+	const usageFile = path.join(ctx.agentDir, USAGE_FILE_NAME);
+	const record = readUsageAudit(usageFile, "main");
+	const audited = usage || hasUsageData(record);
+	// `memory` and `timer` are deferred only by usage or a pin: they are listed in the same cases, with their audit.
+	const auditedTools: string[] = [
+		...NATIVE_PINNABLE_TOOLS,
+		...NATIVE_USAGE_ONLY_TOOLS.filter(
+			(name) =>
+				(live === undefined || live.names.includes(name)) &&
+				(usage || pins[name] === "direct" || pins[name] === "deferred"),
+		),
+	];
+	const rows = auditedTools.map((name): ToolExposureRow => {
 		const saved = pins[name];
 		const pin = saved === "direct" || saved === "deferred" ? saved : undefined;
 		const declared = live?.declared.get(name);
 		const predicted = pin ?? (recent && !inUse.has(`native/${name}`) ? "deferred" : "direct");
 		const state = declared === undefined ? predicted : declared ? "deferred" : "direct";
+		const bytes = live?.saved?.get(name);
 		return {
 			name,
 			...(pin ? { pin } : {}),
 			state,
-			decidedBy: pin === state ? "pin" : recent ? "recent" : "default",
+			decidedBy: pin === state ? "pin" : usage ? "usage" : recent ? "recent" : "default",
+			...(audited
+				? {
+						audit: toolAudit(record, `native/${name}`, state, {
+							...(bytes !== undefined ? { saved: bytes } : {}),
+							...(usage ? { promoted: inUse.has(`native/${name}`) } : {}),
+						}),
+					}
+				: {}),
 		};
 	});
 	const core = (live?.names ?? [])
-		.filter((name) => !PINNABLE.has(name))
+		.filter((name) => !auditedTools.includes(name))
 		.map((name): ToolExposureRow => ({ name, state: "direct", decidedBy: "core" }));
-	return { kind: "native", name: "native", tools: valid([...rows, ...core]), pinnable: true };
+	return { kind: "native", name: "native", tools: valid([...sortByAudit(rows), ...core]), pinnable: true };
 }
 
 /**
@@ -119,11 +148,18 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		const pins = entry.config.toolExposure ?? {};
 		const rows = (session?.tools ?? []).map((tool): ToolExposureRow => {
 			const pin = pins[tool.name];
-			return { name: tool.name, ...(pin ? { pin } : {}), state: tool.state, decidedBy: tool.decidedBy };
+			return {
+				name: tool.name,
+				...(pin ? { pin } : {}),
+				state: tool.state,
+				decidedBy: tool.decidedBy,
+				...(tool.audit ? { audit: tool.audit } : {}),
+			};
 		});
+		const ordered = sortByAudit(rows);
 		const listed = new Set(rows.map((row) => row.name));
 		for (const [name, pin] of Object.entries(pins))
-			if (!name.includes("*") && !listed.has(name)) rows.push({ name, pin, state: pin, decidedBy: "pin" });
+			if (!name.includes("*") && !listed.has(name)) ordered.push({ name, pin, state: pin, decidedBy: "pin" });
 		const note = !live
 			? "No session is running here, so only pinned tools are listed. Open this page from a session (/web) to see every tool."
 			: !session
@@ -131,7 +167,7 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 				: session.connected
 					? undefined
 					: "Not connected in the running session, so only pinned tools are listed.";
-		return { kind: "mcp", name: entry.name, tools: valid(rows), pinnable: true, ...(note ? { note } : {}) };
+		return { kind: "mcp", name: entry.name, tools: valid(ordered), pinnable: true, ...(note ? { note } : {}) };
 	});
 	const names = new Set(configured.map((entry) => entry.name));
 	const unsaved = (live ?? [])
@@ -139,7 +175,7 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		.map((server): ToolExposureGroup => ({
 			kind: "mcp",
 			name: server.server,
-			tools: valid(server.tools.map((tool) => ({ ...tool }))),
+			tools: valid(sortByAudit(server.tools.map((tool) => ({ ...tool })))),
 			pinnable: false,
 			note: "Not in a configuration file a pin can be saved to.",
 		}));

@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { findOnPath } from "../../../../common/src/find-on-path.ts";
+import { detectIde } from "../../../../common/src/terminal-host.ts";
+import { openTargetCommand } from "../../../../common/src/open-target.ts";
 import { splitConfigWords } from "../../configuration/command.ts";
 
 /**
@@ -23,8 +25,11 @@ export interface EditorInvocation {
 export interface ReferenceOpener extends EditorInvocation {
 	/** True for a GUI editor: started detached, the session keeps the terminal. */
 	detached: boolean;
-	/** `ide`: the IDE whose terminal runs Octocode; `path`: a GUI CLI found on PATH; `setting`: an explicit command; `editor`: the prompt editor. */
-	source: "ide" | "path" | "setting" | "editor";
+	/**
+	 * `ide`: the IDE whose terminal runs Octocode; `path`: a GUI CLI found on PATH; `system`: the system's default app
+	 * for the file (`openFileWithSystem`); `setting`: an explicit command; `editor`: the prompt editor.
+	 */
+	source: "ide" | "path" | "system" | "setting" | "editor";
 }
 
 /** What resolution reads from the host; each part is replaceable so a test never depends on this machine. */
@@ -82,20 +87,6 @@ export function defaultOpenerHost(): OpenerHost {
 		findOnPath: (name) => findOnPath(name, process.env),
 		readText,
 	};
-}
-
-/**
- * The IDE whose integrated terminal runs Octocode, by its CLI name. Code and its forks set `TERM_PROGRAM=vscode`;
- * `VSCODE_IPC_HOOK_CLI` (remote terminals) and `VSCODE_GIT_IPC_HANDLE` stay set inside tmux, which replaces
- * `TERM_PROGRAM`. Cursor sets `CURSOR_TRACE_ID`; the Git askpass paths name the application folder.
- */
-export function detectIde(env: Env): "code" | "code-insiders" | "codium" | "cursor" | undefined {
-	if (env.TERM_PROGRAM !== "vscode" && !env.VSCODE_IPC_HOOK_CLI && !env.VSCODE_GIT_IPC_HANDLE) return undefined;
-	const install = `${env.VSCODE_GIT_ASKPASS_NODE ?? ""}\n${env.VSCODE_GIT_ASKPASS_MAIN ?? ""}`;
-	if (env.CURSOR_TRACE_ID || /cursor/i.test(install)) return "cursor";
-	if (/insiders/i.test(install) || /-insider$/i.test(env.TERM_PROGRAM_VERSION ?? "")) return "code-insiders";
-	if (/codium/i.test(install)) return "codium";
-	return "code";
 }
 
 /**
@@ -157,8 +148,9 @@ function fromCommand(text: string, source: "setting" | "editor"): ReferenceOpene
 
 /**
  * The program for `referenceOpener`: `auto` tries (a) the IDE whose terminal runs Octocode, (b) the first GUI CLI on
- * PATH unless the session is headless, (c) the prompt editor; `editor` is the prompt editor; anything else is a
- * command. `editorCommand` is the prompt editor (`externalEditor`, `VISUAL`, `EDITOR`, platform default).
+ * PATH, (c) the system's default app for the file, and only in a headless session (SSH, Linux without a display)
+ * (d) the prompt editor, which takes over the terminal; `editor` is the prompt editor; anything else is a command.
+ * `editorCommand` is the prompt editor (`externalEditor`, `VISUAL`, `EDITOR`, platform default).
  */
 export function resolveReferenceOpener(
 	setting: string,
@@ -171,12 +163,55 @@ export function resolveReferenceOpener(
 	const ide = detectIde(host.env);
 	const ideCommand = ide && ideCli(host, ide);
 	if (ideCommand) return opener(ideCommand, [], "ide");
-	if (!headless(host))
+	if (!headless(host)) {
 		for (const name of GUI_EDITOR_CLIS) {
 			const found = host.findOnPath(name);
 			if (found) return opener(found, [], "path");
 		}
+		const { command, args } = openTargetCommand("", host.platform, host.env);
+		return { command, args: args.slice(0, -1), detached: true, source: "system" };
+	}
 	return fromCommand(editorCommand, "editor");
+}
+
+/** How long a system opener may run before it counts as started: `open` and most `xdg-open` handlers exit at once. */
+const SYSTEM_OPEN_WAIT_MS = 3000;
+
+/**
+ * Opens `file` with the system's default app for it (`open`, `xdg-open`, the Windows URL handler), detached, without
+ * a shell. Rejects when the opener cannot start or exits with a failure, as `open` does for a file type no app
+ * claims; on macOS that file then opens in the default text editor (`open -t`).
+ */
+export async function openFileWithSystem(
+	file: string,
+	options: { spawn?: typeof spawn; host?: Pick<OpenerHost, "env" | "platform"> } = {},
+): Promise<void> {
+	const host = options.host ?? defaultOpenerHost();
+	const run = (command: string, args: string[]) =>
+		new Promise<number | null>((resolve, reject) => {
+			const child = (options.spawn ?? spawn)(command, args, {
+				detached: true,
+				stdio: "ignore",
+				shell: false,
+				windowsHide: true,
+				env: launchEnv(host.env),
+			});
+			const timer = setTimeout(() => resolve(0), SYSTEM_OPEN_WAIT_MS);
+			timer.unref();
+			child.once("error", (error) => {
+				clearTimeout(timer);
+				reject(error);
+			});
+			child.once("exit", (code) => {
+				clearTimeout(timer);
+				resolve(code);
+			});
+			child.unref();
+		});
+	const { command, args } = openTargetCommand(file, host.platform, host.env);
+	let code = await run(command, args);
+	if (code !== 0 && host.platform === "darwin") code = await run(command, ["-t", file]);
+	if (code !== 0) throw new Error(`${path.basename(command)} found no app for this file (exit ${code ?? "signal"})`);
 }
 
 /**

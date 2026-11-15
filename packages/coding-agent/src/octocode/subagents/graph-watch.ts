@@ -8,6 +8,8 @@ interface GraphWatchHost {
 	backlog(): Backlog | undefined;
 	/** A child of this session was started on `ref`: its report carries the graph line. */
 	linked(ref: string): boolean;
+	/** The items a queued child waits for: their start tells the coordinator, so no ready notice is needed. */
+	queued?(): ReadonlySet<string>;
 	/** Wakes the coordinator with a graph notice (`GraphWake.tell`). */
 	tell(notice: string): void;
 	/** Calls `poke` whenever another process may have written the shared database (`DatabaseFollower`); returns the unsubscribe. */
@@ -85,7 +87,7 @@ export class GraphWatch {
 				const notices: string[] = [];
 				for (const ref of ended) {
 					if (await this.outside(backlog, ref)) {
-						const notice = graphNotice(backlog, ref);
+						const notice = graphNotice(backlog, ref, undefined, false, this.host.queued?.());
 						if (notice) notices.push(notice);
 					}
 					if (generation !== this.generation) break;

@@ -51,6 +51,59 @@ describe("credential storage startup diagnostics", () => {
 		});
 	});
 
+	it("warns about a models.json provider whose models have no credential", async () => {
+		const { cwd, agentDir } = fixture();
+		const provider = (apiKey?: string) => ({
+			baseUrl: "https://gateway.example.com",
+			api: "anthropic-messages",
+			...(apiKey ? { apiKey } : {}),
+			models: [{ id: "gateway-model" }],
+		});
+		const models = { providers: { "keyless-gateway": provider(), "keyed-gateway": provider("literal-test-key") } };
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(models), { mode: 0o600 });
+		const { diagnostics } = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
+		const missing = diagnostics.filter((entry) => entry.message.includes("has no credential"));
+		expect(missing).toEqual([{ type: "warning", message: expect.stringContaining('"keyless-gateway"') }]);
+	});
+
+	it("names the unset environment variable instead of asking for an apiKey", async () => {
+		const { cwd, agentDir } = fixture();
+		const models = {
+			providers: {
+				"env-gateway": {
+					baseUrl: "https://gateway.example.com",
+					api: "anthropic-messages",
+					apiKey: "$OCTOCODE_TEST_UNSET_KEY_B429",
+					models: [{ id: "gateway-model" }],
+				},
+			},
+		};
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(models), { mode: 0o600 });
+		const { diagnostics } = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
+		const missing = diagnostics.filter((entry) => entry.message.includes('"env-gateway"'));
+		expect(missing).toHaveLength(1);
+		expect(missing[0]?.message).toContain("apiKey uses $OCTOCODE_TEST_UNSET_KEY_B429, which is not set");
+		expect(missing[0]?.message).not.toContain('Add "apiKey"');
+	});
+
+	it("leaves a failing !command key configured; the command is checked on first use", async () => {
+		const { cwd, agentDir } = fixture();
+		const models = {
+			providers: {
+				"cmd-gateway": {
+					baseUrl: "https://gateway.example.com",
+					api: "anthropic-messages",
+					apiKey: "!false",
+					models: [{ id: "gateway-model" }],
+				},
+			},
+		};
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(models), { mode: 0o600 });
+		const { diagnostics, modelRuntime } = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions });
+		expect(modelRuntime.hasConfiguredAuth("cmd-gateway")).toBe(true);
+		expect(diagnostics.filter((entry) => entry.message.includes("cmd-gateway"))).toEqual([]);
+	});
+
 	it("does not inspect an unrelated credential file for an injected SDK model runtime", async () => {
 		const { cwd, agentDir, authPath } = fixture();
 		mkdirSync(join(cwd, ".git"));

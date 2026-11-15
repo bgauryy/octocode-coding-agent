@@ -46,6 +46,7 @@ describe("/harness page", () => {
 				],
 				apply: () => "ok",
 				paths: { global: "~/settings.json", project: ".octocode/settings.json" },
+				section: "skills",
 				height: 30,
 				done: () => {},
 				requestRender: () => {},

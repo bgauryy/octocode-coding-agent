@@ -28,6 +28,7 @@ import { agentState, headerOverride } from "./render-state.ts";
  * stays one short line; the full prompt the agent was given shows in the expanded view, above its progress or report.
  */
 
+import { backgroundSummary } from "./background-summary.ts";
 import type { RunDetails, ResultDetails } from "./run-types.ts";
 import { bodyLines, clip, plural } from "../shared/text.ts";
 import { itemTitle, withItemTitles, withItemTitlesIn } from "../render/item-titles.ts";
@@ -294,7 +295,7 @@ export function renderAgentResult(
 		// The first line is for the model; only a later note (an isolation warning) is worth expanding to.
 		const note = body.split("\n").slice(1).join("\n").trim();
 		return resultBlock(theme, context, {
-			summary: `${details.queued ? "Queued in the background" : "Running in the background"} as ${details.id}`,
+			summary: backgroundSummary(details),
 			summaryColor: "accent",
 			...(note ? { body: note } : {}),
 			prefaceLabel: "prompt",

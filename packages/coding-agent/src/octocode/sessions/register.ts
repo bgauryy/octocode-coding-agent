@@ -11,7 +11,7 @@ import { reportSweep } from "./sweep-report.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { currentSessionId } from "../shared/home.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
-import { expandKey, plural } from "../shared/text.ts";
+import { expandHint, plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { addUsage, contentText, emptyUsage, type Spend, modelLookup, spendOf, unpricedModel } from "../shared/util.ts";
 import {
@@ -178,7 +178,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			? ""
 			: expanded
 				? `\n  ${rest.join("\n  ")}`
-				: ` … +${plural(rest.length, "line")} (${expandKey()} to expand)`;
+				: [` … +${plural(rest.length, "line")}`, expandHint()].filter(Boolean).join(" ");
 		return new Text(theme.fg("dim", `↻ ${head}${tail}`), 1, 0);
 	});
 

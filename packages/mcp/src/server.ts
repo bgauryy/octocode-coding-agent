@@ -1,5 +1,5 @@
 import { firstLine } from "../../common/src/clip.ts";
-import type { McpExposure, McpServerEntry } from "./config.ts";
+import type { McpServerEntry } from "./config.ts";
 import type { McpServerConnection } from "./runtime.ts";
 
 /** A configured server. Disabled servers have no connection. */
@@ -22,12 +22,6 @@ export interface McpServer {
 	 */
 	unselected?: boolean;
 }
-
-export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
-	hidden: "not callable",
-	direct: "declared to the model like built-in tools",
-	deferred: "declared to the model; the prompt lists names and triggers, and the agent loads the full text with mcp",
-};
 
 export function isEnabled(server: Pick<McpServer, "entry">): boolean {
 	return server.entry.config.enabled !== false && !server.entry.withheld;

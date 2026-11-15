@@ -37,7 +37,7 @@ export const DEFAULT_LONG_WRITE_RATIO = 2;
 const SHORT_LIFETIME_MS = 5 * 60_000;
 
 /** Price per token of a cache read and a cache write, in any one unit (only their ratio matters). */
-interface CachePrices {
+export interface CachePrices {
 	read: number;
 	write: number;
 }
@@ -45,8 +45,18 @@ interface CachePrices {
 /** The read and write price per token of `model` for an entry that lives `ttlMs`; Anthropic's ratios without catalog prices. */
 export function cachePrices(model: Model<Api> | undefined, ttlMs: number): CachePrices {
 	const long = ttlMs > SHORT_LIFETIME_MS;
-	const fallback = { read: DEFAULT_READ_RATIO, write: long ? DEFAULT_LONG_WRITE_RATIO : DEFAULT_SHORT_WRITE_RATIO };
-	if (!model?.cost) return fallback;
+	return (
+		catalogPrices(model, ttlMs) ?? {
+			read: DEFAULT_READ_RATIO,
+			write: long ? DEFAULT_LONG_WRITE_RATIO : DEFAULT_SHORT_WRITE_RATIO,
+		}
+	);
+}
+
+/** The catalog's prices in US dollars per million tokens, or undefined when `model` lists none (`cachePrices` then uses ratios). */
+export function catalogPrices(model: Model<Api> | undefined, ttlMs: number): CachePrices | undefined {
+	if (!model?.cost) return undefined;
+	const long = ttlMs > SHORT_LIFETIME_MS;
 	const tokens = 1_000_000;
 	const rates = activeRates(model.cost);
 	const read = price(model, { cacheRead: tokens });
@@ -54,13 +64,13 @@ export function cachePrices(model: Model<Api> | undefined, ttlMs: number): Cache
 		model,
 		rates.cacheWrite > 0 ? { cacheWrite: tokens, ...(long ? { cacheWrite1h: tokens } : {}) } : { input: tokens },
 	);
-	return read > 0 && write > 0 ? { read, write } : fallback;
+	return read > 0 && write > 0 ? { read, write } : undefined;
 }
 
 /**
- * Requests expected to re-send the context's old results: as many as the context has seen so far (`requests`, since it
- * started or was last compacted; a session that has run k requests is about as likely to run k more), capped by the
- * requests left before the context (`contextTokens`) fills `contextWindow` at its average growth per request so far,
+ * Requests expected to re-send the context's old results: as many as the context has seen so far (`requests`: the
+ * replies since it started or was last compacted, never the ones kept from before a compaction; a session that has run k requests is about as likely to run k more), capped by the
+ * requests left before the context (`contextTokens`) fills `contextWindow` (the compaction threshold) at its average growth per request so far,
  * when a compaction summarizes the old results anyway.
  */
 export function expectedRemainingRequests(requests: number, contextTokens: number, contextWindow?: number): number {
@@ -71,7 +81,7 @@ export function expectedRemainingRequests(requests: number, contextTokens: numbe
 }
 
 /** The inputs of `clearingPays`, in tokens and the prices of `cachePrices`. */
-interface ClearingCost {
+export interface ClearingCost {
 	oldTokens: number;
 	suffixTokensAfter: number;
 	remainingRequests: number;

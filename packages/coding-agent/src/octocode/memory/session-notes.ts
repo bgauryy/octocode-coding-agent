@@ -3,7 +3,7 @@ import { CLEARED_RESULTS_TYPE } from "../shared/cleared-results.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { contentText } from "../shared/util.ts";
 import { MEMORY_MESSAGE_TYPE } from "./inject.ts";
-import type { MemoryKind } from "./store.ts";
+import { isMemoryKind, type MemoryKind } from "./store.ts";
 
 /**
  * Session notes: short notes one session keeps through its own compactions. They are `octocode-session-note` custom
@@ -159,7 +159,7 @@ function applyNote(fold: NoteFold, data: Record<string, unknown>): void {
 		version: (before?.version ?? 0) + 1,
 		title: text(data.title, before?.title ?? ""),
 		body: text(data.body, before?.body ?? ""),
-		kind: text(data.kind, before?.kind ?? "fact") as MemoryKind,
+		kind: isMemoryKind(data.kind) ? data.kind : (before?.kind ?? "fact"),
 		at: typeof data.at === "number" ? data.at : (before?.at ?? 0),
 	});
 }

@@ -429,7 +429,10 @@ describe("agents of different roles", () => {
 					description,
 					parameters: parameters as Tool["parameters"],
 				}));
-				const boundary = findToolCacheBoundary(tools.map((tool) => tool.name));
+				const boundary = findToolCacheBoundary(
+					tools.map((tool) => tool.name),
+					(name) => context.tools.some((tool) => tool.name === name && tool.roleVariant),
+				);
 				let payload: { tools?: Array<{ cache_control?: unknown }>; system?: Array<{ cache_control?: unknown }> } = {};
 				await anthropicStream(model, normalizeContext({ systemPrompt: "x", messages: [], tools }), {
 					apiKey: "sk-ant-api-test",

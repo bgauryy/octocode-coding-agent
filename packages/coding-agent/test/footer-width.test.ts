@@ -385,7 +385,7 @@ describe("footer text conventions", () => {
 			.render(120)
 			.map(stripAnsi);
 
-		expect(output[0]).toContain("/tmp/project (main) · demo");
+		expect(output[0]).toContain("/tmp/project ⎇ main · demo");
 		expect(output[1]).toContain("↑12.4k ↓2k");
 		expect(output.join("")).not.toContain("•");
 	});

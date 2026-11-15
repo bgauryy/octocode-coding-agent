@@ -1,5 +1,6 @@
 import type { BetaCacheControlEphemeral as CacheControlEphemeral } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
+import { ANTHROPIC_LONG_CACHE_HOSTS } from "../../utils/cache-capability-data.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
 import { isOpenRouterModel, matchesHost } from "../../utils/provider-host.ts";
 
@@ -42,19 +43,17 @@ export function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages
 }
 
 /**
- * Hosts whose documentation verifies the 1h cache tier through `cache_control.ttl`: Anthropic's own API, and OpenCode,
- * which serves Claude through Anthropic's API and bills 1h writes separately (its non-Claude models opt out in their
- * metadata). Every other Anthropic-compatible host (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax and other gateways)
- * stays on the 5-minute tier unless a model sets `compat.supportsLongCacheRetention: true`.
+ * The 1h tier follows `compat.supportsLongCacheRetention` when a model sets it (catalog entries for hosts that differ
+ * from the default, or a custom provider). Otherwise it is host-bound, not model-bound: the hosts in
+ * `ANTHROPIC_LONG_CACHE_HOSTS` verify it, so a model moved to another baseUrl falls back to the 5-minute tier.
  */
-const LONG_CACHE_HOSTS = ["api.anthropic.com", "opencode.ai"];
-
 export function getAnthropicCompat(model: Model<"anthropic-messages">) {
 	const isOpenRouter = isOpenRouterModel(model);
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention:
-			model.compat?.supportsLongCacheRetention ?? LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)),
+			model.compat?.supportsLongCacheRetention ??
+			ANTHROPIC_LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)),
 		sendSessionAffinityHeaders: model.compat?.sendSessionAffinityHeaders ?? isOpenRouter,
 		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? (isOpenRouter ? "openrouter" : undefined),
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? true,

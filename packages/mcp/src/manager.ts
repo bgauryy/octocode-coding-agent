@@ -1,26 +1,17 @@
-/** The `/mcp` manager in the TUI: server list, server actions, tools, exposure and sign-in screens. */
+/** The `/mcp` manager in the TUI: server list, server actions, tools and sign-in screens. */
 
 import { addMcpWithUi } from "./add-ui.ts";
 import type { SelectItem } from "@octocodeai/octocode-tui";
 import { firstLine } from "../../common/src/clip.ts";
 import type { McpContext } from "./host/types.ts";
 import { hostPaths } from "./host.ts";
-import type { McpExposure } from "./config.ts";
 import { reconnect, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
 import { formatMcpTool, toolCatalog } from "./inspection.ts";
 
 export { toolCatalog } from "./inspection.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { setExposure } from "./persistence.ts";
-import {
-	attentionRank,
-	describeState,
-	describeTransport,
-	EXPOSURE_DESCRIPTIONS,
-	isEnabled,
-	type McpServer,
-} from "./server.ts";
+import { attentionRank, describeState, describeTransport, isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import type { McpMenu, McpMenuItem, McpUi } from "./ui.ts";
 
@@ -103,9 +94,9 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 			items.push({ value: "signout", label: "Sign out", description: "deletes the stored credentials" });
 		}
 	}
-	items.push({ value: "exposure", label: "Exposure", description: exposureOf(entry) });
 	const facts = [
 		{ label: "Transport", value: describeTransport(entry) },
+		{ label: "Exposure", value: `${exposureOf(entry)} · change in /harness mcp` },
 		{ label: entry.scope ?? "config", value: entry.source },
 		...(entry.override ? [{ label: `${entry.overrideScope ?? "project"} override`, value: entry.override }] : []),
 		{ label: "State", value: isEnabled(server) ? describeState(server, false) : "Off · turn on in /harness mcp" },
@@ -161,28 +152,6 @@ async function showTools(state: McpExtensionState, ui: McpUi, name: string): Pro
 				cancelLabel: "back",
 			}));
 	}
-}
-
-async function chooseExposure(state: McpExtensionState, ui: McpUi, server: McpServer): Promise<string | undefined> {
-	const current = exposureOf(server.entry);
-	const choice = await ui.menu(() => ({
-		title: `${server.entry.name} — exposure`,
-		heading: "Exposure",
-		details:
-			server.entry.scope === "extension"
-				? `Applies to this session; the server is registered by ${server.entry.source}.`
-				: `Saved to ${state.configPath(server.entry)}.`,
-		items: (Object.keys(EXPOSURE_DESCRIPTIONS) as (keyof typeof EXPOSURE_DESCRIPTIONS)[]).map((exposure) => ({
-			value: exposure,
-			label: `${exposure === current ? "✓ " : "  "}${exposure}`,
-			description: EXPOSURE_DESCRIPTIONS[exposure],
-		})),
-		selected: current,
-		confirmLabel: "save",
-		cancelLabel: "back",
-	}));
-	if (!choice || choice === current) return undefined;
-	return setExposure(state, server, choice as McpExposure);
 }
 
 /** Sign in with the manager view's sign-in screen, which shows the URL with a copy key and cancels with Esc. */
@@ -274,9 +243,6 @@ async function runAction(
 			break;
 		case "tools":
 			await showTools(state, ui, server.entry.name);
-			break;
-		case "exposure":
-			message = await chooseExposure(state, ui, server);
 			break;
 	}
 	// The session ended meanwhile (for example during a sign-in), which made ctx stale.

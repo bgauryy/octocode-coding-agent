@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
 import { liveProcess, sameProcessAsync } from "../shared/process.ts";
-import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
 import { currentSessionWorkspace, sessionDir, sessionDirName, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { contentText } from "../shared/util.ts";
@@ -267,7 +267,7 @@ async function resume(ctx: ExtensionCommandContext, row: ListedSession, current:
 			`Another Octocode process (pid ${row.extra?.pid}) has this session open. Resume it here as well?`,
 		))
 	)
-		return;
+		return notify(ctx.ui, cancelledText("resumed"), "info");
 	await ctx.switchSession(row.info.path);
 }
 
@@ -320,7 +320,7 @@ async function forget(
 		"Forget Octocode data",
 		`Delete Octocode's saved output, bash logs, checkpoints and extras (cost, branch, files) for "${title(row)}"? The session file and its transcript index stay; delete the session itself with ctrl+d.`,
 	);
-	if (!ok) return;
+	if (!ok) return notify(ctx.ui, cancelledText("forgotten"), "info");
 	for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
 	index.forget(row.info.id);
 	notify(ctx.ui, `Forgot Octocode data for "${title(row)}".`, "info");

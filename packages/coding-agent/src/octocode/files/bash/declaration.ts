@@ -9,7 +9,6 @@ import { reasonSchema } from "../../shared/reason.ts";
 import { toolHeader } from "../../render/tool.ts";
 import type { RenderContext } from "../../render/types.ts";
 import { probeCliHost, renderCliGuide } from "./cli-guide.ts";
-import { LONG_COMMAND_AFTER_SECONDS } from "./long-commands.ts";
 import { DEFAULT_BASH_TIMEOUT, MAX_FOREGROUND_TIMEOUT } from "./results.ts";
 import { verificationSchema } from "./verification.ts";
 
@@ -22,7 +21,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 });
 
 export function bashDescription(): string {
-	return `Run commands in the working directory. Run builds, full test suites, servers or work over a minute in background: get job id, pid and log path, then a completion message. Foreground returns combined output and moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${LONG_COMMAND_AFTER_SECONDS}s for test runners, builds and servers) or on a user message. Timeouts do not undo effects; inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
+	return `Run commands in the working directory. Run builds, full test suites, servers or work over a minute in background: get job id, pid and log path, then a completion message. Foreground returns combined output and moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds and servers) or on a user message. Timeouts do not undo effects; inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */

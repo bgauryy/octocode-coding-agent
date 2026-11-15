@@ -4,22 +4,28 @@
  */
 
 import type { McpExposure, McpServerEntry } from "./config.ts";
-import { defersByRecentUse } from "./deferral.ts";
+import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
+import type { UsageAuditSource } from "../../common/src/tool-audit.ts";
+import { defersByRecentUse, defersByUsage } from "./deferral.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { configuredMcpToolExposure } from "./servers.ts";
+import { auditReader, sessionUsage } from "./usage-audit.ts";
 
 /**
  * What decided a tool's state: its own `toolExposure` entry (`pin`), a `toolExposure` pattern, the server's `exposure`,
- * recent use under `mcpExposure: "recent"`, another deferral of the session (the `mcpExposure` setting or a deferred
+ * recent use under `mcpExposure: "recent"`, the promotion snapshot under `"usage"` (the row's `audit.reason` says
+ * `promoted` or `unused`), another deferral of the session (the `mcpExposure` setting or a deferred
  * role), or nothing (`default`).
  */
-type McpToolDecision = "pin" | "pattern" | "server" | "recent" | "setting" | "default";
+type McpToolDecision = "pin" | "pattern" | "server" | "recent" | "usage" | "setting" | "default";
 
 interface McpToolState {
 	/** The tool's name as the server offers it. */
 	name: string;
 	state: McpExposure;
 	decidedBy: McpToolDecision;
+	/** What the usage record says of the tool; absent while it holds no data (and the setting is not `usage`). */
+	audit?: ToolAudit;
 }
 
 export interface McpServerToolStates {
@@ -36,22 +42,27 @@ interface McpToolStateSource {
 	servers: readonly McpServer[];
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure;
 	exposureSetting(): unknown;
+	/** The session's in-use set: the promotion snapshot under `usage`. */
+	recentTools?(): ReadonlySet<string> | undefined;
+	/** The usage record; default: the session's own. */
+	usage?(): UsageAuditSource | undefined;
 }
 
 function decisionOf(entry: McpServerEntry, tool: string, state: McpExposure, setting: unknown): McpToolDecision {
 	const pins = entry.config.toolExposure;
 	if (pins?.[tool] !== undefined) return "pin";
 	if (configuredMcpToolExposure({ ...entry.config, exposure: undefined }, tool) !== undefined) return "pattern";
-	const recent = defersByRecentUse(setting);
+	const byUse = defersByUsage(setting) ? "usage" : defersByRecentUse(setting) ? "recent" : undefined;
 	// The session declares something else than the configuration says: a deferral decided it.
-	if (state !== (entry.config.exposure ?? "direct")) return recent ? "recent" : "setting";
+	if (state !== (entry.config.exposure ?? "direct")) return byUse ?? "setting";
 	if (entry.config.exposure !== undefined) return "server";
-	return recent ? "recent" : "default";
+	return byUse ?? "default";
 }
 
 /** Every enabled server of the session with the state of each tool it offers. */
 export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[] {
 	const setting = source.exposureSetting();
+	const audit = auditReader((source.usage ?? sessionUsage)(), setting, source.recentTools?.());
 	return source.servers.filter(isEnabled).map(({ entry, connection }) => {
 		const connected = connection?.state === "connected";
 		return {
@@ -60,7 +71,13 @@ export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[]
 			saved: entry.scope !== "extension",
 			tools: (connected ? connection.tools : []).map((tool) => {
 				const state = source.toolExposure(entry, tool.name);
-				return { name: tool.name, state, decidedBy: decisionOf(entry, tool.name, state, setting) };
+				const decidedBy = decisionOf(entry, tool.name, state, setting);
+				return {
+					name: tool.name,
+					state,
+					decidedBy,
+					...(audit ? { audit: audit(entry.name, tool, state) } : {}),
+				};
 			}),
 		};
 	});

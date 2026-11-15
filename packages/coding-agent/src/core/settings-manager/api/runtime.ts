@@ -23,6 +23,8 @@ export interface RuntimeSettingsApi {
 	setRetryEnabled(enabled: boolean): void;
 	getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number };
 	getRetryFallbackModels(): string[];
+	/** `retry.fallbackCooldownMs`: how long a model that failed on a usage limit or refused credential is skipped. */
+	getRetryFallbackCooldownMs(): number;
 	getToolExecutionEarlyStart(): boolean;
 	getHttpIdleTimeoutMs(): number;
 	setHttpIdleTimeoutMs(timeoutMs: number): void;

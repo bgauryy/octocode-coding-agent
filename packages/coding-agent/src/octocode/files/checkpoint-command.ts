@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sessionFolder } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";
 import { plural } from "../shared/text.ts";
@@ -147,6 +147,7 @@ export function registerCheckpoints(
 
 	commands.add("rewind", {
 		description: "Undo file changes of recent turns",
+		argumentHint: "[turns]",
 		complete: (prefix) => {
 			const count = currentContext ? checkpoints.turnsOn(branchIds(currentContext)).length : 0;
 			return wordCompletions(
@@ -180,7 +181,7 @@ export function registerCheckpoints(
 					`Restore the files the last ${turns.length === 1 ? "turn" : `${turns.length} turns`} on this branch changed to their earlier content. Files changed since are left alone. This cannot be undone.`,
 				))
 			)
-				return say(ctx, "Nothing was rewound.");
+				return say(ctx, cancelledText("rewound"));
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {
@@ -211,7 +212,7 @@ export function registerCheckpoints(
 		const yes = "Yes, restore files to that point";
 		const title = `The agent changed ${files} file${files === 1 ? "" : "s"} after this point. Restore them?`;
 		const choice = await withDialog(
-			() => ctx.ui.select(title, [yes, "No, keep current files"], signal ? { signal } : undefined),
+			() => ctx.ui.select(title, ["No, keep current files", yes], signal ? { signal } : undefined),
 			signal,
 		);
 		if (choice === yes) chosen = turns;

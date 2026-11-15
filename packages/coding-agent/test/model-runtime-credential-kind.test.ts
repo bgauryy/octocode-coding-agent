@@ -43,7 +43,11 @@ describe("a saved Claude subscription token", () => {
 			openai: { type: "api_key", key: "sk-test" },
 		});
 		expect(runtime.hasConfiguredAuth("anthropic")).toBe(false);
-		expect(runtime.getProviderAuthStatus("anthropic")).toEqual({ configured: false, source: "stored" });
+		expect(runtime.getProviderAuthStatus("anthropic")).toEqual({
+			configured: false,
+			source: "stored",
+			label: "auth.json",
+		});
 		expect(runtime.getAvailableSnapshot().some((model) => model.provider === "anthropic")).toBe(false);
 		expect(runtime.getAvailableSnapshot().some((model) => model.provider === "openai")).toBe(true);
 		expect((await runtime.getAuth("anthropic"))?.auth.apiKey).toBe("sk-ant-oat01-test");

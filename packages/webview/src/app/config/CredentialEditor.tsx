@@ -1,6 +1,7 @@
 import type { ConfigCredentialCommand, ProviderCredentialStatus } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type SubmitEvent, useId, useState } from "react";
+import { RequestError } from "../../request.ts";
 import { Button } from "../ui/primitives.tsx";
 
 export type SaveCredential = (command: ConfigCredentialCommand) => Promise<void>;
@@ -29,11 +30,14 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	const [plaintext, setPlaintext] = useState(false);
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
 	const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | undefined>();
+	/** The host could not check the key (provider unreachable): the user may save it unchecked. */
+	const [unverified, setUnverified] = useState(false);
 	const ready = key.trim().length > 0 && (keychainAvailable || plaintext) && !busy;
 
 	async function apply(command: ConfigCredentialCommand) {
 		setBusy(command.action === "set" ? "save" : "clear");
 		setMessage(undefined);
+		setUnverified(false);
 		try {
 			await save(command);
 			setKey("");
@@ -49,20 +53,24 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 			});
 		} catch (error) {
 			setMessage({ tone: "error", text: errorMessage(error) });
+			setUnverified(command.action === "set" && error instanceof RequestError && error.code === "unverified");
 		} finally {
 			setBusy(undefined);
 		}
 	}
 
+	const setKeyCommand = (acknowledgeUnverified: boolean): ConfigCredentialCommand => ({
+		action: "set",
+		provider: row.provider,
+		key: key.trim(),
+		...(keychainAvailable ? {} : { acknowledgePlaintext: true }),
+		...(acknowledgeUnverified ? { acknowledgeUnverified: true } : {}),
+	});
+
 	const submit = (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!ready) return;
-		void apply({
-			action: "set",
-			provider: row.provider,
-			key: key.trim(),
-			...(keychainAvailable ? {} : { acknowledgePlaintext: true }),
-		});
+		void apply(setKeyCommand(false));
 	};
 
 	if (!open) {
@@ -108,6 +116,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 					setKey("");
 					setPlaintext(false);
 					setMessage(undefined);
+					setUnverified(false);
 				}}
 			>
 				Cancel
@@ -127,6 +136,16 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				</label>
 			)}
 			{message && <Notice message={message} />}
+			{unverified && (
+				<Button
+					size="sm"
+					aria-label={`Save key for ${title} without checking it`}
+					disabled={!ready}
+					onClick={() => void apply(setKeyCommand(true))}
+				>
+					Save unverified
+				</Button>
+			)}
 		</form>
 	);
 }

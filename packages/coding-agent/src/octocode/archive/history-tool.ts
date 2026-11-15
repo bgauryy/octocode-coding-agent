@@ -110,6 +110,7 @@ function scanNote(found: HistorySearch, total: number, sessions: number, source:
 export function createHistoryTool() {
 	return timedTool({
 		name: "archive",
+		roleVariant: true,
 		label: "Archive",
 		description:
 			"Search and read earlier history: this session's compacted messages, its fork sources, its parent session, and this workspace's " +

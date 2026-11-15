@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
+import { copyIncluded } from "../worktrees/include.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
 import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
 
@@ -54,6 +56,7 @@ export async function createWorktree(
 		throw error;
 	}
 	recordTrust();
+	const included = await copyIgnoredIncludes(repo, worktree);
 	// `worktree add` does not fetch submodules (that would reach the network from URLs the branch names), so they are empty.
 	const submodules = fs.existsSync(path.join(worktree, ".gitmodules"))
 		? "The repository has submodules; they are empty in the isolated worktree (not initialised), so the subagent cannot build or test them."
@@ -63,6 +66,7 @@ export async function createWorktree(
 			? "The main tree has uncommitted changes; the isolated subagent starts from HEAD without them."
 			: "",
 		submodules,
+		included,
 	].filter(Boolean);
 	const sub = path.relative(repo, path.resolve(cwd));
 	const childCwd =
@@ -76,4 +80,27 @@ export async function createWorktree(
 		cwd: childCwd,
 		...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
 	};
+}
+
+/**
+ * Copies the checkout's `.worktreeinclude` files (typically `.env`) as `/worktree new` does, keeping only copies Git
+ * ignores in the worktree: finishing commits every other untracked file into the child's result. Returns a warning
+ * naming what was left out, or "".
+ */
+async function copyIgnoredIncludes(repo: string, worktree: string): Promise<string> {
+	try {
+		const { copied, skipped } = await copyIncluded(repo, worktree);
+		const listed = copied.length ? await gitQuiet(worktree, ["check-ignore", "--", ...copied]) : undefined;
+		// A path git quotes in its output does not match, so its copy is removed: the safe side.
+		const ignored = new Set(listed?.split("\n"));
+		const tracked = copied.filter((file) => !ignored.has(file));
+		for (const file of tracked) fs.rmSync(path.join(worktree, file), { force: true });
+		const left = [
+			...skipped.filter((entry) => entry.reason !== "already exists").map((entry) => `${entry.path} (${entry.reason})`),
+			...tracked.map((file) => `${file} (not ignored by Git, so the result would commit it)`),
+		];
+		return left.length > 0 ? `Not copied from .worktreeinclude: ${left.join(", ")}.` : "";
+	} catch (error) {
+		return `.worktreeinclude was not applied: ${errorMessage(error)}.`;
+	}
 }

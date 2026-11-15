@@ -102,7 +102,7 @@ describe("terminal content boundary", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "important result" }], isError: false });
 		const rendered = stripAnsi(component.render(80).join("\n"));
-		expect(rendered).toContain("Tool renderer failed");
+		expect(rendered).toContain("renderer failed");
 		expect(rendered).toContain("important result");
 	});
 
@@ -112,7 +112,7 @@ describe("terminal content boundary", () => {
 	});
 
 	it.each(["kitty", "iterm2", null] as const)(
-		"keeps generic tool image and text blocks ordered with %s graphics",
+		"keeps generic tool text in order and draws its image with %s graphics",
 		(images) => {
 			setCapabilities({ images, trueColor: true, hyperlinks: true });
 			for (const renderer of [undefined, {}]) {
@@ -130,10 +130,12 @@ describe("terminal content boundary", () => {
 					isError: false,
 				});
 				const rendered = component.render(80).join("\n");
-				const imageMarker =
-					images === "kitty" ? "\x1b_G" : images === "iterm2" ? "\x1b]1337;File=" : "Image attachment";
-				expect(rendered.indexOf("BEFORE IMAGE")).toBeLessThan(rendered.indexOf(imageMarker));
-				expect(rendered.indexOf(imageMarker)).toBeLessThan(rendered.indexOf("AFTER IMAGE"));
+				const imageMarker = images === "kitty" ? "\x1b_G" : images === "iterm2" ? "\x1b]1337;File=" : "[image]";
+				expect(rendered.indexOf("BEFORE IMAGE")).toBeGreaterThan(-1);
+				expect(rendered.indexOf("AFTER IMAGE")).toBeGreaterThan(rendered.indexOf("BEFORE IMAGE"));
+				// A drawn image follows the text rows; a placeholder keeps its place in the text.
+				if (images === null) expect(rendered.indexOf(imageMarker)).toBeGreaterThan(rendered.indexOf("BEFORE IMAGE"));
+				else expect(rendered.indexOf(imageMarker)).toBeGreaterThan(rendered.indexOf("AFTER IMAGE"));
 			}
 		},
 	);

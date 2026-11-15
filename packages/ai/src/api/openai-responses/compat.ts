@@ -1,5 +1,4 @@
 import type { Model, OpenAIResponsesCompat } from "../../types.ts";
-import { isOpenAIExtendedRetentionModel } from "../../utils/cache-capabilities.ts";
 import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
@@ -20,16 +19,27 @@ function detectSessionAffinityFormat(model: Pick<Model<"openai-responses">, "pro
 	return isOpenRouterModel(model) ? "openrouter" : "openai";
 }
 
+function baseUrlHostname(model: Pick<Model<"openai-responses">, "id" | "provider" | "baseUrl">): string {
+	try {
+		return new URL(model.baseUrl).hostname;
+	} catch {
+		throw new Error(
+			`Invalid baseUrl for model "${model.provider}/${model.id}": ${JSON.stringify(model.baseUrl)} is not an absolute URL`,
+		);
+	}
+}
+
 export function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
 	return {
 		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
 		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
 		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
-		// OpenAI documents the long tier per model: 12h in explicit mode (GPT-5.6 and later), 24h retention for a list.
+		// OpenAI documents the long tier per model: 12h in explicit mode (GPT-5.6 and later), 24h retention for a list the
+		// catalog carries as this flag. A model without the flag stays on the default tier.
 		supportsLongCacheRetention:
 			model.compat?.supportsLongCacheRetention ??
-			((model.provider === "openai" || new URL(model.baseUrl).hostname === "api.openai.com") &&
-				(model.compat?.supportsExplicitPromptCacheMode === true || isOpenAIExtendedRetentionModel(model.id))),
+			((model.provider === "openai" || baseUrlHostname(model) === "api.openai.com") &&
+				model.compat?.supportsExplicitPromptCacheMode === true),
 		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		supportsStrictMode: model.compat?.supportsStrictMode ?? false,
 		supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
@@ -37,6 +47,7 @@ export function getCompat(model: Model<"openai-responses">): Required<OpenAIResp
 		supportsToolSearch: model.compat?.supportsToolSearch ?? false,
 		supportsExplicitPromptCacheMode: model.compat?.supportsExplicitPromptCacheMode ?? false,
 		supportsMaxOutputTokens: model.compat?.supportsMaxOutputTokens ?? true,
+		supportsInstructionBreakpoints: model.compat?.supportsInstructionBreakpoints ?? false,
 		supportsMidConvoEffort: model.compat?.supportsMidConvoEffort ?? false,
 	};
 }

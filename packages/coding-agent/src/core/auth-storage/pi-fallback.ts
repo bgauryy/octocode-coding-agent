@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
 import type { AuthStorage, HeldCredential } from "../auth-storage.ts";
@@ -27,6 +28,8 @@ export class PiFallbackCredentialStore implements CredentialStore {
 	private readonly primary: AuthStorage | ReadOnlyAuthStorage;
 	private readonly piAuthPaths: readonly string[];
 	private readonly options: FallbackCredentialOptions;
+	/** The fallback file each provider's credential was last read from; a provider served by Octocode's file has none. */
+	private readonly origins = new Map<string, string>();
 
 	constructor(
 		primary: AuthStorage | ReadOnlyAuthStorage,
@@ -55,8 +58,30 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		return "watch" in this.primary ? this.primary.watch(onChange) : () => {};
 	}
 
+	/** The file (home shown as `~`) that last supplied the provider's credential when it is a fallback file. */
+	credentialOrigin(providerId: string): string | undefined {
+		const path = this.origins.get(providerId);
+		const home = homedir();
+		return path?.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+	}
+
+	/** Where Octocode's own `auth.json` keeps the provider's secret; undefined when it has no entry there. */
+	storedIn(providerId: string): "keychain" | "auth.json" | undefined {
+		return "storedIn" in this.primary ? this.primary.storedIn(providerId) : undefined;
+	}
+
 	/** The first usable fallback entry for the provider, unresolved; read fresh so edits to Pi's file apply. */
 	private async readPi(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+		const found = await this.findPi(providerId, options);
+		if (found) this.origins.set(providerId, found.path);
+		else this.origins.delete(providerId);
+		return found?.credential;
+	}
+
+	private async findPi(
+		providerId: string,
+		options?: AuthOperationOptions,
+	): Promise<{ credential: Credential; path: string } | undefined> {
 		if (!this.isEnabled()) return undefined;
 		if (await this.options.ownsKey?.(providerId)) return undefined;
 		for (const path of this.piAuthPaths) {
@@ -64,14 +89,17 @@ export class PiFallbackCredentialStore implements CredentialStore {
 			if (!credential) continue;
 			if (credential.type === "api_key" && credential.key && isCommandConfigValue(credential.key)) continue;
 			if (credential.type === "oauth" && this.options.supportsOAuth?.(providerId) === false) continue;
-			return credential;
+			return { credential, path };
 		}
 		return undefined;
 	}
 
 	async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		const own = await this.primary.read(providerId, options);
-		if (own) return own;
+		if (own) {
+			this.origins.delete(providerId);
+			return own;
+		}
 		const pi = await this.readPi(providerId, options);
 		if (pi?.type !== "api_key" || !pi.key) return pi;
 		return { ...pi, key: resolveConfigValue(pi.key, pi.env) };
@@ -79,6 +107,7 @@ export class PiFallbackCredentialStore implements CredentialStore {
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		const entries = new Map((await this.primary.list(options)).map((entry) => [entry.providerId, entry]));
+		for (const providerId of entries.keys()) this.origins.delete(providerId);
 		for (const path of this.isEnabled() ? this.piAuthPaths : []) {
 			for (const entry of await this.file(path).list(options)) {
 				if (entries.has(entry.providerId)) continue;
@@ -118,8 +147,18 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		return async (current: Credential | undefined) => fn(current ?? (await this.readPi(providerId, options)));
 	}
 
-	/** Removes Octocode's credential only; a Pi credential stays in Pi's file and remains the fallback. */
-	delete(providerId: string, options?: AuthOperationOptions): Promise<void> {
-		return this.primary.delete(providerId, options);
+	/**
+	 * Removes Octocode's credential. When Pi's file still holds a usable one, Octocode's store keeps a signed-out
+	 * marker (an empty OAuth record with `signedOut`) so the provider stays unconfigured here; Pi's files are never
+	 * changed. A later login or saved key replaces the marker.
+	 */
+	async delete(providerId: string, options?: AuthOperationOptions): Promise<void> {
+		await this.primary.delete(providerId, options);
+		if (!(await this.readPi(providerId, options))) return;
+		await this.primary.modify(
+			providerId,
+			async (current) => current ?? { type: "oauth", access: "", refresh: "", expires: 0, signedOut: true },
+			options,
+		);
 	}
 }

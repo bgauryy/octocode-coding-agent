@@ -8,7 +8,6 @@ import type { EditorTheme, MarkdownTheme, SelectListTheme } from "../src/index.t
 const chalk = new Chalk({ level: 3 });
 
 export const defaultSelectListTheme: SelectListTheme = {
-	selectedPrefix: (text: string) => chalk.blue(text),
 	selectedText: (text: string) => chalk.bold(text),
 	description: (text: string) => chalk.dim(text),
 	scrollInfo: (text: string) => chalk.dim(text),

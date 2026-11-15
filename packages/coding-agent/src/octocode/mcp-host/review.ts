@@ -29,7 +29,7 @@ export const review: McpHostPorts["review"] = {
 	/** The static scan `/security` shows for this entry once it is loaded: same item, same rules, nothing started. */
 	rate(entry, cwd) {
 		const [item] = mcpReviewItems([entry], cwd);
-		const { rating, findings } = scan(item as ReviewItem);
+		const { rating, findings } = scan(item);
 		return { rating, findings: findings.map((finding) => visible(finding.text)) };
 	},
 	withheld(entries, cwd) {

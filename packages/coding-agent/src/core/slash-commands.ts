@@ -39,7 +39,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "plan",
 		requiresNative: true,
 		description: "Research under a planning constraint",
-		argumentHint: "[description|--off|--approve <revision>]",
+		argumentHint: "[description|--show|--off|--approve <revision>]",
 	},
 	{
 		name: "btw",
@@ -49,7 +49,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "context",
 		description: "Show or set how much history the model sees",
-		argumentHint: "[all|size|reset|full|tokens]",
+		argumentHint: "[all|size|reset|full|<tokens>]",
 		argumentValues: ["all", "size", "reset", "full"],
 	},
 	{

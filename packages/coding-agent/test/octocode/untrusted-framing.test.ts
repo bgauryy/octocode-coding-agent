@@ -10,6 +10,7 @@ import { Mail } from "../../src/octocode/team/mail.ts";
 import type { Message } from "../../src/octocode/team/model.ts";
 import { userProof, userProofValid } from "../../src/octocode/team/proof.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
+import { renderInstruction } from "../../src/core/prompt-template.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -43,7 +44,7 @@ describe("untrusted text framing", () => {
 		expect(before).toHaveLength(1);
 		expect(before[0]).toMatch(/^Message #7 from agent peer-1111 at \d\d:\d\d:\d\d:$/);
 		expect(inside).toEqual(forged.split("\n"));
-		expect(after).toEqual(["(FYI: no reply needed.)"]);
+		expect(after).toEqual([renderInstruction("notices/mail/no-reply-needed.md")]);
 	});
 
 	it("shows controls and invisible characters in a fenced body as escapes, so the model reads what was there", () => {

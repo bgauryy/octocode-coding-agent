@@ -22,7 +22,13 @@ import { readPaths } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
 import { outputDirOnce, saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
-import { cachePrices, clearingPays, expectedRemainingRequests } from "./clearing-cost.ts";
+import {
+	cachePrices,
+	catalogPrices,
+	clearingPays,
+	expectedRemainingRequests,
+	type ClearingCost,
+} from "./clearing-cost.ts";
 
 /**
  * Clearing old tool results when that costs less than re-sending them.
@@ -49,6 +55,8 @@ import { cachePrices, clearingPays, expectedRemainingRequests } from "./clearing
 export const KEEP_RECENT_RESULTS = 5;
 /** The text the older results must total (in tokens, by `CHARS_PER_TOKEN`) for any clearing to happen: below it the saving is too small to be worth a changed prefix and the saved copies. */
 export const CLEAR_AT_LEAST_TOKENS = 20_000;
+// Both stay absolute, not scaled by the window: clearing is priced (`clearingPays`), and freeing a number of tokens saves
+// the same per request whatever the window holds.
 
 /**
  * `web` and every MCP tool result (`isMcpToolName`): its whole text is saved to a file before it is cleared, and the
@@ -159,11 +167,42 @@ export function prefixRewritten(
 	return false;
 }
 
+/**
+ * The assistant messages of `messages` that came after the branch's last compaction: the ones the context has seen
+ * since it was summarized. The projection lists the replies kept from before the compaction too, but they are not
+ * requests the old results will be re-sent by. A branch without a compaction counts every reply.
+ */
+function repliesSinceCompaction(ctx: ExtensionContext, messages: readonly MessageRef[]): number {
+	const replies = messages.filter(({ message }) => isRecord(message) && message.role === "assistant");
+	const branch: unknown[] = ctx.sessionManager.getBranch?.() ?? [];
+	let compaction = -1;
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (isRecord(entry) && entry.type === "compaction") {
+			compaction = index;
+			break;
+		}
+	}
+	if (compaction < 0) return replies.length;
+	const later = new Set(branch.slice(compaction + 1).map((entry) => (isRecord(entry) ? entry.id : undefined)));
+	return replies.filter(({ id }) => later.has(id)).length;
+}
+
+/** The previous request's cache read in tokens, as its reply reported it. */
+function lastCacheRead(messages: readonly MessageRef[]): number | undefined {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index].message;
+		if (!isRecord(message) || message.role !== "assistant" || !isRecord(message.usage)) continue;
+		return typeof message.usage.cacheRead === "number" ? message.usage.cacheRead : undefined;
+	}
+	return undefined;
+}
+
 /** What the request about to be made tells the clearing decision besides the cache clock: see `clearStaleResults`. */
 export interface ClearingOccasion {
 	/** The request rewrites the prefix anyway (`prefixRewritten`). */
 	rewrite?: boolean;
-	/** The working context in tokens (the model's window after the session's context budget). */
+	/** The context size in tokens at which a compaction summarizes the old results anyway (the window less the output reserve). */
 	contextWindow?: number;
 	/** The context's size in tokens as the last reply reported it; else estimated from the messages. */
 	contextTokens?: number;
@@ -196,17 +235,18 @@ export function clearStaleResults(
 	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
 	if (tokensOf(older) < CLEAR_AT_LEAST_TOKENS) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));
-	const requests = messages.filter(({ message }) => isRecord(message) && message.role === "assistant").length;
+	const requests = repliesSinceCompaction(ctx, messages);
 	const contextTokens = occasion.contextTokens ?? tokens.reduce((sum, each) => sum + each, 0);
 	const prices = cachePrices(ctx.model, ttlMs ?? 0);
 	const remainingRequests = expectedRemainingRequests(requests, contextTokens, occasion.contextWindow);
-	const pays = (list: readonly Candidate[]): boolean => {
+	const costOf = (list: readonly Candidate[]): ClearingCost => {
 		const oldTokens = tokensOf(list);
-		if (list.length === 0 || oldTokens < CLEAR_AT_LEAST_TOKENS) return false;
-		const suffix = tokens.slice(list[0].index).reduce((sum, each) => sum + each, 0);
+		const suffix = list.length === 0 ? 0 : tokens.slice(list[0].index).reduce((sum, each) => sum + each, 0);
 		const suffixTokensAfter = Math.max(0, suffix - oldTokens) + list.length * PLACEHOLDER_TOKENS;
-		return clearingPays({ oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway });
+		return { oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway };
 	};
+	const pays = (list: readonly Candidate[]): boolean =>
+		list.length > 0 && tokensOf(list) >= CLEAR_AT_LEAST_TOKENS && clearingPays(costOf(list));
 	if (!pays(older)) return;
 	// One output folder for the batch: resolving it per result repeated the workspace's realpath and folder checks.
 	const outputDir = outputDirOnce();
@@ -215,7 +255,8 @@ export function clearStaleResults(
 		return file ? [{ candidate, file }] : [];
 	});
 	// Results that could not be saved stay; if what is left no longer pays, the saved copies stay unused.
-	if (!pays(saved.map(({ candidate }) => candidate))) return;
+	const clearedCandidates = saved.map(({ candidate }) => candidate);
+	if (!pays(clearedCandidates)) return;
 	const results = saved.map(({ candidate, file }) => ({ id: candidate.id, saved: file }));
 	// Notes pointing at a result cleared now or earlier take that result's placeholder.
 	const savedOf = new Map([
@@ -229,7 +270,18 @@ export function clearStaleResults(
 		const id = String(message.toolCallId);
 		if (file !== undefined && !savedOf.has(id)) results.push({ id, saved: file });
 	}
-	api.appendEntry(CLEARED_RESULTS_TYPE, { results });
+	// What the decision rested on, so the profiler can compare it with what the next request cost (`profiler/clearing-ledger.ts`).
+	const decided = costOf(clearedCandidates);
+	const cacheRead = lastCacheRead(messages);
+	api.appendEntry(CLEARED_RESULTS_TYPE, {
+		results,
+		oldTokens: Math.round(decided.oldTokens),
+		suffixTokens: Math.round(decided.suffixTokensAfter),
+		remainingRequests: Math.round(decided.remainingRequests * 10) / 10,
+		prices: { ...prices, unit: catalogPrices(ctx.model, ttlMs ?? 0) ? "usd-per-million" : "ratio" },
+		rewriteAnyway,
+		...(cacheRead === undefined ? {} : { cacheRead }),
+	});
 	// The entry is in the branch now (`appendEntry` is synchronous), so `contextReads` sees the context as cleared.
 	const shown = new Set(contextReads(ctx).map((read) => canonicalPath(read.file)));
 	const calls = toolCallArguments(messages);

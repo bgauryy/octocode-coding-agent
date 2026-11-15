@@ -24,6 +24,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
   ${APP_NAME} trust <list|add|remove>   Show, grant or revoke folder trust
+  ${APP_NAME} security <list|check|approve|deny> Review the hooks, MCP servers and skills a folder would load
   ${APP_NAME} profile [--insights]      Show where a session's requests, cache and waits went
   ${APP_NAME} remote <list|link|stop>   List sessions the web daemon reaches; publish or stop a remote link
   ${APP_NAME} context <command>         Show and store the skill descriptions agents read

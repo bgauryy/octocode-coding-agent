@@ -22,12 +22,12 @@ export const DEFAULT_CHILD_TOOLS = ["skill"] as const;
 export const MCP_ACCESS_TOOLS = ["mcp"] as const;
 
 /**
- * The local research tools: every MCP tool the session's servers mark as a reader or a search (`roles` in a server
- * entry, `mcp/src/roles.ts`), never a tool picked by name. Empty while no server has roles.
+ * The local research tools: every MCP tool the session's servers mark as a reader, a search or a judge (`roles` in a
+ * server entry, `mcp/src/roles.ts`), never a tool picked by name. Empty while no server has roles.
  */
 export function localResearchTools(): readonly string[] {
-	const { readers, searches } = currentToolRoles();
-	return [...readers, ...searches];
+	const { readers, searches, judges } = currentToolRoles();
+	return [...readers, ...searches, ...judges];
 }
 
 /**

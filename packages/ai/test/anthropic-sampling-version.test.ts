@@ -23,6 +23,46 @@ async function temperatureSent(headers?: Record<string, string>, modelHeaders?: 
 	return captured?.temperature;
 }
 
+async function wireRequest(headers?: Record<string, string | null>) {
+	const base = getBuiltinModel("anthropic", "claude-sonnet-4-6");
+	const model: Model<"anthropic-messages"> = { ...base, baseUrl: "http://127.0.0.1:9" };
+	let sent: { version: string | null; temperature?: number } | undefined;
+	const fetch: typeof globalThis.fetch = async (_input, init) => {
+		const body = JSON.parse(String(init?.body)) as { temperature?: number };
+		sent = { version: new Headers(init?.headers).get("anthropic-version"), temperature: body.temperature };
+		throw new Error("request captured");
+	};
+	await streamSimple(
+		model,
+		{ messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+		{
+			apiKey: "k",
+			temperature: 0.5,
+			headers,
+			fetch,
+			maxRetries: 0,
+		},
+	).result();
+	return sent;
+}
+
+describe("Anthropic version actually sent", () => {
+	it("pins the default version explicitly and keeps temperature when no header is configured", async () => {
+		expect(await wireRequest()).toEqual({ version: "2023-06-01", temperature: 0.5 });
+	});
+
+	it("sends an old configured version unchanged with temperature", async () => {
+		expect(await wireRequest({ "anthropic-version": "2026-10-20" })).toEqual({
+			version: "2026-10-20",
+			temperature: 0.5,
+		});
+	});
+
+	it("sends a new configured version unchanged without temperature", async () => {
+		expect(await wireRequest({ "anthropic-version": "2026-10-21" })).toEqual({ version: "2026-10-21" });
+	});
+});
+
 describe("Anthropic sampling parameters by configured API version", () => {
 	it("sends temperature with no version, the default version or an older one", async () => {
 		expect(await temperatureSent()).toBe(0.5);
@@ -34,5 +74,14 @@ describe("Anthropic sampling parameters by configured API version", () => {
 		expect(await temperatureSent({ "anthropic-version": "2026-10-21" })).toBeUndefined();
 		expect(await temperatureSent({ "Anthropic-Version": "2027-01-01" })).toBeUndefined();
 		expect(await temperatureSent(undefined, { "anthropic-version": "2026-10-21" })).toBeUndefined();
+	});
+});
+
+describe("Anthropic client headers", () => {
+	it("sets anthropic-version on the client itself", async () => {
+		const { createClient } = await import("../src/api/anthropic-messages/client.ts");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-6");
+		const client = createClient(model, "k") as unknown as { _options: { defaultHeaders?: Record<string, string> } };
+		expect(client._options.defaultHeaders?.["anthropic-version"]).toBe("2023-06-01");
 	});
 });

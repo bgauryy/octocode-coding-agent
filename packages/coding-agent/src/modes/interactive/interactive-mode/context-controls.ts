@@ -41,7 +41,7 @@ export async function handleContextSize(host: Host, args: string): Promise<boole
 	} else if (args !== "reset") {
 		tokens = parseContextSize(args);
 		if (tokens === undefined) {
-			host.showWarning("Usage: /context [all|size|reset|full|tokens]. Examples: /context 32k, /context 128000.");
+			host.showWarning("Usage: /context [all|size|reset|full|<tokens>]. Examples: /context 32k, /context 128000.");
 			return true;
 		}
 	}

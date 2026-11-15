@@ -6,6 +6,7 @@ import type {
 } from "@octocodeai/octocode-contracts/profiler";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cacheFindings } from "./cache-findings.ts";
+import { clearingFindings } from "./clearing-ledger.ts";
 import { num } from "./entries.ts";
 import { latencyFindings } from "./latency-findings.ts";
 import { PERMISSION_WAIT_LABEL, type Lane } from "./timeline.ts";
@@ -177,6 +178,7 @@ function deadLetter(message: ProfileMessage): ProfileFinding {
 export function deriveInsights(input: InsightInput): ProfileInsights {
 	const findings = [
 		...cacheFindings(input.lanes),
+		...clearingFindings(input.lanes),
 		...eventFindings(input.events),
 		...latencyFindings(input.events, input.lanes),
 	];

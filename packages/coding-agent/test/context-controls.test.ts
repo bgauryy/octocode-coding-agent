@@ -132,7 +132,7 @@ describe("session context controls", () => {
 		const status = vi.fn();
 		const host = createFakeHost({ session, showWarning: warning, showStatus: status, ui: { requestRender: vi.fn() } });
 		await expect(handleContextSize(host, "banana")).resolves.toBe(true);
-		expect(warning).toHaveBeenCalledWith(expect.stringContaining("Usage: /context [all|size|reset|full|tokens]"));
+		expect(warning).toHaveBeenCalledWith(expect.stringContaining("Usage: /context [all|size|reset|full|<tokens>]"));
 		expect(status).not.toHaveBeenCalled();
 		expect(session.model?.contextWindow).toBe(200_000);
 	});

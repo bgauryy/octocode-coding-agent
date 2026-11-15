@@ -32,6 +32,7 @@ describe("AgentSession MCP OAuth", () => {
 			source: "test",
 		};
 		const notifications: string[] = [];
+		const confirms: string[] = [];
 		const opened: URL[] = [];
 		let redirectLocation: Promise<string> | undefined;
 		const harness: Harness = await createHarness({
@@ -59,6 +60,11 @@ describe("AgentSession MCP OAuth", () => {
 		await harness.session.bindExtensions({
 			uiContext: createTestUiContext({
 				notify: (message) => notifications.push(message),
+				// Signing out asks first; the user agrees.
+				confirm: async (title) => {
+					confirms.push(title);
+					return true;
+				},
 				// The paste prompt waits until sign-in completes unless the user pastes the redirect URL.
 				input: (_title, _placeholder, opts) =>
 					browser === "paste"
@@ -68,7 +74,7 @@ describe("AgentSession MCP OAuth", () => {
 							),
 			}),
 		});
-		return { harness, server, notifications, backend, opened };
+		return { harness, server, notifications, confirms, backend, opened };
 	}
 
 	async function callWhoami(harness: Harness): Promise<ToolResultMessage> {
@@ -86,12 +92,14 @@ describe("AgentSession MCP OAuth", () => {
 	}
 
 	it("signs in through the browser, refreshes expired tokens, and signs out", async () => {
-		const { harness, server, notifications, backend } = await setup("follow");
+		const { harness, server, notifications, confirms, backend } = await setup("follow");
 
 		await harness.session.prompt("/mcp");
 		// Startup problems are reported once, pointing to /mcp.
 		expect(notifications).toContain("MCP servers need attention:\n  issues: needs sign-in\nRun /mcp to fix.");
-		expect(notifications.at(-1)).toBe("issues: needs sign-in, run /mcp login issues (direct)");
+		const status = notifications.at(-1) ?? "";
+		expect(status).toMatch(/^issues: .*needs sign-in/u);
+		expect(status).toContain("run /mcp login issues");
 
 		await harness.session.prompt("/mcp login issues");
 		expect(notifications.at(-1)).toBe('Signed in to MCP server "issues" (1 tools).');
@@ -115,6 +123,7 @@ describe("AgentSession MCP OAuth", () => {
 		expect(server.log.slice(-2)).toEqual(["token refresh", "call access-3"]);
 
 		await harness.session.prompt("/mcp logout issues");
+		expect(confirms).toEqual(["Sign out of issues?"]);
 		expect(notifications.at(-1)).toBe('Signed out of MCP server "issues".');
 		const result = await callWhoami(harness);
 		expect(result.isError).toBe(true);

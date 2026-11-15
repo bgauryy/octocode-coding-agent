@@ -138,7 +138,7 @@ describe("background job messages", () => {
 
 	it("hide the status header and name the whole log path, wrapped, when expanded", () => {
 		const collapsed = text(renderJobMessage(fresh, false, theme));
-		expect(collapsed).toContain("Job(bash-1: yarn build)");
+		expect(collapsed).toContain("Bash(bash-1: yarn build) · background");
 		expect(collapsed).toContain("failed with exit code 1 after 1m1s");
 		expect(collapsed).not.toContain("[exit 1");
 		for (const width of [40, 80]) {

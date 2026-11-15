@@ -1,5 +1,5 @@
 import { type AgentDb, type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
-import { liveProcess, sameProcess } from "../../shared/process.ts";
+import { liveProcess, processAlive, sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -10,11 +10,12 @@ export type ProcessIdentity = agents.ProcessIdentity;
 
 /**
  * Whether a member row's process still runs, never running `ps` on this thread (`liveProcess`): the team's ticker and
- * sweep ask it every second. A heartbeat within `STALE_MS` vouches for the process it names, so such a row costs no new
- * process table either: only what the shared table already shows can retire it.
+ * sweep ask it every second. A heartbeat within `STALE_MS` vouches for the process it names while its pid is alive: one
+ * process's table read (which can miss or misdate rows) once retired every live peer as crashed. A dead pid is gone at
+ * once; a reused pid is judged by its start time once the heartbeat is stale.
  */
 export const rowLive = (row: ProcessIdentity & { seenAt: number }, now: number): boolean =>
-	liveProcess(row.pid, row.started, now, stale(row.seenAt, now));
+	stale(row.seenAt, now) ? liveProcess(row.pid, row.started, now) : processAlive(row.pid);
 
 const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
 	a.pid === b.pid && (a.started ?? null) === (b.started ?? null);

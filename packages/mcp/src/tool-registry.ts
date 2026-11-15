@@ -101,7 +101,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			continue;
 		}
 		const wasDirect = definitions.get(name)?.exposure === "direct";
-		const definition = (state.preset(entry)?.defineTool ?? createMcpToolDefinition)({
+		const built = (state.preset(entry)?.defineTool ?? createMcpToolDefinition)({
 			server,
 			tool,
 			name,
@@ -139,6 +139,14 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				return client;
 			},
 		});
+		// A call a deferred tool's schema rejected is demand for its full declaration (`usage-counts.ts`).
+		const definition = {
+			...built,
+			validationHint: (failure: { envelope: boolean; properties: string[] }) => {
+				if (thin && presentation.isDeferred(server, tool.name)) state.recordToolRefused(server, tool.name);
+				return built.validationHint?.(failure);
+			},
+		};
 		registeredMetadata.set(name, { tool, toolCopy: structuredClone(tool), rest: structuredClone(metadata) });
 		cachedDefinitions.set(name, definition);
 		definitions.set(definition.name, definition);

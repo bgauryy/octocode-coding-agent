@@ -166,6 +166,7 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			abortGraceMs: BASH_ABORT_GRACE_MS,
+			effect: { kind: "exec" },
 			// A command that changes something runs alone in its message; reads stay concurrent.
 			concurrency: bashConcurrency,
 			description: bashDescription(),
@@ -197,7 +198,7 @@ export function registerBashTool(
 					showJobs();
 					return backgroundStarted(job, ctx.cwd, verification);
 				}
-				const plan = foregroundPlan(params, settings.backgroundAfterSeconds);
+				const plan = foregroundPlan(params, settings.backgroundAfterSeconds, process.env, settings.longCommands);
 				const { timeout, clamped, movable, auto, deliberate, capped } = plan;
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;

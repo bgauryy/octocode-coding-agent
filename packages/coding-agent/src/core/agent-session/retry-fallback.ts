@@ -12,8 +12,6 @@ import type { SessionInternals } from "./host.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import { recordRunWarning } from "./run-outcome.ts";
 
-/** How long a failed model is skipped: limits reset after hours, a later `/model` may pick it again. */
-const EXHAUSTED_MS = 15 * 60_000;
 /**
  * Models that failed in this process, by `provider/id`, and when; `provider/*` after a refused credential, which fails
  * for every model of that provider. Subagents share the process's accounts.
@@ -21,8 +19,10 @@ const EXHAUSTED_MS = 15 * 60_000;
 const exhausted = new Map<string, number>();
 
 const keyOf = (provider: string, id: string) => `${provider}/${id}`;
-const recent = (key: string) => Date.now() - (exhausted.get(key) ?? -Infinity) < EXHAUSTED_MS;
-const isExhausted = (provider: string, id: string) => recent(keyOf(provider, id)) || recent(keyOf(provider, "*"));
+/** Whether `key` failed less than `cooldownMs` ago (`retry.fallbackCooldownMs`: limits reset after hours, a later `/model` may pick it again). */
+const recent = (key: string, cooldownMs: number) => Date.now() - (exhausted.get(key) ?? -Infinity) < cooldownMs;
+const isExhausted = (provider: string, id: string, cooldownMs: number) =>
+	recent(keyOf(provider, id), cooldownMs) || recent(keyOf(provider, "*"), cooldownMs);
 
 /** Why the turn moves on: `usage` a usage limit, `credential` a refused credential, `outage` retries ran out. */
 type FallbackReason = "usage" | "credential" | "outage";
@@ -86,12 +86,19 @@ export class SessionFallback {
 		const failedKey = keyOf(message.provider, message.model);
 		const current = session.model;
 		if (current && isVirtualModel(current)) {
-			if (reason !== "usage" || isExhausted(message.provider, message.model)) return false;
+			if (
+				reason !== "usage" ||
+				isExhausted(message.provider, message.model, session.settingsManager.getRetryFallbackCooldownMs())
+			)
+				return false;
 			exhausted.set(failedKey, Date.now());
 			return this.resume(message);
 		}
 		exhausted.set(reason === "credential" ? keyOf(message.provider, "*") : failedKey, Date.now());
-		const candidate = await this.pick(session.settingsManager.getRetryFallbackModels());
+		const candidate = await this.pick(
+			session.settingsManager.getRetryFallbackModels(),
+			session.settingsManager.getRetryFallbackCooldownMs(),
+		);
 		if (!candidate) return false;
 		await this.host.models.setModel(candidate.model, {
 			persist: false,
@@ -117,12 +124,13 @@ export class SessionFallback {
 	/** The first entry that resolves, has credentials, is not exhausted and whose window holds the context. */
 	private async pick(
 		selectors: readonly string[],
+		cooldownMs: number,
 	): Promise<{ model: Model<any>; thinking?: ThinkingLevel } | undefined> {
 		const { session } = this.host;
 		const tokens = session.getContextUsage()?.tokens ?? undefined;
 		for (const selector of selectors) {
 			const parsed = parseSelector(selector.trim());
-			if (!parsed || isExhausted(parsed.provider, parsed.id)) continue;
+			if (!parsed || isExhausted(parsed.provider, parsed.id, cooldownMs)) continue;
 			const model = session.modelRuntime.getPhysicalModel(parsed.provider, parsed.id);
 			if (!model) continue;
 			// A window too small would compact first on the exhausted model, which fails on the same limit.

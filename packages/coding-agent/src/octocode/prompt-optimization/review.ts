@@ -1,6 +1,7 @@
 import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
+import { hintText, interruptKey } from "../../theme/theme-tui-helpers.ts";
 import { rewritePrompt } from "./rewrite.ts";
 import { deadline } from "../../../../common/src/deadline.ts";
 
@@ -21,7 +22,11 @@ async function requestRewrite(
 	const skip = new AbortController();
 	const limit = deadline(REWRITE_TIMEOUT_MS);
 	const timeout = limit.signal;
-	ctx.ui.setStatus(STATUS_KEY, "✦ Optimizing prompt… (Esc skips)", "accent");
+	ctx.ui.setStatus(
+		STATUS_KEY,
+		`✦ Optimizing prompt…${interruptKey() ? ` · ${hintText([[interruptKey(), "skip"]])}` : ""}`,
+		"accent",
+	);
 	const stopListening = ctx.ui.onTerminalInput((data) => {
 		if (data !== "\x1b") return undefined;
 		skip.abort();

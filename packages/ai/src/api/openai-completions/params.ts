@@ -13,7 +13,6 @@ import {
 	resolveInstructionCacheRetention,
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
-import { isOpenAIExplicitCacheModel } from "../../utils/cache-capabilities.ts";
 import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { promptCacheKeyRule } from "../../models/capabilities.ts";
 import { matchesHost } from "../../utils/provider-host.ts";
@@ -61,7 +60,7 @@ function sendsPromptCacheKey(model: Model<"openai-completions">, retention: Cach
 function acceptsPromptCacheRetention(model: Model<"openai-completions">): boolean {
 	// GPT-5.6 and later replace the deprecated field with `prompt_cache_options.ttl`, which Chat Completions accepts
 	// only as "30m", the default, so they get no long-retention field here.
-	if (isOpenAIExplicitCacheModel(model.id)) return false;
+	if (model.compat?.supportsExplicitPromptCacheMode === true) return false;
 	return matchesHost(model.baseUrl, "api.openai.com") || model.compat?.supportsLongCacheRetention === true;
 }
 

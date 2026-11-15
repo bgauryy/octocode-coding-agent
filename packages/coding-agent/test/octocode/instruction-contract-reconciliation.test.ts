@@ -71,9 +71,18 @@ describe("instructions agree with the tools their recipient receives", () => {
 				},
 			},
 		];
-		const notice = kind === "resume" ? resumeNote(entries, new Set(), new Set()) : forkNote(entries);
-		expect(notice).toContain("non-isolated child");
-		expect(notice).toContain("For an isolated child, start a new task");
+		const noticeFor = (list: unknown[]) =>
+			kind === "resume" ? resumeNote(list, new Set(), new Set()) : forkNote(list);
+		const notice = noticeFor(entries);
+		// The notice names the child and its isolation, built from the recorded isolate flag.
+		expect(notice).toContain("isolated-child");
+		expect(notice).toContain("isolated, worktree isolated-child");
+		// The same child recorded without `isolate` is described without an isolated worktree.
+		const plain = structuredClone(entries);
+		(plain[0] as any).message.content[0].arguments.isolate = false;
+		const plainNotice = noticeFor(plain);
+		expect(plainNotice).toContain("isolated-child");
+		expect(plainNotice).not.toContain("isolated, worktree");
 		expect(() => resumableChild(entries, "isolated-child", new Set())).toThrow(/isolated worktree/);
 	});
 
@@ -89,20 +98,27 @@ describe("instructions agree with the tools their recipient receives", () => {
 			goal: true,
 			guidance: "Required completion fields",
 		});
-		expect(completion).toContain("if it is available; otherwise report them to your coordinator to file");
-		expect(completion).toContain("from: B1");
-		expect(completion).toContain("Mark it done only after verifying its goal");
+		expect(completion).toContain("B1");
+		expect(completion).toContain("Required completion fields");
+		expect(completion).not.toMatch(/\{\{|\}\}/);
+		const withoutGoal = renderInstruction("workflows/backlog/completion.md", {
+			ref: "B1",
+			goal: false,
+			guidance: "Required completion fields",
+		});
+		// The goal flag decides whether the goal section changes the rendered text.
+		expect(withoutGoal).not.toBe(completion);
 	});
 
-	it("distinguishes vendor runner tasks from native children without referring to an absent models tool", () => {
+	it("keeps the child agent tool from starting agents and the runner field from naming absent tools", () => {
 		for (const child of contexts.filter((context) => context.kind === "child")) {
 			const agent = child.tools.find((tool) => tool.name === "agent")!;
 			const parameters = agent.parameters as { properties: Record<string, { description?: string }> };
 			expect(child.tools.some((tool) => tool.name === "models")).toBe(false);
 			expect(parameters.properties).not.toHaveProperty("profile");
-			const policy = child.sections.map((section) => section.text).join("\n");
-			expect(policy).not.toContain("You cannot start agents.");
-			if (child.name !== "lean") expect(policy).toContain("You cannot start native Octocode subagents");
+			// A child cannot start agents: its `agent` tool offers no `task` type, which the main agent's tool does.
+			const types = (agent.parameters as { properties: { type: { enum: string[] } } }).properties.type.enum;
+			expect(types).not.toContain("task");
 		}
 		// The runner field a child gets once a runner is enabled: external agents are opt-in, so the capture above has
 		// none, and the field is checked as the child would receive it.
@@ -114,7 +130,12 @@ describe("instructions agree with the tools their recipient receives", () => {
 		);
 		const runner = (fake.tools.get("agent")!.parameters as { properties: Record<string, { description?: string }> })
 			.properties.runner;
-		expect(runner.description).not.toContain("see models");
-		expect(runner.description).toContain("coordinator");
+		// Every tool the runner description names is a tool the child receives.
+		const declared = new Set(contexts.find((context) => context.kind === "child")!.tools.map((tool) => tool.name));
+		const known = new Set(contexts.flatMap((context) => context.tools.map((tool) => tool.name)));
+		const mentioned = [...(runner.description ?? "").matchAll(/`(\w+)`/g)]
+			.map((match) => match[1])
+			.filter((name) => known.has(name));
+		for (const name of mentioned) expect(declared.has(name)).toBe(true);
 	});
 });

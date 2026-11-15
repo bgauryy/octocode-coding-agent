@@ -767,13 +767,13 @@ describe("backlog tool", () => {
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "done", id: "B1", completion: completed(), note: "ok" }, ctx);
 		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
-		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("○ Backlog(done B1 “one”)");
+		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("○ Backlog(done B1)");
 		// A call stored before the tool was split (`op` update with a state) still draws as it did.
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
-			"○ Backlog(update B1 “one” → done)",
+			"○ Backlog(update B1 → done)",
 		);
 		expect(rendered(t.plan.renderCall({ op: "edit", id: "B1", state: "todo" }, theme, {}))).toBe(
-			"○ Backlog plan(edit B1 “one” → todo)",
+			"○ Backlog plan(edit B1 → todo)",
 		);
 		const row = async (params: Record<string, unknown>) =>
 			rendered(
@@ -789,14 +789,14 @@ describe("backlog tool", () => {
 				),
 			);
 		expect(await row({ op: "add", items: [{ why: "Required work", title: "two", goal: "it works" }] })).toBe(
-			"  ⎿  Added B2 “two” · backlog",
+			"  ⎿  Added B2 · backlog · two",
 		);
-		expect(await row({ op: "edit", items: [{ id: "B2", state: "todo" }] })).toBe("  ⎿  B2 “two” → todo");
+		expect(await row({ op: "edit", items: [{ id: "B2", state: "todo" }] })).toBe("  ⎿  B2 → todo · two");
 		expect(await row({ op: "list", states: ["todo", "done"], limit: 1 })).toMatch(/^ {2}⎿ {2}1 of 2 items\n {5}B\d \[/);
 		expect(await row({ op: "list", states: ["ongoing"] })).toMatch(/^ {2}⎿ {2}No items/);
-		expect(await row({ op: "get", id: "B2" })).toMatch(/^ {2}⎿ {2}B2 “two” · todo · two\n/);
+		expect(await row({ op: "get", id: "B2" })).toMatch(/^ {2}⎿ {2}B2 · todo · two\n/);
 		expect(await row({ op: "close", id: "B2", close: { kind: "wont_do", text: "not needed" } })).toBe(
-			"  ⎿  B2 “two” → closed",
+			"  ⎿  B2 → closed · two",
 		);
 		expect(
 			rendered(
@@ -882,7 +882,7 @@ describe("/backlog", () => {
 		} as unknown as Item;
 		expect(itemLine(item)).toBe("B1 [ongoing p1] fix\\u{1b}[2Jit (@who\\u{9d})");
 		const detail = itemDetail(item, [], 0, 0);
-		expect(detail).toContain("Goal: g\\u{202e}");
+		expect(detail).toContain("Done when: g\\u{202e}");
 		expect(detail).toContain("Where: p\\u{200b}q");
 		expect(detail).toContain("- e\\u{7}");
 		expect(detail).toContain("a\\u{0}b");
@@ -941,7 +941,7 @@ describe("/backlog", () => {
 		expect(sent.options).toBeUndefined();
 
 		expect(sent.message).toContain("B1 [ongoing p2] Fix login");
-		expect(sent.message).toContain("Goal: Login submits without freezing; focused tests pass.");
+		expect(sent.message).toContain("Done when: Login submits without freezing; focused tests pass.");
 		expect(sent.message).toContain("The form hangs.");
 		expect(sent.message).toContain("from: B1");
 		expect(workspaceStore(t.cwd).get("B1")).toMatchObject({
@@ -972,7 +972,7 @@ describe("/backlog", () => {
 		await t.command.handler("B1", rpc(["Delegate to a subagent"]));
 		expect(t.sent.at(-1)!.message).toMatch(/^Delegate backlog item B1 to a subagent with the agent tool\./);
 		expect(t.sent.at(-1)!.message).toContain("B1 [ongoing p0] first");
-		expect(t.sent.at(-1)!.message).toContain("Goal: The selected action changes the item and repaints the board.");
+		expect(t.sent.at(-1)!.message).toContain("Done when: The selected action changes the item and repaints the board.");
 		expect(t.sent.at(-1)!.message).toContain("in the subagent's task");
 		expect(t.sent.at(-1)!.message).toContain("Mark it done only after verifying its goal");
 		expect(store.get("B1")!.state).toBe("ongoing");
@@ -991,7 +991,7 @@ describe("/backlog", () => {
 		};
 		expect((await edit("Title", "  renamed\n title  ")).shown).toBe("first");
 		expect(store.get("B1")!.title).toBe("renamed title");
-		expect((await edit("Goal", "The goal reads true.")).shown).toBe(
+		expect((await edit("Done when", "The goal reads true.")).shown).toBe(
 			"The selected action changes the item and repaints the board.",
 		);
 		expect(store.get("B1")!.goal).toBe("The goal reads true.");
@@ -1187,7 +1187,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		expect(() => store.update(item.ref, { paths: [SECRET] }, { id: "s1" })).toThrow(/paths .*secret/);
 	});
 
-	it("adds with every field through the tool; get shows Goal, Where, Why, Evidence, Plan, then times and notes; list stays one line", async () => {
+	it("adds with every field through the tool; get shows Done when, Where, Why, Evidence, Plan, then times and notes; list stays one line", async () => {
 		const t = setup();
 		expect(await t.text({ op: "add", items: [{ title: "Path search", ...FIELDS, state: "todo" }] })).toBe(
 			"Added B1 [todo p2] Path search",
@@ -1195,7 +1195,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		await t.text({ op: "note", id: "B1", note: "looked at it" });
 		const detail = await t.text({ op: "get", id: "B1" });
 		const order = [
-			"Goal: Search finds",
+			"Done when: Search finds",
 			"Where: src/backlog/store.ts, src/backlog/",
 			"Why: Agents lose",
 			"Evidence:\n- src/backlog/store.ts:87 — body copied into notes\n- yarn test → 2 failures",
@@ -1219,7 +1219,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		const t = setup();
 		await t.text({ op: "add", items: [{ title: "Plain", goal: "It works.", why: "Because." }] });
 		const detail = await t.text({ op: "get", id: "B1" });
-		expect(detail).toContain("Goal: It works.");
+		expect(detail).toContain("Done when: It works.");
 		expect(detail).toContain("Why: Because.");
 		for (const heading of ["Where:", "Evidence:", "Plan:"]) expect(detail).not.toContain(heading);
 	});
@@ -1312,7 +1312,7 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		await t.command.handler("B1", ctx);
 		const shown = ctx.ui.notes.at(-1)!.message;
 		expect(shown).toMatch(
-			/Goal: .*\nWhere: src\/backlog\/store\.ts, src\/backlog\/\nWhy: .*\nEvidence:\n- .*\n- .*\nPlan: /,
+			/Done when: .*\nWhere: src\/backlog\/store\.ts, src\/backlog\/\nWhy: .*\nEvidence:\n- .*\n- .*\nPlan: /,
 		);
 		await t.command.handler("export", ctx);
 		const markdown = fs.readFileSync(path.join(t.cwd, ".octocode", "code", "backlog.md"), "utf8");

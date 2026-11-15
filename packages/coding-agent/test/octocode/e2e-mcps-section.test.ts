@@ -296,6 +296,19 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		expect(published).toMatchObject({ tool: "mcp__docs__publish", text: "publish ok", isError: false });
 	});
 
+	it("lists the catalog without repeating the instructions the block already holds", async () => {
+		const request = await firstRequest({ toolExposure: { purge: "hidden" } }, {}, [
+			fauxAssistantMessage([nativeCall("mcp", { intent: "tools", server: "docs" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("done"),
+		]);
+		expect(request.sections.mcps).toContain("Docs server. Search with lookup");
+		const [listed] = request.results;
+		expect(listed).toMatchObject({ tool: "mcp", isError: false });
+		expect(listed.text).not.toContain("Docs server. Search with lookup");
+		expect(listed.text).toContain('<mcps> section, block "docs"');
+		expect(listed.text).toContain("lookup [direct]");
+	});
+
 	it("describes every tool in plain form with mcpPresentation json, and still declares them thin", async () => {
 		const request = await firstRequest(
 			{ toolExposure: { purge: "hidden" } },

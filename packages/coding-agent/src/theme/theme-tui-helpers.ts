@@ -12,6 +12,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
+import { guessLanguage } from "../utils/code-sniff.ts";
 import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-highlight.ts";
 import type { Theme } from "./theme-class.ts";
 import type { ThemeColor } from "./theme-types.ts";
@@ -83,7 +84,8 @@ function getCliHighlightTheme(t: Theme): CliHighlightTheme {
 	return cachedCliHighlightTheme;
 }
 
-const HIGHLIGHT_CACHE_MAX_CHARS = 64 * 1024;
+/** Up to the largest block `isHighlightable` allows: expanding, collapsing or resizing a big result must not re-run hljs. */
+const HIGHLIGHT_CACHE_MAX_CHARS = 256 * 1024;
 const highlightCaches = new WeakMap<Theme, HighlightCache>();
 
 /**
@@ -93,8 +95,9 @@ const highlightCaches = new WeakMap<Theme, HighlightCache>();
  */
 export function highlightCode(code: string, lang?: string, source: Theme = theme): string[] {
 	// Skip highlighting when no valid language is specified: auto-detection is unreliable and can misidentify prose
-	// as AppleScript, LiveCodeServer, etc., coloring random English words as keywords.
-	const validLang = resolveLanguage(lang);
+	// as AppleScript, LiveCodeServer, etc., coloring random English words as keywords. A block with no language at
+	// all is coloured only when its shape settles it (one JSON document, a unified diff).
+	const validLang = resolveLanguage(lang) ?? (lang?.trim() ? undefined : guessLanguage(code));
 	if (validLang && isHighlightable(code)) {
 		const cacheable = code.length <= HIGHLIGHT_CACHE_MAX_CHARS;
 		const key = `${validLang}\0${code}`;
@@ -221,7 +224,6 @@ export function getMarkdownTheme(source: Theme = theme): MarkdownTheme {
 
 export function getSelectListTheme(): SelectListTheme {
 	return {
-		selectedPrefix: (text: string) => theme.fg("accent", text),
 		selectedText: (text: string) => theme.fg("accent", text),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
@@ -264,6 +266,7 @@ export function formatKeyText(key: string): string {
 				.split("+")
 				.map((part) => {
 					const lower = part.toLowerCase();
+					if (lower === "escape") return "esc";
 					return process.platform === "darwin" && lower === "alt" ? "option" : lower;
 				})
 				.join("+"),
@@ -282,7 +285,7 @@ export function keyText(keybinding: Keybinding): string {
 
 /** The interrupt key as every hint shows it: `esc`, not `escape`. */
 export function interruptKey(): string {
-	return keyText("app.interrupt").replace(/^escape$/, "esc");
+	return keyText("app.interrupt");
 }
 
 export function keyHint(keybinding: Keybinding, description: string): string {
@@ -361,4 +364,24 @@ export class HintBar implements Component {
 	render(width: number): string[] {
 		return [renderHintLine(this.hints, width, this.indent)];
 	}
+}
+
+/** `1–20/48`: the visible span of a scrolling list, the one position label of every screen. */
+export function positionLabel(first: number, last: number, total: number): string {
+	return first === last ? `${first}/${total}` : `${first}–${last}/${total}`;
+}
+
+/**
+ * The line a list shows when it has nothing to list: 2-space indent, muted, and the one key that recovers
+ * (`No sessions match "x" · esc clears`). Cut to `width` with an ellipsis when given.
+ */
+export function emptyState(message: string, recover?: readonly [key: string, verb: string], width?: number): string {
+	const line = `  ${theme.fg("muted", message)}${recover ? `${theme.fg("dim", " · ")}${rawKeyHint(recover[0], recover[1])}` : ""}`;
+	return width === undefined ? line : truncateToWidth(line, width, "…");
+}
+
+/** `No things match "query"` when a search is active, else `No things`. */
+export function noMatchMessage(things: string, query = ""): string {
+	const text = query.trim();
+	return text ? `No ${things} match "${text}"` : `No ${things}`;
 }

@@ -67,6 +67,14 @@ export interface DeadLetter {
 	text: string;
 	/** Set when it was a relay through the sender's parent (`recipients` is that parent): the agent it was for, and why it failed. */
 	relay?: { to: string; reason?: string };
+	/** The recipients that were the sender's children, so its notice names their next step (`Mail.reportDeadLetters`). */
+	kinds?: Record<string, RecipientKind>;
+}
+
+/** Whether a recipient was the sender's child, and whether that child filed its report. */
+export interface RecipientKind {
+	child: boolean;
+	reported: boolean;
 }
 
 /** A `replyRequired` message `recipient` read and has not answered: what `Member.pending` counts. */

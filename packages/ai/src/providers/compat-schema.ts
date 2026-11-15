@@ -68,6 +68,11 @@ const ProviderCompatPropertyOverrides = {
 	sessionAffinityFormat: optionalSessionAffinityFormat({
 		description: "Session-affinity header format. Defaults are API-specific or auto-detected.",
 	}),
+	supportsExplicitPromptCacheMode: optionalCompatBoolean({
+		description:
+			"Whether the model accepts prompt_cache_options (GPT-5.6 and later) instead of prompt_cache_retention. Older OpenAI models reject the parameter. The generated catalog sets it for verified models; unset means false.",
+		default: false,
+	}),
 	supportsMidConvoEffort: optionalCompatBoolean({
 		description:
 			"Whether thinking level changes are sent inside the conversation instead of changing the request's effort, so a change keeps the prompt cache. Used by the anthropic-messages and openai-responses APIs.",

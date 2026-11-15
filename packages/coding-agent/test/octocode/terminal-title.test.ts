@@ -1,15 +1,92 @@
-import { describe, expect, it } from "vitest";
-import { TITLE_MARK, TitleTracker, terminalTitle } from "../../src/octocode/ui/terminal-title.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	plainTitle,
+	TITLE_FRAME_MS,
+	TITLE_STATE,
+	type TitleState,
+	TitleTracker,
+	terminalTitle,
+} from "../../src/octocode/ui/terminal-title.ts";
+import { TitlePainter } from "../../src/octocode/ui/title-painter.ts";
 
 describe("terminalTitle", () => {
-	it("prefixes one mark per state and leaves idle plain", () => {
-		expect(terminalTitle("idle", undefined, "/work/repo")).toBe("Octocode · repo");
-		expect(terminalTitle("thinking", "fix login", "/work/repo")).toBe("✻ Octocode · fix login · repo");
-		expect(Object.values(TITLE_MARK).filter(Boolean)).toEqual(["✻", "◐", "◇", "✓", "✗"]);
+	it("reads `🐙<mark> <state> - <description> · <folder>` for every state", () => {
+		const states = Object.keys(TITLE_STATE) as TitleState[];
+		expect(states.map((state) => terminalTitle(state, "fix login", "/work/repo"))).toEqual([
+			"🐙 Idle - fix login · repo",
+			"🐙⠋ Thinking - fix login · repo",
+			"🐙⠋ Running - fix login · repo",
+			"🐙⚠️ Needs you - fix login · repo",
+			"🐙🟢 Done - fix login · repo",
+			"🐙🔴 Error - fix login · repo",
+		]);
+		expect(terminalTitle("idle", undefined, "/work/repo")).toBe("🐙 Idle - repo");
 	});
 
-	it("drops escape sequences from the session name", () => {
-		expect(terminalTitle("done", "fix \u001b]0;pwned\u0007login", "/work/repo")).toBe("✓ Octocode · fix login · repo");
+	it("ends with the number of background subagents", () => {
+		expect(terminalTitle("running", "fix login", "/work/repo", 2)).toBe("🐙⠋ Running - fix login · repo · 2 agents");
+		expect(terminalTitle("running", undefined, "/work/repo", 1)).toBe("🐙⠋ Running - repo · 1 agent");
+		expect(terminalTitle("running", undefined, "/work/repo", 0)).toBe("🐙⠋ Running - repo");
+	});
+
+	it("animates only busy states, frame by frame, and keeps the state word still", () => {
+		const frames = [0, 1, 2, 3].map((frame) => terminalTitle("running", undefined, "/r", 0, frame));
+		expect(new Set(frames.map((title) => title.split(" ")[0])).size).toBeGreaterThan(1);
+		expect(frames.every((title) => title.endsWith(" Running - r"))).toBe(true);
+		for (const state of ["idle", "waiting", "done", "failed"] as const)
+			expect(terminalTitle(state, undefined, "/r", 0, 1)).toBe(terminalTitle(state, undefined, "/r", 0, 0));
+	});
+
+	it("drops escape sequences, flattens and caps a long description", () => {
+		expect(terminalTitle("done", "fix \u001b]0;pwned\u0007login", "/work/repo")).toBe("🐙🟢 Done - fix login · repo");
+		const long = terminalTitle("done", `fix\nthe ${"very ".repeat(20)}long bug`, "/work/repo");
+		expect(long).toMatch(/^🐙🟢 Done - fix the very .*… · repo$/);
+		expect(long.length).toBeLessThan(60);
+	});
+
+	it("has a plain title without state for a tab the session has left", () => {
+		expect(plainTitle("fix login", "/work/repo")).toBe("fix login · repo");
+		expect(plainTitle(undefined, "/work/repo")).toBe("repo");
+	});
+});
+
+describe("TitlePainter", () => {
+	afterEach(() => vi.useRealTimers());
+
+	function painter(initial: TitleState) {
+		const written: string[] = [];
+		let state = initial;
+		const p = new TitlePainter({
+			state: () => state,
+			target: () => ({ cwd: "/work/repo", setTitle: (text) => written.push(text) }),
+			description: () => "fix login",
+			agents: () => 0,
+		});
+		return { p, written, set: (next: TitleState) => (state = next) };
+	}
+
+	it("animates while busy at a slow rate and stops writing once settled", () => {
+		vi.useFakeTimers();
+		const t = painter("running");
+		t.p.paint();
+		vi.advanceTimersByTime(TITLE_FRAME_MS * 3);
+		expect(t.written).toHaveLength(4);
+		expect(new Set(t.written).size).toBeGreaterThan(1);
+		t.set("done");
+		t.p.paint();
+		const settled = t.written.length;
+		vi.advanceTimersByTime(TITLE_FRAME_MS * 10);
+		expect(t.written).toHaveLength(settled);
+		expect(t.written.at(-1)).toBe("🐙🟢 Done - fix login · repo");
+	});
+
+	it("stops animating when stopped, as at session shutdown", () => {
+		vi.useFakeTimers();
+		const t = painter("thinking");
+		t.p.paint();
+		t.p.stop();
+		vi.advanceTimersByTime(TITLE_FRAME_MS * 5);
+		expect(t.written).toHaveLength(1);
 	});
 });
 
@@ -33,12 +110,6 @@ describe("TitleTracker", () => {
 		expect(t.state).toBe("failed");
 		t.seen();
 		expect(t.state).toBe("idle");
-	});
-
-	it("adds an octopus with the number of background subagents after the state mark", () => {
-		expect(terminalTitle("running", undefined, "/work/repo", 1)).toBe("◐ 🐙 Octocode · repo");
-		expect(terminalTitle("thinking", "fix", "/work/repo", 3)).toBe("✻ 🐙3 Octocode · fix · repo");
-		expect(terminalTitle("running", undefined, "/work/repo", 0)).toBe("◐ Octocode · repo");
 	});
 
 	it("stays running while background work outlives the run, and shows the outcome when the last of it ends", () => {

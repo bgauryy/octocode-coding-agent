@@ -71,12 +71,12 @@ describe.each([
 });
 
 describe.each([
-	{ kind: "FYI", replyRequired: false, yields: false },
-	{ kind: "waking request", replyRequired: true, yields: true },
-])("a long tool call while a peer's $kind waits", ({ replyRequired, yields }) => {
+	{ kind: "quiet FYI", replyRequired: false, wake: false, yields: false },
+	{ kind: "waking request", replyRequired: true, wake: true, yields: true },
+])("a long tool call while a peer's $kind waits", ({ replyRequired, wake, yields }) => {
 	// Foreground bash moves to the background when `ctx.hasPendingMessages()` turns true (files/bash/results.ts); any other
-	// long tool that wants to yield for a message uses the same signal. Only mail that asks for an answer (or is the
-	// user's) counts: an FYI is context, read at the next step without cutting a running command short.
+	// long tool that wants to yield for a message uses the same signal. Only mail that wakes counts: a quiet FYI
+	// (`wake: false`) is context, read at the next step without cutting a running command short.
 	it("reports a waiting message only when it asks for the agent", async () => {
 		const waiting: boolean[] = [];
 		const live = await liveSession({
@@ -107,7 +107,7 @@ describe.each([
 		const running = live.session.prompt("work");
 		await vi.waitFor(() => expect(waiting).toHaveLength(1));
 		const sentAt = Date.now();
-		await live.peer.send(live.id, "MAIL: look at this", { replyRequired });
+		await live.peer.send(live.id, "MAIL: look at this", { replyRequired, wake });
 		await running;
 		expect(waiting).toEqual([false, yields]);
 		if (yields) expect(Date.now() - sentAt).toBeLessThan(TICK_BUDGET_MS);
@@ -259,7 +259,7 @@ describe("an idle session", () => {
 		expect(live.requests[0].at - sentAt).toBeLessThan(TICK_BUDGET_MS);
 	}, 20_000);
 
-	it("is not woken by an FYI, which the model reads with the next user prompt", async () => {
+	it("is not woken by a quiet FYI, which the model reads with the next user prompt", async () => {
 		const live = await liveSession({ tools: [] });
 		closerFor(live);
 		live.faux.setResponses([
@@ -268,7 +268,7 @@ describe("an idle session", () => {
 				return fauxAssistantMessage("hello");
 			},
 		]);
-		await live.peer.send(live.id, "MAIL: just so you know", { replyRequired: false });
+		await live.peer.send(live.id, "MAIL: just so you know", { replyRequired: false, wake: false });
 		// Two ticks: the FYI reached the transcript (display only) without starting a turn.
 		await vi.waitFor(
 			() => expect(live.sessionManager.getBranch().filter((entry) => entry.type === "custom_message")).toHaveLength(1),

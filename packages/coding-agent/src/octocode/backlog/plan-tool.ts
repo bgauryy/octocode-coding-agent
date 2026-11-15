@@ -57,6 +57,7 @@ export function registerBacklogPlanTool(
 	api.registerTool(
 		timedTool({
 			name: "backlogPlan",
+			roleVariant: true,
 			label: "Backlog plan",
 			...prompt,
 			defaultActive: !subagent,

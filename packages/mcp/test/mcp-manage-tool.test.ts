@@ -43,6 +43,21 @@ describe("mcp tool", () => {
 		expect(operations.restart).not.toHaveBeenCalled();
 	});
 
+	it("repeats the server's instructions before its catalog only when the system prompt does not hold them", async () => {
+		const { text, operations } = setup();
+		const inPrompt = vi.fn(() => false);
+		Object.assign(operations, { instructions: () => "Search before you read.", instructionsInPrompt: inPrompt });
+		const repeated = await text({ intent: "tools", server: "docs" });
+		expect(repeated).toContain("Search before you read.");
+		expect(repeated).toContain("read [direct]");
+		inPrompt.mockReturnValue(true);
+		const pointed = await text({ intent: "tools", server: "docs" });
+		expect(pointed).not.toContain("Search before you read.");
+		expect(pointed).toContain('<mcps> section, block "docs"');
+		expect(pointed).toContain("read [direct]");
+		expect(inPrompt).toHaveBeenCalledWith("docs");
+	});
+
 	it("does not expose stale catalogs or reconnect disconnected servers during inspection", async () => {
 		const { run, text, operations } = setup([{ name: "docs", state: "stopped", connected: false }]);
 		expect(await text({ intent: "tools", server: "docs" })).toBe(
@@ -163,7 +178,9 @@ describe("mcp tool contract", () => {
 		>;
 		expect(properties.intent.enum).toEqual(["list", "tools", "resources", "read", "restart", "stop"]);
 		expect(properties.config).toBeUndefined();
-		expect(properties.server.description).toBe("Server name; required for every intent except list");
+		expect(properties.server.description).toBe(
+			'Server name; required for every intent except list. "native" with tools reads a deferred native tool',
+		);
 		for (const intent of ["tools", "resources", "read", "restart", "stop"])
 			await expect(run({ intent })).rejects.toThrow(/Name the server in the server field[^]*Servers: docs\./);
 		await expect(run({ intent: "list" })).resolves.toBeDefined();

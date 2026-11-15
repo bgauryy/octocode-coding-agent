@@ -36,7 +36,15 @@ const told = () =>
 	host.sent
 		.filter((entry) => /ended: /.test(String(entry.message.content)))
 		.map((entry) => [String(entry.message.content), entry.options.triggerTurn] as const);
-const sweep = () => (team as unknown as { database: { store(): TeamStore } }).database.store().sweep(Date.now());
+/** Dead-letter notices about `who` (`Message #N to <who> …`), with whether each woke an idle agent. */
+const deadLetters = (who: string) =>
+	host.sent
+		.filter((entry) => new RegExp(`^Message #\\d+ to ${who} `).test(String(entry.message.content)))
+		.map((entry) => entry.options.triggerTurn);
+const sentId = (result: Awaited<ReturnType<Team["send"]>>): number => {
+	if ("error" in result) throw new Error(result.error);
+	return result.id;
+};
 
 beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lifecycle-peer-left-")));
@@ -69,7 +77,9 @@ function peer(id: string, extra: Partial<Member> = {}): { store: TeamStore; row:
 describe("the peer-left notice", () => {
 	it("tells an agent that a peer it sent mail to ended, as an FYI that starts no turn", async () => {
 		const { store, row } = peer("quiet-lynx");
-		await team.send("quiet-lynx", "fyi: the build is green", { replyRequired: false });
+		const id = sentId(await team.send("quiet-lynx", "fyi: the build is green", { replyRequired: false }));
+		// Read: nothing of this agent's went unread, so the line is the only notice.
+		store.ack("quiet-lynx", [id]);
 		store.remove("quiet-lynx", Date.now(), row, "completed");
 		await vi.waitFor(() => expect(told()).toEqual([["quiet-lynx ended: completed", false]]));
 	});
@@ -81,20 +91,19 @@ describe("the peer-left notice", () => {
 		await vi.waitFor(() => expect(told()).toEqual([["chatty-wren ended: left", false]]));
 	});
 
-	it("wakes the agent when a peer ended with its question unanswered", async () => {
+	it("leaves a peer that ended with its question unanswered to the dead-letter notice, which wakes nobody", async () => {
 		const { store, row } = peer("deep-heron");
 		await team.send("deep-heron", "which branch should I use?", { replyRequired: true });
 		store.remove("deep-heron", Date.now(), row, "failed");
-		await vi.waitFor(() => expect(told()).toEqual([["deep-heron ended: failed", true]]));
-	});
+		await vi.waitFor(() => expect(deadLetters("deep-heron")).toEqual([false]), { timeout: 10_000 });
+		expect(told()).toEqual([]);
+	}, 20_000);
 
 	it("does not wake it once the peer had answered", async () => {
 		const { store, row } = peer("kind-otter");
-		const asked = await team.send("kind-otter", "which branch?", { replyRequired: true });
-		store.send("kind-otter", [team.id!], "main", {
-			replyRequired: false,
-			replyTo: "id" in asked ? asked.id : undefined,
-		});
+		const asked = sentId(await team.send("kind-otter", "which branch?", { replyRequired: true }));
+		store.ack("kind-otter", [asked]);
+		store.send("kind-otter", [team.id!], "main", { replyRequired: false, replyTo: asked });
 		store.remove("kind-otter", Date.now(), row, "completed");
 		await vi.waitFor(() => expect(told()).toEqual([["kind-otter ended: completed", false]]));
 	});
@@ -108,7 +117,7 @@ describe("the peer-left notice", () => {
 		expect(told()).toEqual([]);
 	});
 
-	it("tells it when a peer is killed with -9 and swept: a notice and a wake for its open question", async () => {
+	it("tells it once, without a wake, when a peer is killed with -9 with its question open", async () => {
 		const worker = spawn(
 			process.execPath,
 			["--import", SOURCE_RESOLVER, WORKER, root, path.join(root, "agent.db"), "far-ibis"],
@@ -128,7 +137,8 @@ describe("the peer-left notice", () => {
 		const gone = new Promise<void>((resolve) => worker.once("exit", () => resolve()));
 		worker.kill("SIGKILL");
 		await gone;
-		sweep();
-		await vi.waitFor(() => expect(told()).toEqual([[`${name} ended: crashed`, true]]), { timeout: 10_000 });
+		// No sweep by hand: the next heartbeat retires the dead pid, and the dead-letter notice is the one notice.
+		await vi.waitFor(() => expect(deadLetters(name)).toEqual([false]), { timeout: 10_000 });
+		expect(told()).toEqual([]);
 	}, 60_000);
 });

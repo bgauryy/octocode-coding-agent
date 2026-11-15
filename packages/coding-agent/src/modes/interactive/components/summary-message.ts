@@ -2,7 +2,7 @@ import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@oct
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { expandHint } from "../../../octocode/shared/text.ts";
 
 /** What a summary message shows. Every string is untrusted text: it is sanitized where drawn. */
 export interface SummaryMessageText {
@@ -31,15 +31,15 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 
 	protected renderContent(content: Container, expanded: boolean): void {
 		const { label, title, meta = [], summary, appendix = [] } = this.text;
-		const hint = expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+		const hint = expanded ? "" : expandHint();
 		const dim = (line: string) => theme.fg("dim", sanitizeTerminalText(line));
 		const head =
 			theme.fg("customMessageLabel", theme.bold(`[${label}]`)) +
 			` ${theme.fg("customMessageText", sanitizeTerminalText(title))}`;
-		content.addChild(new Text(meta.length === 0 ? head + hint : head, 0, 0));
-		meta.forEach((line, index) => {
-			content.addChild(new Text(dim(line) + (index === meta.length - 1 ? hint : ""), 0, 0));
-		});
+		content.addChild(new Text(head, 0, 0));
+		for (const line of meta) content.addChild(new Text(dim(line), 0, 0));
+		// On its own row: appended to a title or path it would wrap mid-phrase on a narrow screen.
+		if (hint) content.addChild(new Text(theme.fg("dim", hint), 0, 0));
 		if (!expanded) return;
 		if (summary.trim() !== "") {
 			content.addChild(new Spacer(1));

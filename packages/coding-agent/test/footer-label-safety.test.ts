@@ -30,5 +30,5 @@ it("draws directory, branch and session labels without terminal controls or newl
 	const line = new FooterComponent(session as never, data).render(200)[0];
 	expect(line).not.toContain("\u001b]");
 	expect(line).not.toContain("\u001b[2J");
-	expect(stripAnsi(line)).toBe("/tmp/project next (main next) · session next");
+	expect(stripAnsi(line)).toBe("/tmp/project next ⎇ main next · session next");
 });

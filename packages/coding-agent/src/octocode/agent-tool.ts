@@ -108,6 +108,7 @@ export function agentModes() {
 			const triggers = entries.map(([type]) => renderInstruction(`tools/agent/trigger-${type}.md`));
 			api.registerTool({
 				name: "agent",
+				roleVariant: true,
 				label: "Agent",
 				promptSnippet: triggers.join(", ").replace(/^./, (first) => first.toUpperCase()),
 				description:

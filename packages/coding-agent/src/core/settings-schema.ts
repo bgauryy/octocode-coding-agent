@@ -91,7 +91,7 @@ export const SettingsSchema = Type.Object(
 		referenceOpener: Type.Optional(
 			Type.String({
 				description:
-					'How file references and /diff --editor open: "auto" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the prompt editor; "editor" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.',
+					'How file references and /diff --editor open: "auto" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the system default app for the file (open, xdg-open); over SSH or on Linux without a display, the prompt editor; "editor" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.',
 				default: SETTINGS_DEFAULTS.referenceOpener,
 			}),
 		),

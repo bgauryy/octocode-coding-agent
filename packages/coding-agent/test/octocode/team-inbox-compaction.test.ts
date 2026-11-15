@@ -63,9 +63,9 @@ const compact = (receiver: Awaited<ReturnType<typeof setup>>["receiver"], firstK
 describe("inbox after compaction", () => {
 	it("holds newer mail while earlier mail is unseen (the stall compaction must clear)", async () => {
 		const { sender, receiver } = await setup();
-		await sender.team.send(receiver.team.id, "first", { replyRequired: false });
+		await sender.team.send(receiver.team.id, "first", { replyRequired: false, wake: false });
 		await delivered(receiver.sent, 1);
-		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
+		await sender.team.send(receiver.team.id, "second", { replyRequired: false, wake: false });
 		// Proving that nothing arrives needs a fixed window longer than the delivery poll.
 		await new Promise((resolve) => setTimeout(resolve, 2_200));
 		expect(mail(receiver.sent)).toHaveLength(1);
@@ -73,12 +73,15 @@ describe("inbox after compaction", () => {
 
 	it("treats mail summarized away as seen so newer mail flows", async () => {
 		const { sender, receiver, entries, cwd, dbFile } = await setup();
-		const first = (await sender.team.send(receiver.team.id, "first", { replyRequired: false })) as { id: number };
+		// Quiet mail: a woken turn would pace the second message 30 s behind the first, and this checks compaction only.
+		const first = (await sender.team.send(receiver.team.id, "first", { replyRequired: false, wake: false })) as {
+			id: number;
+		};
 		await delivered(receiver.sent, 1);
 		// The mail entered the transcript, then compaction summarized it before any model call reported it.
 		entries.push(entryFor("e1", mail(receiver.sent)[0]), { type: "message", id: "e2" }, { type: "message", id: "e3" });
 		await compact(receiver, "e3");
-		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
+		await sender.team.send(receiver.team.id, "second", { replyRequired: false, wake: false });
 		await delivered(receiver.sent, 2);
 		expect(mail(receiver.sent)[1].message.details.messages.map((m: { id: number }) => m.id)).not.toContain(first.id);
 		const store = TeamStore.open(cwd, dbFile, {});
@@ -88,11 +91,11 @@ describe("inbox after compaction", () => {
 
 	it("leaves mail in the kept range unseen until a model call reports it", async () => {
 		const { sender, receiver, entries } = await setup();
-		await sender.team.send(receiver.team.id, "first", { replyRequired: false });
+		await sender.team.send(receiver.team.id, "first", { replyRequired: false, wake: false });
 		await delivered(receiver.sent, 1);
 		entries.push({ type: "message", id: "e1" }, entryFor("e2", mail(receiver.sent)[0]));
 		await compact(receiver, "e2");
-		await sender.team.send(receiver.team.id, "second", { replyRequired: false });
+		await sender.team.send(receiver.team.id, "second", { replyRequired: false, wake: false });
 		// Proving that nothing arrives needs a fixed window longer than the delivery poll.
 		await new Promise((resolve) => setTimeout(resolve, 2_200));
 		expect(mail(receiver.sent)).toHaveLength(1);
