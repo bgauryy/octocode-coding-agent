@@ -38,6 +38,8 @@ interface ResidentInput {
 	/** The full block text of the given tools (with the instructions when any is given). */
 	contractOf: (tools: readonly string[]) => { file: string | undefined; text: string; bytes?: number };
 	indexLine: (tool: string) => string;
+	/** The index line of an undeclared (on-demand) tool: its name and trigger. */
+	onDemandLine: (tool: string) => string;
 	/** The server's instructions as the direct block shows them, with no tool: empty without instructions. */
 	instructionsOf: () => string;
 }
@@ -47,7 +49,15 @@ interface ResidentInput {
  * described so far plus this one pass it. A server whose every tool is deferred still shows its instructions, as a
  * direct block does; only the tools' descriptions and schemas are left to the `mcp` tool.
  */
-export function residentBlock({ offered, deferral, spent, contractOf, indexLine, instructionsOf }: ResidentInput) {
+export function residentBlock({
+	offered,
+	deferral,
+	spent,
+	contractOf,
+	indexLine,
+	onDemandLine,
+	instructionsOf,
+}: ResidentInput) {
 	let deferred = new Set(offered.filter((tool) => deferral.deferred.has(tool)));
 	const directOf = () => contractOf(offered.filter((tool) => !deferred.has(tool)));
 	let direct = directOf();
@@ -57,7 +67,8 @@ export function residentBlock({ offered, deferral, spent, contractOf, indexLine,
 		deferred = new Set([...deferred, ...open]);
 		direct = directOf();
 	}
-	const index = offered.filter((tool) => deferred.has(tool)).map(indexLine);
+	const onDemand = [...(deferral.onDemand ?? [])].filter((tool) => !offered.includes(tool));
+	const index = [...offered.filter((tool) => deferred.has(tool)).map(indexLine), ...onDemand.map(onDemandLine)];
 	// With no direct tool the block's head would be missing: the instructions come first.
 	const head = direct.text || (index.length > 0 ? instructionsOf() : "");
 	return {
@@ -67,5 +78,16 @@ export function residentBlock({ offered, deferral, spent, contractOf, indexLine,
 		/** Bytes the direct tools cost, which an `auto:<bytes>` budget counts: the block's text, or their declarations. */
 		directBytes: direct.text ? sizeOf(direct) : Buffer.byteLength(head),
 		deferred: deferred as ReadonlySet<string>,
+		onDemand: new Set(onDemand) as ReadonlySet<string>,
 	};
+}
+
+/**
+ * The trigger of an on-demand tool's index line: the description's `<when>` text, else its first sentence. The line is
+ * all the model reads of the tool before it loads it.
+ */
+export function onDemandTrigger(description: string | undefined): string | undefined {
+	if (!description) return undefined;
+	const when = /<when>([\s\S]*?)<\/when>/i.exec(description)?.[1]?.replace(/\s+/g, " ").trim();
+	return when || firstSentence(description) || undefined;
 }

@@ -304,6 +304,8 @@ interface ToolValidationFailure {
 	envelope: boolean;
 	/** Top-level properties the problems sit at or under, by name. */
 	properties: string[];
+	/** The arguments as the model sent them. */
+	arguments?: unknown;
 }
 
 export interface Tool<TParameters extends TSchema = TSchema> {

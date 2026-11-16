@@ -1,5 +1,5 @@
 import { type Component, Container, Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../../theme/theme.ts";
 import { colorToolOutput } from "../../../../theme/output-style.ts";
 import { foldHint, TOOL_PREVIEW_LINES } from "../../../../theme/theme-tui-helpers.ts";

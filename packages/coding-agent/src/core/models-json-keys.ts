@@ -1,8 +1,8 @@
 import { readFileSync, statSync } from "node:fs";
 // Parsing only: this module must not import `config-value.ts`, which imports the shell module that imports this one.
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
-import { stripJsonComments } from "../../../common/src/json.ts";
-import { stripBom } from "../../../common/src/text.ts";
+import { stripJsonComments } from "@octocodeai/octocode-common/json";
+import { stripBom } from "@octocodeai/octocode-common/text";
 
 /** The `apiKey` a local server's provider template writes: it marks the provider usable and is no secret. */
 export const NO_KEY = "no-key";

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { serialQueue } from "../../../../common/src/serial-queue.ts";
+import { serialQueue } from "@octocodeai/octocode-common/serial-queue";
 import { say } from "../shared/commands.ts";
 import { createAppWindow } from "./app-window.ts";
 import { openOnHost, planOpen } from "./host-opener.ts";

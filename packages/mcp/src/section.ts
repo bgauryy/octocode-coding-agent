@@ -1,4 +1,4 @@
-import { MCP_STATUS_SECTION, MCPS_SECTION, mcpNamespace } from "../../common/src/mcp-names.ts";
+import { MCP_STATUS_SECTION, MCPS_SECTION, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerEntry } from "./config.ts";
 import { hostRender } from "./host.ts";
 
@@ -24,6 +24,8 @@ export interface McpServerListing {
 	deferred?: boolean;
 	/** Some tools the block describes are deferred (listed by name and trigger after the direct ones). */
 	defers?: boolean;
+	/** The block lists tools that are registered but not declared yet (`on-demand.ts`), by name and trigger. */
+	onDemand?: boolean;
 }
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -64,15 +66,22 @@ export function renderMcpsSection(
 		}),
 	);
 	const deferred = servers.some((server) => server.deferred || server.defers);
+	const onDemand = servers.some((server) => server.onDemand);
 	return blocks.length > 0
-		? instruction("sections/mcps.md", { blocks: blocks.join("\n"), deferred, declared: options.declared === true })
+		? instruction("sections/mcps.md", {
+				blocks: blocks.join("\n"),
+				deferred,
+				onDemand,
+				declared: options.declared === true,
+			})
 		: undefined;
 }
 
 /** The servers `renderMcpsSection` gives a block. In `declared` mode a server with no instructions and no deferred tool has nothing to say: its tools say it all. */
 function renderedServers(servers: readonly McpServerListing[], options: { declared?: boolean }): McpServerListing[] {
 	return listedServers(servers).filter(
-		(server) => !options.declared || !server.declared || server.contract || server.defers || server.deferred,
+		(server) =>
+			!options.declared || !server.declared || server.contract || server.defers || server.deferred || server.onDemand,
 	);
 }
 

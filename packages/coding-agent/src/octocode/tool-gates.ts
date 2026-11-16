@@ -14,7 +14,7 @@ import type { registerSourcePolicy } from "./permission/source-policy-loader.ts"
 import { registerHookMcpGate } from "./hooks/mcp-gate.ts";
 import { userBashGate } from "./permission/user-bash.ts";
 import type { registerHooks } from "./hooks/register.ts";
-import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import type { snapshotLocalReads } from "./shared/local-reads.ts";
 import { snapshotReadCall } from "./files/read-continuations.ts";

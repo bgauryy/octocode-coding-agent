@@ -1,5 +1,5 @@
 import { currentToolRoles } from "../../../../mcp/src/api.ts";
-import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 
 /** Every child can save files, communicate, wait with timers, recover history and read memories; local research is added separately. */
 export const CORE_TOOLS = ["file", "agent", "wait", "archive", "memory"] as const;

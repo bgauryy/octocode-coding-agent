@@ -15,8 +15,8 @@ import { transcripts } from "../../../../db/src/api.ts";
 import { defaultSessionDirectories, legacySessionDirectoryPath } from "./directories.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../storage/workspace.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import {
 	assertValidSessionId,
 	createSessionHeader,

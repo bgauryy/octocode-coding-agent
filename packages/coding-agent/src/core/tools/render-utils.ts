@@ -1,7 +1,7 @@
 import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { clipText } from "../../../../common/src/clip.ts";
-import { colorJson } from "../../../../common/src/json-color.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { clipText } from "@octocodeai/octocode-common/clip";
+import { colorJson } from "@octocodeai/octocode-common/json-color";
 import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";

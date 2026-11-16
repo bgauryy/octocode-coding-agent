@@ -19,7 +19,7 @@ import {
 	setSessionLineage,
 	writeSegment,
 } from "../../src/octocode/history/archive.ts";
-import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

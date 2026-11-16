@@ -6,7 +6,7 @@ import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { ensureGitIgnore, getGitDependencyInstallArgs, runNpmCommand } from "./npm.ts";
 import { assertProjectTrustedForScope, getTemporaryDir, resolveManagedPath } from "./sources.ts";
 import { NETWORK_TIMEOUT_MS, type PackageManagerHost, type SourceScope } from "./types.ts";
-import { readJsonFile } from "../../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 export async function installGit(host: PackageManagerHost, source: GitSource, scope: SourceScope): Promise<void> {
 	const targetDir = getGitInstallPath(host, source, scope);

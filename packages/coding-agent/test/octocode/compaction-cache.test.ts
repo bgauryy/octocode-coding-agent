@@ -13,7 +13,7 @@ import { contextChars } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
-import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 type TestModel = {

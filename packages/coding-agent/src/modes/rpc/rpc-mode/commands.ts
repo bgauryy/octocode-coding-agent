@@ -3,7 +3,7 @@ import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts
 import { getPromptCommands } from "../../../core/prompt-templates.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
 import { VERSION } from "../../../config.ts";
-import { redactUrlCredentials } from "../../../../../common/src/url-credentials.ts";
+import { redactUrlCredentials } from "@octocodeai/octocode-common/url-credentials";
 import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "../rpc-types.ts";
 import { RPC_PROTOCOL_VERSION } from "../session-identity.ts";

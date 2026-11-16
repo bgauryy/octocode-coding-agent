@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { stripBom } from "../../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 import { editorFamily } from "./reference-launcher.ts";
 

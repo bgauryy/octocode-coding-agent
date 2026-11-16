@@ -1,7 +1,7 @@
 import type { ApplicationHistory, ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cloneDisplay } from "./normalize.ts";
-import { PersistentMap } from "./persistent-map.ts";
+import { PersistentMap } from "@octocodeai/octocode-common/persistent-map";
 import { historyMessagePage, historyTools } from "./history-index.ts";
 
 const WINDOW_MESSAGES = 50;

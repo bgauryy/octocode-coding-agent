@@ -751,7 +751,7 @@ __metadata:
   dependencies:
     "@agentclientprotocol/sdk": "npm:2.7.0"
     "@octocodeai/octocode-ai": "npm:1.3.0"
-    "@octocodeai/octocode-common": "workspace:*"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@octocodeai/octocode-mcp": "workspace:*"
     "@types/node": "npm:24.19.2"
@@ -780,9 +780,10 @@ __metadata:
   resolution: "@octocodeai/octocode-agentic-testkit@workspace:packages/octocode-agentic-testkit"
   dependencies:
     "@types/node": "npm:24.19.2"
+    typescript: "npm:7.0.2"
     vitest: "npm:5.1.0"
   peerDependencies:
-    vitest: 5.1.0
+    vitest: ">=5.1.0 <6"
   languageName: unknown
   linkType: soft
 
@@ -801,6 +802,7 @@ __metadata:
     "@ai-sdk/provider": "npm:4.0.38"
     "@ai-sdk/provider-utils": "npm:5.0.81"
     "@aws-sdk/credential-providers": "npm:3.1169.0"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@octocodeai/octocode-telemetry": "npm:1.3.0"
     "@types/node": "npm:24.19.2"
@@ -824,14 +826,18 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@octocodeai/octocode-common@workspace:*, @octocodeai/octocode-common@workspace:packages/common":
+"@octocodeai/octocode-common@npm:1.3.0, @octocodeai/octocode-common@workspace:packages/common":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-common@workspace:packages/common"
   dependencies:
     "@octocodeai/octocode-contracts": "npm:1.3.0"
+    "@types/cross-spawn": "npm:6.0.6"
     "@types/node": "npm:24.19.2"
+    "@types/proper-lockfile": "npm:4.1.4"
     cross-spawn: "npm:7.0.6"
     proper-lockfile: "npm:4.1.2"
+    shx: "npm:0.4.0"
+    typescript: "npm:7.0.2"
     vite: "npm:8.3.5"
     vitest: "npm:5.1.0"
   languageName: unknown
@@ -853,7 +859,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-db@workspace:packages/db"
   dependencies:
-    "@octocodeai/octocode-common": "workspace:*"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@types/node": "npm:24.19.2"
     vite: "npm:8.3.5"
@@ -869,6 +875,7 @@ __metadata:
     "@modelcontextprotocol/core": "npm:2.4.0"
     "@octocodeai/octocode-agent-core": "npm:1.3.0"
     "@octocodeai/octocode-ai": "npm:1.3.0"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@octocodeai/octocode-tui": "npm:1.3.0"
     "@types/node": "npm:24.19.2"
@@ -924,7 +931,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-terminal@workspace:packages/terminal"
   dependencies:
-    "@octocodeai/octocode-common": "workspace:*"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@types/node": "npm:24.19.2"
     vite: "npm:8.3.5"
     vitest: "npm:5.1.0"
@@ -935,6 +942,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-tui@workspace:packages/tui"
   dependencies:
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@types/node": "npm:24.19.2"
     "@xterm/headless": "npm:6.0.0"
     chalk: "npm:6.0.1"
@@ -949,6 +957,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-webview@workspace:packages/webview"
   dependencies:
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@testing-library/dom": "npm:10.4.2"
     "@testing-library/jest-dom": "npm:7.0.1"
@@ -983,7 +992,7 @@ __metadata:
     "@octocodeai/octocode-agent-core": "npm:1.3.0"
     "@octocodeai/octocode-ai": "npm:1.3.0"
     "@octocodeai/octocode-chrome-devtools": "link:../../../octocode/packages/octocode-chrome-devtools"
-    "@octocodeai/octocode-common": "workspace:*"
+    "@octocodeai/octocode-common": "npm:1.3.0"
     "@octocodeai/octocode-contracts": "npm:1.3.0"
     "@octocodeai/octocode-db": "workspace:*"
     "@octocodeai/octocode-mcp": "workspace:*"

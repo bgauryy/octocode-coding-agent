@@ -1,7 +1,7 @@
 /** Plain-text status of the servers: the startup report and `/mcp list` outside the TUI. */
 
 import type { McpContext } from "./host/types.ts";
-import { homeTilde } from "../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import {
 	mcpEntryRowInput,
 	mcpRowFacts,

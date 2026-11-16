@@ -1,6 +1,6 @@
 import type { McpServerConfig, McpServerEntry } from "./config.ts";
 import type { createMcpToolDefinition } from "./tool-definition.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
 export interface McpServerPreset {
 	name: string;

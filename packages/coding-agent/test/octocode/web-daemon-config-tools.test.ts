@@ -16,7 +16,7 @@ import { DEFERRABLE_NATIVE_TOOLS, nativeToolDeferred } from "../../src/octocode/
 import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { listToolExposure, pinTool } from "../../src/octocode/web-daemon/tool-exposure.ts";
-import { UsageRecorder, USAGE_FILE_NAME } from "../../../common/src/usage-counts.ts";
+import { UsageRecorder, USAGE_FILE_NAME } from "@octocodeai/octocode-common/usage-counts";
 import { trustFolder } from "./helpers.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
 

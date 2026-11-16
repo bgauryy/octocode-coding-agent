@@ -4,7 +4,7 @@ import { ModelRuntime } from "../core/model-runtime.ts";
 import { providerSourceGate } from "../core/provider-sources/gate.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { isOfflineModeEnabled } from "../utils/env-flag.ts";
-import { sanitizeTerminalText } from "../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 type Discovery = Awaited<ReturnType<typeof discoverProviderModels>>;
 

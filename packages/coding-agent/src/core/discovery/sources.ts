@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { parseConfigDocument } from "../../utils/config-document.ts";
 import { collectSkillEntries } from "../package-manager/discovery.ts";
 import { discoverExtensionsInDir } from "../package-manager/extension-discovery.ts";

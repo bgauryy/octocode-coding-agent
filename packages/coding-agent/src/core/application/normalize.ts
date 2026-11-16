@@ -16,7 +16,7 @@ import {
 } from "../../utils/output-files.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
-import { rememberJsonLength } from "./json-length.ts";
+import { rememberJsonLength } from "@octocodeai/octocode-common/json-length";
 
 const string = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 /** Public display values must not retain references to provider objects mutated by later stream chunks. */

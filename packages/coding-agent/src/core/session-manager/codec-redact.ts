@@ -1,4 +1,5 @@
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 /**
  * Session files are copied, exported and shared, so what a tool printed must not keep a credential. Every string of an
@@ -12,9 +13,6 @@ import { redactSecrets } from "../../../../common/src/sanitize.ts";
  */
 
 type Record_ = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record_ =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const UNTOUCHED_KEYS = new Set(["requestTrace", "systemMessage", "systemBase", "$ref"]);
 

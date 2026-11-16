@@ -74,7 +74,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "model",
 		description: "Pick a model for this chat or as the default",
-		argumentHint: "[provider/model]",
+		argumentHint: "[provider/model] [--set-default]",
 	},
 	{ name: "tree", description: "Browse session branches and jump to a message" },
 	{

@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { DetectedTool, DetectedToolAction, ProviderSourceEnvironment, ProviderSourceFs } from "./types.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export const nodeProviderSourceFs: ProviderSourceFs = {
 	exists: (path) => existsSync(path),

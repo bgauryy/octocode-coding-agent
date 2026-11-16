@@ -1,5 +1,5 @@
 import type { RpcEvent, RpcEventListener } from "./types.ts";
-import { reportToStderr } from "../../../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 /** Runs a listener or callback so that its exception is reported as its own failure, not taken for a bad line. */
 export function guarded(what: string, run: () => void): void {

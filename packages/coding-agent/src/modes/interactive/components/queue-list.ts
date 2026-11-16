@@ -13,7 +13,7 @@ import {
 	matchesKey,
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { ruleLine } from "../../../theme/dynamic-border.ts";
 import { theme } from "../../../theme/theme.ts";
 import { formatKeyText, moveHint, type RankedHint, renderHintLine } from "../../../theme/theme-tui-helpers.ts";

@@ -2,7 +2,7 @@
 
 import { addMcpWithUi } from "./add-ui.ts";
 import type { SelectItem } from "@octocodeai/octocode-tui";
-import { firstLine } from "../../common/src/clip.ts";
+import { firstLine } from "@octocodeai/octocode-common/clip";
 import type { McpContext } from "./host/types.ts";
 import { hostPaths } from "./host.ts";
 import { reconnect, signIn, signOut } from "./connections.ts";

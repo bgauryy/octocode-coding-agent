@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { contentText } from "../shared/util.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { carriedRecords } from "./saved-results.ts";

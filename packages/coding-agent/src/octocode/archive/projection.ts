@@ -1,12 +1,12 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileUnlocked, shortHash } from "../../../../common/src/atomic-file.ts";
-import { withFileLock } from "../../../../common/src/file-write-lock.ts";
+import { atomicWriteFileUnlocked, shortHash } from "@octocodeai/octocode-common/atomic-file";
+import { withFileLock } from "@octocodeai/octocode-common/file-write-lock";
 import { type AgentDb, agentEvents } from "../../../../db/src/api.ts";
 import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 
 /** No symlink in the projection path may redirect a workspace write. */

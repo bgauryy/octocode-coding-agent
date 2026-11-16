@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { dirname } from "node:path";
-import { canonicalPath } from "../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { transcripts } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../storage/database.ts";
 import chalk from "chalk";
@@ -12,7 +12,7 @@ import { listSessionHeaders, type SessionHeaderInfo } from "../core/session-mana
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { resolveAppMode } from "./startup.ts";
 

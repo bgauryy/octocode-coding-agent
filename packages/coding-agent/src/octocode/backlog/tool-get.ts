@@ -1,4 +1,4 @@
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { AUDIT_SHOWN, auditText } from "./audit-text.ts";

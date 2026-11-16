@@ -13,7 +13,7 @@ vi.mock("../src/octocode/external/runner-status.ts", () => ({
 	forgetRunner: vi.fn(),
 	isConnected: (state: RunnerState) => state.cli && state.adapter && state.auth?.signedIn === true,
 }));
-vi.mock("../../common/src/find-on-path.ts", () => ({ findOnPath: () => "/fixture/vendor-cli" }));
+vi.mock("@octocodeai/octocode-common/find-on-path", () => ({ findOnPath: () => "/fixture/vendor-cli" }));
 
 import { listedRunners, runnerSection } from "../src/modes/interactive/interactive-mode/provider-runners.ts";
 import { runnerRows } from "../src/octocode/external/connected.ts";

@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { childSession, childSessionFile } from "./process/session.ts";
 import { privateDir, sessionDir, sessionDirName, sessionFolderNames } from "../shared/home.ts";
 import { scratchRoot } from "./handoff/scratch.ts";
 import type { Run } from "./claim.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /** A private, bounded address book; the child transcript, not this record, owns its conversation. */
 export interface ParkedWorker {

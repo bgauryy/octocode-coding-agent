@@ -8,8 +8,8 @@
  */
 
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { envFlag, OFFLINE_ENV } from "../../../common/src/env.ts";
-import { findOnPath } from "../../../common/src/find-on-path.ts";
+import { envFlag, OFFLINE_ENV } from "@octocodeai/octocode-common/env";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import type { McpServerPreset } from "../preset.ts";
 import { validateMcpServerConfig } from "../servers.ts";
 import freellama from "./freellama.json" with { type: "json" };

@@ -37,9 +37,17 @@ export interface LiveOptions {
 	force?: boolean;
 }
 
+/** Throw from a trial when it got no answer (timeout, 429, 5xx): counted in `errors`, neither a pass nor a failure. */
+export class NoAnswer extends Error {
+	override name = "NoAnswer";
+}
+
 export interface LiveSummary {
 	decision: Decision;
+	/** Answered trials: successes + failures. */
 	trials: number;
+	/** Trials that threw `NoAnswer`; they use up `maxTrials` but never move the decision. */
+	errors?: number;
 	successes: number;
 	failures: number;
 	probability: number;
@@ -50,10 +58,11 @@ export interface LiveSummary {
 
 export type Trial = (info: { trial: number }) => Promise<boolean | void> | boolean | void;
 
-/** Run trials until the posterior decides or maxTrials is spent. A thrown error or `false` is a failure. */
+/** Run trials until the posterior decides or maxTrials is spent. `false` or a thrown error is a failure; a thrown `NoAnswer` is an error. */
 export async function runTrials(opts: LiveOptions, fn: Trial): Promise<LiveSummary> {
 	let successes = 0;
 	let failures = 0;
+	let errors = 0;
 	let lastError: string | undefined;
 	let decision: Decision = "inconclusive";
 	const confidence = opts.confidence ?? 0.95;
@@ -63,10 +72,11 @@ export async function runTrials(opts: LiveOptions, fn: Trial): Promise<LiveSumma
 			if (ok === false) failures++;
 			else successes++;
 		} catch (e) {
-			failures++;
+			if (e instanceof NoAnswer) errors++;
+			else failures++;
 			lastError = e instanceof Error ? e.message : String(e);
 		}
-		if (trial + 1 < (opts.minTrials ?? 1)) continue;
+		if (successes + failures < (opts.minTrials ?? 1)) continue;
 		decision = decide(successes, failures, opts.threshold, confidence);
 		if (decision !== "inconclusive") break;
 	}
@@ -74,6 +84,7 @@ export async function runTrials(opts: LiveOptions, fn: Trial): Promise<LiveSumma
 	return {
 		decision,
 		trials,
+		errors,
 		successes,
 		failures,
 		probability: posteriorAbove(successes, failures, opts.threshold),

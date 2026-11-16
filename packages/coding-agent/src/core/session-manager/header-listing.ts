@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { mapConcurrent } from "../../../../common/src/map-concurrent.ts";
-import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { mapConcurrent } from "@octocodeai/octocode-common/map-concurrent";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import { knownSessionDirectories } from "./directories.ts";
 import { cwdFolders, LIST_MIRROR_WAIT_MS } from "./listing.ts";
 import { sessionMirrorSettled } from "./mirror.ts";

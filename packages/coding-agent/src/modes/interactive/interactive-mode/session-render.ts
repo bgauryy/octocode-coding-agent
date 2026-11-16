@@ -3,7 +3,7 @@
  */
 
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
-import { Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { Spacer, ThemedText, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import type { SessionRenderOptions } from "./session-render-options.ts";
 import { retainLiveTools, renderWindowedEntries } from "./session-window.ts";
@@ -18,7 +18,6 @@ import { formatCacheWarmingUsage } from "../../../core/cache-warmer.ts";
 import { getPromptCacheTtlMs } from "../../../core/cache-warmer/economics.ts";
 import { type SessionEntry, sessionEntryToContextMessages, type UsageEntry } from "../../../core/session-manager.ts";
 import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";

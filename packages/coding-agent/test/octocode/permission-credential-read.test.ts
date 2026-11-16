@@ -9,7 +9,7 @@ import { stateFolderRefusal } from "../../src/octocode/permission/file-access.ts
 import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { planningRefusal } from "../../src/octocode/plan/gate.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

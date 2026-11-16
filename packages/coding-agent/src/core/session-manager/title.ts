@@ -1,4 +1,4 @@
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { parseSkillBlock } from "../skill-block.ts";
 import type { SessionInfo } from "./types.ts";
 

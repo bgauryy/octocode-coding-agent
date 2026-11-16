@@ -8,7 +8,7 @@
 
 import { spawn } from "node:child_process";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { findOnPath } from "../../../../../common/src/find-on-path.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { agentEnv } from "../../../octocode/external/runner-env.ts";
 import { runnerRoute } from "../../../octocode/external/runner-headless.ts";
 import { checkRunners, isConnected, listRunners, type RunnerState } from "../../../octocode/external/runner-status.ts";

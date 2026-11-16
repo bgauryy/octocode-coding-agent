@@ -29,7 +29,7 @@ import rust from "highlight.js/lib/languages/rust";
 import scala from "highlight.js/lib/languages/scala";
 import swift from "highlight.js/lib/languages/swift";
 import typescript from "highlight.js/lib/languages/typescript";
-import { decodeHtmlEntityAt } from "./html.ts";
+import { decodeHtmlEntityAt } from "@octocodeai/octocode-common/html";
 
 const eagerLanguages = {
 	python,

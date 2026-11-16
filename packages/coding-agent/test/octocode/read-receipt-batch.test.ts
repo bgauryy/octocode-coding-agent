@@ -3,7 +3,7 @@ import { approveFixtureMcp } from "./guard-helpers.ts";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fixture } from "./permission-session-fixture.ts";
 
 afterEach(() => vi.unstubAllEnvs());

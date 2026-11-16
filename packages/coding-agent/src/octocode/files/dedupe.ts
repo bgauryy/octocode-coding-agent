@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
 import { currentToolRoles } from "../../../../mcp/src/api.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { contextMessages, plainText, sessionCleared } from "./reads.ts";
 

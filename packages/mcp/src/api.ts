@@ -40,7 +40,12 @@ export { generatedDir, readGenerated } from "./compact/index.ts";
 export { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "./status.ts";
 export { getMcpSwitch, requestMcpReload, type McpReloadResult, type McpSwitch } from "./switch.ts";
 export { currentToolRoles, publishToolRoles, resolveToolRoles, type ResolvedRoles } from "./roles.ts";
-export { currentMcpToolStates, currentMcpServerNames, type McpServerToolStates } from "./tool-states.ts";
+export {
+	currentMcpToolStates,
+	currentMcpServerNames,
+	type McpServerToolStates,
+	toolExposureState,
+} from "./tool-states.ts";
 export {
 	getMcpSessionHandoff,
 	planTaskMcpServers,

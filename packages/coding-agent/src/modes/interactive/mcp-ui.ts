@@ -17,11 +17,12 @@ type Keybinding = Parameters<typeof keyHint>[0];
 /** The terminal of the view the `/mcp` command runs in: its pages are sized to its rows. */
 let viewTerminal: { rows: number } | undefined;
 
-/** The MCP manager's confirm labels in the page vocabulary; `choose` is a selection. */
+/** The MCP manager's confirm labels in the page vocabulary; `choose` is a selection, and `select` names the same verb directly. */
 const ENTER_VERBS: Readonly<Record<string, EnterVerb>> = {
 	open: "open",
 	run: "run",
 	choose: "select",
+	select: "select",
 	inspect: "inspect",
 	confirm: "confirm",
 	edit: "edit",

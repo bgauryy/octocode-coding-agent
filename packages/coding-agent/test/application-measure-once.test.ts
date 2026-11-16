@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApplicationEvent, ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
-import { jsonLength, listJsonLength, recordJsonLength } from "../src/core/application/json-length.ts";
+import { jsonLength, listJsonLength, recordJsonLength } from "@octocodeai/octocode-common/json-length";
 import { normalizeApplicationMessage } from "../src/core/application/normalize.ts";
 import { ApplicationService } from "../src/core/application/service.ts";
 import { createApplicationState } from "../src/core/application/state.ts";

@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { openTarget } from "../../../common/src/open-target.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import {
 	APP_PROFILE_PREFIX,
@@ -23,7 +23,7 @@ import {
 } from "../../src/octocode/browser/app-window.ts";
 
 // The daemon and the system opener are external boundaries of the daemon-path test below.
-vi.mock("../../../common/src/open-target.ts", () => ({ openTarget: vi.fn(async () => undefined) }));
+vi.mock("@octocodeai/octocode-common/open-target", () => ({ openTarget: vi.fn(async () => undefined) }));
 vi.mock("../../src/octocode/web-daemon/launcher.ts", () => ({
 	ensureWebDaemon: async () => ({ origin: "http://127.0.0.1:7", token: "tok", record: {} }),
 	waitForSession: async () => true,

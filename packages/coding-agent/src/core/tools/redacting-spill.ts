@@ -1,4 +1,4 @@
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { CappedOutputFile } from "../../utils/output-files.ts";
 
 /** An unterminated line that grows past this is redacted as it stands, so a line without a newline cannot grow the buffer without bound. */

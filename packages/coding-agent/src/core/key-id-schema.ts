@@ -1,6 +1,6 @@
 import { Key, type KeyId } from "@octocodeai/octocode-tui";
 import { type TSchemaOptions, Type } from "typebox";
-import { escapeRegExp } from "../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 const modifiers = ["ctrl", "shift", "alt", "super"] as const;
 const baseKeyPattern = `(?:[a-z0-9]|${Object.values(Key)

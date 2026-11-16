@@ -24,6 +24,8 @@ import { findLastAssistantMessage } from "./messages.ts";
 export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"> {
 	limitsModel(): Model<any> | undefined;
 	getCallableTools(): AgentTool[];
+	/** Activate a registered on-demand tool the model called undeclared (`activateOnDemand`). */
+	resolveUndeclaredTool(name: string): AgentTool | undefined;
 	/** Declared MCP tools whose server is still connecting. */
 	pendingToolNames(): ReadonlySet<string>;
 }
@@ -58,6 +60,27 @@ export function unknownToolMessage(
 	return `Tool ${name} not found: it is not active in this session. Use another tool, or ask the user to enable it.`;
 }
 
+/** What `activateOnDemand` reads and changes of the loadout. */
+export interface OnDemandLoadout {
+	getToolDefinition(name: string): { onDemand?: boolean } | undefined;
+	getActiveToolNames(): string[];
+	setActiveTools(names: string[]): void;
+	/** The tools the agent declares now. */
+	declared(): readonly AgentTool[];
+}
+
+/**
+ * A call to a registered `onDemand` tool the request did not declare activates it and runs: the loadout adds it, so the
+ * next request declares it after the cached prefix. Undefined for any other name, or when the tool policy or `--tools`
+ * keeps it inactive.
+ */
+export function activateOnDemand(loadout: OnDemandLoadout, name: string): AgentTool | undefined {
+	if (loadout.getToolDefinition(name)?.onDemand !== true) return undefined;
+	const active = loadout.getActiveToolNames();
+	if (!active.includes(name)) loadout.setActiveTools([...active, name]);
+	return loadout.declared().find((tool) => tool.name === name);
+}
+
 export class SessionToolCalls {
 	/** Created on the first `ctx.executeTool()` call. */
 	private _nestedToolCalls: NestedToolCallRunner | undefined;
@@ -82,6 +105,7 @@ export class SessionToolCalls {
 		agent.afterToolCall = (context) => this._afterToolCall(context);
 		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name, this.host.pendingToolNames());
 		agent.pendingToolNames = () => this.host.pendingToolNames();
+		agent.resolveUndeclaredTool = (name) => this.host.resolveUndeclaredTool(name);
 		// `toolExecution.earlyStart`: the extensions decide which calls may start while the message streams (no dialog).
 		agent.earlyStart = {
 			mayStart: (toolCall) =>

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
-import { jsonlLines } from "../../../../common/src/jsonl.ts";
+import { atomicWriteFile } from "@octocodeai/octocode-common/atomic-file";
+import { jsonlLines } from "@octocodeai/octocode-common/jsonl";
 import { privateDir } from "../shared/home.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /** The checkpoint store on disk: the append-only journal and fork inheritance (the sessions sweep handles retention). */
 

@@ -199,6 +199,36 @@ describe("occurrence index", () => {
 		expect(third.status).toBe(502);
 		expect(JSON.stringify(await third.json())).toMatch(/cassette miss: no recorded reply for [0-9a-f]{16}#2/);
 	});
+
+	const trialGw = (up: Upstream, file: string, sample?: number) =>
+		gateway({
+			forward: { baseUrl: up.base, model: "m1", api: "anthropic", key: "sk-test-not-real" },
+			cassette: { file, sample },
+		});
+
+	it("statistical trials through fresh gateways record one sample each when given `sample`", async () => {
+		const up = await upstream();
+		up.answers = ["a", "b", "c"];
+		const f = cassetteFile();
+		const got: string[] = [];
+		for (const n of [0, 1, 2]) got.push(await text(await ask((await trialGw(up, f, n)).url)));
+		expect(got).toEqual(["a", "b", "c"]);
+		expect(up.calls).toBe(3);
+		const replayed: string[] = [];
+		for (const n of [0, 1, 2]) replayed.push(await text(await ask((await trialGw(up, f, n)).url)));
+		expect(replayed).toEqual(["a", "b", "c"]);
+		expect(up.calls).toBe(3);
+	});
+
+	it("must fail: without `sample`, trial 2 through a fresh gateway replays trial 1", async () => {
+		const up = await upstream();
+		up.answers = ["a", "b"];
+		const f = cassetteFile();
+		const first = await text(await ask((await trialGw(up, f)).url));
+		const second = await text(await ask((await trialGw(up, f)).url));
+		expect([first, second]).toEqual(["a", "a"]);
+		expect(up.calls).toBe(1);
+	});
 });
 
 describe("replay is identical", () => {
@@ -257,4 +287,45 @@ describe("cache report", () => {
 		expect(s.providerCache).toEqual({ promptTokens: 140, cachedTokens: 40 });
 		expect(s.hits).toBe(0);
 	});
+});
+
+describe("Haiku provider cache and run cache", () => {
+	it("three inproc turns read the stable prefix from the provider, then replay without upstream", async (ctx) => {
+		if (process.env.TESTKIT_TIER !== "haiku") return ctx.skip("set TESTKIT_TIER=haiku");
+		const { resolveTier, forwardOf } = await import("../src/tiers.ts");
+		const resolved = resolveTier();
+		if ("skip" in resolved) return ctx.skip(resolved.skip);
+		const tier = resolved.tier;
+		const file = cassetteFile();
+		const fingerprint = { adapter: { name: "inproc", version: "1" }, tier: tier.name, model: tier.model };
+		const rec = await gateway({
+			forward: { ...forwardOf(tier), promptCache: true },
+			cassette: { file, mode: "record", fingerprint },
+		});
+		const options = {
+			model: tier.model,
+			maxTurns: 3,
+			systemPrompt:
+				"Call load_skill with name cache on each turn. Do not answer until three calls.\n" +
+				Array.from(
+					{ length: 1500 },
+					(_, i) => `Rule ${i}: Cache entries preserve request semantics and tool outcomes.`,
+				).join("\n"),
+			skills: [{ name: "cache", description: "Cache instructions", body: "Read again on the next turn." }],
+			body: { max_tokens: 128, tool_choice: "required" },
+		};
+		await runInproc({ ...options, gatewayUrl: rec.url, trace: rec.trace }, "Read the cache skill three times.");
+		expect(rec.errors).toEqual([]);
+		expect(rec.trace.requests).toHaveLength(3);
+		const usage = rec.trace.requests.map((r) => r.usage!);
+		console.info(`[haiku cache] ${JSON.stringify(usage)}`);
+		expect(usage.every((u) => !u.estimated)).toBe(true);
+		expect(usage.slice(1).some((u) => u.cachedTokens > 0)).toBe(true);
+		resetCacheEvents();
+		const rep = await gateway({ cassette: { file, mode: "replay", fingerprint } });
+		await runInproc({ ...options, gatewayUrl: rep.url, trace: rep.trace }, "Read the cache skill three times.");
+		expect(rep.trace.requests.map((r) => [r.hash, r.usage])).toEqual(rec.trace.requests.map((r) => [r.hash, r.usage]));
+		expect(summarize(cacheEvents())).toMatchObject({ hits: 3, upstreamCalls: 0 });
+		console.info(`[haiku replay] ${formatSummary(summarize(cacheEvents()))}`);
+	}, 300_000);
 });

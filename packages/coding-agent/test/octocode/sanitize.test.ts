@@ -7,7 +7,7 @@ import {
 	secretProblem,
 	storedText,
 	visibleControls,
-} from "../../../common/src/sanitize.ts";
+} from "@octocodeai/octocode-common/sanitize";
 import { rendered, theme } from "./fake-host.ts";
 
 describe("sanitizeTerminalText", () => {

@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 
 /**
  * End-to-end sealing for relay links, wire version 1 (the exact format is in `docs/remote.md`). The link key travels

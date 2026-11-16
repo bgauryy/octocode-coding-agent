@@ -1,5 +1,5 @@
 import { APP_NAME } from "../../config.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "../team/store/env.ts";
 
 /**

@@ -15,8 +15,8 @@ import { paintStatus } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
 import { plainText } from "./styled-line.ts";
-import { styledLine } from "../../../../../common/src/sanitize.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { styledLine } from "@octocodeai/octocode-common/sanitize";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;

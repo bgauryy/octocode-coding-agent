@@ -3,7 +3,7 @@ import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
 import { createConfigRoutes } from "./config-factory.ts";

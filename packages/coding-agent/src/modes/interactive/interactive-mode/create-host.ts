@@ -13,7 +13,7 @@ import { CustomEditor } from "../../../theme/custom-editor.ts";
 import { FooterComponent } from "../components/footer.ts";
 import { createMermaidMarkdownTransformer } from "../components/mermaid.ts";
 import { IdleStatus } from "../components/status-indicator.ts";
-import { ProgramStatusReporter } from "../program-status-reporter.ts";
+import { SessionStatusReporter } from "../program-status-reporter.ts";
 import { getEditorTheme, setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { InteractiveThemeController } from "../theme/theme-controller.ts";
 import { bindUiState } from "../state/bind-ui.ts";
@@ -117,7 +117,7 @@ export function createInteractiveModeHost(
 		shutdownRequested: false,
 
 		/** Reports working, blocked, done, and error states to terminals that support OSC 7501. */
-		programStatus: new ProgramStatusReporter(
+		programStatus: new SessionStatusReporter(
 			() => host.ui.terminal,
 			() => host.sessionManager.getSessionName(),
 		),
@@ -211,6 +211,8 @@ export function createInteractiveModeHost(
 		paddingX: editorPaddingX,
 		autocompleteMaxVisible,
 		embedWorkingStatus: true,
+		// Idle in regular mode, the editor is the prompt: a terminal then does not read the last message as running output.
+		markPrompt: () => host.ui.mode === "regular" && !host.session.isStreaming,
 	});
 	host.editor = host.defaultEditor;
 	host.editorContainer = new Container();

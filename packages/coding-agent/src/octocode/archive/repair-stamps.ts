@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { setImmediate as nextTurn } from "node:timers/promises";
-import { shortHash } from "../../../../common/src/atomic-file.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AgentDb, compactions, meta, sessions } from "../../../../db/src/api.ts";
 import type { HistoryRepair } from "./repair.ts";

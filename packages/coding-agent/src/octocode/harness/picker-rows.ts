@@ -1,5 +1,5 @@
 import { wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { HOST_TITLES, type InventoryItem } from "./inventory.ts";

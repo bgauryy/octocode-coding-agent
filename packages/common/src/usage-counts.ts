@@ -42,7 +42,8 @@ export const USAGE_GROUPS: readonly UsageGroup[] = ["main", "subagent"];
 /** The role group of the process the environment describes: a subagent child, else main. */
 export const usageGroupOf = (env: NodeJS.ProcessEnv = process.env): UsageGroup =>
 	envFlag(env, SUBAGENT_ENV) ? "subagent" : "main";
-export type UsageKind = "declared" | "called" | "loaded" | "refused" | "used";
+/** `calledUndeclared`: an on-demand tool called before it was declared; it also counts as `loaded` and `used`. */
+export type UsageKind = "declared" | "called" | "loaded" | "calledUndeclared" | "refused" | "used";
 export type UsageCounts = Record<UsageKind, number>;
 export type UsageByTool = Record<string, UsageCounts>;
 
@@ -55,9 +56,16 @@ interface UsageFile {
 	snapshots: Partial<Record<UsageGroup, Snapshot>>;
 }
 
-const KINDS: readonly UsageKind[] = ["declared", "called", "loaded", "refused", "used"];
+const KINDS: readonly UsageKind[] = ["declared", "called", "loaded", "calledUndeclared", "refused", "used"];
 const dayKey = (at: number): string => new Date(at).toISOString().slice(0, 10);
-const emptyCounts = (): UsageCounts => ({ declared: 0, called: 0, loaded: 0, refused: 0, used: 0 });
+const emptyCounts = (): UsageCounts => ({
+	declared: 0,
+	called: 0,
+	loaded: 0,
+	calledUndeclared: 0,
+	refused: 0,
+	used: 0,
+});
 function load(file: string): UsageFile {
 	const usage: UsageFile = { days: {}, snapshots: {} };
 	try {
@@ -186,11 +194,16 @@ export class UsageRecorder {
 		this.#seen = new Set();
 	}
 
-	/** Counts `kind` for each name once per session. `called` and `loaded` also count `used`. Never throws. */
+	/** Counts `kind` for each name once per session. `called` and `loaded` also count `used`; `calledUndeclared` counts `loaded` and `used` too. Never throws. */
 	record(kind: UsageKind, names: Iterable<string>, now: number = Date.now()): void {
 		const bumps = new Map<string, UsageKind[]>();
 		for (const name of names) {
-			const kinds: UsageKind[] = kind === "called" || kind === "loaded" ? [kind, "used"] : [kind];
+			const kinds: UsageKind[] =
+				kind === "calledUndeclared"
+					? [kind, "loaded", "used"]
+					: kind === "called" || kind === "loaded"
+						? [kind, "used"]
+						: [kind];
 			const fresh = kinds.filter((each) => {
 				if (each === "refused") return true;
 				const key = `${each}\0${name}`;

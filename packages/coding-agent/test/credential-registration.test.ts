@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearSecretValues, redactSecrets } from "../../common/src/sanitize.ts";
+import { clearSecretValues, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { resolveConfigValue, resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../src/core/config-value.ts";
 import { RuntimeCredentials } from "../src/core/runtime-credentials.ts";

@@ -8,8 +8,8 @@ import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
 import { type Fetched, language, type PageFetcher, pageFetcher } from "../../src/octocode/web/fetch.ts";
-import type * as importedModule1 from "../../../common/src/web-guard.ts";
-import type { PublicFetchInit } from "../../../common/src/web-guard.ts";
+import type * as importedModule1 from "@octocodeai/octocode-common/web-guard";
+import type { PublicFetchInit } from "@octocodeai/octocode-common/web-guard";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
 import { search } from "../../src/octocode/web/search.ts";
 import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
@@ -35,7 +35,7 @@ type WebTool = {
 const guard = vi.hoisted(() => ({
 	stub: undefined as undefined | ((url: string, init: PublicFetchInit) => Promise<Response>),
 }));
-vi.mock("../../../common/src/web-guard.ts", async (importOriginal) => {
+vi.mock("@octocodeai/octocode-common/web-guard", async (importOriginal) => {
 	const actual = await importOriginal<typeof importedModule1>();
 	return {
 		...actual,

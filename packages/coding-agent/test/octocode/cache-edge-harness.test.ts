@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import { INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { getBuiltinModel, getBuiltinModels, getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";

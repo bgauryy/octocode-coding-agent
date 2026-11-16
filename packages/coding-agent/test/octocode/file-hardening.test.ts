@@ -6,7 +6,7 @@ import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { changeNote } from "../../src/octocode/team/edits.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

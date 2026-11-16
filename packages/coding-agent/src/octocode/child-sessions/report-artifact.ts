@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { sha256Hasher } from "../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { sha256Hasher } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** A host-recorded report version. Without a path, use the current answer received in the transcript. */

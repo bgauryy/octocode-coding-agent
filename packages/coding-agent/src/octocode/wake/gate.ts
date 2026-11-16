@@ -221,11 +221,14 @@ export class WakeGate {
 		this.dropped += count;
 	}
 
-	/** The nudges dropped since the last turn record, and forgets them. */
-	takeDropped(): number {
-		const count = this.dropped;
-		this.dropped = 0;
-		return count;
+	/** The nudges dropped since the last acknowledgement. Reading does not change it. */
+	droppedCount(): number {
+		return this.dropped;
+	}
+
+	/** The announcer of `count` dropped nudges (from `droppedCount`) took them; nudges dropped since stay counted. */
+	ackDropped(count: number): void {
+		this.dropped = Math.max(0, this.dropped - count);
 	}
 
 	/**

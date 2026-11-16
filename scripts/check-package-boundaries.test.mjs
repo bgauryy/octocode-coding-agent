@@ -91,6 +91,31 @@ test("a hosted workspace imports a hosted sibling by package name, not by relati
 	]);
 });
 
+test("db may import the separately built common by relative path, no other package may", () => {
+	const packages = {
+		db: { name: "@app/db", dependencies: { "@app/common": "1", "@app/other": "1" } },
+		common: { name: "@app/common" },
+		other: { name: "@app/other" },
+	};
+	const policy = { db: ["common", "other"], common: [], other: [] };
+	assert.deepEqual(
+		checkPackageBoundaries(
+			packages,
+			[{ package: "db", path: "src/a.ts", imports: ["../../common/src/text.ts"] }],
+			policy,
+		),
+		[],
+	);
+	assert.deepEqual(
+		checkPackageBoundaries(
+			packages,
+			[{ package: "db", path: "src/a.ts", imports: ["../../other/src/text.ts"] }],
+			policy,
+		),
+		["relative package import: db/src/a.ts -> ../../other/src/text.ts"],
+	);
+});
+
 test("a hosted workspace cannot import any host file", () => {
 	const sources = [
 		{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts", "../../host/src/core/secret.ts"] },

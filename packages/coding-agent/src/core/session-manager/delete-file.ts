@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { sessions, transcripts, workspaces } from "../../../../db/src/api.ts";
 import { isCurrentWorkspace } from "../../storage/workspace.ts";
 import { sharedAgentDb } from "../../storage/database.ts";

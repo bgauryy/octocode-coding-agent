@@ -1,6 +1,6 @@
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { WebSocket } from "ws";
-import { redactData } from "../../../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import { encodeApplicationFrame, isEncodedApplicationFrame } from "../../core/application/service/frames.ts";
 import { readerStalled } from "./socket-pressure.ts";
 

@@ -1,5 +1,5 @@
 import { type Component, Markdown, renderChanged, trackRenderChanges, visibleWidth } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { getMarkdownTheme, type Theme } from "../../theme/theme.ts";
 import { expandHint, INDENT, plural } from "../shared/text.ts";
 

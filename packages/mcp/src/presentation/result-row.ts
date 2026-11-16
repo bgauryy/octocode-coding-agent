@@ -1,10 +1,10 @@
 import { toolProgressFraction, toolProgressText, type ApplicationToolProgress } from "@octocodeai/octocode-contracts";
 import { Container, Spacer, Text, VisualLinePreview } from "@octocodeai/octocode-tui";
-import { visibleControls } from "../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { hostRender, hostUi } from "../host.ts";
 import type { McpToolRenderers } from "../host/types.ts";
 import type { McpToolDetails } from "../tools.ts";
-import { colorJson, isJsonDocument } from "../../../common/src/json-color.ts";
+import { colorJson, isJsonDocument } from "@octocodeai/octocode-common/json-color";
 
 const OUTPUT_PREVIEW_LINES = 5;
 /** A collapsed JSON result colours this many characters: more than the preview's wrapped lines can show. */

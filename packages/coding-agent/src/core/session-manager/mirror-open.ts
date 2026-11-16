@@ -1,5 +1,5 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import { getFileStamp } from "../../../../common/src/paths.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { type FileStamp, transcripts } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { recordLines } from "./mirror-lines.ts";

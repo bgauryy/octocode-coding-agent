@@ -1,6 +1,6 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
-import { cutText } from "../../../../../common/src/text.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { cutText } from "@octocodeai/octocode-common/text";
 import type { BadgeState } from "../../../theme/page-kit.ts";
 import { cachedPercent, formatAgo, formatCost, formatTokenUsage } from "../../shared/format.ts";
 import { formatDuration } from "../../../utils/duration.ts";

@@ -1,5 +1,5 @@
 import type { CancelReason, Question, Reply } from "@octocodeai/octocode-contracts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionUIContext, ExtensionUIDialogOptions } from "../../core/features/types.ts";
 import { SUBMIT_PICKS } from "./dialog/answers.ts";
 import { type AskOptions, plainTitle } from "./question.ts";

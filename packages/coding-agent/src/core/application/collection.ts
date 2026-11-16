@@ -1,4 +1,4 @@
-import { PersistentMap } from "./persistent-map.ts";
+import { PersistentMap } from "@octocodeai/octocode-common/persistent-map";
 
 /**
  * Immutable map updates: each `set` publishes a new version (`PersistentMap`, a path copy rather than a whole-map copy,

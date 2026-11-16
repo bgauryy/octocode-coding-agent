@@ -6,7 +6,7 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { tempSibling } from "../../../common/src/atomic-file.ts";
+import { tempSibling } from "@octocodeai/octocode-common/atomic-file";
 import {
 	type Report,
 	releasePendingReports,

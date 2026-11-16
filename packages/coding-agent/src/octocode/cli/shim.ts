@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync, sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getAgentDir } from "../../config.ts";
 import { type OctocodeCli, cliRuntime, resolveOctocodeCli } from "./resolve.ts";

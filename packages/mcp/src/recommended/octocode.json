@@ -10,7 +10,23 @@
 		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}",
 		"OCTOCODE_ENABLE_CLONE": "true"
 	},
-	"install": { "npm": "octocode-mcp", "version": "20.2.0", "bin": "octocode-mcp", "hostDependency": true },
+	"install": {
+		"npm": "octocode-mcp",
+		"version": "20.2.0",
+		"bin": "octocode-mcp",
+		"hostDependency": true
+	},
+	"toolExposure": {
+		"ghSearchRepo": "onDemand",
+		"ghSearchCode": "onDemand",
+		"ghStructure": "onDemand",
+		"ghGetFileContent": "onDemand",
+		"ghSearchHistory": "onDemand",
+		"ghGetHistoryItem": "onDemand",
+		"ghCloneRepo": "onDemand",
+		"artifactSearch": "onDemand",
+		"securityCheck": "onDemand"
+	},
 	"roles": {
 		"reader": ["localFetch"],
 		"search": ["localSearch", "structureSearch", "astSearch", "lspSearch"],

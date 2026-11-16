@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
-import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
-import { redactSecrets } from "../../../common/src/sanitize.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
+import { lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { getAgentDir, VERSION } from "../config.ts";
 import type { Extension } from "./features/types.ts";
 import { isSyntheticPath } from "./source-info.ts";

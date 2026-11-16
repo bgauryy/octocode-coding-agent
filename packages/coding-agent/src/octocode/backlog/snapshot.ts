@@ -1,4 +1,4 @@
-import { storedSecret } from "../../../../common/src/sanitize.ts";
+import { storedSecret } from "@octocodeai/octocode-common/sanitize";
 import { refuseExportSecrets } from "./export-secrets.ts";
 import { IDLE_MS } from "./release.ts";
 import { queuedItems } from "../shared/queued-items.ts";

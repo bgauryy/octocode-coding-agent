@@ -351,6 +351,14 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	unknownToolMessage?: (toolName: string) => string | undefined;
 
 	/**
+	 * Called when the model calls a tool the request did not declare, before `unknownToolMessage`. Return a tool the host
+	 * registered but kept undeclared until first use, after making it part of the loadout: the call then runs through
+	 * the usual validation and hooks, and the next request declares the tool after the cached prefix. Undefined keeps
+	 * the call unknown.
+	 */
+	resolveUndeclaredTool?: (toolName: string) => AgentTool<any> | undefined;
+
+	/**
 	 * Start calls while the assistant message still streams (parallel execution only); omitted, nothing starts before the
 	 * message ends. See {@link EarlyToolStart}.
 	 */

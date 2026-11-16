@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";

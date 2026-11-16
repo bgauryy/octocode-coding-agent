@@ -6,10 +6,10 @@
 import * as path from "node:path";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
-import { getCwdRelativePath } from "../../../../../common/src/paths.ts";
+import { getCwdRelativePath } from "@octocodeai/octocode-common/paths";
 import type { InteractiveModeHost } from "./host.ts";
 import type { SourcedPath } from "./types.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** Interactive-mode members used by the resource path labels. */
 type ResourcePathsHost = Pick<

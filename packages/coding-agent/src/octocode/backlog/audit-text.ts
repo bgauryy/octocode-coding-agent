@@ -1,6 +1,6 @@
 import type { BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
-import { clipText } from "../../../../common/src/clip.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { clipText } from "@octocodeai/octocode-common/clip";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 /** How many of the newest audit rows `get` shows; the board's Audit view and `store.audit` page through the rest. */
 export const AUDIT_SHOWN = 8;

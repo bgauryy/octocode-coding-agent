@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearSecretValues, registerSecretValue } from "../../../common/src/sanitize.ts";
+import { clearSecretValues, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { noticeLines } from "../../src/octocode/subagents/render.ts";

@@ -1,6 +1,6 @@
 import type { ExtensionUIContext } from "../../core/features/index.ts";
 import { SearchableSelectorComponent } from "./components/searchable-selector.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 export interface ReferencePickerHost {
 	showExtensionCustom: ExtensionUIContext["custom"];

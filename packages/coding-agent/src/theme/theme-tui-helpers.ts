@@ -1,14 +1,15 @@
 import {
 	type Component,
 	type EditorTheme,
-	getKeybindings,
 	GLYPH,
-	type Keybinding,
+	HighlightCache,
 	type KeyId,
+	type Keybinding,
 	type MarkdownTheme,
-	type SelectListTheme,
 	SEPARATOR,
+	type SelectListTheme,
 	type SettingsListTheme,
+	getKeybindings,
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
@@ -17,7 +18,6 @@ import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-hig
 import type { Theme } from "./theme-class.ts";
 import type { ThemeColor } from "./theme-types.ts";
 import { theme } from "./theme-global.ts";
-import { HighlightCache } from "./highlight-cache.ts";
 
 /** The GitHub alert kinds a `MarkdownTheme` styles. */
 type MarkdownAlertKind = Parameters<NonNullable<MarkdownTheme["alert"]>>[0];

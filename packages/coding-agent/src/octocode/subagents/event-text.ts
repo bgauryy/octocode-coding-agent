@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { thoughtGist } from "../render/thought.ts";
 import { contentText } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";

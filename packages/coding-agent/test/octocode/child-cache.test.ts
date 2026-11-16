@@ -1,6 +1,6 @@
 import { INSTRUCTION_CACHE_RETENTION_ENV, PROMPT_CACHE_KEY_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { describe, expect, it } from "vitest";
-import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { CACHE_GROUP_ENTRY } from "../../src/octocode/shared/cache-group-entry.ts";
 import { prefixHash, registerCacheGroup } from "../../src/octocode/subagents/cache-group.ts";
 import {

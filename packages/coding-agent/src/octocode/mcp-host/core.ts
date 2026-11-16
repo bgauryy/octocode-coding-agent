@@ -54,6 +54,7 @@ const paths: McpHostPorts["paths"] = {
 	sessionRoots: (cwd, env) => [sessionsRoot(env, cwd), sessionTempRoot(env, cwd)],
 	researchRoots: (env) => userResearchRoots(env),
 	mcpDocsPath: () => join(getDocsPath(), "mcp.md"),
+	serverRecordsDir: () => join(getAgentDir(), "mcp-server-owners"),
 };
 
 const output: McpHostPorts["output"] = {

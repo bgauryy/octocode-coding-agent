@@ -33,7 +33,7 @@ import { type PromptingHost, releaseHeldInput } from "./prompting.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import { SessionRetry } from "./retry.ts";
 import { SessionRunLoop } from "./run-loop.ts";
-import { SessionToolCalls } from "./tool-calls.ts";
+import { activateOnDemand, SessionToolCalls } from "./tool-calls.ts";
 import { SessionToolLoadout } from "./tool-loadout.ts";
 import { SessionTreeNavigation } from "./tree-navigation.ts";
 import type { AgentSessionConfig, PendingUserInput } from "./types.ts";
@@ -112,6 +112,16 @@ export function createSessionCollaborators(
 		...base,
 		limitsModel: () => models.limitsModel(),
 		getCallableTools: () => tools.getCallableTools(),
+		resolveUndeclaredTool: (name) =>
+			activateOnDemand(
+				{
+					getToolDefinition: (tool) => tools.getToolDefinition(tool),
+					getActiveToolNames: () => base.session.getActiveToolNames(),
+					setActiveTools: (names) => tools.setActiveTools(names),
+					declared: () => base.session.agent.state.tools,
+				},
+				name,
+			),
 		pendingToolNames: tools.pendingMcpToolNames,
 	});
 	const bash = new SessionBash({ ...base, recordBashResult: seams.recordBashResult });

@@ -1,9 +1,9 @@
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { cutText } from "@octocodeai/octocode-common/text";
 import { formatAgo, formatClock, memberStats } from "../shared/format.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";

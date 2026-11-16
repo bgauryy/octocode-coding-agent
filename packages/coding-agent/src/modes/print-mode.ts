@@ -10,6 +10,7 @@ import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import type { AgentSessionEvent, RunOutcome } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, onRawStdoutFailure, writeRawStdout } from "../core/output-guard.ts";
+import { drainDbWriters } from "../storage/database.ts";
 import { createEventOutput, waitForEventBackpressure } from "./event-output.ts";
 import { headlessCommandActions } from "./headless-actions.ts";
 import { createEventLines } from "./event-lines.ts";
@@ -59,9 +60,9 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	const removeSignalHandlers = handleTerminationSignals((_signal, signalExitCode) => {
 		// A shutdown is already running and the user asks again: that is the way out of one that does not finish.
 		if (disposing) process.exit(signalExitCode);
-		void disposeRuntime().finally(() => {
-			process.exit(signalExitCode);
-		});
+		void disposeRuntime()
+			.then(drainDbWriters, drainDbWriters)
+			.finally(() => process.exit(signalExitCode));
 	});
 
 	// The reader of a run's output went away: release the session as a signal does, and report the failure.
@@ -70,9 +71,9 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		if (stdoutFailed) return;
 		stdoutFailed = true;
 		console.error(`octocode: stopping, stdout failed: ${error.message}`);
-		void disposeRuntime().finally(() => {
-			process.exit(1);
-		});
+		void disposeRuntime()
+			.then(drainDbWriters, drainDbWriters)
+			.finally(() => process.exit(1));
 	});
 
 	runtimeHost.setRebindSession(async () => {

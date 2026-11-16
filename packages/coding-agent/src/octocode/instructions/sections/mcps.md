@@ -10,4 +10,7 @@ A tool listed as `- name` is declared with its description and its field names a
 Before you call a listed `- name: trigger` tool for the first time, load its schema with the `mcp` tool (intent `tools`, the block's server and the tool's name), since its fields are not shown here.
 {{/if}}
 {{/if}}
+{{#if onDemand}}
+A tool listed as `- name: trigger` is not declared yet. Load it with the `mcp` tool (intent `tools`, the block's server and the tool's name), or call it directly by replacing `*` in the block's `tools` prefix with its name; from then on it is declared like the others.
+{{/if}}
 {{blocks}}

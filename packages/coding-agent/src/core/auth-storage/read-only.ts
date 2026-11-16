@@ -8,11 +8,11 @@ import {
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { join } from "node:path";
 import { getAgentDir } from "../../config.ts";
-import { normalizePath } from "../../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { resolveConfigValueAsync } from "../config-value.ts";
 import type { AuthStorageData } from "./backends.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { readJsonFile } from "../../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 import { invalidEntryReason } from "./validation.ts";
 import { resolveKeychainOAuthAsync } from "./keychain-oauth.ts";
 

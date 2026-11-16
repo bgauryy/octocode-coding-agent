@@ -1,5 +1,5 @@
 import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { type BadgeState, badge } from "../../../theme/page-kit.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
 

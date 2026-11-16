@@ -1,4 +1,4 @@
-import { storedSecret } from "../../../../common/src/sanitize.ts";
+import { storedSecret } from "@octocodeai/octocode-common/sanitize";
 import { BacklogError } from "./item.ts";
 
 /** The text of one item that both exports (`/backlog export` and `/backlog html`) write. */

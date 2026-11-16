@@ -11,7 +11,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import { LIBRARY_FILE } from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { sessionFolder } from "../../src/octocode/shared/home.ts";
 import { getOctocodeHome } from "../../src/config.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
@@ -21,7 +21,7 @@ import { headlessFileTool } from "./permission-file-harness.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { RECORD_FILE } from "../../src/octocode/history/archive/record.ts";
-import { canonicalPath } from "../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 
 const call = (toolName: string, input: Record<string, unknown>) =>
 	({ type: "tool_call", toolCallId: "t1", toolName, input }) as ToolCallEvent;

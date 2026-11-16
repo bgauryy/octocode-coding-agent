@@ -1,6 +1,6 @@
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { READ_ONLY_ENV } from "../../../common/src/env.ts";
+import { READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { identityBlock, withIdentity } from "../../src/octocode/instructions/task.ts";
 import { AGENT_ROLE_ENV } from "../../src/octocode/team/store/env.ts";

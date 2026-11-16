@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { validPid } from "../../utils/process-id.ts";
 import { globalPaths, isSessionsTempDir } from "./home.ts";
 import { groupAlive } from "./process.ts";

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { stripBom } from "../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { discoverPluginComponents } from "./plugin-components.ts";
 import { resolveConfiguredPlugin, type PluginManifest } from "./plugin-manifest.ts";
 import type { Settings } from "./settings-schema.ts";

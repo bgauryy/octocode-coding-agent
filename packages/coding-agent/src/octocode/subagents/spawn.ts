@@ -41,6 +41,7 @@ import type { RunDetails } from "./run-types.ts";
 import { spawnRefusal } from "./spawn-limits.ts";
 import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts";
 import { childTaskInput, taskReferences } from "./task-text.ts";
+import { withItems } from "./task-items.ts";
 import { resolveTaskServers } from "./task-servers.ts";
 import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
@@ -130,7 +131,7 @@ export async function spawnAgent(
 	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.getCommands());
 	const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
-	let referenced = await taskReferences(params.task, team, ctx, artifactAccess);
+	let referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
 	const slot = { held: false };
 	if (params.background) {
 		// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.

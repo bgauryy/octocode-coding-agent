@@ -12,7 +12,7 @@ import {
 	type BacklogComment,
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
-import { redactData, visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactData, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { type Db, backlog } from "../../../../db/src/api.ts";
 import { sessionRunningPid } from "../shared/session-liveness.ts";
 import { type Row, toItem } from "./row.ts";

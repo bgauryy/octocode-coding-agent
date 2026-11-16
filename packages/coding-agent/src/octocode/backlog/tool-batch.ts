@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { contentText, textResult } from "../shared/util.ts";
 import { parseRef } from "./item.ts";
 import { BacklogBatchAbortedError, type BatchOutcome } from "./batch-outcome.ts";

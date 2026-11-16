@@ -1,7 +1,7 @@
 /** Short display form of a file path for status lines and notes. */
 import os from "node:os";
 import path from "node:path";
-import { homeTilde } from "../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** `file` relative to `cwd` when inside it, else with the home directory as `~`; otherwise unchanged. */
 export function shortPath(file: string, cwd = process.cwd(), home = os.homedir()): string {

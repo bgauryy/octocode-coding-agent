@@ -1,4 +1,4 @@
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { Value } from "typebox/value";
 import type { TSchema } from "typebox";
 
@@ -82,10 +82,15 @@ function copyJson(input: unknown, limits: { bytes: number; depth: number; nodes:
 	return copied;
 }
 
-function checkSchema(schema: JsonValue, depth = 0, count = { nodes: 0 }): asserts schema is Record<string, JsonValue> {
-	if (!plain(schema) || ++count.nodes > 128 || depth > 8) throw new Error("Invalid or excessive result schema");
-	for (const key of Object.keys(schema))
-		if (!KEYS.has(key)) throw new Error(`Unsupported result schema keyword: ${key}`);
+function checkSchema(
+	schema: JsonValue,
+	path = "$",
+	depth = 0,
+	count = { nodes: 0 },
+): asserts schema is Record<string, JsonValue> {
+	const fail = (message: string) => new Error(`${message} at ${path}`);
+	if (!plain(schema) || ++count.nodes > 128 || depth > 8) throw fail("Invalid or excessive result schema");
+	for (const key of Object.keys(schema)) if (!KEYS.has(key)) throw fail(`Unsupported result schema keyword: ${key}`);
 	const types = Array.isArray(schema.type) ? schema.type : [schema.type];
 	if (
 		types.length < 1 ||
@@ -93,16 +98,18 @@ function checkSchema(schema: JsonValue, depth = 0, count = { nodes: 0 }): assert
 		new Set(types).size !== types.length ||
 		types.some((t) => typeof t !== "string" || !TYPES.has(t))
 	)
-		throw new Error("Result schema needs an explicit supported type");
+		throw fail(
+			`Result schema node needs an explicit "type" (${[...TYPES].join("|")}, or an array of them); enum/const do not imply one`,
+		);
 	if (schema.description !== undefined && (typeof schema.description !== "string" || schema.description.length > 1024))
-		throw new Error("Invalid result schema description");
+		throw fail("Invalid result schema description");
 	const properties = schema.properties;
 	if (properties !== undefined) {
 		if (!types.includes("object") || !plain(properties) || Object.keys(properties).length > 64)
-			throw new Error("Invalid result schema properties");
+			throw fail("Invalid result schema properties");
 		for (const [key, child] of Object.entries(properties)) {
-			if (DANGEROUS_KEYS.has(key) || key.length > 128) throw new Error("Unsafe result property name");
-			checkSchema(child, depth + 1, count);
+			if (DANGEROUS_KEYS.has(key) || key.length > 128) throw fail("Unsafe result property name");
+			checkSchema(child, `${path}.properties.${key}`, depth + 1, count);
 		}
 	}
 	if (
@@ -113,15 +120,15 @@ function checkSchema(schema: JsonValue, depth = 0, count = { nodes: 0 }): assert
 			new Set(schema.required).size !== schema.required.length ||
 			schema.required.some((key) => typeof key !== "string" || !plain(properties) || !Object.hasOwn(properties, key)))
 	)
-		throw new Error("Invalid result schema required fields");
+		throw fail("Invalid result schema required fields");
 	if (
 		schema.additionalProperties !== undefined &&
 		(!types.includes("object") || typeof schema.additionalProperties !== "boolean")
 	)
-		throw new Error("Invalid additionalProperties");
+		throw fail("Invalid additionalProperties");
 	if (schema.items !== undefined) {
-		if (!types.includes("array")) throw new Error("items requires array type");
-		checkSchema(schema.items, depth + 1, count);
+		if (!types.includes("array")) throw fail("items requires array type");
+		checkSchema(schema.items, `${path}.items`, depth + 1, count);
 	}
 	for (const key of ["minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"] as const) {
 		const value = schema[key];
@@ -138,7 +145,7 @@ function checkSchema(schema: JsonValue, depth = 0, count = { nodes: 0 }): assert
 			(kind === "Length" && !types.includes("string")) ||
 			(kind === "number" && !types.some((type) => type === "number" || type === "integer"))
 		)
-			throw new Error(`Invalid result schema ${key}`);
+			throw fail(`Invalid result schema ${key}`);
 	}
 	for (const [min, max] of [
 		["minimum", "maximum"],
@@ -146,10 +153,10 @@ function checkSchema(schema: JsonValue, depth = 0, count = { nodes: 0 }): assert
 		["minLength", "maxLength"],
 	] as const)
 		if (typeof schema[min] === "number" && typeof schema[max] === "number" && schema[min] > schema[max])
-			throw new Error(`Invalid result schema ${min}/${max}`);
+			throw fail(`Invalid result schema ${min}/${max}`);
 	if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.length < 1 || schema.enum.length > 64))
-		throw new Error("Invalid result schema enum");
-	if (schema.enum !== undefined && schema.const !== undefined) throw new Error("Use either enum or const");
+		throw fail("Invalid result schema enum");
+	if (schema.enum !== undefined && schema.const !== undefined) throw fail("Use either enum or const");
 }
 
 function canonical(value: JsonValue): string {

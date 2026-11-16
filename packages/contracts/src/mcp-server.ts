@@ -7,9 +7,12 @@
  * - `direct`: tools are declared to the model, and the server's block describes them in full.
  * - `deferred`: tools are declared the same way, but the block lists only each tool's name and trigger; the agent
  *   loads the full description and schema with the `mcp` tool (`deferral.ts`).
+ * - `onDemand`: tools are registered and callable but not declared until the session first needs them (a load with the
+ *   `mcp` tool, or a call); the block lists each by name and trigger. Only where the model's transport adds a
+ *   declaration without rewriting the cached prefix; elsewhere such a tool is `deferred` (`on-demand.ts`).
  * - `hidden`: tools are registered but unreachable.
  */
-export type McpExposure = "direct" | "deferred" | "hidden";
+export type McpExposure = "direct" | "deferred" | "onDemand" | "hidden";
 
 interface McpServerConfigBase {
 	/** Default: `direct`. */

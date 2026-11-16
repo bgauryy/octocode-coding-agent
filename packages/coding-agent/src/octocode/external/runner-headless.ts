@@ -4,7 +4,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import type { ExternalUsage } from "@octocodeai/octocode-contracts/external";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { clip } from "../shared/text.ts";
 import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
 import { pollDescendants } from "../shared/descendant-poller.ts";

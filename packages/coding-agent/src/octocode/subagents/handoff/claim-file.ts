@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { claims, type Report } from "./pending.ts";
 
 /** Brings a report's recovery copy up to date with the wake and content it now has. */

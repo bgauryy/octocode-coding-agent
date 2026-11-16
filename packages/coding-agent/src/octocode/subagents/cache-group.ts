@@ -3,7 +3,7 @@ import type { SessionEntry } from "../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PROMPT_CACHE_KEY_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { AGENT_ID_ENV } from "../team/store/env.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { CACHE_GROUP_ENTRY } from "../shared/cache-group-entry.ts";
 
 // The provider's own reason for a miss is recorded on the assistant message (`cache_miss` diagnostic; children ask for

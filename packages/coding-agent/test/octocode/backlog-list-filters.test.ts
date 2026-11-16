@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
-import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

@@ -1,6 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { queryTarget } from "../../../../../../common/src/clip.ts";
-import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
+import { queryTarget } from "@octocodeai/octocode-common/clip";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ToolRenderers } from "../../../../core/features/types.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../octocode/render/tool.ts";
 import { outputLanguage } from "../../../../theme/output-style.ts";

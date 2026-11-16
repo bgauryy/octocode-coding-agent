@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { BUILTIN_FEATURES } from "../../src/core/resource-loader/builtins.ts";
 import octocode from "../../src/octocode/index.ts";
 import { getNativeToolNames, takesCallReason } from "../../src/octocode/permission/native-tools.ts";

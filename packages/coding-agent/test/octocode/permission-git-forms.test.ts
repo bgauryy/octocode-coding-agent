@@ -10,7 +10,7 @@ import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-rol
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { commandWriteTargets } from "../../src/octocode/permission/shell/write-targets.ts";
-import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
 import { WORKTREE_ROOT_ENV } from "../../src/octocode/worktree-paths/prompt-root.ts";
 import { tmp } from "./helpers.ts";

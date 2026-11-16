@@ -6,8 +6,8 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { defaultSessionDirectories, knownSessionDirectories, type CwdSessionDirectory } from "./directories.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { mapConcurrent } from "../../../../common/src/map-concurrent.ts";
-import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { mapConcurrent } from "@octocodeai/octocode-common/map-concurrent";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import {
 	getDefaultSessionDirPath,
 	getSessionHeaderCwd,

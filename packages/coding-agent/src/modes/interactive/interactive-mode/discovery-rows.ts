@@ -3,7 +3,7 @@
  * sources the items came from, what did not apply, and (expanded) every item with its path. Pure: the view in, specs out.
  */
 
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ResourceDiagnostic } from "../../../core/diagnostics.ts";
 import {
 	type ContextEntry,
@@ -16,7 +16,7 @@ import {
 	sourceSummary,
 } from "../../../core/discovery/context-view.ts";
 import { skillFolder } from "../../../core/discovery/display-paths.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { KeybindingProblem } from "../../../core/keybindings.ts";
 import type { HarnessStatus } from "../../../core/discovery/vendors/types.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";

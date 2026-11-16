@@ -1,4 +1,4 @@
-import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "../../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV, SUBAGENT_HOOKS_ENV } from "@octocodeai/octocode-common/env";
 
 /**
  * How much of the user's hooks a session runs. A main session always runs `all`. A subagent runs `off` unless its

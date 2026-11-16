@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { USAGE_FILE_NAME, UsageRecorder } from "../../../common/src/usage-counts.ts";
+import { USAGE_FILE_NAME, UsageRecorder } from "@octocodeai/octocode-common/usage-counts";
 import { nativeToolDeferred } from "../../src/octocode/permission/native-deferral.ts";
 import { tmp } from "./helpers.ts";
 

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { getOctocodeHome } from "../../config.ts";
 import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";

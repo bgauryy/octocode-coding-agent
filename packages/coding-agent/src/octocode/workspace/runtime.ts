@@ -18,7 +18,7 @@ import { descendants } from "../team/panel/roster.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
-import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { contentText } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
 import { agentBase, createProfiler, endedRuns, memberTranscript } from "../profiler/index.ts";

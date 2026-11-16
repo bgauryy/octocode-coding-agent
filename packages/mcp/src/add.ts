@@ -1,6 +1,6 @@
 import { Value } from "typebox/value";
 import { McpAddCommandSchema, type McpAddCommand, type McpAddResult } from "@octocodeai/octocode-contracts/config";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { listMcpFileEntries } from "./config.ts";
 import { addMcpServerConfig } from "./config-write.ts";
 import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";

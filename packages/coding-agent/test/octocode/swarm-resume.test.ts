@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describe, expect, it, vi } from "vitest";
-import { AGENT_ID_ENV, AGENT_RUN_ID_ENV, PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import {
+	AGENT_ID_ENV,
+	AGENT_RUN_ID_ENV,
+	PARENT_SESSION_ENV,
+	TEAM_WORKSPACE_ENV,
+} from "@octocodeai/octocode-common/env";
 import { sessionDir } from "../../src/storage/runtime-paths.ts";
 import type { AgentRuns, Run } from "../../src/octocode/subagents/claim.ts";
 import type { BackgroundRun } from "../../src/octocode/subagents/command.ts";

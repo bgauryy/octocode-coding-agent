@@ -1,5 +1,5 @@
 import path from "node:path";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { repoKey } from "../../../utils/git-repository.ts";
 import { sessionWorkspace } from "../../shared/home/workspace.ts";
 import { leaseKey } from "../lease-key.ts";

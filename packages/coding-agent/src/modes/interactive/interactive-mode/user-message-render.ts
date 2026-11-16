@@ -1,6 +1,6 @@
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { parseSkillBlock } from "../../../core/agent-session.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { contentText, FullContentReader } from "../components/application-content.ts";

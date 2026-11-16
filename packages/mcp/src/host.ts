@@ -54,6 +54,8 @@ export interface McpPathsPort {
 	 * environment, whose `ALLOWED_PATHS` counts as one). A host without user-added folders omits it.
 	 */
 	researchRoots?(env?: NodeJS.ProcessEnv): McpResearchRoots;
+	/** Where running stdio servers' owner records live, so a later start can stop the groups of a dead owner; omitted: none are kept. */
+	serverRecordsDir?(): string;
 	/** The host's MCP configuration page, shown in Add MCP; a host without shipped docs omits it. */
 	mcpDocsPath?(): string;
 }
@@ -319,3 +321,5 @@ export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
 /** The review port, or undefined when the host installed none. */
 export const hostReview = (): McpReviewPort | undefined => installed.review;
+/** The folder for stdio server owner records, or undefined when no paths port is installed or it names none. */
+export const hostServerRecordsDir = (): string | undefined => installed.paths?.serverRecordsDir?.();

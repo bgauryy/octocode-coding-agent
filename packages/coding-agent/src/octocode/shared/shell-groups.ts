@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 import { validPid } from "../../utils/process-id.ts";
 import { groupAlive, groupStartTimes, processMatch, processStartTime, stopTree } from "./process.ts";
 

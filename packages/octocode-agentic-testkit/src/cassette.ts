@@ -27,6 +27,11 @@ export interface CassetteOptions {
 	mode?: CassetteMode;
 	/** Merged over the gateway's own (`model`, `tier`). */
 	fingerprint?: Fingerprint;
+	/**
+	 * Statistical trials: the trial index. Each sample records and replays its own reply, so trial 2 never
+	 * replays trial 1. Without it, a repeated run through a new gateway replays the first recording.
+	 */
+	sample?: string | number;
 }
 
 interface Entry {
@@ -45,7 +50,7 @@ export type Plan = { action: "replay"; reply: Reply } | { action: "call" };
 
 const MODES: CassetteMode[] = ["auto", "record", "replay", "off"];
 
-export function cassetteModeFromEnv(env: Record<string, string | undefined> = process.env): CassetteMode {
+function cassetteModeFromEnv(env: Record<string, string | undefined> = process.env): CassetteMode {
 	const v = (env.TESTKIT_CASSETTE ?? "auto").toLowerCase();
 	if (!MODES.includes(v as CassetteMode)) throw new Error(`TESTKIT_CASSETTE=${v} is not one of ${MODES.join(", ")}`);
 	return v as CassetteMode;
@@ -81,7 +86,7 @@ const slug = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0,
 const STALE_FILE_DAYS = 14;
 
 /** Default cassette file: one per tier, model and upstream, so unrelated upstreams never share replies. Prunes old ones. */
-export function defaultCassetteFile(fp: Fingerprint, upstream: string): string {
+function defaultCassetteFile(fp: Fingerprint, upstream: string): string {
 	const dir = join(cacheDir(), "testkit-cassettes");
 	if (existsSync(dir))
 		for (const f of readdirSync(dir)) {
@@ -106,6 +111,7 @@ export class Cassette {
 	private staleKeys = new Set<string>();
 	private readonly fresh: Record<string, Entry> = {};
 	private readonly seen = new Map<string, number>();
+	private readonly sample: string;
 	/** The first write replaces the file instead of merging with it (record mode, stale file). */
 	private replaceOnWrite: boolean;
 	private written = false;
@@ -124,11 +130,18 @@ export class Cassette {
 		const mode = opts?.mode ?? cassetteModeFromEnv();
 		if (mode === "off" || (mode === "auto" && !forwarding)) return undefined;
 		const fingerprint = { ...base, ...opts?.fingerprint };
-		return new Cassette(mode, opts?.file ?? defaultCassetteFile(fingerprint, upstream ?? "scripted"), fingerprint);
+		const file = opts?.file ?? defaultCassetteFile(fingerprint, upstream ?? "scripted");
+		return new Cassette(mode, file, fingerprint, opts?.sample);
 	}
 
-	private constructor(mode: Exclude<CassetteMode, "off">, file: string, fingerprint: Fingerprint) {
+	private constructor(
+		mode: Exclude<CassetteMode, "off">,
+		file: string,
+		fingerprint: Fingerprint,
+		sample: string | number | undefined,
+	) {
 		this.mode = mode;
+		this.sample = sample === undefined ? "" : `@${sample}`;
 		this.file = file;
 		this.fingerprint = fingerprint;
 		this.replaceOnWrite = mode === "record";
@@ -157,7 +170,7 @@ export class Cassette {
 	key(hash: string): string {
 		const n = this.seen.get(hash) ?? 0;
 		this.seen.set(hash, n + 1);
-		return `${hash}#${n}`;
+		return `${hash}#${n}${this.sample}`;
 	}
 
 	/** Replay it, or tell the gateway to call upstream and `record` the reply. Replay mode throws on a miss. */

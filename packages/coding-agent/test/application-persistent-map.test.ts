@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApplicationCollection } from "../src/core/application/collection.ts";
-import { PersistentMap } from "../src/core/application/persistent-map.ts";
+import { PersistentMap } from "@octocodeai/octocode-common/persistent-map";
 import { createApplicationState } from "../src/core/application/state.ts";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 

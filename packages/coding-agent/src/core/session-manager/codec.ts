@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { RequestTrace } from "@octocodeai/octocode-ai";
 import { restoreBashResult, storeBashResult } from "../tools/bash/stored-result.ts";
 import { redactEntry } from "./codec-redact.ts";
@@ -22,9 +23,6 @@ import { isTraceDelta, TraceIndex } from "./codec-trace.ts";
  */
 
 type Record_ = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record_ =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 function messageOf(entry: Record_): Record_ | undefined {
 	return entry.type === "message" && isRecord(entry.message) ? entry.message : undefined;

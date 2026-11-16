@@ -1,9 +1,9 @@
 import { Models, type Model as ModelsDevModel, type ProviderMap } from "@opencode-ai/models";
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFile } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { envFlag } from "../../../../common/src/env.ts";
+import { envFlag } from "@octocodeai/octocode-common/env";
 import { globalPaths, privateDir } from "../shared/home.ts";
 import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
 

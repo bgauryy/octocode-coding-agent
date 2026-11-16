@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
-import { findOnPath } from "../../../common/src/find-on-path.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { APP_NAME, getBinDir } from "../config.ts";
 import { isOfflineModeEnabled } from "./env-flag.ts";
 import { fetchWithRetry } from "./management-http.ts";

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { clearSecretValues, registerSecretValue } from "../../../common/src/sanitize.ts";
+import { clearSecretValues, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { serializeSessionBranch } from "../../src/core/session-export.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SessionCodec } from "../../src/core/session-manager/codec.ts";

@@ -12,8 +12,8 @@ import { verificationJson, verificationLine, verificationText } from "./verifica
 import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { RERUN_HINT } from "../outcome.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
-import { cutText } from "../../../../../common/src/text.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */
 

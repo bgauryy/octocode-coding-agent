@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { redactData, redactSecrets } from "../../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ERR, RpcError } from "../protocol.ts";
 import { boundedExternal } from "./bounded.ts";
 import type { Connection } from "../server.ts";

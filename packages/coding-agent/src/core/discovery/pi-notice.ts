@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { type ContextView, piNoticeText } from "./context-view.ts";
 
 /** The record that the one-time Pi notice was shown, in the agent directory next to the other per-user state. */

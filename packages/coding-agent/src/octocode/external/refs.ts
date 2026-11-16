@@ -1,5 +1,5 @@
 import { type ReferenceContext, referencedContentBlock, resolveReferences } from "../child-sessions/references.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 /**
  * `text` with the content of `refs` appended as a `## Referenced content` block. The peer cannot read this machine's

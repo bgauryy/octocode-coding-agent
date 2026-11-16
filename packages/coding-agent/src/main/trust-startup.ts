@@ -3,7 +3,7 @@ import type { Args } from "../cli/args.ts";
 import { showFolderTrustPrompt, type TrustChoice, type TrustPromptInput } from "../cli/trust-prompt.ts";
 import type { FolderTrustAsker } from "../core/folder-trust.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { enforceFolderTrust, type TrustSurface } from "./trust-gate.ts";
 import type { AppMode } from "./startup.ts";
 

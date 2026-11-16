@@ -14,6 +14,7 @@ const lookup = async (hostname: string) => {
 	if (hostname === "app.test") return [{ address: PUBLIC_IP }];
 	if (hostname === "rebind.test") return [{ address: "10.0.0.8" }];
 	if (hostname === "flip.test") return [{ address: "127.0.0.1" }];
+	if (hostname === "imds.test") return [{ address: "169.254.169.254" }];
 	throw new Error(`ENOTFOUND ${hostname}`);
 };
 
@@ -122,6 +123,20 @@ describe("browser MCP page-request filter", () => {
 		answers = [{ address: "127.0.0.1" }];
 		await guard.call("run", goto("http://flip.test/"), tmp());
 		expect(await viaProxy(proxy, "http://flip.test/secret")).toMatchObject({ status: 403 });
+	});
+
+	it("refuses a cloud metadata host the call opens with no permission check, as a PermissionRequest hook does", async () => {
+		const secret = await secretServer();
+		const guard = guardTo(secret);
+		const proxy = await proxyOf(guard);
+		const hosts = ["169.254.169.254", "imds.test", "[fd00:ec2::254]"];
+		for (const host of hosts) {
+			// No browserMcpRequest ran, so there is no recorded verdict: the guard falls back to classifying the host.
+			await guard.call("run", goto(`http://${host}/latest/meta-data/`), tmp());
+			const refused = await viaProxy(proxy, `http://${host}/latest/meta-data/`);
+			expect(refused, host).toMatchObject({ status: 403, blocked: "private" });
+			expect(refused.body, host).not.toContain("secret");
+		}
 	});
 
 	it("rewrites `open` to start Chrome behind the proxy and leaves other calls alone", async () => {

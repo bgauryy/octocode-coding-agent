@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { vendorChatModels } from "../../../core/provider-composer/known-models.ts";

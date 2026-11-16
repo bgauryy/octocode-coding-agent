@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { gitQuiet } from "../../utils/git-run.ts";
 import { plural } from "../shared/text.ts";
 import { catastrophicCommand, expandHome } from "./shell/destructive.ts";
-import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { clipText } from "../shared/util.ts";
 import { type ActionClass, actionWhy, decide, type PermissionMode } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";

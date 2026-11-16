@@ -13,7 +13,7 @@ import { findLatestResponse, getBranchSelection, isVirtualModel } from "../virtu
 import type { SessionInternals } from "./host.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
 import { persistDefaultModel } from "./model-default.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 import { SessionContextCapacity } from "./context-capacity.ts";
 export { workingContextTokens } from "./context-capacity.ts";
 

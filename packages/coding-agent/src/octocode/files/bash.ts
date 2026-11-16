@@ -5,7 +5,7 @@ import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { carrySavedOutput } from "../../core/tools/bash/stored-result.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { runningWorkOf, type WorkRow } from "../shared/running-work.ts";
 import { contentText, wholeSeconds } from "../shared/util.ts";
 import { BashJobs } from "./bash-jobs.ts";

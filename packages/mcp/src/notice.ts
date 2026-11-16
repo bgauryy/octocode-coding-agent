@@ -1,7 +1,7 @@
 import { hostPaths } from "./host.ts";
 import type { McpCommandContext, McpContext } from "./host/types.ts";
 import { untrustedProjectNote } from "./inspection.ts";
-import { sanitizeTerminalText } from "../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 /**
  * Shows `/mcp` output. With a UI it is a notification; print and JSON modes have none (`notify` does nothing there)

@@ -121,7 +121,13 @@ describe("gateway forward to an Anthropic upstream", () => {
 			usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 400, cache_creation_input_tokens: 50 },
 		});
 		const gw = await gateway({
-			forward: { baseUrl: `${up.base}/`, model: "claude-haiku-5-5", api: "anthropic", key: "sekret" },
+			forward: {
+				baseUrl: `${up.base}/`,
+				model: "claude-haiku-5-5",
+				api: "anthropic",
+				key: "sekret",
+				promptCache: false,
+			},
 		});
 		const r = await chat(gw.url, request);
 		expect(r.status).toBe(200);
@@ -177,6 +183,28 @@ describe("gateway forward to an Anthropic upstream", () => {
 			estimated: false,
 		});
 		expect(gw.trace.of("model_tool_call")[0]).toMatchObject({ name: "load_skill", args: { name: "pdf" } });
+	});
+
+	it("marks the system prompt and last tool for the provider's prompt cache by default", async () => {
+		const up = await fakeAnthropic({
+			content: [{ type: "text", text: "ok" }],
+			usage: { input_tokens: 1, output_tokens: 1 },
+		});
+		const gw = await gateway({ forward: { baseUrl: up.base, api: "anthropic", key: "k" } });
+		await chat(gw.url, request);
+		expect(up.seen[0].body.system).toEqual([{ type: "text", text: "Be brief.", cache_control: { type: "ephemeral" } }]);
+		const tools = up.seen[0].body.tools as { cache_control?: unknown }[];
+		expect(tools.at(-1)?.cache_control).toEqual({ type: "ephemeral" });
+	});
+
+	it("promptCache: false sends no cache markers (must-fail contrast)", async () => {
+		const up = await fakeAnthropic({
+			content: [{ type: "text", text: "ok" }],
+			usage: { input_tokens: 1, output_tokens: 1 },
+		});
+		const gw = await gateway({ forward: { baseUrl: up.base, api: "anthropic", key: "k", promptCache: false } });
+		await chat(gw.url, request);
+		expect(JSON.stringify(up.seen[0].body)).not.toContain("cache_control");
 	});
 
 	it("re-emits SSE when the client streamed", async () => {

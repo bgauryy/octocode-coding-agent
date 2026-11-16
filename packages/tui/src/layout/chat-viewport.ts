@@ -1,4 +1,6 @@
-import { type Component, ScrollView, type ScrollViewScrollbar, VStack } from "@octocodeai/octocode-tui";
+import { ScrollView, type ScrollViewScrollbar } from "../components/scroll-view.ts";
+import { VStack } from "../components/v-stack.ts";
+import type { Component } from "../tui/component.ts";
 
 interface ChatViewportOptions {
 	readonly document: Component;

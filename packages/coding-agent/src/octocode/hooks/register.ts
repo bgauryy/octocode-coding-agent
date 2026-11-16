@@ -1,6 +1,6 @@
 import { registerBackgroundHooks } from "./background.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
-import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { sessionHookMode } from "../shared/hook-mode.ts";
 import { commandsFor, hookCalls } from "./config/calls.ts";
 import { ifFilter } from "./config/if-filter.ts";

@@ -1,4 +1,4 @@
-import { readJsonFile } from "../../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { deepMergeObjects, isMergeableObject } from "./merge.ts";
 

@@ -1,5 +1,5 @@
 import { toolProgressText, type ToolDisplay } from "@octocodeai/octocode-contracts";
-import { visibleControls } from "../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
@@ -8,6 +8,7 @@ import type { McpExposure } from "./config.ts";
 import { deferredParameters } from "./deferred-schema.ts";
 import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
+import { correctedCalls } from "./presentation/repeat-echo.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
 import { renderMcpCall } from "./presentation/call-row.ts";
 import { renderMcpResult } from "./presentation/result-row.ts";
@@ -86,6 +87,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const inputSchema = toParameters(tool.inputSchema);
 	const { compact } = options;
 	const prepare: PrepareCall = async (args, ctx) => (await options.presentation?.prepareCall?.(args, ctx)) ?? { args };
+	let lastFailure: string | undefined;
 	const definition: McpToolDefinition<TSchema, McpToolDetails> = {
 		name: options.name,
 		label,
@@ -108,9 +110,14 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		// Shown after a failed validation, for every tool: a failure at the top level (a native `reason`, `type` or
 		// `timeout` sent to a server that does not declare it) names the accepted call shape; any other names the working
 		// next step for an over-long `queries` batch, and a compact tool adds its typed signature.
-		validationHint: ({ envelope, properties }) => {
+		validationHint: ({ envelope, properties, arguments: sent }) => {
+			// The same failing call twice in a row also gets the corrected call, built from what the model sent.
+			const signature = JSON.stringify([sent, properties]);
+			const repeated = signature === lastFailure;
+			lastFailure = signature;
+			const echo = repeated ? correctedCalls(tool.inputSchema, sent, properties) : undefined;
 			const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
-			if (shape) return shape;
+			if (shape) return echo ? `${shape}\n\n${echo}` : shape;
 			const block = compact?.signature();
 			const cap = queriesCap(tool.inputSchema);
 			const hints = [
@@ -123,6 +130,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 						? `Input schema (JSON Schema):\n${JSON.stringify(tool.inputSchema)}`
 						: "",
 			].filter(Boolean);
+			if (echo) hints.push(echo);
 			return hints.length ? hints.join("\n\n") : undefined;
 		},
 		// The server owns its input: arguments are checked against its schema as the model sent them and reach the server
@@ -144,6 +152,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		// An aborted call settles through its client within the connection's own timeout: wait that long, not the loop's default.
 		abortGraceMs: options.timeoutMs,
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			lastFailure = undefined;
 			const client = await options.getClient();
 			const requested = (params ?? {}) as Record<string, unknown>;
 			const call = await prepare(requested, ctx);

@@ -1,5 +1,5 @@
-import { PERMISSION_ENV } from "../../../../../common/src/env.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import { clipText } from "../../shared/util.ts";
 import { auditLines, NO_REASON, transcriptPurpose } from "../effect.ts";

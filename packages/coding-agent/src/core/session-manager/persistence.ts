@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { APP_NAME } from "../../config.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { getFileStamp, resolvePath } from "../../../../common/src/paths.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { getFileStamp, resolvePath } from "@octocodeai/octocode-common/paths";
 import {
 	assertValidSessionId,
 	createSessionHeader,

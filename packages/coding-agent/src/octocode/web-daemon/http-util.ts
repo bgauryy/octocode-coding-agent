@@ -1,4 +1,4 @@
-import { sameSecret } from "../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import type { ServerResponse } from "node:http";
 
 export type Reply = (status: number, body: unknown, headers?: Record<string, string>) => void;

@@ -1,6 +1,6 @@
 import type { Usage } from "@octocodeai/octocode-ai";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { addUsage, finiteNumber } from "../shared/util.ts";
 
 /** What a child's compactions came to (Octocode's `compaction_start` / `compaction_end`): counted, never dropped, so a report can say how often and how well. */

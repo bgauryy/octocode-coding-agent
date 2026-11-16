@@ -22,7 +22,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Name needed skills explicitly. Omit: profile/catalog; []: none.",
+					description: "Skills the child loads. Omit: profile/catalog; []: none.",
 				}),
 			),
 			mcp: Type.Optional(
@@ -33,12 +33,12 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			goal: Type.Optional(
 				Type.String({
-					description: `${GOAL_DESCRIPTION}. Required for a new child; with resume, omit to keep its goal`,
+					description: `${GOAL_DESCRIPTION}. Required when new; resume keeps it if omitted`,
 				}),
 			),
 			task: Type.String({
 				description:
-					"Required, also with resume. Brief as in <delegation>; msg#<N> appends the complete fenced message, report:<agent-id> a fenced report or bounded excerpt. Recognized references that cannot be resolved, including oversized messages, refuse the call.",
+					"Required, also with resume. Brief as in <delegation>; msg#<N> appends that whole message fenced, report:<agent-id> a fenced report or bounded excerpt; an unresolvable or oversized reference refuses the call.",
 			}),
 			item: Type.Optional(
 				Type.String({
@@ -49,13 +49,13 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: queue until each B<n> item is done and each agent:<name> child reported done; it then starts on its own, a failure holds it. Item's open dependsOn joins.",
+						"With background: queue until each B<n> item is done and each agent:<name> child reports done, then start alone; a failure holds it. The item's open dependsOn join.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Continue this session's finished/stopped child, with optional model override. An isolated child resumes in its worktree recreated from refs/octocode/<id>. A queued or held child starts now, before its prerequisites. Needs task.",
+						"Continue this session's finished/stopped child (model may change); an isolated one in its worktree recreated from refs/octocode/<id>. A queued or held child starts now, before its prerequisites. Needs task.",
 				}),
 			),
 			profile: Type.Optional(
@@ -79,7 +79,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
 					description:
-						"Final JSON Schema (verdict in details). Supports type/properties/required/additionalProperties/items/enum/const/description and numeric/length bounds.",
+						"Final JSON Schema (verdict in details). Each node needs type; enum/const alone is refused. Supports type/properties/required/additionalProperties/items/enum/const/description and numeric/length bounds.",
 				}),
 			),
 			background: Type.Optional(

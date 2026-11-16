@@ -2,7 +2,7 @@ import type { ChildProcessByStdio } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { waitForChildProcess } from "../../../../common/src/child-process.ts";
+import { waitForChildProcess } from "@octocodeai/octocode-common/child-process";
 
 /**
  * waitForChildProcess armed a fixed 100ms timer on `exit` and destroyed the

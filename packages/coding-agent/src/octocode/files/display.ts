@@ -2,14 +2,11 @@ import type { ToolDisplay, ToolDisplayBlock } from "@octocodeai/octocode-contrac
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ToolDisplayInput } from "../../core/features/types.ts";
 import { formatDuration } from "../../utils/duration.ts";
-import { plural } from "../../../../common/src/clip.ts";
+import { plural } from "@octocodeai/octocode-common/clip";
+import { contentText } from "../shared/util.ts";
 import { pathBlock } from "../render/display.ts";
 import { fileChanges } from "../tool-input/file-input.ts";
 import { bashOutcome, diffStats, querySize, type BashDetails, type QueryOutcome } from "./outcome.ts";
-
-/** The text blocks of a result, joined. */
-const contentText = (content: ReadonlyArray<{ type: string; text?: string }>) =>
-	content.flatMap((block) => (block.type === "text" && block.text !== undefined ? [block.text] : [])).join("\n");
 
 type BashArgs = { command?: string; timeout?: number; background?: boolean; type?: string };
 

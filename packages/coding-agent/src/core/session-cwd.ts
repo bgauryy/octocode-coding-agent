@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { worktreeRecoveryHint } from "./worktree-path.ts";
 
 export interface SessionCwdIssue {

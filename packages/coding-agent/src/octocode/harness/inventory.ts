@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { canonicalizePath } from "../../../../common/src/paths.ts";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import { HOOK_CATALOG, HOOK_EVENTS } from "../hooks/catalog.ts";
 import { hookFiles, hookLabel, loadHooks } from "../hooks/config.ts";
 import { hookSwitchedOn, hookToggleIds } from "../hooks/config/toggles.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { repoKey } from "../../utils/git-repository.ts";
-import { clipText } from "../../../../common/src/clip.ts";
+import { clipText } from "@octocodeai/octocode-common/clip";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import { buildGroups } from "../../core/package-manager/resource-groups.ts";
 import { SWITCHABLE_BUILTIN_IDS, builtinEffect } from "../../core/features/builtin-ids.ts";

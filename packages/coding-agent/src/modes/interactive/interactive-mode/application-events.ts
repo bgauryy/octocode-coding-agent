@@ -3,7 +3,7 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../theme/theme.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import {

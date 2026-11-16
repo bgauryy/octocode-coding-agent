@@ -1,7 +1,7 @@
 import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
-import { envFlag, MEMORY_AUTO_ENV } from "../../../../common/src/env.ts";
+import { envFlag, MEMORY_AUTO_ENV } from "@octocodeai/octocode-common/env";
 import { registerMemoryCommand } from "./command.ts";
 import { type Injection, MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";

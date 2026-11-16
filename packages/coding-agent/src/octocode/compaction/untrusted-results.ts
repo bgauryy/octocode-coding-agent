@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { isWorkspaceReader } from "../shared/local-reads.ts";

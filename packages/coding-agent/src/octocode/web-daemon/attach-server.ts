@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { sameSecret } from "../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import net, { type AddressInfo } from "node:net";
 import { Value } from "typebox/value";
 import {
@@ -17,9 +17,9 @@ import {
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { processStartTime } from "../shared/process.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { RevisedWorkspace } from "../workspace/revision.ts";
-import { LineReader } from "./lines.ts";
+import { LineReader } from "@octocodeai/octocode-common/line-splitter";
 import { attachRecordPath, webDaemonPaths } from "./paths.ts";
 import { removeRecord, sweepAttachRecords, writeAttachRecord } from "./records.ts";
 

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { getFileStamp } from "../../../common/src/paths.ts";
-import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
+import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { agentEvents, closeSharedAgentDb, sessions, transcripts } from "../../../db/src/api.ts";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";

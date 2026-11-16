@@ -1,5 +1,5 @@
-import { getFileRevision } from "../../../../common/src/paths.ts";
-import { watchFileChanges } from "../../../../common/src/watch-file.ts";
+import { getFileRevision } from "@octocodeai/octocode-common/paths";
+import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
 import { normalizeProviderSources } from "../provider-sources/gate.ts";
 import { tryLoadSettingsFromStorage } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";

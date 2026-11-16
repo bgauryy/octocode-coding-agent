@@ -1,6 +1,6 @@
 import type { ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
 import { describe, expect, it, vi } from "vitest";
-import { PersistentMap } from "../src/core/application/persistent-map.ts";
+import { PersistentMap } from "@octocodeai/octocode-common/persistent-map";
 import { transcriptHistory } from "../src/core/application/transcript-history.ts";
 
 const message = (id: string, order?: number, toolCallId?: string): ApplicationMessage => ({

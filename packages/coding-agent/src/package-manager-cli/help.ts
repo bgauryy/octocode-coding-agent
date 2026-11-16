@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME, getSettingsPath } from "../config.ts";
-import { homeTilde } from "../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
 

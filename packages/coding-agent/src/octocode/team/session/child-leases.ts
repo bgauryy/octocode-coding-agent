@@ -1,4 +1,4 @@
-import { storedText } from "../../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { heldChildMember } from "../identity.ts";
 import type { LeaseConflict, LeaseRequest } from "../model.ts";
 import { resolveLockPath } from "../routing.ts";

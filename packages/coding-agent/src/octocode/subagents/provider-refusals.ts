@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync, shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { getAgentDir } from "../../config.ts";
 import { globalPaths, privateDir } from "../shared/home.ts";

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { changesOnlyWorkspace } from "../../src/octocode/permission/file-access.ts";
-import { READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { tmp } from "./helpers.ts";
 
 const cwd = fs.realpathSync(tmp());

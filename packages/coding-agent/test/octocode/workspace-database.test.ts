@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { closeSharedAgentDb, workspaces } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";

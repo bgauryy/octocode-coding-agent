@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { WorkspaceGit } from "../../../db/src/api.ts";
-import { canonicalPath } from "../../../common/src/canonical-path.ts";
-import { isUnderPath } from "../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { gitSync } from "./git-command.ts";
 import { gitMarkerDir } from "./git-marker.ts";
 

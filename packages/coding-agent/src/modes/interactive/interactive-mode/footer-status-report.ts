@@ -1,7 +1,6 @@
-import { Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../theme/theme.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 type FooterStatusHost = Pick<InteractiveModeHost, "chatContainer" | "footerDataProvider" | "outputPad" | "ui">;

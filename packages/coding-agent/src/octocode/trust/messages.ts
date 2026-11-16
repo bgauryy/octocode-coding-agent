@@ -1,6 +1,6 @@
 import os from "node:os";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { RefusedRoot } from "./identity.ts";
 
 /**

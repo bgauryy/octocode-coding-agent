@@ -4,7 +4,7 @@ import type { AgentMessage, AgentTool } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import type { SystemMessage } from "@octocodeai/octocode-ai/compat";
 import { type ToolDefinition, type ToolExposure, type ToolInfo, wrapRegisteredTools } from "../features/index.ts";
-import { createToolNameMatcher, isMcpToolName } from "../../../../common/src/mcp-names.ts";
+import { createToolNameMatcher, isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { applyToolModifiers } from "../settings-manager.ts";
 import {
 	buildSystemPrompt,

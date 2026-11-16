@@ -1,5 +1,5 @@
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
-import { escapeRegExp } from "../../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /**
  * Reading a compaction summary back. Octocode's compaction writes the summary (`octocode/compaction/summary.ts`) as the

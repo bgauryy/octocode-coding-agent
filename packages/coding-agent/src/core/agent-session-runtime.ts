@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import type { AgentSession } from "./agent-session.ts";
 import type { AgentSessionRuntimeDiagnostic, AgentSessionServices } from "./agent-session-services.ts";
 import {

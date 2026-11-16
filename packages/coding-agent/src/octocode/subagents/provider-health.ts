@@ -4,9 +4,9 @@ import { type Api, isCredentialError, isUsageLimitError, type Model, type Usage 
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { currentPrice, type ModelRef } from "./model.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 import { onCredentialChange } from "../../core/model-runtime/credential-operations.ts";
 import { defaultRefusalStore, type RefusalStore } from "./provider-refusals.ts";
 

@@ -1,5 +1,5 @@
 import { returnedPurpose } from "@octocodeai/octocode-contracts";
-import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { takesCallReason } from "../permission/native-tools.ts";
 import { callReason, isInformativeReason } from "../shared/reason.ts";
 

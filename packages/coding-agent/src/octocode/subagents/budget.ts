@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { envInt } from "../../../../common/src/env.ts";
+import { envInt } from "@octocodeai/octocode-common/env";
 import type { AgentProfile } from "./profiles.ts";
 import { type ResultContract, unavailableResult } from "./result-schema.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";

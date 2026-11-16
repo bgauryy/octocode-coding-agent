@@ -12,7 +12,7 @@ import {
 	registerMcpAddedServers,
 	serializeMcpSessionServers,
 } from "../../../mcp/src/session-servers.ts";
-import { MCP_SESSION_SERVERS_FILE_ENV } from "../../../common/src/env.ts";
+import { MCP_SESSION_SERVERS_FILE_ENV } from "@octocodeai/octocode-common/env";
 
 const stdio = { command: "node", args: ["server.js"] };
 

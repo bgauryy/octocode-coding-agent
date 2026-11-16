@@ -1,6 +1,6 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { RECOVERY_HEADING } from "../../core/compaction/summary-view.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { contentText } from "../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SKILL_BLOCK } from "./loaded-skills.ts";

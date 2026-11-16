@@ -12,6 +12,7 @@ import {
 	type JsonRpcId,
 	type JsonRpcMessage,
 } from "../protocol/jsonrpc.ts";
+import { recordStdioGroup, reapStdioOrphans } from "./stdio-owner.ts";
 import { DEFAULT_MAX_MESSAGE_BYTES, type McpTransport, TransportEvents } from "./transport.ts";
 
 /** The JSON of one stdio frame; a frame that is not JSON is reported like a frame that is not a message. */
@@ -162,6 +163,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		if (this.started) throw new Error("MCP stdio transport already started");
 		if (this.closed) throw new McpConnectionClosedError();
 		this.started = true;
+		await reapStdioOrphans();
 		const inherited = this.options.inheritEnv === true ? { ...process.env } : getDefaultEnvironment();
 		const env = { ...inherited, ...this.options.env };
 		const child = crossSpawn(this.options.command, this.options.args ?? [], {
@@ -178,7 +180,14 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			installExitHook();
 			liveProcessGroups.add(pid);
 			// Until "close", a launcher's children may still hold the pipes and belong to the group.
-			child.once("close", () => liveProcessGroups.delete(pid));
+			const release = recordStdioGroup(
+				pid,
+				[this.options.command, ...(this.options.args ?? [])].join(" ").slice(0, 200),
+			);
+			child.once("close", () => {
+				liveProcessGroups.delete(pid);
+				void release();
+			});
 		}
 		child.stdout?.on("data", (chunk: Buffer | string) => this.handleStdout(chunk));
 		child.stdout?.on("error", (error) => this.emitError(error));

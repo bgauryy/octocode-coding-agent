@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { LeaseConflict } from "../team/model.ts";
 import { conflictLines, memberGoals } from "../team/routing.ts";
 import type { Team } from "../team/session.ts";

@@ -8,7 +8,7 @@ import type { InventoryItem } from "../../core/extensibility/inventory-types.ts"
 import { blockedReason, switchItem } from "../../core/extensibility/switch.ts";
 import { applied, closestIds, kindOf, nameOf, refused } from "../result.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult } from "../types.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import path from "node:path";
 import { skillPathPrecedence } from "../../core/resource-loader/skill-precedence.ts";
 import { chooseSkillWinner } from "../../core/skills.ts";

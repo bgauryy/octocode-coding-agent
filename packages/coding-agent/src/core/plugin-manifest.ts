@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { readJsonFile } from "../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 export interface PluginManifest {
 	protocol: "claude" | "codex";

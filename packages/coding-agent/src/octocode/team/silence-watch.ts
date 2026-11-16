@@ -19,7 +19,11 @@ export class SilenceWatch {
 	private readonly episodes = new Map<string, Episode>();
 
 	/** Ids due a notice now; `children` are the running children with their last progress (undefined: none yet). */
-	due(children: ReadonlyArray<{ id: string; lastOutputAt: number | undefined }>, thresholdMs: number, now: number): string[] {
+	due(
+		children: ReadonlyArray<{ id: string; lastOutputAt: number | undefined }>,
+		thresholdMs: number,
+		now: number,
+	): string[] {
 		const live = new Set(children.map((child) => child.id));
 		for (const id of this.episodes.keys()) if (!live.has(id)) this.episodes.delete(id);
 		if (thresholdMs <= 0) return [];

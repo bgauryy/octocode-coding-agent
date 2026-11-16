@@ -3,8 +3,8 @@ import {
 	type ApplicationConnection,
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
-import { sameSecret } from "../../../../common/src/env.ts";
-import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { livePageHeaderPolicy, renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
 import {
 	handleWebPrefsRequest,

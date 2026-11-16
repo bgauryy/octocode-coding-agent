@@ -11,7 +11,7 @@ import { shellParserReady } from "../../src/octocode/permission/shell/mutation.t
 import { RECORD_FILE } from "../../src/octocode/history/archive/record.ts";
 import { archiveFolder, LIBRARY_FILE, ownArchives } from "../../src/octocode/history/archive.ts";
 import { readableHistory } from "../../src/octocode/history/transcripts.ts";
-import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { headlessFileTool } from "./permission-file-harness.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

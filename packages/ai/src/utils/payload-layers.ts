@@ -8,6 +8,7 @@
  * `node:crypto` in browser bundles), and the hash only has to differ when a layer's bytes differ.
  */
 
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Api } from "../types/ids.ts";
 import { type MeasuredLayer, PayloadLayerMemo } from "./payload-layer-memo.ts";
 
@@ -44,10 +45,6 @@ export interface RequestTrace {
 }
 
 type Record_ = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Record_ {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 const hex8 = (h: number): string => (h >>> 0).toString(16).padStart(8, "0");
 

@@ -3,7 +3,7 @@ import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { gitStateGate } from "../../src/octocode/permission/git-state.ts";
 import { gitStateMutation } from "../../src/octocode/permission/shell/git-state.ts";
-import { PERMISSION_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

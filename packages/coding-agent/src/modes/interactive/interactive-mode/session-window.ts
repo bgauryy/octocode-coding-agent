@@ -1,3 +1,4 @@
+import { ThemedText } from "@octocodeai/octocode-tui";
 /**
  * Windowed transcript rebuild: resume, `/tree` and `/fork` render only the last entries of the context and leave a
  * "load earlier" row above them. The key (`app.session.loadEarlier`) prepends the previous window below that row.
@@ -7,7 +8,6 @@ import type { Component, Container } from "@octocodeai/octocode-tui";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
 import { keyHint } from "../../../theme/theme-tui-helpers.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { SessionWindowIndex } from "./session-window-index.ts";
 import type { SessionRenderOptions } from "./session-render-options.ts";
 import type { InteractiveModeHost } from "./host.ts";

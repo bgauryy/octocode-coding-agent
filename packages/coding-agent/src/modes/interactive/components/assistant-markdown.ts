@@ -1,8 +1,7 @@
-import { Markdown, type MarkdownTheme } from "@octocodeai/octocode-tui";
+import { Markdown, type MarkdownTheme, streamingMarkdownTheme } from "@octocodeai/octocode-tui";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { theme } from "../../../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
-import { streamingMarkdownTheme } from "./streaming-highlight.ts";
 
 interface Options {
 	streaming: boolean;

@@ -5,7 +5,7 @@ import { Text } from "@octocodeai/octocode-tui";
 import { type TSchema, Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { envFlag, LEAN_ENV } from "../../../common/src/env.ts";
+import { envFlag, LEAN_ENV } from "@octocodeai/octocode-common/env";
 import { TASKS_FIELD, batchCallText, batchGoals, batchOf, runBatch, tasksSchema } from "./agent-batch.ts";
 import { AGENT_FIELD_RENAMES, agentCall } from "./child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "./shared/reason.ts";

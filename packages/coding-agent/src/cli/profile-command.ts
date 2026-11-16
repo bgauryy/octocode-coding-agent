@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ProfileEvent, ProfileRequest, ProfileTimeline } from "@octocodeai/octocode-contracts/profiler";
-import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { APP_NAME } from "../config.ts";
 import { prepareAgentDb, sharedAgentDb } from "../storage/database.ts";
 import { agentDbPath } from "../storage/state-paths.ts";

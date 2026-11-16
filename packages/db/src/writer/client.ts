@@ -321,28 +321,35 @@ let exitHeld = false;
 let exitDeadline: number | undefined;
 
 /**
- * A process that ends on its own (an empty event loop, not `process.exit`) first waits for unacknowledged commands, at
- * most `EXIT_DRAIN_MS` in all, then stops its writers: their workers are unref'd, so nothing else would wait for them,
- * and a database held by another process must not hold the exit for its busy timeout.
+ * Waits for unacknowledged commands of every live writer, at most `EXIT_DRAIN_MS` in all (one budget per exit, however
+ * often this is called), then stops the writers still busy: their workers are unref'd, so nothing else would wait for
+ * them, and a database held by another process must not hold the exit for its busy timeout. A process that ends with
+ * `process.exit` never reaches `beforeExit`: it calls this first.
  */
+export async function drainDbWriters(): Promise<void> {
+	const busy = [...live].filter((writer) => writer.pending > 0);
+	if (busy.length === 0) {
+		exitDeadline = undefined;
+		return;
+	}
+	exitDeadline ??= Date.now() + EXIT_DRAIN_MS;
+	const left = exitDeadline - Date.now();
+	if (left > 0) await Promise.all(busy.map((writer) => writer.drain(left)));
+	for (const writer of busy) if (writer.pending > 0) writer.close();
+}
+
+/** A process that ends on its own (an empty event loop, not `process.exit`) drains its writers first. */
 function holdExit(): void {
 	if (exitHeld) return;
 	exitHeld = true;
 	process.on("beforeExit", () => {
-		const busy = [...live].filter((writer) => writer.pending > 0);
-		if (busy.length === 0) {
+		if (![...live].some((writer) => writer.pending > 0)) {
 			exitDeadline = undefined;
 			return;
 		}
-		exitDeadline ??= Date.now() + EXIT_DRAIN_MS;
-		const left = exitDeadline - Date.now();
-		if (left <= 0) {
-			for (const writer of busy) writer.close();
-			return;
-		}
 		// This timer keeps the loop alive while the writers finish; `beforeExit` comes again when it ends.
-		const wait = setTimeout(() => undefined, left);
-		void Promise.all(busy.map((writer) => writer.drain(left))).then(() => clearTimeout(wait));
+		const wait = setTimeout(() => undefined, EXIT_DRAIN_MS + 1_000);
+		void drainDbWriters().finally(() => clearTimeout(wait));
 	});
 }
 

@@ -1,10 +1,9 @@
 import path from "node:path";
-import { SEPARATOR, SPINNER } from "@octocodeai/octocode-tui";
+import { SEPARATOR, SPINNER, TITLE_FRAME_MS, type TitleState } from "@octocodeai/octocode-tui";
 import { cleanTitle } from "../../core/session-manager/title.ts";
 import { ENTITY } from "../shared/entity.ts";
 
-/** What the session is doing, as the terminal tab shows it. */
-export type TitleState = "idle" | "thinking" | "running" | "waiting" | "done" | "failed";
+export { TITLE_FRAME_MS, type TitleState };
 
 /** Busy frames: the footer's braille loader. Every frame is one cell wide, so the tab label never shifts while it animates. */
 const BUSY_FRAMES = SPINNER.braille;
@@ -19,14 +18,8 @@ export const TITLE_STATE: Readonly<Record<TitleState, { frames: readonly string[
 	failed: { frames: ["🔴"], label: "Error" },
 };
 
-/** How often a busy title moves to its next frame: slow, so a terminal that reads slowly never falls behind on titles. */
-export const TITLE_FRAME_MS = 1000;
-
 /** Most characters of the description a tab shows. */
 const DESCRIPTION_MAX = 40;
-
-/** Whether a state animates. */
-export const isBusyTitle = (state: TitleState | undefined) => state === "thinking" || state === "running";
 
 /** `fix login · repo`: the description (escape sequences dropped, one line, capped), then the working directory. */
 export function plainTitle(description: string | undefined, cwd: string): string {

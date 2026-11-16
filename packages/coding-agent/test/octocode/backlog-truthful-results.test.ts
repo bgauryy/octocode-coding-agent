@@ -6,7 +6,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
 

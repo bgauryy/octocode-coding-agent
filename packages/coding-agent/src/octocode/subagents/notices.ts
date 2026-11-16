@@ -1,4 +1,4 @@
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 /** A warning or error the child's extensions showed (`notify` with `notifyType` warning or error): the child has no screen, the parent keeps them. Whole, whatever its length. */
 interface ChildNotice {

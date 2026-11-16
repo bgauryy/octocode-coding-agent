@@ -1,7 +1,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { setImmediate as yieldToInput } from "node:timers/promises";
-import { normalizePath } from "../../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { SessionCodec } from "./codec.ts";
 import { EntryIndex } from "./entry-index.ts";
 import { parseSessionEntryLine } from "./entries.ts";

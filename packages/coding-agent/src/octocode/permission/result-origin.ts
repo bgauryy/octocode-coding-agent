@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";
 import { NETWORK } from "./provenance/network.ts";
 import { URL_PATTERN } from "./provenance/keys.ts";

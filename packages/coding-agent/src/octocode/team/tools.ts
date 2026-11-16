@@ -1,13 +1,13 @@
 import { textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { envFlag, LEAN_ENV } from "../../../../common/src/env.ts";
+import { envFlag, LEAN_ENV } from "@octocodeai/octocode-common/env";
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
 import { reservationPath, resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../render/tool.ts";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { contentText, firstLine, optionalString, textResult } from "../shared/util.ts";
 import { childAsks } from "./asks.ts";
 import { EDIT_RETENTION_MINUTES } from "./edits.ts";

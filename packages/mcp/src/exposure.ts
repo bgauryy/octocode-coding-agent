@@ -1,7 +1,7 @@
 import type { McpExtensionApi } from "./host/types.ts";
 import { DEFAULT_MCP_EXPOSURE } from "./servers.ts";
 import { type McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerEntry } from "./config.ts";
 
 export function exposureOf(entry: McpServerEntry): McpExposure {

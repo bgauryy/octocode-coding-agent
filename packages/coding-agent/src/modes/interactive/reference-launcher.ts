@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { findOnPath } from "../../../../common/src/find-on-path.ts";
-import { detectIde } from "../../../../common/src/terminal-host.ts";
-import { openTargetCommand } from "../../../../common/src/open-target.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
+import { detectIde } from "@octocodeai/octocode-common/terminal-host";
+import { openTargetCommand } from "@octocodeai/octocode-common/open-target";
 import { splitConfigWords } from "../../configuration/command.ts";
 
 /**

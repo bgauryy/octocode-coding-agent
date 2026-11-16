@@ -1,5 +1,5 @@
 import { isItemType, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { timedTool } from "../render/rows.ts";
 import { withReason } from "../shared/reason.ts";

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, promises as fsp, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { atomicWriteFileSync, tempSibling, writeTargetSync } from "../../../../common/src/atomic-file.ts";
-import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
+import { atomicWriteFileSync, tempSibling, writeTargetSync } from "@octocodeai/octocode-common/atomic-file";
+import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
 
 /** A settings change computed in memory and not yet in its file. */
 interface PendingWrite {

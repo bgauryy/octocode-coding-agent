@@ -5,7 +5,7 @@ import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../instructions/report.ts";
-import { envInt } from "../../../../common/src/env.ts";
+import { envInt } from "@octocodeai/octocode-common/env";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

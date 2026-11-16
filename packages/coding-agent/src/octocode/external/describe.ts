@@ -1,6 +1,6 @@
 import { matchesExternalModel, type ExternalModelFilters } from "../shared/model-filters.ts";
 import { GLYPH } from "@octocodeai/octocode-tui";
-import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { clip } from "../shared/text.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";

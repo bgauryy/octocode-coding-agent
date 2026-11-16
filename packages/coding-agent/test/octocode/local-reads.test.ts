@@ -8,7 +8,7 @@ import {
 	recordedLocalReads,
 	snapshotLocalReads,
 } from "../../src/octocode/shared/local-reads.ts";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";

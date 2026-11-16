@@ -1,5 +1,5 @@
 import { type Completion, EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { exclusive } from "../shared/locks.ts";
 import { withOperationKey } from "./completion-key.ts";
 import type { Item } from "./item.ts";

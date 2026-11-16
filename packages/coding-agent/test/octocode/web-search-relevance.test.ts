@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type * as webGuard from "../../../common/src/web-guard.ts";
-import type { PublicFetchInit } from "../../../common/src/web-guard.ts";
+import type * as webGuard from "@octocodeai/octocode-common/web-guard";
+import type { PublicFetchInit } from "@octocodeai/octocode-common/web-guard";
 import { search } from "../../src/octocode/web/search.ts";
 import { queryTerms, relatedHit } from "../../src/octocode/web/search-relevance.ts";
 
 const network = vi.hoisted(() => ({ send: vi.fn<(url: string, init: PublicFetchInit) => Promise<Response>>() }));
-vi.mock("../../../common/src/web-guard.ts", async (original) => ({
+vi.mock("@octocodeai/octocode-common/web-guard", async (original) => ({
 	...(await original<typeof webGuard>()),
 	publicFetch: (url: string, init: PublicFetchInit) => network.send(url, init),
 }));

@@ -15,7 +15,7 @@ import { startAttachServer, type AttachEndpoint } from "../../src/octocode/web-d
 import { ensureWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import { daemonSpawnOptions } from "../../src/octocode/web-daemon/spawn-env.ts";
-import { LineReader } from "../../src/octocode/web-daemon/lines.ts";
+import { LineReader } from "@octocodeai/octocode-common/line-splitter";
 import { readAttachRecord, readDaemonRecord, writeAttachRecord } from "../../src/octocode/web-daemon/records.ts";
 import { attachRecordPath, webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
 import { crashGuard } from "../../src/octocode/web-daemon/main.ts";

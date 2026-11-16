@@ -1,4 +1,4 @@
-import { browserMcpParts, browserMcpTool } from "../../../../common/src/browser-mcp.ts";
+import { browserMcpParts, browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 // The browser MCP call classification behind the `browser.control`, `browser.cookies` and upload asks. Common keeps

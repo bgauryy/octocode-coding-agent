@@ -1,6 +1,6 @@
 import type { AgentSessionRuntimeDiagnostic } from "./agent-session-services.ts";
 import type { SettingsManager } from "./settings-manager.ts";
-import { homeTilde } from "../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export function collectSettingsDiagnostics(settingsManager: SettingsManager): AgentSessionRuntimeDiagnostic[] {
 	const errors = settingsManager.drainErrors().map(({ scope, path, error }) => ({

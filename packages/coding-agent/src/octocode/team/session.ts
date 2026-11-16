@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Ask } from "./asks.ts";
 import type { EditLog } from "./edits.ts";
@@ -279,7 +279,11 @@ export class Team extends TeamState {
 
 	/** Tells this agent about a working child with no progress for `subagents.silenceMinutes`; reads the database only when one is due. */
 	private watchSilence(now = Date.now()): void {
-		const children = [...(this.running?.keys() ?? [])].map((id) => ({ id, lastOutputAt: this.approvals.lastOutput(id) }));
+		const children = [...(this.running?.keys() ?? [])].map((id) => ({
+			id,
+			lastOutputAt: this.approvals.lastOutput(id),
+		}));
+		if (children.length === 0) return this.silence.reset();
 		const thresholdMs = this.silenceMs();
 		const due = this.silence.due(children, thresholdMs, now);
 		if (due.length === 0) return;

@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/types.ts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { memoryWarning } from "./memory.ts";

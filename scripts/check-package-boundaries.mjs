@@ -12,19 +12,23 @@ export const PACKAGE_POLICY = {
 	common: ["contracts"],
 	db: ["common", "contracts"],
 	mcp: ["agent", "ai", "common", "contracts", "tui"],
-	ai: ["contracts", "telemetry"],
+	ai: ["common", "contracts", "telemetry"],
 	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],
 	contracts: [],
 	"octocode-agentic-testkit": [],
 	telemetry: [],
 	terminal: ["common"],
-	tui: [],
-	webview: ["contracts"],
+	tui: ["common"],
+	webview: ["common", "contracts"],
 };
 
 // Hosted workspaces that still reach a sibling workspace compiled into the same host by relative path. The list only shrinks: every
 // other package imports its siblings through their declared package names.
 const RELATIVE_SIBLING_BASELINE = new Set(["db", "mcp"]);
+
+// Packages that import another package by relative path although it is built on its own. The database writer's
+// worker runs db source on plain Node, where a package specifier would load a possibly stale `dist/` of common.
+const RELATIVE_PACKAGE_IMPORT_EXCEPTIONS = { db: new Set(["common"]) };
 
 export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY, layerRules = LAYER_RULES) {
 	const { hosts, issues } = sourceWorkspaceGroups(packages);
@@ -58,9 +62,10 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 				const resolved = reached.split("/")[0];
 				if (packages[resolved] && resolved !== source.package) {
 					target = resolved;
-					if (unit(source.package) !== unit(target))
-						issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
-					else if (manifest.octocodeSource && !RELATIVE_SIBLING_BASELINE.has(source.package))
+					if (unit(source.package) !== unit(target)) {
+						if (!RELATIVE_PACKAGE_IMPORT_EXCEPTIONS[source.package]?.has(target))
+							issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
+					} else if (manifest.octocodeSource && !RELATIVE_SIBLING_BASELINE.has(source.package))
 						issues.push(
 							`relative sibling import: ${source.package}/${source.path} -> ${specifier} (import it by package name and declare it)`,
 						);

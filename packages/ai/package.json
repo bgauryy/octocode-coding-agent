@@ -24,17 +24,169 @@
 			"types": "./dist/compat.d.ts",
 			"import": "./dist/compat.js"
 		},
-		"./providers/*": {
-			"types": "./dist/providers/*.d.ts",
-			"import": "./dist/providers/*.js"
+		"./api/ai-sdk/anthropic-map": {
+			"types": "./dist/api/ai-sdk/anthropic-map.d.ts",
+			"import": "./dist/api/ai-sdk/anthropic-map.js"
 		},
-		"./api/*": {
-			"types": "./dist/api/*.d.ts",
-			"import": "./dist/api/*.js"
+		"./api/anthropic-messages": {
+			"types": "./dist/api/anthropic-messages.d.ts",
+			"import": "./dist/api/anthropic-messages.js"
 		},
-		"./utils/*": {
-			"types": "./dist/utils/*.d.ts",
-			"import": "./dist/utils/*.js"
+		"./api/anthropic-messages/compat": {
+			"types": "./dist/api/anthropic-messages/compat.d.ts",
+			"import": "./dist/api/anthropic-messages/compat.js"
+		},
+		"./api/anthropic-messages/token": {
+			"types": "./dist/api/anthropic-messages/token.d.ts",
+			"import": "./dist/api/anthropic-messages/token.js"
+		},
+		"./api/azure-openai-config": {
+			"types": "./dist/api/azure-openai-config.d.ts",
+			"import": "./dist/api/azure-openai-config.js"
+		},
+		"./api/constrained-sampling": {
+			"types": "./dist/api/constrained-sampling.d.ts",
+			"import": "./dist/api/constrained-sampling.js"
+		},
+		"./api/llama-cpp-classify.lazy": {
+			"types": "./dist/api/llama-cpp-classify.lazy.d.ts",
+			"import": "./dist/api/llama-cpp-classify.lazy.js"
+		},
+		"./api/openai-completions/tool-schema-flavor": {
+			"types": "./dist/api/openai-completions/tool-schema-flavor.d.ts",
+			"import": "./dist/api/openai-completions/tool-schema-flavor.js"
+		},
+		"./api/simple-options": {
+			"types": "./dist/api/simple-options.d.ts",
+			"import": "./dist/api/simple-options.js"
+		},
+		"./api/typesafe-system-one.lazy": {
+			"types": "./dist/api/typesafe-system-one.lazy.d.ts",
+			"import": "./dist/api/typesafe-system-one.lazy.js"
+		},
+		"./providers/all": {
+			"types": "./dist/providers/all.d.ts",
+			"import": "./dist/providers/all.js"
+		},
+		"./providers/anthropic": {
+			"types": "./dist/providers/anthropic.d.ts",
+			"import": "./dist/providers/anthropic.js"
+		},
+		"./providers/compat-schema": {
+			"types": "./dist/providers/compat-schema.d.ts",
+			"import": "./dist/providers/compat-schema.js"
+		},
+		"./providers/discovery": {
+			"types": "./dist/providers/discovery.d.ts",
+			"import": "./dist/providers/discovery.js"
+		},
+		"./providers/kimi-coding": {
+			"types": "./dist/providers/kimi-coding.d.ts",
+			"import": "./dist/providers/kimi-coding.js"
+		},
+		"./providers/minimax-endpoints": {
+			"types": "./dist/providers/minimax-endpoints.d.ts",
+			"import": "./dist/providers/minimax-endpoints.js"
+		},
+		"./providers/model-schema": {
+			"types": "./dist/providers/model-schema.d.ts",
+			"import": "./dist/providers/model-schema.js"
+		},
+		"./providers/opencode-endpoints": {
+			"types": "./dist/providers/opencode-endpoints.d.ts",
+			"import": "./dist/providers/opencode-endpoints.js"
+		},
+		"./providers/openrouter": {
+			"types": "./dist/providers/openrouter.d.ts",
+			"import": "./dist/providers/openrouter.js"
+		},
+		"./utils/abort": {
+			"types": "./dist/utils/abort.d.ts",
+			"import": "./dist/utils/abort.js"
+		},
+		"./utils/assistant-message": {
+			"types": "./dist/utils/assistant-message.d.ts",
+			"import": "./dist/utils/assistant-message.js"
+		},
+		"./utils/cache-capabilities": {
+			"types": "./dist/utils/cache-capabilities.d.ts",
+			"import": "./dist/utils/cache-capabilities.js"
+		},
+		"./utils/cache-policy": {
+			"types": "./dist/utils/cache-policy.d.ts",
+			"import": "./dist/utils/cache-policy.js"
+		},
+		"./utils/error-body": {
+			"types": "./dist/utils/error-body.d.ts",
+			"import": "./dist/utils/error-body.js"
+		},
+		"./utils/estimate": {
+			"types": "./dist/utils/estimate.d.ts",
+			"import": "./dist/utils/estimate.js"
+		},
+		"./utils/headers": {
+			"types": "./dist/utils/headers.d.ts",
+			"import": "./dist/utils/headers.js"
+		},
+		"./utils/image-input": {
+			"types": "./dist/utils/image-input.d.ts",
+			"import": "./dist/utils/image-input.js"
+		},
+		"./utils/instruction-split": {
+			"types": "./dist/utils/instruction-split.d.ts",
+			"import": "./dist/utils/instruction-split.js"
+		},
+		"./utils/json-schema-shape": {
+			"types": "./dist/utils/json-schema-shape.d.ts",
+			"import": "./dist/utils/json-schema-shape.js"
+		},
+		"./utils/mime": {
+			"types": "./dist/utils/mime.d.ts",
+			"import": "./dist/utils/mime.js"
+		},
+		"./utils/model-operations": {
+			"types": "./dist/utils/model-operations.d.ts",
+			"import": "./dist/utils/model-operations.js"
+		},
+		"./utils/model-text": {
+			"types": "./dist/utils/model-text.d.ts",
+			"import": "./dist/utils/model-text.js"
+		},
+		"./utils/oauth-page": {
+			"types": "./dist/utils/oauth-page.d.ts",
+			"import": "./dist/utils/oauth-page.js"
+		},
+		"./utils/provider-env": {
+			"types": "./dist/utils/provider-env.d.ts",
+			"import": "./dist/utils/provider-env.js"
+		},
+		"./utils/provider-host": {
+			"types": "./dist/utils/provider-host.d.ts",
+			"import": "./dist/utils/provider-host.js"
+		},
+		"./utils/resolve-config-value": {
+			"types": "./dist/utils/resolve-config-value.d.ts",
+			"import": "./dist/utils/resolve-config-value.js"
+		},
+		"./utils/retry": {
+			"types": "./dist/utils/retry.d.ts",
+			"import": "./dist/utils/retry.js"
+		},
+		"./utils/tool-loading": {
+			"types": "./dist/utils/tool-loading.d.ts",
+			"import": "./dist/utils/tool-loading.js"
+		},
+		"./utils/user-agent": {
+			"types": "./dist/utils/user-agent.d.ts",
+			"import": "./dist/utils/user-agent.js"
+		},
+		"./utils/validation": {
+			"types": "./dist/utils/validation.d.ts",
+			"import": "./dist/utils/validation.js"
+		},
+		"./utils/vision": {
+			"types": "./dist/utils/vision.d.ts",
+			"import": "./dist/utils/vision.js"
 		},
 		"./bedrock-provider": {
 			"types": "./dist/bedrock-provider.d.ts",
@@ -75,6 +227,7 @@
 		"@ai-sdk/provider": "4.0.38",
 		"@ai-sdk/provider-utils": "5.0.81",
 		"@aws-sdk/credential-providers": "3.1169.0",
+		"@octocodeai/octocode-common": "1.3.0",
 		"@octocodeai/octocode-contracts": "1.3.0",
 		"@octocodeai/octocode-telemetry": "1.3.0",
 		"ai": "7.0.173",

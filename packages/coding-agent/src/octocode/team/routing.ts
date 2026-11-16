@@ -4,13 +4,13 @@ import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE
 import { formatAgo, formatDuration } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
 import type { DeadLetter, Lease, LeaseConflict, Message, RecipientKind } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { cutText } from "../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /** Pure text and routing helpers for the team: recipients, refusals, which paths a call edits (`coordinate list`: `member-list.ts`). */
 

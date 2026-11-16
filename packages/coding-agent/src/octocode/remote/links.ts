@@ -1,5 +1,5 @@
 import type { RemoteLink, RemoteStatus } from "@octocodeai/octocode-contracts/daemon";
-import { qrText } from "./qr.ts";
+import { qrText } from "@octocodeai/octocode-common/qr";
 
 /** What a link lets its holder do, said once wherever the link is shown. */
 function accessNote(link: Pick<RemoteLink, "access">): string {

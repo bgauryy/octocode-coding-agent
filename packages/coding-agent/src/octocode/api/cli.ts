@@ -2,7 +2,7 @@
 import { shellCompletion } from "../shared/shell-completion.ts";
 import { completeApi } from "./completion.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { API_COMMAND_FLAGS, integerFlag, parseArgs, pickInstance } from "./args.ts";
 import { ApiCallError, ApiClient } from "./client.ts";
 import { CLIENT_MARGIN_MS, EXTERNAL_CALL_MARGIN_MS, EXTERNAL_PROMPT_DEFAULT_MS, WAIT_MS } from "./protocol.ts";

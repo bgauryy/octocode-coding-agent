@@ -94,7 +94,8 @@ export function registerTurnLine(api: ExtensionAPI): void {
 		const { tools, agents, cost, unpriced, cache } = run.totals();
 		if (!ctx.hasUI) return;
 		// Nudges the wake gate dropped after this run (`subagents/idle-items.ts`): the record is how they are measured.
-		const dropped = wakeGateOf(api).takeDropped();
+		const gate = wakeGateOf(api);
+		const dropped = gate.droppedCount();
 		if (ms < MIN_TURN_MS && tools === 0 && dropped === 0) return;
 		api.appendEntry(TURN_LINE_TYPE, {
 			ms,
@@ -105,5 +106,6 @@ export function registerTurnLine(api: ExtensionAPI): void {
 			...(unpriced ? { unpriced } : {}),
 			...(cache ? { cache } : {}),
 		});
+		gate.ackDropped(dropped);
 	});
 }

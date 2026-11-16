@@ -1,4 +1,6 @@
-import { closeOpenStyles, sliceByColumn, truncateToWidth } from "@octocodeai/octocode-tui";
+import { closeOpenStyles } from "../utils/ansi-tracker.ts";
+import { sliceByColumn } from "../utils/columns.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 
 export interface HorizontalViewportRow {
 	gutter: string;

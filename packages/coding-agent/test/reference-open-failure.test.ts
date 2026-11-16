@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const opener = vi.hoisted(() => ({ openTarget: vi.fn() }));
-vi.mock("../../common/src/open-target.ts", () => opener);
+vi.mock("@octocodeai/octocode-common/open-target", () => opener);
 
 import { openReference } from "../src/modes/interactive/reference-opener.ts";
 

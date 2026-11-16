@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { normalizePath } from "../../../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
 import type { EnvironmentSettingsApi } from "../api/environment.ts";

@@ -4,8 +4,8 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary } from "./install/package-detection.ts";
-import { normalizePath } from "../../common/src/paths.ts";
-import { readJsonFile } from "../../common/src/json.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./install/package-detection.ts";
 export {

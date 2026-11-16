@@ -107,7 +107,7 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	promptGuidelines?: string[];
 	parameters: TParams;
 	validationParameters?: TSchema;
-	validationHint?: (failure: { envelope: boolean; properties: string[] }) => string | undefined;
+	validationHint?: (failure: { envelope: boolean; properties: string[]; arguments?: unknown }) => string | undefined;
 	coerceArguments?: false;
 	renderShell?: "default" | "self";
 	prepareArguments?: (args: unknown) => Static<TParams>;
@@ -117,6 +117,8 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	exposure?: McpToolExposure;
 	namespace?: McpToolNamespace;
 	defaultActive?: boolean;
+	/** Registered but undeclared until first use; the host activates it when the model calls it (`on-demand.ts`). */
+	onDemand?: boolean;
 	/** How long a call may keep running after an abort before the loop abandons it, in ms. */
 	abortGraceMs?: number;
 	execute(

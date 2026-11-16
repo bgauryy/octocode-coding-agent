@@ -3,14 +3,13 @@
  * label, extension footer status, and the transient status lines in the chat.
  */
 
-import { hyperlink, Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { Spacer, ThemedText, hyperlink } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";

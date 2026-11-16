@@ -1,5 +1,5 @@
 import { animationClock, Box, MOTION, Text } from "@octocodeai/octocode-tui";
-import { redactSecrets, sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultBlock } from "../../render/tool.ts";

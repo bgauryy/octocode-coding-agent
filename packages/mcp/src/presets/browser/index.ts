@@ -1,7 +1,7 @@
-import { envFlag, MCP_BROWSER_ENV } from "../../../../common/src/env.ts";
+import { envFlag, MCP_BROWSER_ENV } from "@octocodeai/octocode-common/env";
 import type { McpServerPreset } from "../../preset.ts";
 import { browserLaunch } from "./launch.ts";
-import { BROWSER_BIN, BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
+import { BROWSER_BIN, BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import { stopOwnedBrowsers } from "./owned.ts";
 import { browserGuard } from "./proxy.ts";
 import { defineBrowserTool } from "./tools.ts";

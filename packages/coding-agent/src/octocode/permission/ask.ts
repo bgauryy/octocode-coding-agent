@@ -3,7 +3,7 @@ import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
-import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../../../../common/src/env.ts";
+import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "@octocodeai/octocode-common/env";
 import { interactive } from "../shared/interactive.ts";
 import type { SourceDecision } from "./source-policy/rules.ts";
 import type { AuditEntry } from "./audit.ts";

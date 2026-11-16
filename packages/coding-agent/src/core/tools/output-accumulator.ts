@@ -1,5 +1,5 @@
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { createCappedOutputFile } from "../../utils/output-files.ts";
 import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 import { OutputHead } from "./output-head.ts";

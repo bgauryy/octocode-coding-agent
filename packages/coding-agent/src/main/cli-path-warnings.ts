@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { isLocalPath } from "../../../common/src/paths.ts";
+import { isLocalPath } from "@octocodeai/octocode-common/paths";
 import type { AgentSessionRuntimeDiagnostic } from "../core/agent-session-services.ts";
 
 /**

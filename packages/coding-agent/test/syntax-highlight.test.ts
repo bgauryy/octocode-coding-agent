@@ -1,7 +1,6 @@
-import { resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
+import { HighlightCache, resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import hljs from "highlight.js/lib/core";
-import { HighlightCache } from "../src/theme/highlight-cache.ts";
 import { getMarkdownTheme, highlightCode, initTheme, theme } from "../src/theme/theme.ts";
 import {
 	highlight,

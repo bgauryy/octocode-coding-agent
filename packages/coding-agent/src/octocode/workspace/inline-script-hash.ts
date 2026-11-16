@@ -1,4 +1,4 @@
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 
 /**
  * `sha256-<base64>` of a web page's one inline script. The page has exactly one script without attributes (the data block

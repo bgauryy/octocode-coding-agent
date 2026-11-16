@@ -1,5 +1,5 @@
 import type { MarkdownTransformContext, MarkdownTransformer } from "../../../core/features/types.ts";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 /** Built-in transformers marked by `trustedMarkdownTransformer`. */
 const trustedTransformers = new WeakSet<MarkdownTransformer>();

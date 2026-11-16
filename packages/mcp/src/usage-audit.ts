@@ -5,8 +5,8 @@
 
 import { join } from "node:path";
 import type { ToolAudit, ToolExposureState } from "@octocodeai/octocode-contracts/config";
-import { hasUsageData, readUsageAudit, toolAudit, type UsageAuditSource } from "../../common/src/tool-audit.ts";
-import { USAGE_FILE_NAME, usageGroupOf } from "../../common/src/usage-counts.ts";
+import { hasUsageData, readUsageAudit, toolAudit, type UsageAuditSource } from "@octocodeai/octocode-common/tool-audit";
+import { USAGE_FILE_NAME, usageGroupOf } from "@octocodeai/octocode-common/usage-counts";
 import type { Tool } from "./client/index.ts";
 import { defersByUsage, recentToolKey } from "./deferral.ts";
 import { hostPaths } from "./host.ts";

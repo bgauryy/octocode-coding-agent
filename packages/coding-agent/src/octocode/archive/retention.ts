@@ -7,8 +7,8 @@ import { type AgentDb, compactions, workspaces } from "../../../../db/src/api.ts
 import { resolveRetention } from "../../storage/retention.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { archiveFolder, isSegmentFile } from "../history/archive.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { writeSummaryLibrary } from "./summaries.ts";
 
 /** Index before deleting; a damaged/unavailable transcript never authorizes loss of its only archive copy. */

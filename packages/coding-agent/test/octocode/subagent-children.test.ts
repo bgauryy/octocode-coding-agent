@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { describeWork, unreportedWork } from "../../src/octocode/sessions/work.ts";
-import { homeTilde } from "../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { describeChild, resumableChild, resumedTask } from "../../src/octocode/subagents/children.ts";
 import { runFooter } from "../../src/octocode/subagents/tracking.ts";

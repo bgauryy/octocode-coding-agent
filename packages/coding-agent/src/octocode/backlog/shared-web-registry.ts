@@ -1,6 +1,7 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { agentDbPath } from "../shared/home.ts";
 
 /**
@@ -27,12 +28,12 @@ export function registryPaths(repoRoot: string, session: string, env: NodeJS.Pro
 	return { dir, entry: path.join(dir, `${hash}.json`), lock: path.join(dir, `.${hash}.lock`) };
 }
 
-function isRecord(value: unknown): value is WorkspaceWebRecord {
-	const record = value as WorkspaceWebRecord | null;
+function isWorkspaceWebRecord(value: unknown): value is WorkspaceWebRecord {
 	return (
-		typeof record?.url === "string" &&
-		typeof record.pid === "number" &&
-		(record.pid_started === undefined || typeof record.pid_started === "string")
+		isRecord(value) &&
+		typeof value.url === "string" &&
+		typeof value.pid === "number" &&
+		(value.pid_started === undefined || typeof value.pid_started === "string")
 	);
 }
 
@@ -51,7 +52,7 @@ export async function readRecord(entryPath: string): Promise<WorkspaceWebRecord 
 	}
 	try {
 		const parsed: unknown = JSON.parse(text);
-		return isRecord(parsed) ? parsed : undefined;
+		return isWorkspaceWebRecord(parsed) ? parsed : undefined;
 	} catch {
 		return undefined;
 	}

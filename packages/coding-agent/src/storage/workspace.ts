@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { syncDirectorySync } from "../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../common/src/canonical-path.ts";
-import { getFileStamp, isUnderPath } from "../../../common/src/paths.ts";
+import { syncDirectorySync } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { getFileStamp, isUnderPath } from "@octocodeai/octocode-common/paths";
 
 export const WORKSPACE_STATE = path.join(".octocode", "code");
 const ID = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/;

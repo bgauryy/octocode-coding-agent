@@ -1,4 +1,4 @@
-import { sameSecret } from "../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import { stringList } from "../shared/util.ts";
 import { auditLine } from "./effect.ts";
 import { ACTION_CLASSES, type ActionClass, ASK_REASONS, type AskReason } from "./mode.ts";

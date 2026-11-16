@@ -13,8 +13,8 @@ import os from "node:os";
 import path from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir, getOctocodeHome } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { isUnderPath, normalizePath } from "../../../../common/src/paths.ts";
-import { stripBom } from "../../../../common/src/text.ts";
+import { isUnderPath, normalizePath } from "@octocodeai/octocode-common/paths";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import type { McpResearchRoots } from "../../../../mcp/src/api.ts";
 
 /** Credential stores under the home folder: a root may not be, contain or lie inside one. */

@@ -1,5 +1,5 @@
 import { basename, dirname, join, sep } from "node:path";
-import { canonicalizePath, isUnderPath } from "../../../../common/src/paths.ts";
+import { canonicalizePath, isUnderPath } from "@octocodeai/octocode-common/paths";
 import { skillCategory } from "../skills/category.ts";
 import { claudeConfigDir, codexConfigDir } from "../../utils/host-config.ts";
 import { mcpVendorLabel, skillFolder } from "./display-paths.ts";

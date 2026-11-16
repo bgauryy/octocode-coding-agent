@@ -1,6 +1,20 @@
 # agentic-testkit
 
-Vitest-native behavior tests for agent harnesses: scripted model replies, mock MCP servers, a recorded trace of one run and matchers over that trace. It knows no harness: a harness plugs in through a small adapter. Status: proof of concept, internal for now.
+Vitest-native behavior tests for agent harnesses: scripted model replies, mock MCP servers, a recorded trace of one run and matchers over that trace. It knows no harness: a harness plugs in through a small adapter. Status: 0.1.0, internal (not published); see [CHANGELOG](CHANGELOG.md).
+
+## Install and entry points
+
+Requires Node 24.15+ and Vitest 5. Inside this repository, add `"@octocodeai/octocode-agentic-testkit": "workspace:*"`; Vitest resolves the TypeScript source, plain Node the built `dist/` (`yarn build`).
+
+| Import                                                 | Gives                                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------------------- |
+| `@octocodeai/octocode-agentic-testkit`                 | gateway, trace, MCP mocks, memory, `live()`, matchers, reference loop |
+| `@octocodeai/octocode-agentic-testkit/setup`           | registers the matchers (Vitest `setupFiles`)                          |
+| `@octocodeai/octocode-agentic-testkit/cache-report`    | run-cache summary (Vitest `globalSetup`)                              |
+| `@octocodeai/octocode-agentic-testkit/tiers`           | named model tiers                                                     |
+| `@octocodeai/octocode-agentic-testkit/adapters/<name>` | `reference`, `claude-code`, `codex`, `octocodecode`                   |
+
+New here? Read the [developer guide](GUIDE.md) for the workflow: running suites, writing a test, tiers, caching and adapters.
 
 ## What you can test
 
@@ -73,12 +87,12 @@ interface AgentAdapter<R = unknown> {
 }
 ```
 
-| Adapter                                      | Status   | How it connects                                                                                                                                                                                            |
-| -------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reference` (`src/adapters/reference`)       | works    | In-process tool loop (skills, memory, spawn, compaction); MCP clients passed as options, not `mcpUrls`; emits every event kind                                                                             |
-| `octocodecode` (`src/adapters/octocodecode`) | works    | Spawns the built CLI in a temp HOME with `models.json` (gateway) and `mcp.json` (mock URLs); bundle path from `bundle` option or `TESTKIT_OCTOCODECODE_BUNDLE`; `parseSkillListing` reads its skill prompt |
-| Claude Code                                  | unproven | Set `ANTHROPIC_BASE_URL=<gatewayUrl>` and a dummy key in `env`; MCP via `--mcp-config` file with the mock URL                                                                                              |
-| Codex CLI                                    | unproven | `config.toml` with a `[model_providers.testkit]` entry (`base_url = <gatewayUrl>/v1`, `wire_api = "chat"`) and `[mcp_servers.*]` url entries                                                               |
+| Adapter                                      | Status | How it connects                                                                                                                                                                                                                                              |
+| -------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reference` (`src/adapters/reference`)       | works  | In-process tool loop (skills, memory, spawn, compaction); MCP clients passed as options, not `mcpUrls`; emits every event kind                                                                                                                               |
+| `octocodecode` (`src/adapters/octocodecode`) | works  | Spawns the built CLI in a temp HOME with `models.json` (gateway) and `mcp.json` (mock URLs); bundle path from `bundle` option or `TESTKIT_OCTOCODECODE_BUNDLE`; `parseSkillListing` reads its skill prompt                                                   |
+| `claude-code` (`src/adapters/claude-code`)   | works  | Spawns `claude -p … --output-format stream-json --verbose --strict-mcp-config --mcp-config <file>` with `ANTHROPIC_BASE_URL` at the gateway, a dummy key and a temp HOME/`CLAUDE_CONFIG_DIR`; mock MCP tools sit behind `ToolSearch` but stay callable       |
+| `codex` (`src/adapters/codex`)               | works  | Temp HOME/`CODEX_HOME` `config.toml`: `mock` provider (`wire_api = "responses"`, websockets off), `[mcp_servers.*]` with `default_tools_approval_mode = "approve"`, dead `HTTPS_PROXY` (Codex ignores `OPENAI_BASE_URL`); tool calls use `{namespace, name}` |
 
 Write one in four steps:
 
@@ -137,9 +151,40 @@ Tier env (resolved by `resolveTier`; a missing piece skips the test with a reaso
 
 - Default to scripted; add a model only for a question a script cannot answer (does the model choose the tool).
 - Paid tests never run without `TESTKIT_LIVE=1` and are skipped with a reason, never silently dropped.
-- Record once, replay free: `cassette: { file, mode: "record" | "replay" }` on the gateway; a replay miss fails the request.
+- Forwarded runs use the run cache by default; set `TESTKIT_CASSETTE=record` to refresh it or `replay` to prohibit upstream calls (see Caching).
 - Cap spend with `caps.maxRequests`; prefer `live()` below to a fixed large loop.
 - Bound prompt and tool size with byte ceilings about 5% over the measured value.
+
+## Caching
+
+Two independent caches save different work:
+
+| Cache                 | Hit does what?                                                    | What proves it?                                                                             |
+| --------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Run cache (cassette)  | Replays the stored model reply; **no upstream request**           | `hits`, `upstreamCallsAvoided` in the run report                                            |
+| Provider prompt cache | Sends the request upstream, reuses the stable prompt prefix there | Provider-reported `cachedTokens` on the trace (`cache_read_input_tokens` on Anthropic wire) |
+
+A gateway with `forward` defaults to cassette mode `auto`: replay a hit, record a miss. Scripted gateways do not need a cassette and stay uncached unless explicitly recorded. `TESTKIT_CASSETTE=auto|record|replay|off` sets the default; `cassette.mode` overrides it. `replay` fails clearly on a missing file, missing request or stale fingerprint; `auto` replaces stale recordings and reports `stale` rather than silently trusting them.
+
+```ts
+const gw = await startGateway({
+	forward: { baseUrl, model, api: "anthropic", key, promptCache: true },
+	cassette: {
+		file: "./__cassettes__/search.json",
+		fingerprint: { adapter: { name: "inproc", version: "1" }, tier: "haiku", model },
+	},
+});
+```
+
+The header fingerprints adapter name/version, tier, model and an optional bundle hash. Supply the adapter/version for the harness under test; when testing a built bundle, add `bundle: fileHash(bundlePath)` to the fingerprint. The gateway fills the model and wire API when no tier is supplied. The key is the masked canonical request hash plus occurrence index: repeated identical requests retain separate replies. Occurrences count per gateway, so statistical trials that open a gateway per trial must pass `cassette: { sample: trial }`; otherwise trial 2 replays trial 1. Changing a prompt produces a miss; changing the fingerprint makes an existing recording stale. Older headerless cassette files need re-recording.
+
+Without `cassette.file`, files live under `.octocode/tmp/testkit-cassettes/` with a filename derived from tier, model and upstream URL hash. Automatically named files older than 14 days are pruned. Explicit cassette files are not pruned. Files contain model replies and usage, not request bodies or authentication headers; treat model output as potentially sensitive. Do not commit recordings without reviewing them.
+
+The package's Vitest config prints one summary and writes `.octocode/tmp/testkit-cache-report.json` at teardown. `TESTKIT_REPORT_DIR` overrides that location. A custom Vitest config must register `src/cache-report.ts` as `globalSetup` and set `TESTKIT_REPORT_DIR`; outside this config the fallback directory is the OS temp directory.
+
+Read `hits`, `misses`, `stale` and `recorded` first, then `upstreamCallsAvoided` and `timeSavedMs` (sum of recorded upstream latency minus replay lookup time; not a whole-suite wall-clock speedup). `providerCache.cachedTokens` counts provider cache reads on newly recorded calls only; replayed usage is preserved in the trace but is not another provider cache read. The `cassettes` map breaks the totals down by file; `recordedRequests` preserves each new call's latency and provider usage (including `cachedTokens`). Tests with fake upstreams also contribute to this report; isolate a live test with `-t` when measuring a real provider.
+
+For Anthropic, forwarding adds ephemeral `cache_control` markers by default (`forward.promptCache: false` turns them off) to the stable system prompt and last tool definition. The prefix must exceed the provider's cache minimum. `TESTKIT_TIER=haiku` enables the gated three-turn inproc cache test; it records once, checks real cache reads on a warm request, then replays with no `forward` configured. Paid tests require explicitly configured tier credentials.
 
 ## Statistical tests: `live()`
 
@@ -158,6 +203,6 @@ A trial that throws or returns `false` is a failure. With threshold 0.8 and conf
 - Matchers see only what the three probes show; an agent with no MCP or event probe is invisible to the matchers that need them.
 - `cannot observe` on a missing probe cannot tell "probe not wired" from "agent did nothing"; wire the probe or assert on the gateway side.
 - Token counts are estimates (chars / 4) unless forwarded from a real provider.
-- Streaming and tool-call shapes: OpenAI chat-completions and Anthropic messages only.
+- Streaming and tool-call shapes: OpenAI chat-completions, Anthropic messages and OpenAI Responses SSE. Responses input maps messages, function calls and function outputs; other item types are not interpreted.
 - Real-harness adapters spawn processes: need the built harness, local loopback sockets and a real clock (no fake timers).
-- Claude Code and Codex adapters are unproven.
+- Claude Code and Codex adapters each skip with a reason when their CLI is missing.

@@ -1,7 +1,7 @@
 import { archiveRead, memoryRead } from "../shared/archive-operation.ts";
 import type { ToolCallEvent, ToolInfo } from "../../core/features/index.ts";
 import { currentToolRoles, createMcpToolName, type McpServerStatus } from "../../../../mcp/src/api.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { untilCommand } from "../shared/until-command.ts";
 
 const reads = new Set(["askUser", "skill", "web"]);

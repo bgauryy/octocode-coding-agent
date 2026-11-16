@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { say, type Subcommand } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

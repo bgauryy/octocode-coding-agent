@@ -7,7 +7,7 @@ import {
 	Text,
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
 import { skillInstructions } from "../../../octocode/skill/render.ts";
 import { shortPath } from "../../../utils/display-path.ts";

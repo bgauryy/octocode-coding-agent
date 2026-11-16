@@ -6,7 +6,7 @@
 
 import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { createMcpToolName } from "./tool-names.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
 export interface ResolvedRoles {
 	/** Full names, `mcp__<ns>__<tool>`. */

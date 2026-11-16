@@ -26,6 +26,7 @@ import {
 	type OkhslChannels,
 	okhslColor,
 	oklabToOkhslLightness,
+	rgbToOklabLightness,
 	oklchColor,
 	type RgbColor,
 	rgbColor,
@@ -73,11 +74,6 @@ interface SystemThemeColors {
 	appearance: ThemeAppearance | undefined;
 }
 
-/** OKLab lightness of an sRGB color, 0-1. */
-function oklabLightness(color: RgbColor): number {
-	return colorToOklch(rgbColor(color.r, color.g, color.b)).l;
-}
-
 /** WCAG 2 relative luminance. */
 function relativeLuminance({ r, g, b }: RgbColor): number {
 	const linear = (channel: number) => {
@@ -105,8 +101,8 @@ export function terminalAppearance(background: RgbColor, foreground?: RgbColor):
 	const whiteContrast = wcagContrast(white, background);
 	const blackContrast = wcagContrast(black, background);
 	if (foreground) {
-		const foregroundL = oklabLightness(foreground);
-		const backgroundL = oklabLightness(background);
+		const foregroundL = rgbToOklabLightness(foreground);
+		const backgroundL = rgbToOklabLightness(background);
 		if (Math.abs(foregroundL - backgroundL) > 0.05) {
 			const appearance = foregroundL > backgroundL ? "dark" : "light";
 			const best = appearance === "dark" ? whiteContrast : blackContrast;
@@ -155,7 +151,7 @@ export function generateSystemThemeColors(input: SystemThemeInput): SystemThemeC
 	const appearance = terminalAppearance(background, foreground);
 	const lighter = appearance === "dark";
 	const extreme = lighter ? 1 : 0;
-	const backgroundL = oklabLightness(background);
+	const backgroundL = rgbToOklabLightness(background);
 
 	/**
 	 * A token's color at an OKLab lightness. With a palette, the palette color's saturation applies at its
@@ -209,7 +205,7 @@ export function generateSystemThemeColors(input: SystemThemeInput): SystemThemeC
 			for (const rule of RULES) {
 				if (rule.token !== token) continue;
 				for (const surface of rule.on) {
-					const value = target(rule.level, oklabLightness(colors.get(surface) ?? background), t);
+					const value = target(rule.level, rgbToOklabLightness(colors.get(surface) ?? background), t);
 					if (value === undefined || value < 0 || value > 1) return undefined;
 					targets.push(value);
 				}
@@ -252,10 +248,10 @@ export function generateSystemThemeColors(input: SystemThemeInput): SystemThemeC
 		// the foreground's hue at just enough lightness.
 		let text = solved.get(token);
 		if (foreground) {
-			const targets = surfaces.map((surface) => target(FOREGROUND_LEVEL, oklabLightness(surface), relaxation));
+			const targets = surfaces.map((surface) => target(FOREGROUND_LEVEL, rgbToOklabLightness(surface), relaxation));
 			if (targets.every((value) => value !== undefined && value >= 0 && value <= 1)) {
 				const needed = lighter ? Math.max(...(targets as number[])) : Math.min(...(targets as number[]));
-				const foregroundL = oklabLightness(foreground);
+				const foregroundL = rgbToOklabLightness(foreground);
 				if (lighter ? foregroundL >= needed : foregroundL <= needed) {
 					result[token] = "";
 					continue;

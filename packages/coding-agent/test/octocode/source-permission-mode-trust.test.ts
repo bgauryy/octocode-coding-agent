@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 /**

@@ -6,8 +6,8 @@ import {
 	type ApplicationMessage,
 	type ApplicationSnapshot,
 } from "@octocodeai/octocode-contracts";
-import { redactData } from "../../../../../common/src/sanitize.ts";
-import { SecretStream } from "../../../../../common/src/secret-stream.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
+import { SecretStream } from "@octocodeai/octocode-common/secret-stream";
 
 /**
  * What the transcript knows about a streamed update besides its display event. The provider extends its partial

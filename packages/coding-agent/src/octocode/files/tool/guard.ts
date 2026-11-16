@@ -1,8 +1,8 @@
 import { isUtf8 } from "node:buffer";
 import fs from "node:fs";
 import { findAllEditOccurrences, normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { describeRanges, firstGap, type LineRange, lineCount, mergeRanges, readView } from "../coverage.ts";
 import { type OwnEdit, OwnEdits } from "./own-edits.ts";

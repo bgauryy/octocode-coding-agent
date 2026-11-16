@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { agents, workspaces } from "../../../../db/src/api.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isUnderPath } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { getSessionsDir } from "../../config.ts";
 import { agentDbPath } from "../../storage/state-paths.ts";
 import { WORKSPACE_STATE, workspaceDataRoot } from "../../storage/workspace.ts";

@@ -1,6 +1,6 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@octocodeai/octocode-ai";
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
-import { openTarget } from "../../../../../common/src/open-target.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { theme } from "../../../theme/theme.ts";
 import { AuthUrlComponent } from "./auth-url.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";

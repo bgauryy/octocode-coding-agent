@@ -16,7 +16,7 @@ import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
 import { sessionLineage, setSessionLineage } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
-import { CACHE_RETENTION_ENV } from "../../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "./turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";

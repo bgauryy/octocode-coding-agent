@@ -1,5 +1,5 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import type { CompactionPreparation } from "../../core/compaction/index.ts";
 
 /** Reuse a paid summary only for the same content and output budget, including context edits with unchanged token estimates. */

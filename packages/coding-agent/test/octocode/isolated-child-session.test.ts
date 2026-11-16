@@ -14,7 +14,7 @@ import { grantFolder } from "../../src/octocode/trust/grants.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { subagentProcessEnv, type Identity } from "../../src/octocode/subagents/process/env.ts";
 import { createWorktree, type Worktree } from "../../src/octocode/subagents/worktree.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";

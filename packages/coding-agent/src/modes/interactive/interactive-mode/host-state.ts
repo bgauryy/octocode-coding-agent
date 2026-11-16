@@ -11,6 +11,7 @@ import type {
 	Spacer,
 	TUI,
 	TuiAltScreen,
+	ThemedText,
 	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import type * as TuiLayouts from "@octocodeai/octocode-tui";
@@ -34,9 +35,8 @@ import type { ExtensionInputComponent } from "../components/extension-input.ts";
 import type { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import type { FooterComponent } from "../components/footer.ts";
 import type { IdleStatus, StatusIndicator } from "../components/status-indicator.ts";
-import type { ThemedText } from "../components/themed-text.ts";
 import type { ToolExecutionComponent } from "../components/tool-execution.ts";
-import type { ProgramStatusReporter } from "../program-status-reporter.ts";
+import type { SessionStatusReporter } from "../program-status-reporter.ts";
 import type { InteractiveThemeController } from "../theme/theme-controller.ts";
 import type { ActiveEditor, InteractiveModeOptions } from "./types.ts";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
@@ -107,7 +107,7 @@ export interface InteractiveModeState {
 	readonly pendingMessagesContainer: Container;
 	readonly pendingTools: Map<string, ToolExecutionComponent>;
 	readonly pendingUserInputs: string[];
-	readonly programStatus: ProgramStatusReporter;
+	readonly programStatus: SessionStatusReporter;
 	renderer: TuiMainScreen | TuiAltScreen;
 	retryEscapeHandler: (() => void) | undefined;
 	readonly runtimeHost: AgentSessionRuntime;

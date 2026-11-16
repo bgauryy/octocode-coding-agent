@@ -1,6 +1,6 @@
 import { fileChanges } from "../tool-input/file-input.ts";
 import { Box, type Component, Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { renderDiff } from "../../theme/diff.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../render/tool.ts";

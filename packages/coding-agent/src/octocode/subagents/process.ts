@@ -1,4 +1,4 @@
-import { envInt } from "../../../../common/src/env.ts";
+import { envInt } from "@octocodeai/octocode-common/env";
 import { getCliInvocation } from "../../config.ts";
 import { STARTUP_RETRY_DELAY_MS, StartupError, type SubagentOutcome } from "./process/outcome.ts";
 import { runChild } from "./process/run-child.ts";

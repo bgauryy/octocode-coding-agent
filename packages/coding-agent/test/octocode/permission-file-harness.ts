@@ -2,7 +2,7 @@ import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 /**

@@ -1,6 +1,6 @@
 import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 
 /** The optional file at a checkout's root that lists, in `.gitignore` syntax, untracked files a new worktree takes along. */

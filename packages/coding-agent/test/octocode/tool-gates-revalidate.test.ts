@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ToolCallEvent, ToolCallEventResult } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";

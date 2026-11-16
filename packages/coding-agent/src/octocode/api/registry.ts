@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { globalPaths } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 

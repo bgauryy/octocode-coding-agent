@@ -13,7 +13,7 @@ import type {
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { dirname } from "node:path";
-import { isLoopbackIp } from "../../../../common/src/ip-address.ts";
+import { isLoopbackIp } from "@octocodeai/octocode-common/ip-address";
 import { resolveConfiguredCache } from "../cache-configuration.ts";
 import {
 	type CompatibilityRequestConfig,

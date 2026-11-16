@@ -1,8 +1,7 @@
-import { animationClock, type Component, Container, setKeybindings, Text, type TUI } from "@octocodeai/octocode-tui";
+import { type Component, Container, type TUI, Text, animationClock, createChatViewport, setKeybindings } from "@octocodeai/octocode-tui";
 import type { StatusEntry } from "../../src/core/footer-data-provider.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import type { SessionInfo } from "../../src/core/session-manager.ts";
-import { createChatViewport } from "../../src/modes/interactive/chat-viewport.ts";
 import { AssistantMessageComponent } from "../../src/modes/interactive/components/assistant-message.ts";
 import { QueueListComponent } from "../../src/modes/interactive/components/queue-list.ts";
 import { SessionSelectorComponent } from "../../src/modes/interactive/components/session-selector.ts";

@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import type { MarkdownTheme } from "@octocodeai/octocode-tui";
+import type { MarkdownTheme } from "./types.ts";
 
 /** Code shorter than this is highlighted on every change: one pass costs less than a frame. */
 const DEFER_MIN_CHARS = 8_000;

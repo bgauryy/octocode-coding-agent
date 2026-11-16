@@ -1,5 +1,5 @@
 import { parse } from "yaml";
-import { stripBom } from "../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 
 type ParsedFrontmatter<T extends Record<string, unknown>> = {
 	frontmatter: T;

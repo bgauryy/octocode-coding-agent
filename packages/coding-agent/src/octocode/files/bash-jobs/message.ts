@@ -1,4 +1,4 @@
-import { cutText } from "../../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 import type { BashJob } from "./types.ts";
 
 /**

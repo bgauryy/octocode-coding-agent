@@ -2,7 +2,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { allRows, openReadOnlyDb } from "../../../../db/src/api.ts";
 import { keysOverlap, type LeaseKind, leaseKey } from "./lease-key.ts";

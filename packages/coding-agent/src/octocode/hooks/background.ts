@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { parseJson } from "../shared/util.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { HookEvent } from "./catalog.ts";
 import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";

@@ -1,5 +1,5 @@
-import { getFileStamp } from "../../../../common/src/paths.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { type FileStamp, type TranscriptCommand, transcripts, writerErrorKind } from "../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb, sharedTranscriptWriter } from "../../storage/database.ts";

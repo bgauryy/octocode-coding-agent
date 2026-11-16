@@ -8,7 +8,7 @@ import {
 	READ_ONLY_ENV,
 	SUBAGENT_ENV,
 	TEAM_WORKSPACE_ENV,
-} from "../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";

@@ -1,4 +1,4 @@
-import { stripBom } from "../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { FileSettingsStorage } from "../core/settings-manager/storage.ts";
 import type { Settings } from "../core/settings-schema.ts";
 import type { ConfigContext } from "./types.ts";
@@ -34,13 +34,27 @@ export async function writeSettingsKey(
 	key: string,
 	value: unknown,
 ): Promise<void> {
+	await updateSettingsKey(ctx, scope, key, () => value);
+}
+
+/**
+ * `writeSettingsKey` for a value derived from the key's current content: `compute` receives the value the file holds
+ * while the lock is held, so a concurrent writer's change to the same file is built on, not overwritten.
+ */
+export async function updateSettingsKey(
+	ctx: ConfigContext,
+	scope: FileScope,
+	key: string,
+	compute: (current: unknown) => unknown,
+): Promise<void> {
 	// Writes the manager queued come first, so this one does not overwrite them with a stale snapshot.
 	await ctx.settings.flush();
 	const storage = new FileSettingsStorage(ctx.cwd, ctx.agentDir);
 	storage.withLock(scope, (current) => {
-		if (current === undefined && value === undefined) return undefined;
 		const parsed: unknown = current === undefined ? {} : JSON.parse(stripBom(current));
 		if (!isObject(parsed)) throw new Error(`The ${scope} settings file is not a JSON object.`);
+		const value = compute(readPath(parsed, key));
+		if (current === undefined && value === undefined) return undefined;
 		const parts = key.split(".");
 		const chain: Record<string, unknown>[] = [parsed];
 		for (const part of parts.slice(0, -1)) {

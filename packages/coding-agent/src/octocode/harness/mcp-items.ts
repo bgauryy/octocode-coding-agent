@@ -1,5 +1,5 @@
 import { mcpRowFacts, mcpRowSummary, type McpServerStatus } from "../../../../mcp/src/api.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { InventoryItem } from "../../core/extensibility/inventory-types.ts";
 
 /**

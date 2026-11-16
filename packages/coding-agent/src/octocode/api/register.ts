@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AgentDirectory, ApiOperations } from "./bridge/contracts.ts";
 import { type ApiOptions, startupOptions, transportsFor } from "./bridge/options.ts";

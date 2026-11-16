@@ -1,9 +1,9 @@
 import fs from "node:fs";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import path from "node:path";
 import { sessionFolder, privateDir } from "../shared/home.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /**
  * A subagent's screenshots (the browser MCP tools) live only in its own conversation. The parent saves the

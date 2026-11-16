@@ -1,4 +1,4 @@
-import { isUnderPath } from "../../../../common/src/paths.ts";
+import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { getNativeSkillsDir, getOctocodeSkillsDir } from "../../config.ts";
 
 /**

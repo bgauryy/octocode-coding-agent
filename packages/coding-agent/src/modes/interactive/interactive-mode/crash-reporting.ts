@@ -1,3 +1,4 @@
+import { ThemedText } from "@octocodeai/octocode-tui";
 /**
  * Fatal errors and crashes: the crash record, extension hints, the /bug suggestion after errors, and the warning
  * when the installation changed while the session ran.
@@ -8,7 +9,6 @@ import { APP_NAME, detectInstallChange, VERSION } from "../../../config.ts";
 import { findExtensionStackMatches, recordCrash as writeCrashRecord } from "../../../core/crash-log.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { endIfStalled } from "../../../utils/stall-guard.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
 import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";

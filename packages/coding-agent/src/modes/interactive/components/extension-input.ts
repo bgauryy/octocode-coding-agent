@@ -2,9 +2,17 @@
  * Simple text input component for extensions.
  */
 
-import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
+import {
+	Container,
+	CountdownTimer,
+	type Focusable,
+	Input,
+	Spacer,
+	type TUI,
+	Text,
+	getKeybindings,
+} from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 

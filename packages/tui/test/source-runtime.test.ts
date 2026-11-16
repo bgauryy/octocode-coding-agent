@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { expect, it } from "vitest";
+import assert from "node:assert";
+import { it } from "node:test";
 
 it("loads the highlight cache with the source runtime's native TypeScript stripping", () => {
-	const cacheUrl = new URL("../src/theme/highlight-cache.ts", import.meta.url).href;
+	const cacheUrl = new URL("../src/components/markdown/highlight-cache.ts", import.meta.url).href;
 	const child = spawnSync(
 		process.execPath,
 		[
@@ -24,5 +25,5 @@ it("loads the highlight cache with the source runtime's native TypeScript stripp
 		],
 		{ encoding: "utf8", timeout: 10_000 },
 	);
-	expect(child.status, child.stderr).toBe(0);
+	assert.strictEqual(child.status, 0, child.stderr);
 });

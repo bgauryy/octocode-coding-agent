@@ -1,6 +1,6 @@
 import type { CloseInput, EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 import type { State, BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { itemLine } from "./format.ts";

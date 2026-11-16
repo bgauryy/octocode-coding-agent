@@ -1,5 +1,5 @@
 import { basename, dirname, resolve } from "node:path";
-import { canonicalizePath } from "../../../../common/src/paths.ts";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { isSyntheticPath, type SourceInfo } from "../source-info.ts";
 

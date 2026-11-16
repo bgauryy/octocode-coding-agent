@@ -6,7 +6,7 @@ import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { credentialHit } from "../../src/octocode/permission/credential-store.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

@@ -3,7 +3,7 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import type { HookEvent } from "./catalog.ts";
 import { type HookPrompt, type HookRun, HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
 import { parseJson } from "../shared/util.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type PromptEvaluator = (request: { prompt: string; model?: string; signal: AbortSignal }) => Promise<string>;

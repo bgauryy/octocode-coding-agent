@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseStreamingJsonThrottled } from "@octocodeai/octocode-ai";
 import type { ApplicationEvent, ApplicationFrame, ApplicationMessage } from "@octocodeai/octocode-contracts";
 import { ApplicationStream } from "../../webview/src/application-stream.ts";
-import { redactData } from "../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { ApplicationAssets } from "../src/core/application/assets.ts";
 import { normalizeApplicationMessage } from "../src/core/application/normalize.ts";

@@ -1,4 +1,4 @@
-import { sha256Hasher } from "../../../../common/src/atomic-file.ts";
+import { sha256Hasher } from "@octocodeai/octocode-common/atomic-file";
 import { type Finding, type ItemFile, type Rating, type ReviewItem, worse } from "./types.ts";
 
 /**

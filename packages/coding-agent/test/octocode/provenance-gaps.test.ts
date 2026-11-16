@@ -11,7 +11,7 @@ import { recordChildReports } from "../../src/octocode/permission/provenance/rep
 import { jobDetails, jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
 import type { BashJob } from "../../src/octocode/files/bash-jobs/types.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

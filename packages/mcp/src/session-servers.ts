@@ -18,8 +18,8 @@ import type { EventBus } from "@octocodeai/octocode-agent-core";
 import type { McpExtensionApi } from "./host/types.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
-import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const REQUEST_ADDED_SERVERS = "mcp:added-servers:request";

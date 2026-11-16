@@ -1,6 +1,6 @@
 import { type Static, Type } from "typebox";
 import type { McpContext, McpToolDefinition } from "./host/types.ts";
-import { MCP_MANAGE_TOOL_NAME, MCPS_SECTION, mcpNamespace } from "../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME, MCPS_SECTION, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { mcpGroupLabel, type McpServerGroup } from "./group.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 

@@ -1,4 +1,4 @@
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { writeSessionExport } from "./export-target.ts";
 import { encodeSessionLines } from "./session-manager/codec.ts";
 import { CURRENT_SESSION_VERSION, type SessionHeader, type SessionManager } from "./session-manager.ts";

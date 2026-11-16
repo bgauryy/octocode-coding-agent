@@ -1,7 +1,7 @@
 import { getCapabilities, hyperlink, type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
 import { ITEM_REF, itemLinkUrl, itemLinksClickable } from "./item-ref.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { clip, plural, queryTarget } from "../../../../common/src/clip.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { clip, plural, queryTarget } from "@octocodeai/octocode-common/clip";
 import { shortcutText } from "./keys.ts";
 
 export { clip, plural, queryTarget };

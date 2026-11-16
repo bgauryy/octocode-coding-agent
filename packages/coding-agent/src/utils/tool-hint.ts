@@ -1,7 +1,7 @@
 /** The one-line hint a tool call shows in the working line and activity. */
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
-import { clipText, firstLine } from "../../../common/src/clip.ts";
-import { redactSecrets } from "../../../common/src/sanitize.ts";
+import { clipText, firstLine } from "@octocodeai/octocode-common/clip";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 /**
  * The most telling argument of a tool call (path, command, query, url or element ref; else a plan's step sequence, a

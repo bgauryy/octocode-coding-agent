@@ -1,5 +1,5 @@
 import { basename, dirname } from "node:path";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** The skills folder a SKILL.md belongs to (`~/.agents/skills` for `~/.agents/skills/x/SKILL.md`), for warnings. */
 export function skillFolder(skillFile: string): string {

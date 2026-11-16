@@ -3,7 +3,7 @@ import type * as RunnerStatus from "../src/octocode/external/runner-status.ts";
 
 const external = vi.hoisted(() => ({ edit: vi.fn() }));
 vi.mock("../src/modes/interactive/external-editor.ts", () => ({ editInExternalEditor: external.edit }));
-vi.mock("../../common/src/find-on-path.ts", () => ({ findOnPath: () => "/usr/local/bin/vendor-cli" }));
+vi.mock("@octocodeai/octocode-common/find-on-path", () => ({ findOnPath: () => "/usr/local/bin/vendor-cli" }));
 vi.mock("../src/octocode/external/runner-status.ts", async (original) => ({
 	...(await original<typeof RunnerStatus>()),
 	checkRunners: async () => [],

@@ -1,11 +1,11 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor } from "../config/calls.ts";
 import type { HookVerdict } from "../contracts.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
-import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "../../../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "@octocodeai/octocode-common/env";
 import { contentText } from "../../shared/util.ts";
 import { capContext } from "../runner.ts";
 import {

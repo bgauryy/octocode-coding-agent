@@ -2,7 +2,7 @@ import { dirname, join, relative } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { PackageSource, SettingsManager } from "../settings-manager.ts";
 import { isOverridePattern, overridePatternTarget, withTogglePattern } from "./patterns.ts";
-import { canonicalizePath, isLocalPath, resolvePath } from "../../../../common/src/paths.ts";
+import { canonicalizePath, isLocalPath, resolvePath } from "@octocodeai/octocode-common/paths";
 import {
 	type ProjectOverrideState,
 	RESOURCE_TYPES,

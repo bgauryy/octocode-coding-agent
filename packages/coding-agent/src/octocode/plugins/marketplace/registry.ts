@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import os from "node:os";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import { type Catalog, MARKETPLACE_FILE, readCatalog } from "./catalog.ts";
 import { isGitRepository, type MarketplacePaths, shallowClone } from "./fetch.ts";

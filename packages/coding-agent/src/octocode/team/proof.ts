@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { sameSecret } from "../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import type { Message } from "./model.ts";
 
 /**

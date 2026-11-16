@@ -196,9 +196,9 @@ describe("source layout", () => {
 		const owners: Array<[RegExp, string]> = [
 			[/process\.kill\(/, "shared/process.ts"],
 			[/instanceof Error \? [^:]+: String\(/, "shared/util.ts"],
-			[/createHash\(['"]sha256['"]\)/, "../../common/src/atomic-file.ts"],
-			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "../../common/src/env.ts"],
-			[/\.replace\(\/\[\.\*\+\?\^\$\{\}\(\)\|\[\\\]\\\\\]\/g/, "../../common/src/regexp.ts"],
+			[/createHash\(['"]sha256['"]\)/, "@octocodeai/octocode-common/atomic-file"],
+			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "@octocodeai/octocode-common/env"],
+			[/\.replace\(\/\[\.\*\+\?\^\$\{\}\(\)\|\[\\\]\\\\\]\/g/, "@octocodeai/octocode-common/regexp"],
 		];
 		const copies = files.flatMap((file) => {
 			const relative = path.relative(sourceRoot, file).split(path.sep).join("/");

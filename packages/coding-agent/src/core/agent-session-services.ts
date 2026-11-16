@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { getAgentDir, getLegacyProviderDirs } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { ModelRuntime } from "./model-runtime.ts";
 import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type ResourceLoader } from "./resource-loader.ts";
 import { SettingsManager } from "./settings-manager.ts";

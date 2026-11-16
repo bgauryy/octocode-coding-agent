@@ -1,12 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-	anthropicMessages,
-	fromAnthropicResponse,
-	sendAnthropicJson,
-	sendAnthropicSse,
-	toAnthropicRequest,
-} from "./anthropic.ts";
+import { anthropicMessages, sendAnthropicJson, sendAnthropicSse } from "./anthropic.ts";
 import { Cassette, type CassetteOptions } from "./cassette.ts";
 import { responsesMessages, responsesToChatBody, sendResponsesSse } from "./responses.ts";
 import { forwardUpstream, type Forward } from "./upstream.ts";

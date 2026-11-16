@@ -1,6 +1,6 @@
 import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import { describe, expect, it } from "vitest";
-import { redactUrlCredentials } from "../../common/src/url-credentials.ts";
+import { redactUrlCredentials } from "@octocodeai/octocode-common/url-credentials";
 import { redactUrl } from "../src/core/bug-report.ts";
 import { publishModelChange } from "../src/core/application/service/model.ts";
 import { acceptApplicationEvent, createApplicationState } from "../src/core/application/state.ts";

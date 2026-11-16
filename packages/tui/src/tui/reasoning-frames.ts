@@ -1,4 +1,5 @@
-import { animationClock, MOTION } from "@octocodeai/octocode-tui";
+import { animationClock } from "../tokens/clock.ts";
+import { MOTION } from "../tokens/design.ts";
 
 /** An offscreen reasoning label stops requesting decorative frames after two seconds. */
 export class ReasoningFrames {

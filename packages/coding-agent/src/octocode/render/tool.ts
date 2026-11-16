@@ -1,5 +1,5 @@
-import { Box, type Component, Text, stripTerminalSequences } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { Box, type Component, Lines, type Row, Text, stripTerminalSequences } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { Theme } from "../../theme/theme.ts";
 import { styleShellLines } from "../../theme/output-style.ts";
 import { formatDuration } from "../shared/format.ts";
@@ -7,7 +7,6 @@ import { shortPath } from "../../utils/display-path.ts";
 import { contentText } from "../shared/util.ts";
 import { highlightCode, TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
 import { rowMark, uiStateOf } from "./motion.ts";
-import { Lines, type Row } from "./lines.ts";
 import { phaseOf, rowState, runStart, track } from "./rows.ts";
 import { bodyLines, clip, expandHint, GUTTER, INDENT, plural } from "../shared/text.ts";
 import type { UiState } from "../../theme/status.ts";
@@ -40,8 +39,6 @@ const SUMMARY_CHARS_EXPANDED = 200;
  */
 const STOPPED =
 	/^(?:error:\s*)?(?:mcp )?(?:(?:the |this )?(?:operation|request|run) (?:was )?aborted|aborted|interrupted|cancell?ed|stopped\b|not run\b)/i;
-
-export { type Header, Lines, type Row } from "./lines.ts";
 
 function lines(context: RenderContext): Lines {
 	return context.lastComponent instanceof Lines ? context.lastComponent : new Lines();

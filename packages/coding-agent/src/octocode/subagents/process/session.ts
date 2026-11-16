@@ -3,7 +3,7 @@ import path from "node:path";
 import { getToolListError } from "../../../core/settings-manager.ts";
 import { privateDir, sessionOutputDir } from "../../shared/home.ts";
 import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools } from "../profiles.ts";
-import { BROWSER_SERVER, mcpNamespace } from "../../../../../common/src/mcp-names.ts";
+import { BROWSER_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { Identity } from "./env.ts";
 import { operatorLimits } from "./operator-limits.ts";
 

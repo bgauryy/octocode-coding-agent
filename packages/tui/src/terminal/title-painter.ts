@@ -1,4 +1,19 @@
-import { isBusyTitle, plainTitle, TITLE_FRAME_MS, type TitleState, terminalTitle } from "./terminal-title.ts";
+/** What the session is doing, as the terminal tab shows it. */
+export type TitleState = "idle" | "thinking" | "running" | "waiting" | "done" | "failed";
+
+/** How often a busy title moves to its next frame: slow, so a terminal that reads slowly never falls behind on titles. */
+export const TITLE_FRAME_MS = 1000;
+
+/** Whether a state animates. */
+export const isBusyTitle = (state: TitleState | undefined) => state === "thinking" || state === "running";
+
+/** The title text the app owns: the painter decides when to write, the app what the tab says. */
+export interface TitleFormat {
+	/** The title for a state, `frame` counting animation steps of a busy state. */
+	full(state: TitleState, description: string | undefined, cwd: string, agents: number, frame: number): string;
+	/** The title without a state. */
+	plain(description: string | undefined, cwd: string): string;
+}
 
 /** Thinking and tool runs alternate within milliseconds; their title swaps are coalesced over this window. */
 const TITLE_COALESCE_MS = 250;
@@ -25,8 +40,11 @@ export class TitlePainter {
 	private animation: ReturnType<typeof setInterval> | undefined;
 	private frame = 0;
 
-	constructor(source: TitleSource) {
+	private readonly format: TitleFormat;
+
+	constructor(source: TitleSource, format: TitleFormat) {
 		this.source = source;
+		this.format = format;
 	}
 
 	/** Repaint; `force` rewrites the title after another writer (the host, a session switch) may have replaced it. */
@@ -56,7 +74,7 @@ export class TitlePainter {
 	leave(): void {
 		const target = this.source.target();
 		this.reset();
-		target?.setTitle(plainTitle(this.source.description(), target.cwd));
+		target?.setTitle(this.format.plain(this.source.description(), target.cwd));
 	}
 
 	private write(force: boolean): void {
@@ -67,7 +85,7 @@ export class TitlePainter {
 		this.animate(state);
 		if (!target || !state) return;
 		const agents = state === "idle" ? 0 : this.source.agents();
-		const text = terminalTitle(state, this.source.description(), target.cwd, agents, this.frame);
+		const text = this.format.full(state, this.source.description(), target.cwd, agents, this.frame);
 		if (!force && this.shown?.text === text) return;
 		this.shown = { state, text };
 		target.setTitle(text);

@@ -6,7 +6,7 @@ import type {
 	ExtensionUIContext,
 } from "../../core/features/index.ts";
 import { withDialog } from "./locks.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 type NoticeLevel = "info" | "warning" | "error";
 

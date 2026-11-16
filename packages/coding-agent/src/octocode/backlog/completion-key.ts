@@ -1,4 +1,4 @@
-import { shortHash } from "../../../../common/src/atomic-file.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 
 /** A completion as the model may send it: the retry key is optional. */

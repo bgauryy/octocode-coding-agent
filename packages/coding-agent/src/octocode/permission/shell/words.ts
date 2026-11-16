@@ -1,5 +1,5 @@
-import { BODY, unhide } from "../../../../../common/src/shell-words.ts";
-export { ansiC, BODY, hide, mask, SEPARATOR, unhide } from "../../../../../common/src/shell-words.ts";
+import { BODY, unhide } from "@octocodeai/octocode-common/shell-words";
+export { ansiC, BODY, hide, mask, SEPARATOR, unhide } from "@octocodeai/octocode-common/shell-words";
 import { LEADING_OPERANDS, optionWidth, WRAPPERS } from "./wrapper-options.ts";
 
 export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);

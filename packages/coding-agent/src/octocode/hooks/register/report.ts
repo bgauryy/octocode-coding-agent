@@ -1,6 +1,6 @@
 import { formatDuration } from "../../shared/format.ts";
 import { configFileLines } from "../../shared/home.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { clipText } from "../../shared/util.ts";
 import { hookLabel, hookFiles } from "../config.ts";
 import type { HookTiming } from "./types.ts";

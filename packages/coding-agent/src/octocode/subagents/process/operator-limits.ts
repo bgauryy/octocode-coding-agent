@@ -3,7 +3,7 @@ import {
 	OPERATOR_EXCLUDE_TOOLS_ENV,
 	OPERATOR_NO_MCP_ENV,
 	SUBAGENT_ENV,
-} from "../../../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 
 /** What the operator of the run took away on its command line, which binds every process below that run. */
 interface OperatorLimits {

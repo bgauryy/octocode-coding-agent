@@ -7,8 +7,8 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV, envFlag } from "../../common/src/env.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV, envFlag } from "@octocodeai/octocode-common/env";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { McpExtensionApi } from "./host/types.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { PARENT_PID_ENV } from "../../../../common/src/env.ts";
+import { PARENT_PID_ENV } from "@octocodeai/octocode-common/env";
 
 /**
  * A headless Chrome outlives the browser subagent that opened it, so that a follow-up can reuse it, and a subagent that

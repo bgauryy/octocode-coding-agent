@@ -1,7 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
+import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import type { CloseInput } from "@octocodeai/octocode-contracts/backlogs";
 import { Type } from "typebox";
-import { BACKLOG_ITEM_ENV } from "../../../../common/src/env.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { timedTool } from "../render/rows.ts";
 import { withReason } from "../shared/reason.ts";

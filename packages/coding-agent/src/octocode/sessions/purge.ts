@@ -3,7 +3,7 @@ import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { maintenance, purge, type MaintenanceResult, type PurgeCounts } from "../../../../db/src/api.ts";
 import { getSessionsDir } from "../../config.ts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { type PurgeKind, type PurgePlan, type PurgeScope, planPurge, type PlanOptions } from "./purge-plan.ts";
 import type { SessionIndex } from "./store.ts";
 import { strictlyInside } from "./sweep-fs.ts";

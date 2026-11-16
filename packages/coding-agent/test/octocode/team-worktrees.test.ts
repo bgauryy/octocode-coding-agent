@@ -6,7 +6,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { ExtensionContext } from "../../src/core/features/index.ts";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
-import { TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { newMember } from "../../src/octocode/team/identity.ts";
 import { PARENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";

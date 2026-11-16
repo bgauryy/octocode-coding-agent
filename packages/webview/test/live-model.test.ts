@@ -270,6 +270,10 @@ describe("terminal transcript", () => {
 	it("strips terminal colour codes without touching other text", () => {
 		expect(stripAnsi("\u001b[1;31merror\u001b[0m: [x]")).toBe("error: [x]");
 	});
+	it("strips OSC hyperlinks and window titles, keeping the link text", () => {
+		expect(stripAnsi("\u001b]8;;https://example.com\u001b\\docs\u001b]8;;\u001b\\ here")).toBe("docs here");
+		expect(stripAnsi("\u001b]0;title\u0007output")).toBe("output");
+	});
 });
 
 describe("tool calls as the host really sends them", () => {

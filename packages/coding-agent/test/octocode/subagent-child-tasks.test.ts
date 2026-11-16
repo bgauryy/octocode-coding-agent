@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { adoptChildTasks, finishChildNotes, isolatedChildSteps } from "../../src/octocode/subagents/child-tasks.ts";
 import { readWorkspaceIdentity } from "../../src/storage/workspace.ts";

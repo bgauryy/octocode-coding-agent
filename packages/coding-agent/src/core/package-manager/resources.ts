@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { canonicalizePath } from "../../../../common/src/paths.ts";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import { readExtensionManifest } from "../extension-manifest.ts";
 import { collectResourceFiles } from "./auto-entries.ts";
 import {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { browserMcpEscalations } from "../../src/octocode/permission/browser-mcp-escalations.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";

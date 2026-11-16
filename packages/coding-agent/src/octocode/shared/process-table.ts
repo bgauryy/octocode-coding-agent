@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstartFields, PS_UTC_ENV, utcSeconds } from "../../../../common/src/process-start.ts";
+import { lstartFields, PS_UTC_ENV, utcSeconds } from "@octocodeai/octocode-common/process-start";
 
 export { PS_UTC_ENV, utcSeconds };
 

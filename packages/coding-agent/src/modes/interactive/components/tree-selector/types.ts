@@ -22,6 +22,15 @@ export interface FlatNode {
 
 export type FilterMode = "default" | "no-tools" | "user-only" | "labeled-only" | "all";
 
+/** The status-line suffix that names the active filter. */
+export const FILTER_LABELS: Record<FilterMode, string> = {
+	default: "",
+	"no-tools": " [no-tools]",
+	"user-only": " [user]",
+	"labeled-only": " [labeled]",
+	all: " [all]",
+};
+
 export interface ToolCallInfo {
 	name: string;
 	arguments: Record<string, unknown>;

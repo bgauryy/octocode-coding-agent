@@ -1,7 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { ruleLine } from "../../theme/dynamic-border.ts";
 import { onSecond } from "../shared/clock.ts";

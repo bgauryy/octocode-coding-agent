@@ -11,8 +11,8 @@ import {
 import { privateDir } from "../shared/home.ts";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { sameProcessAsync } from "../shared/process.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 function readJson<S extends TSchema>(file: string, schema: S): Static<S> | undefined {
 	try {

@@ -3,7 +3,7 @@ import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../co
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { formatSkillsForPrompt } from "../../core/skills.ts";
 import type { SlashCommandInfo } from "../../core/slash-commands.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import type { Run } from "./claim.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";

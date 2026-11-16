@@ -7,6 +7,7 @@ import type {
 	JsonValue,
 	Message,
 	Model,
+	ModelThinkingLevel,
 	SimpleStreamOptions,
 	TextContent,
 	Tool,
@@ -69,7 +70,7 @@ export type AgentToolCall = Extract<AssistantMessage["content"][number], { type:
  * Note: "xhigh" and "max" are only supported by selected model families. Use model
  * thinking-level metadata from @octocodeai/octocode-ai to detect support for a concrete model.
  */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevel = ModelThinkingLevel;
 
 /**
  * Extensible interface for custom app messages.

@@ -22,7 +22,7 @@ import {
 	startMode,
 	UNGRANTABLE,
 } from "../../src/octocode/permission/mode.ts";
-import { PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "@octocodeai/octocode-common/env";
 
 /** Plan §2.4, one row per action class: manual, workspace, full. */
 const MATRIX: Record<ActionClass, [string, string, string]> = {

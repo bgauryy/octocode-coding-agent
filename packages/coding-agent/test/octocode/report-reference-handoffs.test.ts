@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fenceUntrusted, fencedParts } from "../../src/octocode/shared/fence.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import { referencedContentBlock, resolveReferences } from "../../src/octocode/child-sessions/references.ts";

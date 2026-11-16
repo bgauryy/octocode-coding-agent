@@ -2,10 +2,9 @@
  * The UI context handed to extensions, extension shortcuts, and extension notifications and errors.
  */
 
-import { matchesKey } from "@octocodeai/octocode-tui";
+import { ThemedText, matchesKey } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionContext, ExtensionRunner, ExtensionUIContext } from "../../../core/features/index.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import { askInTerminal } from "./extension-ask.ts";
 import type { InteractiveModeHost } from "./host.ts";

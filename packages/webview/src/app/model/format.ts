@@ -32,9 +32,7 @@ export function median(values: readonly number[]): number | undefined {
 	return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function plural(count: number, one: string, many = `${one}s`): string {
-	return `${count} ${count === 1 ? one : many}`;
-}
+export { plural } from "@octocodeai/octocode-common/clip";
 
 export function choice<const T extends string>(value: string, choices: readonly T[]): T {
 	const found = choices.find((option) => option === value);

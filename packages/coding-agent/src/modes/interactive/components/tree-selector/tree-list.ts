@@ -1,4 +1,12 @@
-import { type Component, getKeybindings, GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	GLYPH,
+	type HorizontalViewportRow,
+	getKeybindings,
+	renderHorizontalViewport,
+	truncateToWidth,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText, plainText } from "./entry-text.ts";
@@ -11,16 +19,7 @@ import {
 	isFoldable,
 	recalculateVisualStructure,
 } from "./structure.ts";
-import type { FilterMode, FlatNode, ToolCallInfo } from "./types.ts";
-import { type HorizontalViewportRow, renderHorizontalViewport } from "./viewport.ts";
-
-const FILTER_LABELS: Record<FilterMode, string> = {
-	default: "",
-	"no-tools": " [no-tools]",
-	"user-only": " [user]",
-	"labeled-only": " [labeled]",
-	all: " [all]",
-};
+import { FILTER_LABELS, type FilterMode, type FlatNode, type ToolCallInfo } from "./types.ts";
 
 /**
  * Tree list component with selection and ASCII art visualization

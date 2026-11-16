@@ -28,12 +28,13 @@ import { handleTerminationSignals } from "../termination-signals.ts";
 import { createEventLines } from "../event-lines.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { toLeanJsonEvent } from "../json-event-lean.ts";
-import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
+import { drainDbWriters } from "../../storage/database.ts";
+import { attachJsonlLineReader, serializeJsonLine } from "@octocodeai/octocode-common/jsonl";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
 import { error } from "./rpc-mode/responses.ts";
 import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./session-identity.ts";
-import { ACP_WORKER_ENV } from "../../../../common/src/env.ts";
+import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { armShutdownDeadline } from "./shutdown-deadline.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
@@ -164,6 +165,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			await flushRawStdout().catch(() => undefined);
 		}
 		removeSignalHandlers();
+		await drainDbWriters();
 		process.exit(status);
 	}
 

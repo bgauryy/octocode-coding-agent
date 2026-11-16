@@ -23,7 +23,6 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/hooks/register/stop.ts -> tui",
 	"coding-agent/src/octocode/llama/ui.ts -> tui",
 	"coding-agent/src/octocode/llama/ui/huggingface-search.ts -> tui",
-	"coding-agent/src/octocode/render/lines.ts -> tui",
 	"coding-agent/src/octocode/render/motion.ts -> tui",
 	"coding-agent/src/octocode/render/report.ts -> tui",
 	"coding-agent/src/octocode/render/rows.ts -> tui",

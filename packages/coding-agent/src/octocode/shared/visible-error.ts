@@ -1,4 +1,4 @@
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 /**
  * An error whose message shows control and invisible characters as visible escapes (`visibleControls`). Errors of the

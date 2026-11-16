@@ -1,10 +1,7 @@
-import type { ApplicationTool } from "@octocodeai/octocode-contracts";
+import type { ApplicationTool, UiState } from "@octocodeai/octocode-contracts";
 
-/**
- * The six run states, named and shaped as in the terminal (`GLYPH` in `@octocodeai/octocode-tui`): ○ pending,
- * a spinner while running, ◇ waiting for the user, ✓ done, ✗ failed, ◼ stopped. `●` is presence ("Live"), never a state.
- */
-export type UiState = "pending" | "running" | "waiting" | "done" | "failed" | "stopped";
+/** The six run states, shared with the terminal; `●` is presence ("Live"), never a state. */
+export type { UiState } from "@octocodeai/octocode-contracts";
 
 /** A tool call's state; a call the model never finished (no result yet and no status) is pending. */
 export function toolState(tool: Pick<ApplicationTool, "status" | "notRun" | "display"> | undefined): UiState {

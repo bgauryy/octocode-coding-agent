@@ -1,7 +1,7 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import fs from "node:fs";
-import { CLEANUP_DAYS_ENV, SESSION_RETENTION_DAYS_ENV } from "../../../common/src/env.ts";
-import { stripBom } from "../../../common/src/text.ts";
+import { CLEANUP_DAYS_ENV, SESSION_RETENTION_DAYS_ENV } from "@octocodeai/octocode-common/env";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { getSettingsPath } from "../config.ts";
 
 /** Days Octocode keeps its data; `0` keeps it forever. */

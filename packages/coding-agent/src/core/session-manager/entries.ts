@@ -1,7 +1,7 @@
 import { uuidv7 } from "@octocodeai/octocode-ai";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { jsonlLines, parseJsonlLine } from "../../../../common/src/jsonl.ts";
+import { jsonlLines, parseJsonlLine } from "@octocodeai/octocode-common/jsonl";
 import { CURRENT_SESSION_VERSION, type FileEntry, type SessionHeader } from "./types.ts";
 
 export function createSessionId(): string {

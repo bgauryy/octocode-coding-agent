@@ -2,7 +2,7 @@ import { globSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { minimatch } from "minimatch";
 import { toPosixPath } from "../../utils/ignore.ts";
-import { normalizePath } from "../../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 
 function isPattern(s: string): boolean {
 	return isOverridePattern(s) || hasGlobPattern(s);

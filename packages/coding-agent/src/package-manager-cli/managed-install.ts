@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, wr
 import { join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { APP_NAME, getPackageDir, VERSION } from "../config.ts";
-import { spawnProcess, spawnProcessSync, waitForChildProcess } from "../../../common/src/child-process.ts";
-import { canonicalizePath, getCwdRelativePath } from "../../../common/src/paths.ts";
+import { spawnProcess, spawnProcessSync, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
+import { canonicalizePath, getCwdRelativePath } from "@octocodeai/octocode-common/paths";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
-import { readJsonFile } from "../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 const MANAGED_INSTALL_MARKER = "managed-install.json";
 const MANAGED_RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;

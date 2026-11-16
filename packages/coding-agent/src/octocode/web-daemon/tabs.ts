@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { ApplicationConnection, ApplicationCursor } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
-import { redactData } from "../../../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import { dbStamp } from "../../../../db/src/api.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";

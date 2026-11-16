@@ -72,6 +72,8 @@ export class Agent {
 	public afterToolCall?: AgentOptions["afterToolCall"];
 	/** Error text for a call to an undeclared tool; see `AgentLoopConfig.unknownToolMessage`. */
 	public unknownToolMessage?: (toolName: string) => string | undefined;
+	/** A registered tool kept undeclared until first use; see `AgentLoopConfig.resolveUndeclaredTool`. */
+	public resolveUndeclaredTool?: AgentLoopConfig["resolveUndeclaredTool"];
 	public earlyStart?: AgentLoopConfig["earlyStart"];
 	/** Declared tools that are not executable yet; see `AgentContext.pendingToolNames`. */
 	public pendingToolNames?: () => ReadonlySet<string>;

@@ -8,7 +8,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openItemLink, setItemClicksIntercepted } from "../../octocode/shared/item-ref.ts";
-import { openTarget } from "../../../../common/src/open-target.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { keyText } from "../../theme/theme-tui-helpers.ts";
 import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

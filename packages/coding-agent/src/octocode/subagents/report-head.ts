@@ -1,6 +1,6 @@
 import { truncateHead } from "../../core/tools/index.ts";
-import { formatBytes } from "../../utils/bytes.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
+import { cutText } from "@octocodeai/octocode-common/text";
 import { REPORT_MAX_BYTES } from "../instructions/report.ts";
 
 export const REPORT_MAX_LINES = 200;

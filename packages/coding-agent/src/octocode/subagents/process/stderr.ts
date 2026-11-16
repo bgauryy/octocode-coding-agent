@@ -2,11 +2,11 @@ import fs from "node:fs";
 import { openScratchFile, writeScratchFile } from "../../child-sessions/report-artifact.ts";
 import path from "node:path";
 import { tailNote } from "../../shared/format.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
-import { SecretStream } from "../../../../../common/src/secret-stream.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { SecretStream } from "@octocodeai/octocode-common/secret-stream";
 import type { ChildState } from "../events.ts";
 import { type ChildNotices, noticeText } from "../notices.ts";
-import { cutText } from "../../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /** Characters of a child's stderr a failure shows (its end); a longer stderr is saved whole. */
 const STDERR_TAIL_CHARS = 4_000;

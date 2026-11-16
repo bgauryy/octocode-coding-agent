@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describe, expect, it, vi } from "vitest";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { messagePolicy } from "../../src/octocode/message-policy.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";

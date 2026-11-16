@@ -6,7 +6,7 @@ import { serializeMcpSessionServers } from "../../../../../mcp/src/api.ts";
 import { outputDir, privateDir, sessionOutputDir } from "../../shared/home.ts";
 import type { Identity } from "./env.ts";
 import { childSession, reportDir } from "./session.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /** Private files passed to a child by path; the caller removes them when the child exits. */
 export interface ChildResourceFiles {

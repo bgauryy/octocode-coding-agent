@@ -2,8 +2,8 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { CallToolResult } from "../../client/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { clipText } from "../../../../common/src/clip.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { clipText } from "@octocodeai/octocode-common/clip";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 /** The package's capture folder inside the session's working directory: the only place a result's files are read from. */
 export const CAPTURE_FOLDER = join(".octocode", "octocode-chrome-devtools");

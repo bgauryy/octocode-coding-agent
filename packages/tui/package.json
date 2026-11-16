@@ -78,6 +78,7 @@
 	},
 	"types": "./dist/index.d.ts",
 	"dependencies": {
+		"@octocodeai/octocode-common": "1.3.0",
 		"get-east-asian-width": "1.7.0",
 		"marked": "18.2.0"
 	},

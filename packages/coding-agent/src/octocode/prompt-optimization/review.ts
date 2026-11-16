@@ -1,9 +1,9 @@
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { hintText, interruptKey } from "../../theme/theme-tui-helpers.ts";
 import { rewritePrompt } from "./rewrite.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 
 /** How long the helper may take before the user is offered the original. */
 const REWRITE_TIMEOUT_MS = 30_000;

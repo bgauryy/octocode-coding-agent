@@ -2,7 +2,7 @@ import { renderInstruction } from "./prompt-template.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { canonicalizePath, isUnderPath, resolvePath } from "../../../common/src/paths.ts";
+import { canonicalizePath, isUnderPath, resolvePath } from "@octocodeai/octocode-common/paths";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 import {
 	type ExplicitSkill,

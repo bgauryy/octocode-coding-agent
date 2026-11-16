@@ -1,4 +1,11 @@
-import { Container, GLYPH, Markdown, type MarkdownTheme, trackRenderChanges } from "@octocodeai/octocode-tui";
+import {
+	Container,
+	GLYPH,
+	Markdown,
+	type MarkdownTheme,
+	Osc133ZoneMarker,
+	trackRenderChanges,
+} from "@octocodeai/octocode-tui";
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
@@ -9,8 +16,6 @@ import {
 	FullContentReader,
 	type ContentOptions,
 } from "./application-content.ts";
-
-import { Osc133ZoneMarker } from "./osc133-zone.ts";
 
 /** The first padding cell of a message row, after the background escape. */
 const FIRST_CELL = /^((?:\x1b\[[0-9;]*m)*) /;

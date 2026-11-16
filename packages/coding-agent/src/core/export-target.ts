@@ -1,7 +1,7 @@
 import { mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { atomicWriteFileSync, writeTargetSync } from "../../../common/src/atomic-file.ts";
-import { canonicalizePath } from "../../../common/src/paths.ts";
+import { atomicWriteFileSync, writeTargetSync } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 
 /** Whether a write to `outputPath` would replace `sourceFile`: the same real path, or the same existing inode. */
 function landsOn(sourceFile: string, outputPath: string): boolean {

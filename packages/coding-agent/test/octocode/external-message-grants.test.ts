@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { ALLOW_ONCE, DENY, sessionOption } from "../../src/octocode/permission/ask/text.ts";
 import { admitExternalMessage } from "../../src/octocode/permission/external-message.ts";

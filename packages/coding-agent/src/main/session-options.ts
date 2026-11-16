@@ -5,7 +5,7 @@ import type { CreateSessionFromServicesOptions } from "../core/agent-session/cre
 import { resolveCliModel, type ScopedModel } from "../core/model-resolver.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { isLocalPath, resolvePath } from "../../../common/src/paths.ts";
+import { isLocalPath, resolvePath } from "@octocodeai/octocode-common/paths";
 
 /** Model, thinking and tool selection the command line resolves for the session it starts. */
 export type CliSessionOptions = Pick<

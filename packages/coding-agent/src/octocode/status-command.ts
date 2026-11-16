@@ -2,7 +2,7 @@ import { problemLines, readProblems } from "../core/diagnostics-log.ts";
 import { builtinDescription } from "../core/slash-commands.ts";
 import type { ExtensionAPI } from "../core/features/index.ts";
 import { mcpGroupLabel, mcpServerSource, getMcpSessionStatus } from "../../../mcp/src/api.ts";
-import { homeTilde } from "../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { computeSessionStats } from "../core/session-stats.ts";
 import { bypassMergeLine } from "./permission/ask/text.ts";
 import type { PermissionMode } from "./permission/mode.ts";

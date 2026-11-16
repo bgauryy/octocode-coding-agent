@@ -3,11 +3,10 @@
  */
 
 import * as fs from "node:fs";
-import { type AutocompleteItem, type EditorComponent, fuzzyFilter } from "@octocodeai/octocode-tui";
+import { type AutocompleteItem, type EditorComponent, ThemedText, fuzzyFilter } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../../config.ts";
 import type { SessionManager, SessionEntry } from "../../../core/session-manager.ts";
 import { type AuthSelectorProvider, formatAuthSelectorProviderType } from "../components/oauth-selector.ts";
-import { ThemedText } from "../components/themed-text.ts";
 
 import type {
 	CompactionCostNotice,

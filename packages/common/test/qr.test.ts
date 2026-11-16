@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorCorrection, qrModules, qrText } from "../../src/octocode/remote/qr.ts";
+import { errorCorrection, qrModules, qrText } from "../src/qr.ts";
 
 describe("QR encoder", () => {
 	it("computes the Reed-Solomon codewords of the specification's 1-M example", () => {

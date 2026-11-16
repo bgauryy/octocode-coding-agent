@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { recordLockOwner } from "../../../common/src/lock-owner.ts";
+import { recordLockOwner } from "@octocodeai/octocode-common/lock-owner";
 import { createHarness } from "./harness.ts";
 
 const lockfile = createRequire(new URL("../../src/core/session-manager/shared-file.ts", import.meta.url))(

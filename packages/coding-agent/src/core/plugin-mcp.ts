@@ -1,10 +1,10 @@
 import { lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { stripBom } from "../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { repoKey } from "../utils/git-repository.ts";
 import { validateMcpServerConfig } from "../../../mcp/src/api.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
-import { mcpNamespace } from "../../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { pluginContext } from "./plugin-context.ts";
 import { resolveConfiguredPlugin, resolvePluginPath, type PluginManifest } from "./plugin-manifest.ts";
 import { configuredPlugins } from "./plugin-settings.ts";

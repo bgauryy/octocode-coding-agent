@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import { formatCount } from "../../../core/tools/bash/header.ts";
-import { formatBytes } from "../../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { formatDuration } from "../../shared/format.ts";
 import { shortPath } from "../../../utils/display-path.ts";
-import { visibleControls, withoutColors } from "../../../../../common/src/sanitize.ts";
+import { visibleControls, withoutColors } from "@octocodeai/octocode-common/sanitize";
 import { firstLine } from "../../shared/util.ts";
 import type { BashJob, JobExit } from "./types.ts";
 import { verificationText } from "../bash/verification.ts";
-import { cutText } from "../../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 import { logTail } from "./tail.ts";
 import { JOB_WHY_PREFIX, jobWhy } from "./message.ts";
 

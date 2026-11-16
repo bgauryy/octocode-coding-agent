@@ -3,7 +3,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 import { getShellEnv } from "../../utils/shell.ts";
-import { spawnProcess, waitForChildProcess } from "../../../../common/src/child-process.ts";
+import { spawnProcess, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
 import { cliRuntime } from "./resolve.ts";
 
 /** What a captured run printed: stdout and stderr interleaved in `output`, stdout alone in `stdout`, each bounded. */

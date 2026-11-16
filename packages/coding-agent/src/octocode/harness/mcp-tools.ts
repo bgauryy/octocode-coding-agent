@@ -8,7 +8,7 @@
 import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
 import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { currentMcpToolStates, type McpServerToolStates } from "../../../../mcp/src/api.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { loadMcpServers, switchTarget } from "../../configuration/adapters/mcp.ts";
 import type { ConfigContext } from "../../configuration/types.ts";
 import {

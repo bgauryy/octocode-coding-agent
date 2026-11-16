@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { type CompactionEntry } from "../../core/session-manager.ts";
 import { type AgentDb, agentEvents, compactions, sessions } from "../../../../db/src/api.ts";
 import { archiveFolder, segmentFiles } from "../history/archive.ts";
-import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFile } from "@octocodeai/octocode-common/atomic-file";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 
 export function saveCompaction(

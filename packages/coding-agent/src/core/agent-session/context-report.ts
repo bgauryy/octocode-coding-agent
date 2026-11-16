@@ -5,7 +5,7 @@ import type { ContextUsage } from "../features/index.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts";
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
 import { contextSizeWarnings, mcpInstructionSizes } from "../context-budget.ts";
-import { MCPS_SECTION } from "../../../../common/src/mcp-names.ts";
+import { MCPS_SECTION } from "@octocodeai/octocode-common/mcp-names";
 import { archivedSummary } from "../compaction/checkpoint.ts";
 import { renderContextLifecycle, type ContextLifecycle } from "./context-lifecycle.ts";
 

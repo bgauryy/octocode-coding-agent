@@ -52,6 +52,7 @@ function sessionCatalog(host: ConfigurationHost): ConfigCatalog {
 			...(mcpSwitch ? { mcpSwitch } : {}),
 			...(events ? { mcpReload: () => requestMcpReload(events), mcpStatus: () => getMcpSessionStatus(events) } : {}),
 			applySetting: (key, value) => applyLiveSetting(host, key, value),
+			toolNames: () => host.session.getAllTools().map((tool) => tool.name),
 		},
 	});
 }

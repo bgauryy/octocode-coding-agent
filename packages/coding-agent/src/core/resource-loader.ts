@@ -6,7 +6,7 @@ import type { ResourceDiagnostic } from "./diagnostics.ts";
 
 export type { ResourceDiagnostic } from "./diagnostics.ts";
 
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { createEventBus, type EventBus, type ListenerErrorReporter } from "@octocodeai/octocode-agent-core";
 import { discoveryInput } from "./discovery/service.ts";
 import { createExtensionRuntime } from "./features/runtime.ts";

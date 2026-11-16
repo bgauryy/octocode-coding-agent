@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { stripBom } from "../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 
 /**
  * One file's servers in the `mcpServers` shape, ready for validation, with per-entry problems; `error` when the file

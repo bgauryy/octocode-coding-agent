@@ -11,7 +11,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../features/types.ts";
 import { buildToolDisplay } from "../application/transcript-display.ts";
-import { ansiLinesToHtml } from "./ansi-to-html.ts";
+import { ansiLinesToHtml } from "@octocodeai/octocode-common/ansi-to-html";
 import { displayCallHtml, displayResultHtml } from "./display-html.ts";
 import type { ToolHtmlRenderer } from "./index.ts";
 

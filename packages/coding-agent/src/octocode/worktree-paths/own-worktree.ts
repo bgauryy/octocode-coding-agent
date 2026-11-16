@@ -1,9 +1,9 @@
 import path from "node:path";
-import { shortHash } from "../../../../common/src/atomic-file.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { HOME_NAMES } from "../shared/home.ts";
 import { getOctocodeHome } from "../../config.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { repoKey } from "../../utils/git-repository.ts";
 import { WORKTREE_ROOT_ENV } from "./prompt-root.ts";
 

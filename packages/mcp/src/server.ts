@@ -1,4 +1,4 @@
-import { firstLine } from "../../common/src/clip.ts";
+import { firstLine } from "@octocodeai/octocode-common/clip";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerConnection } from "./runtime.ts";
 

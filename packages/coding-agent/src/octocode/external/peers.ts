@@ -1,5 +1,5 @@
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { ApiClient } from "../api/client.ts";
 import { issueTicket, ownInstance } from "../api/identity.ts";

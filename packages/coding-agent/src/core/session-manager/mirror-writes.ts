@@ -1,4 +1,4 @@
-import { getFileStamp } from "../../../../common/src/paths.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { readFileSync, statSync } from "node:fs";
 import {
 	type FileStamp,

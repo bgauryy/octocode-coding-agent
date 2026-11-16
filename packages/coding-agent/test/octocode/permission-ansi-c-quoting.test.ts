@@ -13,7 +13,7 @@ import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts"
 import { readOnlyCommand } from "../../src/octocode/permission/shell/read-only.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
-import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

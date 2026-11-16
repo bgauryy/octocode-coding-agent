@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { APPLICATION_IMAGE_MIME_TYPES } from "@octocodeai/octocode-contracts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { type InlineImageType, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 import {
 	CrossHostRedirect,
@@ -9,8 +9,8 @@ import {
 	type PublicFetchInit,
 	publicFetch,
 	TruncatedBodyError,
-} from "../../../../common/src/web-guard.ts";
-import { decodeBody } from "./charset.ts";
+} from "@octocodeai/octocode-common/web-guard";
+import { decodeBody } from "@octocodeai/octocode-common/charset";
 import {
 	conditionalHeaders,
 	type Freshness,
@@ -20,7 +20,7 @@ import {
 	sharedRequests,
 } from "./page-cache.ts";
 import { describeHtml, RENDER_ADVICE } from "./html.ts";
-import { type Deadline, deadline } from "../../../../common/src/deadline.ts";
+import { type Deadline, deadline } from "@octocodeai/octocode-common/deadline";
 
 export const USER_AGENT =
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";

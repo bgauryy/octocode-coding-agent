@@ -3,6 +3,7 @@ import { getNativePlatformHelper } from "./native-platform.ts";
 import type { ProgramStatus } from "./program-status.ts";
 import { hasTmuxSession } from "./multiplexer.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
+import { POP_TITLE, WindowTitle } from "./terminal/window-title.ts";
 import { BracketedPasteRearm, DISABLE_BRACKETED_PASTE, ENABLE_BRACKETED_PASTE } from "./terminal/bracketed-paste.ts";
 import { DEVICE_ATTRIBUTES_QUERY } from "./terminal/device-attributes.ts";
 import { registerExitRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
@@ -41,6 +42,7 @@ function detectsNativeShiftEnter(): boolean {
  * Real terminal using process.stdin/stdout
  */
 export class ProcessTerminal implements Terminal {
+	private readonly windowTitle = new WindowTitle();
 	private readonly output = new TerminalOutput();
 	private readonly statusProbes = new StatusProbeWatch();
 	inputDraining = false;
@@ -127,7 +129,7 @@ export class ProcessTerminal implements Terminal {
 		process.stdin.resume();
 
 		// Enable bracketed paste mode - terminal will wrap pastes in \x1b[200~ ... \x1b[201~
-		process.stdout.write(ENABLE_BRACKETED_PASTE);
+		process.stdout.write(ENABLE_BRACKETED_PASTE + this.windowTitle.push());
 		this.bracketedPaste.start();
 		this.disposeExitRestore?.();
 		this.disposeExitRestore = registerExitRestore(() => this.restoreOnExit());
@@ -281,7 +283,7 @@ export class ProcessTerminal implements Terminal {
 		this.progress.clear(write, true);
 		this.programStatusReporter.restoreOnExit(write);
 		this.keyboardProtocol.restoreOnExit(write);
-		write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h`);
+		write(`${DISABLE_BRACKETED_PASTE}\x1b[?25h${POP_TITLE}`);
 	}
 
 	stop(): void {
@@ -294,6 +296,7 @@ export class ProcessTerminal implements Terminal {
 
 		this.bracketedPaste.stop();
 		process.stdout.write(DISABLE_BRACKETED_PASTE);
+		process.stdout.write(this.windowTitle.pop());
 
 		// Disable the keyboard protocols if drainInput() has not already done so.
 		this.keyboardProtocol.disable();
@@ -384,8 +387,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	setTitle(title: string): void {
-		// OSC 0;title BEL - set terminal window title. A control character (BEL, ESC, C1) would end the sequence early.
-		process.stdout.write(`\x1b]0;${title.replace(/[\x00-\x1f\x7f-\x9f]/g, "")}\x07`);
+		process.stdout.write(this.windowTitle.set(title));
 	}
 
 	setProgramStatus(status: ProgramStatus): void {

@@ -5,7 +5,7 @@ import type { ToolResultEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";

@@ -3,7 +3,7 @@
  */
 
 import { GLYPH } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";

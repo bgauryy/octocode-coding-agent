@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes } from "../src/utils/bytes.ts";
+import { formatBytes } from "../src/bytes.ts";
 
 describe("formatBytes", () => {
 	it("keeps each surface's wording", () => {

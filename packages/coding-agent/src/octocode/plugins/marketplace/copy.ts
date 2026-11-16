@@ -9,7 +9,7 @@ import {
 	symlinkSync,
 } from "node:fs";
 import path from "node:path";
-import { sha256Hasher } from "../../../../../common/src/atomic-file.ts";
+import { sha256Hasher } from "@octocodeai/octocode-common/atomic-file";
 import { MarketplaceError } from "./source.ts";
 
 const MAX_ENTRIES = 20_000;

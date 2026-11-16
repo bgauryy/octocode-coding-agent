@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { privateDir } from "../../../../common/src/file-mode.ts";
+import { privateDir } from "@octocodeai/octocode-common/file-mode";
 import { git, gitQuiet } from "../../utils/git-run.ts";
 import { sessionDir, sessionsRoot } from "../shared/home.ts";
 import { revokeWorktreeGrant } from "../trust/grants.ts";

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { getAgentDir } from "../../src/config.ts";
 import type { AgentSessionServices } from "../../src/core/agent-session-services.ts";
 import {

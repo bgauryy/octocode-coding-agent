@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { stripJsonComments } from "../../common/src/json.ts";
+import { stripJsonComments } from "@octocodeai/octocode-common/json";
 
 /**
  * Fails a run that leaves transcript folders of its own temporary projects under the developer's real

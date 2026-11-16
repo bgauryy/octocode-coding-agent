@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearSecretValues, registerSecretValue } from "../../common/src/sanitize.ts";
+import { clearSecretValues, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { readCrashLog, recordCrash } from "../src/core/crash-log.ts";
 import { CredentialSynchronizationError } from "../src/core/model-runtime.ts";
 

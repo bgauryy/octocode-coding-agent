@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { ApplicationStream } from "../../webview/src/application-stream.ts";
-import { redactData } from "../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { normalizeApplicationMessage } from "../src/core/application/normalize.ts";
 import { ApplicationService } from "../src/core/application/service.ts";

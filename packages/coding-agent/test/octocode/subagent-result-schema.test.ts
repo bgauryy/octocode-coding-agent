@@ -21,6 +21,17 @@ const schema = {
 };
 
 describe("caller-defined subagent result schema", () => {
+	it("names the JSON path of an enum-only node and the accepted types", () => {
+		const input = {
+			type: "object",
+			properties: { verdict: { enum: ["pass", "fail"] }, list: { type: "array", items: { const: 1 } } },
+		};
+		expect(() => admitResultSchema(input)).toThrow(/"type".*object.*integer.*at \$\.properties\.verdict$/);
+		expect(() => admitResultSchema({ ...input, properties: { list: input.properties.list } })).toThrow(
+			/at \$\.properties\.list\.items$/,
+		);
+	});
+
 	it("captures an immutable schema and validates a full answer before report clipping", () => {
 		const source = structuredClone(schema);
 		const contract = admitResultSchema(source);

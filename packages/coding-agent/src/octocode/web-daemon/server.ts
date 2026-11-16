@@ -18,7 +18,7 @@ import {
 	settingsWebPrefs,
 	type WebPrefsStore,
 } from "../browser/page-routes.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 import { daemonPage, type DaemonPage } from "./build.ts";
 import { type ConfigRoutes, handleConfigRequest } from "./config-routes.ts";

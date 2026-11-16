@@ -34,9 +34,9 @@ describe("stdio launch configuration", () => {
 		);
 		for (const exposure of ["auto", "codemode", "codemode-deferred"]) {
 			const server = validateMcpServerConfig("python", { command: "python3", exposure });
-			expect(server).toBe('server "python": exposure must be one of "direct", "deferred", "hidden"');
+			expect(server).toBe('server "python": exposure must be one of "direct", "deferred", "onDemand", "hidden"');
 			expect(validateMcpServerConfig("python", { command: "python3", toolExposure: { read: exposure } })).toBe(
-				'server "python": toolExposure "read" must be one of "direct", "deferred", "hidden"',
+				'server "python": toolExposure "read" must be one of "direct", "deferred", "onDemand", "hidden"',
 			);
 		}
 		expect(validateMcpServerConfig("python", { command: "python3", defaultActive: "no" })).toBe(
@@ -219,8 +219,10 @@ describe("MCP config", () => {
 		]);
 		expect(untrusted.servers[1].config.description).toBe("Docs search");
 		expect(untrusted.errors).toEqual([
-			expect.stringContaining('server "later": exposure must be one of "direct", "deferred", "hidden"'),
-			expect.stringContaining('server "scripts": toolExposure "a" must be one of "direct", "deferred", "hidden"'),
+			expect.stringContaining('server "later": exposure must be one of "direct", "deferred", "onDemand", "hidden"'),
+			expect.stringContaining(
+				'server "scripts": toolExposure "a" must be one of "direct", "deferred", "onDemand", "hidden"',
+			),
 			expect.stringContaining('server "wrong": exposure must be one of'),
 			expect.stringContaining('server "badDescription": description must be a string'),
 		]);

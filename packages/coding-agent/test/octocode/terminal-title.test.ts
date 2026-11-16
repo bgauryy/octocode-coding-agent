@@ -7,7 +7,7 @@ import {
 	TitleTracker,
 	terminalTitle,
 } from "../../src/octocode/ui/terminal-title.ts";
-import { TitlePainter } from "../../src/octocode/ui/title-painter.ts";
+import { TitlePainter } from "@octocodeai/octocode-tui";
 
 describe("terminalTitle", () => {
 	it("reads `🐙<mark> <state> - <description> · <folder>` for every state", () => {
@@ -56,12 +56,15 @@ describe("TitlePainter", () => {
 	function painter(initial: TitleState) {
 		const written: string[] = [];
 		let state = initial;
-		const p = new TitlePainter({
-			state: () => state,
-			target: () => ({ cwd: "/work/repo", setTitle: (text) => written.push(text) }),
-			description: () => "fix login",
-			agents: () => 0,
-		});
+		const p = new TitlePainter(
+			{
+				state: () => state,
+				target: () => ({ cwd: "/work/repo", setTitle: (text) => written.push(text) }),
+				description: () => "fix login",
+				agents: () => 0,
+			},
+			{ full: terminalTitle, plain: plainTitle },
+		);
 		return { p, written, set: (next: TitleState) => (state = next) };
 	}
 

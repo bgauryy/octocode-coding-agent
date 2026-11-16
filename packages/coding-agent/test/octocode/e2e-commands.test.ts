@@ -10,7 +10,7 @@ import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-c
  * A command without a case below fails the coverage check, so a new command needs an observable assertion here.
  */
 const opened = vi.hoisted(() => [] as string[]);
-vi.mock("../../../common/src/open-target.ts", () => ({
+vi.mock("@octocodeai/octocode-common/open-target", () => ({
 	openTarget: async (file: string) => {
 		opened.push(file);
 	},

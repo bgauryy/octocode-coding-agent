@@ -18,11 +18,11 @@ import {
 } from "@octocodeai/octocode-contracts/config";
 import { Value } from "typebox/value";
 import type { AttachToolStates } from "@octocodeai/octocode-contracts/daemon";
-import { recentlyUsed } from "../../../../common/src/recent-use.ts";
-import { hasUsageData, readUsageAudit, sortByAudit, toolAudit } from "../../../../common/src/tool-audit.ts";
-import { USAGE_FILE_NAME, usageSnapshot } from "../../../../common/src/usage-counts.ts";
+import { recentlyUsed } from "@octocodeai/octocode-common/recent-use";
+import { hasUsageData, readUsageAudit, sortByAudit, toolAudit } from "@octocodeai/octocode-common/tool-audit";
+import { USAGE_FILE_NAME, usageSnapshot } from "@octocodeai/octocode-common/usage-counts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
-import { isEnabled, currentMcpToolStates } from "../../../../mcp/src/api.ts";
+import { isEnabled, currentMcpToolStates, toolExposureState } from "../../../../mcp/src/api.ts";
 import { loadMcpServers } from "../../configuration/adapters/mcp.ts";
 import { writeSettingsKey } from "../../configuration/settings-write.ts";
 import type { ConfigContext } from "../../configuration/types.ts";
@@ -147,7 +147,7 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		const session = live?.find((server) => server.server === entry.name);
 		const pins = entry.config.toolExposure ?? {};
 		const rows = (session?.tools ?? []).map((tool): ToolExposureRow => {
-			const pin = pins[tool.name];
+			const pin = pins[tool.name] === undefined ? undefined : toolExposureState(pins[tool.name]);
 			return {
 				name: tool.name,
 				...(pin ? { pin } : {}),
@@ -158,8 +158,10 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		});
 		const ordered = sortByAudit(rows);
 		const listed = new Set(rows.map((row) => row.name));
-		for (const [name, pin] of Object.entries(pins))
+		for (const [name, pinned] of Object.entries(pins)) {
+			const pin = toolExposureState(pinned);
 			if (!name.includes("*") && !listed.has(name)) ordered.push({ name, pin, state: pin, decidedBy: "pin" });
+		}
 		const note = !live
 			? "No session is running here, so only pinned tools are listed. Open this page from a session (/web) to see every tool."
 			: !session

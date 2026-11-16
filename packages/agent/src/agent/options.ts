@@ -2,6 +2,7 @@ import type { Message, SimpleStreamOptions, ThinkingBudgets, Transport } from "@
 import type {
 	AfterToolCallContext,
 	AfterToolCallResult,
+	AgentLoopConfig,
 	AgentLoopTurnUpdate,
 	AgentMessage,
 	BeforeToolCallContext,
@@ -31,6 +32,7 @@ export interface AgentOptions {
 	beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
 	unknownToolMessage?: (toolName: string) => string | undefined;
+	resolveUndeclaredTool?: AgentLoopConfig["resolveUndeclaredTool"];
 	pendingToolNames?: () => ReadonlySet<string>;
 	finishTurn?: FinishTurn;
 	prepareRequest?: PrepareRequest;

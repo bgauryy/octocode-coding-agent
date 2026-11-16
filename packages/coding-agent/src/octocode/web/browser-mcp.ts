@@ -1,7 +1,7 @@
 import { browserEscalations } from "../permission/browser-escalation.ts";
 import type { ActionClass } from "../permission/mode.ts";
 import type { PermissionRequest } from "../permission/request.ts";
-import { browserMcpTool, browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
+import { browserMcpTool, browserMcpUrls } from "@octocodeai/octocode-common/browser-mcp";
 import {
 	classifyHost,
 	defaultLookup,
@@ -9,7 +9,7 @@ import {
 	isHttpUrl,
 	metadataRefusal,
 	reachesMetadata,
-} from "../../../../common/src/web-guard.ts";
+} from "@octocodeai/octocode-common/web-guard";
 
 const VERDICT_TTL_MS = 60 * 60_000;
 const VERDICTS_MAX = 500;

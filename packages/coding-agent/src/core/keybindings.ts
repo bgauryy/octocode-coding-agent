@@ -10,7 +10,7 @@ import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { KeybindingValueSchema } from "./key-id-schema.ts";
-import { readJsonFile } from "../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 export function useWindowsKeybindings(
 	platform: NodeJS.Platform = process.platform,

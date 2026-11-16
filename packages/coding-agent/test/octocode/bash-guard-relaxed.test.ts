@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { shellTargetAccess } from "../../src/octocode/permission/file-access.ts";

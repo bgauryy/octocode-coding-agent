@@ -1,10 +1,10 @@
 import { stringOrEmpty } from "../shared/util.ts";
 import { language, readCapped, TIMEOUT_MS, USER_AGENT } from "./fetch.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
-import { isHttpUrl, type PublicFetchInit, publicFetch } from "../../../../common/src/web-guard.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
+import { isHttpUrl, type PublicFetchInit, publicFetch } from "@octocodeai/octocode-common/web-guard";
 import { decodeEntities, htmlToText } from "./html.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { untilAborted } from "../../../../common/src/abort.ts";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
 import { searchSite } from "./search-site.ts";
 import { queryTerms, relatedHit } from "./search-relevance.ts";
 

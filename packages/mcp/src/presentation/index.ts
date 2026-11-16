@@ -35,65 +35,25 @@ import {
 	functionNames,
 	generatedDir,
 	resolveServerFile,
-	selectTools,
 	toolBlock,
 } from "../compact/index.ts";
 import { deferredLine, type McpDeferral } from "../deferral.ts";
 import { firstSentence } from "./declaration.ts";
-import { authoredTrigger, instructionsHead, residentBlock } from "./deferred.ts";
+import { authoredTrigger, instructionsHead, onDemandTrigger, residentBlock } from "./deferred.ts";
 import { changedContract, sameCatalog, sameContract, shownDescription } from "./contract.ts";
-import { jsonContract, jsonToolBlock } from "./json-block.ts";
+import { contractText, declaredContract } from "./contract-text.ts";
+import type { Described, DescribedServer, GeneratedServer } from "./types.ts";
 
 import { DEFAULT_MCP_PRESENTATION, type McpPresentationMode } from "./mode.ts";
 
 export { DEFAULT_MCP_PRESENTATION, type McpPresentationMode };
+export type { DescribedServer };
 
 export interface McpPresentationOptions {
 	agentDir: () => string;
 	/** The folder of a server's generated file, by configured name (`serverGeneratedDir`); defaults to the user folder. */
 	dir?: (name: string) => string;
 	mode: () => McpPresentationMode;
-}
-
-interface GeneratedServer {
-	callName: string;
-	text: string;
-	overrides: DescriptionOverrides | undefined;
-	instructions: string | undefined;
-	tools: ReadonlyMap<string, McpTool>;
-	/** Each tool's block of `text`, by the server's tool name; a tool the text lacks or does not render faithfully has none. */
-	blocks: ReadonlyMap<string, string>;
-	/** Each tool's function name in `text`, by the server's tool name. */
-	functions: ReadonlyMap<string, string>;
-	/** The name the model calls each tool by, by the server's tool name. */
-	calls: ReadonlyMap<string, string>;
-	/** The names the model calls the tools by, which the text was rendered with. */
-	toolNames: Readonly<Record<string, string>>;
-}
-
-/** What the prompt's block describes of one server. */
-export interface DescribedServer {
-	/** The generated file restricted to the tools it renders faithfully; undefined without one (`json`, or no faithful block). */
-	file: string | undefined;
-	/**
-	 * What the block holds: the server's instructions and each described tool's description and schema (the file, plus
-	 * the plain form of tools it does not carry). Undefined when no tool is described and no instructions exist.
-	 */
-	contract: string | undefined;
-	/** The server's instructions when the block was described. */
-	instructions: string | undefined;
-	/** The server's tool names the block describes: the ones declared when it was described. */
-	tools: ReadonlySet<string>;
-	/** Described before the server's catalog was known, so the block holds no contract yet. */
-	pending: boolean;
-	/** The described tools the block lists by name and trigger only (`deferral.ts`). */
-	deferred: ReadonlySet<string>;
-}
-
-interface Described extends DescribedServer {
-	generated: GeneratedServer | undefined;
-	/** Bytes of the block's direct part, which an `auto:<bytes>` budget counts. */
-	directBytes: number;
 }
 
 const NO_DEFERRAL: McpDeferral = { deferred: new Set() };
@@ -275,6 +235,7 @@ export class McpPresentation {
 			tools: new Set(tools),
 			pending: !ready,
 			deferred: resident?.deferred ?? new Set(),
+			onDemand: resident?.onDemand ?? new Set(),
 			directBytes: resident?.directBytes ?? 0,
 		};
 		this.#frozen.set(name, described);
@@ -295,20 +256,22 @@ export class McpPresentation {
 		let spent = 0;
 		for (const [server, described] of this.#frozen) if (server < name) spent += described.directBytes;
 		const prefix = `mcp__${generated.callName}__`;
+		const callOf = (tool: string) =>
+			generated.toolNames[tool]?.startsWith(prefix) ? generated.toolNames[tool].slice(prefix.length) : tool;
 		const declared = this.declared;
+		// Undeclared tools are listed in catalog order, after the deferred ones.
+		const onDemand = new Set([...generated.tools.keys()].filter((tool) => deferral.onDemand?.has(tool)));
 		return residentBlock({
 			offered,
-			deferral,
+			deferral: { ...deferral, onDemand },
 			spent,
 			contractOf: (tools) =>
-				declared
-					? this.#declaredContract(generated, tools, instructions)
-					: this.#contract(generated, tools, instructions),
+				declared ? declaredContract(generated, tools, instructions) : contractText(generated, tools, instructions),
 			instructionsOf: () => (declared ? (instructions?.trim() ?? "") : instructionsHead(generated, instructions)),
+			onDemandLine: (tool) =>
+				deferredLine(callOf(tool), onDemandTrigger(shownDescription(generated.tools.get(tool) as McpTool))),
 			indexLine: (tool) => {
-				const call = generated.toolNames[tool]?.startsWith(prefix)
-					? generated.toolNames[tool].slice(prefix.length)
-					: tool;
+				const call = callOf(tool);
 				// `declared`: the tool's declaration already carries its whole description.
 				if (declared) return deferredLine(call, undefined);
 				const shown = shownDescription(generated.tools.get(tool) as McpTool);
@@ -318,52 +281,6 @@ export class McpPresentation {
 				);
 			},
 		});
-	}
-
-	/**
-	 * `declared` mode: the block holds the server's instructions only; the tools' descriptions and schemas are in their
-	 * declarations. The bytes are what the instructions and those declarations cost, for an `auto:<bytes>` budget.
-	 */
-	#declaredContract(
-		generated: GeneratedServer,
-		tools: readonly string[],
-		instructions: string | undefined,
-	): { file: undefined; text: string; bytes: number } {
-		const text = instructions?.trim() ?? "";
-		const declarations = tools.map((tool) => {
-			const offered = generated.tools.get(tool) as McpTool;
-			return Buffer.byteLength(`${shownDescription(offered) ?? ""}${JSON.stringify(offered.inputSchema)}`);
-		});
-		return { file: undefined, text, bytes: declarations.reduce((sum, size) => sum + size, Buffer.byteLength(text)) };
-	}
-
-	/**
-	 * The block text of the given tools: the file of those it renders faithfully (its header carries the instructions),
-	 * then the others in plain form. Empty text without either.
-	 */
-	#contract(
-		generated: GeneratedServer,
-		tools: readonly string[],
-		instructions: string | undefined,
-	): { file: string | undefined; text: string } {
-		const faithful = tools.filter((tool) => generated.blocks.has(tool));
-		const plain = tools.filter((tool) => !generated.blocks.has(tool));
-		const file =
-			faithful.length > 0
-				? selectTools(
-						generated.text,
-						faithful.map((tool) => generated.functions.get(tool) ?? tool),
-					).trimEnd()
-				: undefined;
-		const plainBlocks = plain.map((tool) =>
-			jsonToolBlock(generated.calls.get(tool) ?? tool, generated.tools.get(tool) as McpTool),
-		);
-		const text = file
-			? [file, ...plainBlocks].join("\n")
-			: plainBlocks.length > 0
-				? jsonContract(generated.callName, instructions, plainBlocks)
-				: "";
-		return { file, text };
 	}
 
 	/** Whether the tool is declared as a thin stub: the prompt's block describes this tool's contract, in either form. */
@@ -384,6 +301,11 @@ export class McpPresentation {
 	 */
 	summary(name: string, tool: string): string | undefined {
 		return authoredTrigger(this.#frozen.get(name)?.generated?.overrides, tool);
+	}
+
+	/** Whether the prompt's block lists the tool by name and trigger without declaring it (`on-demand.ts`). */
+	isListedOnDemand(name: string, tool: string): boolean {
+		return this.#frozen.get(name)?.onDemand.has(tool) === true;
 	}
 
 	/** Whether the prompt's block lists the tool by name and trigger only. */

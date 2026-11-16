@@ -4,7 +4,7 @@ import type { ChildState } from "../events.ts";
 import type { ReportTracker } from "../report.ts";
 import { unavailableResult } from "../result-schema.ts";
 import { shortPath } from "../../../utils/display-path.ts";
-import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { Identity } from "./env.ts";
 import { exitReason, LOAD_ERROR, noAnswerError, StartupError, type SubagentOutcome } from "./outcome.ts";
 import type { StderrTail } from "./stderr.ts";

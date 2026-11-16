@@ -12,7 +12,7 @@ import type { ActionClass, AskReason } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
 import { headerText } from "../shared/fence.ts";
 import { withDialog } from "../shared/locks.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { stringList } from "../shared/util.ts";
 import type { RunningBudgets } from "./budget.ts";
 import { askShortcut, refusedReplies, relayAsk, relayedQuestions } from "./relay-ask.ts";
@@ -93,8 +93,9 @@ interface RelayOptions {
 	askTimeoutMs?: number;
 }
 
-/** A permission ask the user leaves unanswered this long is refused, so a background child never waits forever. */
+/** A relayed dialog the user leaves unanswered this long is closed, so a background child never waits forever. */
 const RELAY_ASK_TIMEOUT_MS = 10 * 60_000;
+const EXPIRED = Symbol("expired");
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((item, index) => item === b[index]);
@@ -285,35 +286,36 @@ export class ChildRelay {
 		const shown = (text: string): string => sanitizeTerminalText(redactNonce(text, this.#options.nonce));
 		const heading = `${this.#label()} asks:\n${shown(title)}`;
 		// A relayed dialog is a wait even while the parent is idle (a background child asks after the parent's turn ended).
-		const dialogOptions = {
-			signal: controller.signal,
-			blocking: true,
-			...(typeof event.timeout === "number" ? { timeout: event.timeout } : {}),
-		};
+		const limit = this.#limit(event);
+		const dialogOptions = { signal: controller.signal, blocking: true, timeout: limit };
 		let response: Record<string, unknown> = { cancelled: true };
 		try {
 			// `relayAsk` queues behind the parent's other dialogs itself (`ask`), so it is not wrapped again.
 			const questions = method === "ask" ? relayedQuestions(event, this.#label(), this.#options.nonce) : undefined;
 			response = questions
-				? await this.#askBounded(ui, questions, title, controller, event)
-				: await withDialog(async () => {
-						if (controller.signal.aborted || method === "ask") return { cancelled: true };
-						if (method === "select") {
-							// Labels are drawn sanitized; the answer is the child's own label.
-							const drawn = options.map(shown);
-							const choice = await ui.select(heading, drawn, dialogOptions);
-							const index = choice === undefined ? -1 : drawn.indexOf(choice);
-							return index < 0 ? { cancelled: true } : { value: options[index] };
-						}
-						if (method === "confirm") {
-							const message = typeof event.message === "string" ? shown(event.message) : "";
-							const confirmed = await ui.confirm(heading, message, dialogOptions);
-							return controller.signal.aborted ? { cancelled: true } : { confirmed };
-						}
-						const placeholder = typeof event.placeholder === "string" ? shown(event.placeholder) : undefined;
-						const value = await ui.input(heading, placeholder, dialogOptions);
-						return value === undefined ? { cancelled: true } : { value };
-					}, controller.signal);
+				? await this.#askBounded(ui, questions, title, controller, limit)
+				: await this.#bounded(
+						controller,
+						limit,
+						withDialog(async () => {
+							if (controller.signal.aborted || method === "ask") return { cancelled: true };
+							if (method === "select") {
+								// Labels are drawn sanitized; the answer is the child's own label.
+								const drawn = options.map(shown);
+								const choice = await ui.select(heading, drawn, dialogOptions);
+								const index = choice === undefined ? -1 : drawn.indexOf(choice);
+								return index < 0 ? { cancelled: true } : { value: options[index] };
+							}
+							if (method === "confirm") {
+								const message = typeof event.message === "string" ? shown(event.message) : "";
+								const confirmed = await ui.confirm(heading, message, dialogOptions);
+								return controller.signal.aborted ? { cancelled: true } : { confirmed };
+							}
+							const placeholder = typeof event.placeholder === "string" ? shown(event.placeholder) : undefined;
+							const value = await ui.input(heading, placeholder, dialogOptions);
+							return value === undefined ? { cancelled: true } : { value };
+						}, controller.signal),
+					).then((answer) => (answer === EXPIRED ? { cancelled: true } : answer));
 		} catch {
 			// The parent's UI failed (its session was replaced): the child is told nobody answered.
 		}
@@ -323,17 +325,14 @@ export class ChildRelay {
 		this.#options.send({ type: "extension_ui_response", id, ...response });
 	}
 
-	/** A relayed permission ask with a deadline: unanswered, it is refused with why and the parent's model is told. */
-	async #askBounded(
-		ui: NonNullable<RelayHost["ui"]>,
-		questions: Parameters<typeof relayAsk>[1],
-		title: string,
-		controller: AbortController,
-		event: Record<string, unknown>,
-	): Promise<Record<string, unknown>> {
-		const limit =
-			typeof event.timeout === "number" ? event.timeout : (this.#options.askTimeoutMs ?? RELAY_ASK_TIMEOUT_MS);
-		const EXPIRED = Symbol("expired");
+	/** The wait for one relayed dialog: the child's own timeout when it is shorter than the relay's cap. */
+	#limit(event: Record<string, unknown>): number {
+		const cap = this.#options.askTimeoutMs ?? RELAY_ASK_TIMEOUT_MS;
+		return typeof event.timeout === "number" && event.timeout > 0 ? Math.min(event.timeout, cap) : cap;
+	}
+
+	/** `work`, or `EXPIRED` once `limit` passes (the dialog is aborted). A UI that ignores the abort cannot hold the child. */
+	async #bounded<T>(controller: AbortController, limit: number, work: Promise<T>): Promise<T | typeof EXPIRED> {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const deadline = new Promise<typeof EXPIRED>((resolve) => {
 			timer = setTimeout(() => {
@@ -342,12 +341,22 @@ export class ChildRelay {
 			}, limit);
 		});
 		try {
-			// A UI that ignores the abort cannot hold the child: the deadline answers it either way.
-			const answer = await Promise.race([relayAsk(ui, questions, { signal: controller.signal }), deadline]);
-			if (answer !== EXPIRED) return answer;
+			return await Promise.race([work, deadline]);
 		} finally {
 			clearTimeout(timer);
 		}
+	}
+
+	/** A relayed permission ask with a deadline: unanswered, it is refused with why and the parent's model is told. */
+	async #askBounded(
+		ui: NonNullable<RelayHost["ui"]>,
+		questions: Parameters<typeof relayAsk>[1],
+		title: string,
+		controller: AbortController,
+		limit: number,
+	): Promise<Record<string, unknown>> {
+		const answer = await this.#bounded(controller, limit, relayAsk(ui, questions, { signal: controller.signal }));
+		if (answer !== EXPIRED) return answer;
 		const minutes = Math.max(1, Math.round(limit / 60_000));
 		this.#host?.tell?.(
 			`${this.#who.id} waited ${minutes} min for the user to approve "${sanitizeTerminalText(redactNonce(title, this.#options.nonce)).slice(0, 120)}" and was refused. If it still needs it, ask the user (askUser), then tell ${this.#who.id} the answer.`,

@@ -10,6 +10,8 @@ const CHILD = fileURLToPath(new URL("./fixtures/exit-restore-child.ts", import.m
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const EXIT_ALT_SCREEN = "\x1b[?1049l";
+const PUSH_TITLE = "\x1b[22;0t";
+const POP_TITLE = "\x1b[23;0t";
 
 function run(how: string, env: NodeJS.ProcessEnv = {}): { output: string; status: number | null } {
 	const result = spawnSync(process.execPath, [CHILD, how], {
@@ -31,6 +33,8 @@ function assertRestored(output: string): void {
 	assert.ok(output.includes("\x1b[?1006l"), "mouse reporting off");
 	assert.ok(output.includes("\x1b[?2004l"), "bracketed paste off");
 	assert.ok(output.includes("\x1b[<u"), "Kitty keyboard flags popped");
+	assert.strictEqual(count(output, PUSH_TITLE), 1, "the shell's window title saved once");
+	assert.ok(output.lastIndexOf(POP_TITLE) > output.lastIndexOf(PUSH_TITLE), "and restored");
 	assert.ok(output.lastIndexOf("\x1b[?25h") > output.lastIndexOf(ENTER_ALT_SCREEN), "cursor shown");
 	assert.ok(output.lastIndexOf("\x1b[?7h") > output.lastIndexOf("\x1b[?7l"), "autowrap back on");
 	// The Kitty flags go before the alternate screen is left: each screen has its own flag stack.
@@ -83,6 +87,15 @@ describe("terminal restore on process exit", () => {
 		assert.strictEqual(status, 0);
 		assert.strictEqual(count(output, EXIT_ALT_SCREEN), 1);
 		assert.strictEqual(count(output, "\x1b[?2004l"), 1);
+		assert.strictEqual(count(output, POP_TITLE), 1, "the title is restored once, by stop()");
+	});
+
+	it("drops a title written after stop(): the title is the shell's again", () => {
+		const { output, status } = run("title-after-stop");
+		assert.strictEqual(status, 0);
+		assert.ok(output.includes("\x1b]0;before stop\x07"));
+		assert.ok(!output.includes("late title"), "no title write after the terminal stopped");
+		assert.ok(output.lastIndexOf(POP_TITLE) > output.lastIndexOf("before stop"));
 	});
 
 	it("clears a reported program status before the key and paste resets when the process exits without stop()", () => {

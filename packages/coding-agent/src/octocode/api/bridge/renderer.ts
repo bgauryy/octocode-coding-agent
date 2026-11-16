@@ -6,7 +6,7 @@ import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock } from "../../render/tool.ts";
 import { contentText } from "../../shared/util.ts";
 import { clip } from "../../shared/text.ts";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExternalFacts } from "./caller.ts";
 
 /** The caller as a person reads it: what it claims, never presented as checked. */

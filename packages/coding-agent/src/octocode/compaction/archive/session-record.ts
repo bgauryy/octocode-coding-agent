@@ -1,4 +1,4 @@
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { forks } from "../../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../../storage/database.ts";
 import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
@@ -6,7 +6,7 @@ import type { ExtensionContext } from "../../../core/features/index.ts";
 import type { RecordMessage, SessionRecord } from "../../history/archive/record.ts";
 import { registeredWorkspace } from "../../../storage/workspace-database.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { PARENT_SESSION_ENV } from "../../../../../common/src/env.ts";
+import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 
 /** Ancestry is recorded when the host forks. Header paths supplied by imported and historical files are never opened here. */
 export function forkLineage(

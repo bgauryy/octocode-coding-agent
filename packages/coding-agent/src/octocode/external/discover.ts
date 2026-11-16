@@ -1,4 +1,4 @@
-import { findOnPath } from "../../../../common/src/find-on-path.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { RUNNERS } from "./runners.ts";
 
 /** An ACP agent found on PATH: the connect arguments to use and the executable that matched. */

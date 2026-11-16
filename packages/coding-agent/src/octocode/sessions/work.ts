@@ -3,7 +3,7 @@ import { type AgentDb, agentRuns } from "../../../../db/src/api.ts";
 import { agentCall } from "../child-sessions/agent-call.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { stringOrEmpty } from "../shared/util.ts";
 import { type ChildFiles, childFiles } from "../child-sessions/session-children.ts";
 import { describeFiles } from "../subagents/children.ts";

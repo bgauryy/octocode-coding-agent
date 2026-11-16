@@ -1,10 +1,11 @@
 /** Registers server tools and hides them when their server is stopped, disabled or removed, or stops offering them. */
 
 import { isDeepStrictEqual } from "node:util";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { declaredExposure, isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { declaredInFull } from "./redeclare.ts";
+import { isOnDemand, markOnDemandLoaded } from "./on-demand.ts";
 import { isEnabled } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { createMcpToolDefinition } from "./tool-definition.ts";
@@ -72,6 +73,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			declaredInFull(state.declaredBefore, name, tool) &&
 			presentation.load(server, tool.name);
 		const thin = !loaded && presentation.isThin(server, tool);
+		// Undeclared until the session loads or calls it: registered inactive, and the host activates it on its first call.
+		const onDemand = isOnDemand(state, entry, tool.name, name);
 		// A thin declaration depends on the tool's own block of the generated file, not on the rest of the catalog.
 		const metadata = {
 			namespace,
@@ -83,6 +86,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			// `declared`: no generated file describes a deferred tool, so its declaration keeps the server's description.
 			whole: thin && declared,
 			deferred: thin && presentation.isDeferred(server, tool.name),
+			onDemand,
 		};
 		// The catalog hands out the same tool object while the server lists it unchanged (`catalog.ts`), so the tool the
 		// definition was built from is compared by identity first; the deep comparison runs only for a new object.
@@ -142,7 +146,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		// A call a deferred tool's schema rejected is demand for its full declaration (`usage-counts.ts`).
 		const definition = {
 			...built,
-			validationHint: (failure: { envelope: boolean; properties: string[] }) => {
+			...(onDemand ? { defaultActive: false, onDemand: true } : {}),
+			validationHint: (failure: { envelope: boolean; properties: string[]; arguments?: unknown }) => {
 				if (thin && presentation.isDeferred(server, tool.name)) state.recordToolRefused(server, tool.name);
 				return built.validationHint?.(failure);
 			},
@@ -167,6 +172,21 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	}
 	registerAll(api, batch);
 	if (demoted.length > 0) api.setActiveTools(api.getActiveTools().filter((active) => !demoted.includes(active)));
+}
+
+/**
+ * The session needs an on-demand tool that is registered undeclared (its schema was read, or it was called): declare it
+ * in full from the next request, after the cached prefix. A tool declared already (deferred, or loaded) is left alone.
+ */
+export function loadOnDemand(state: McpExtensionState, server: string, tool: string): boolean {
+	const name = [...state.toolOwners].find(([, owner]) => owner === `${server}\0${tool}`)?.[0];
+	if (name === undefined || state.definitions.get(name)?.onDemand !== true) return false;
+	if (!markOnDemandLoaded(state, server, tool)) return false;
+	const connection = state.findServer(server)?.connection;
+	if (connection?.state === "connected") registerTools(state, connection);
+	const active = state.api.getActiveTools();
+	if (!active.includes(name)) state.api.setActiveTools([...active, name]);
+	return true;
 }
 
 /** Make a disabled server's tools unreachable. */

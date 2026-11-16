@@ -6,7 +6,7 @@ import { registerCheckpoints } from "../../src/octocode/files/checkpoint-command
 import { inheritCheckpoints, sessionIdOf } from "../../src/octocode/files/checkpoint-store.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
 import { fakePermission } from "./fake-host.ts";

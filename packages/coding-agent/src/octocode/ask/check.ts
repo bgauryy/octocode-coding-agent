@@ -7,7 +7,7 @@ import {
 	type QuestionOption,
 	ROLES_BY_TYPE,
 } from "@octocodeai/octocode-contracts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 const L = QUESTION_LIMITS;
 

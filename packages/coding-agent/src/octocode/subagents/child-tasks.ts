@@ -4,8 +4,8 @@ import { openBacklog } from "../backlog/context.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { tasks } from "../../../../db/src/api.ts";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { cutText } from "@octocodeai/octocode-common/text";
 import { type ItemLink, trackSavedRef } from "./item-link.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 

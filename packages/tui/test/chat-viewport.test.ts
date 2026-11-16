@@ -1,6 +1,7 @@
-import { Container } from "@octocodeai/octocode-tui";
-import { describe, expect, test } from "vitest";
-import { createChatViewport } from "../src/modes/interactive/chat-viewport.ts";
+import assert from "node:assert";
+import { describe, test } from "node:test";
+import { Container } from "../src/tui/container.ts";
+import { createChatViewport } from "../src/layout/chat-viewport.ts";
 
 describe("chat viewport", () => {
 	test("defaults the transcript scrollbar to auto and accepts overrides", () => {
@@ -20,7 +21,7 @@ describe("chat viewport", () => {
 			scrollbar: "hidden",
 		});
 
-		expect(automatic.transcript.scrollbar).toBe("auto");
-		expect(hidden.transcript.scrollbar).toBe("hidden");
+		assert.strictEqual(automatic.transcript.scrollbar, "auto");
+		assert.strictEqual(hidden.transcript.scrollbar, "hidden");
 	});
 });

@@ -7,7 +7,7 @@ import type { McpOAuthState, McpOAuthStateStore } from "../client/oauth/index.ts
 import lockfile from "proper-lockfile";
 import { hostModels, hostPaths } from "../host.ts";
 import type { McpAuthBackend as AuthStorageBackend } from "../host.ts";
-import { mcpNamespace } from "../../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
 /** A refresh lock that its holder stopped renewing (the process was killed) is taken over after this. */
 const REFRESH_LOCK_STALE_MS = 20_000;

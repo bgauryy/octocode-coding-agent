@@ -6,7 +6,7 @@ import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
-import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { shortPath } from "../../src/utils/display-path.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

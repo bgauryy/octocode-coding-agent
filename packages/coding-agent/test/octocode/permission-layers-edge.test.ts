@@ -20,7 +20,7 @@ import {
 	READ_ONLY_ENV,
 	SUBAGENT_ENV,
 	TEAM_WORKSPACE_ENV,
-} from "../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";

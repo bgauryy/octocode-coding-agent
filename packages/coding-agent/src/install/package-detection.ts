@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizePath } from "../../../common/src/paths.ts";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

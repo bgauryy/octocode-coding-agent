@@ -1,4 +1,4 @@
-import { envFlag, OFFLINE_ENV } from "../../../common/src/env.ts";
+import { envFlag, OFFLINE_ENV } from "@octocodeai/octocode-common/env";
 
 export { OFFLINE_ENV };
 

@@ -8,8 +8,8 @@ import {
 } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
-import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { storedSecret, storedText } from "@octocodeai/octocode-common/sanitize";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 export { PRIORITIES };
 type Priority = (typeof PRIORITIES)[number];

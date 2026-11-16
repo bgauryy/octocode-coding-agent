@@ -8,12 +8,12 @@ import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts"
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
-import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { nonceFile } from "./nonce-file.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
-import { visibleControls } from "../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { toolHint } from "../../src/utils/tool-hint.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -322,9 +322,12 @@ describe("agents view", () => {
 		expect(lines[0]).toContain("1 working · 1 idle");
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		expect(lines[1]).toContain("a-0001");
-		expect(lines[2]).toContain("└ ⠋ 🐙 b-0002");
-		expect(lines[2]).toMatch(/working\s+1m$/);
-		expect(lines[2]).toContain("→ localSearch foo");
+		expect(lines).toHaveLength(5);
+		expect(lines[1]).toMatch(/^ └ ○ 🐙 a-0001/);
+		expect(lines[2]).toMatch(/idle\s+10s$/);
+		expect(lines[3]).toMatch(/^   └ ⠋ 🐙 b-0002/);
+		expect(lines[4]).toMatch(/working\s+1m$/);
+		expect(lines[3]).toContain("→ localSearch foo");
 		expect(
 			widgetLines(
 				[

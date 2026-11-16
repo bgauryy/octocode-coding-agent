@@ -1,6 +1,7 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
+import { stripTerminalSequences } from "@octocodeai/octocode-common/ansi";
 import type { UiState } from "../model/ui-state.ts";
 import type { FeedEvent } from "./application-projection.ts";
 export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
@@ -240,11 +241,7 @@ export function sessionBadge(
 	return snapshot?.streaming ? { state: "running", label: "Running", warn: false } : undefined;
 }
 
-// The ESC that starts a terminal colour code, then its parameters and final letter.
-const ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
-export function stripAnsi(text: string): string {
-	return text.replace(ANSI, "");
-}
+export const stripAnsi = stripTerminalSequences;
 
 export interface TerminalEntry {
 	id: number;

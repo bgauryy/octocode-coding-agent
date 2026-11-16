@@ -4,7 +4,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { openTarget } from "../../../../common/src/open-target.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { processAlive } from "../shared/process.ts";
 
 /** Prefix of every temporary browser profile; the stale cleanup removes only directories that carry it. */

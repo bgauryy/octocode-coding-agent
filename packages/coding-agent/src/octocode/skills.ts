@@ -2,7 +2,7 @@ import { getNativeSkillsDir } from "../config.ts";
 import type { ExtensionAPI } from "../core/features/index.ts";
 import { isDirectory } from "../utils/fs-probe.ts";
 import { registerSkillDescriptions } from "./context-optimization/skills.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 
 /**
  * Skills the application ships (`octocode-context-optimization`). A native subagent adopts its parent's inventory, so only a root

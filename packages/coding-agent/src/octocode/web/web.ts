@@ -3,33 +3,33 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { truncateHead } from "../../core/tools/index.ts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../../utils/output-budget.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../render/tool.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "../shared/spill.ts";
 import { capChars, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { type FetchedImage, pageFetcher, TIMEOUT_MS } from "./fetch.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 import {
 	classifyHost,
 	type HostLookup,
 	lookupWithin,
 	metadataRefusal,
 	reachesMetadata,
-} from "../../../../common/src/web-guard.ts";
+} from "@octocodeai/octocode-common/web-guard";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { cachedSearch } from "./search-cache.ts";
 import { plural } from "../shared/text.ts";
 import { timedTool, timingOf } from "../render/rows.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { cutText } from "../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /** Default and largest page text a fetch returns (the shared result default and request maximum); `maxChars` picks a size in between. */
 const DEFAULT_FETCH_CHARS = RESULT_DEFAULT_BYTES;

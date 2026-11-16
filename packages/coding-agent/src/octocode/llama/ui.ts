@@ -8,7 +8,7 @@ import {
 	Text,
 	type TUI,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText as plain } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText as plain } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";

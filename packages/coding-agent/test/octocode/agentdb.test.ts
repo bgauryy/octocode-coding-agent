@@ -6,7 +6,7 @@ import { closeSharedAgentDb, workspaces } from "../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { redactSecrets, secretProblem } from "../../../common/src/sanitize.ts";
+import { redactSecrets, secretProblem } from "@octocodeai/octocode-common/sanitize";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
 import { tmp } from "./helpers.ts";
 import { repoKey } from "../../src/utils/git-repository.ts";

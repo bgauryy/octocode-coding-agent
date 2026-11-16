@@ -8,7 +8,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import { sourceGrant } from "../../src/octocode/permission/provenance/grant.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

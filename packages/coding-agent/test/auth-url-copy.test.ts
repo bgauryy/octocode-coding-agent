@@ -10,7 +10,7 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 const { copyToClipboard } = vi.hoisted(() => ({ copyToClipboard: vi.fn(async (_text: string) => {}) }));
 
 vi.mock("../src/utils/clipboard.ts", () => ({ copyToClipboard }));
-vi.mock("../../common/src/open-target.ts", () => ({ openTarget: vi.fn(async () => undefined) }));
+vi.mock("@octocodeai/octocode-common/open-target", () => ({ openTarget: vi.fn(async () => undefined) }));
 
 const URL = `https://auth.example.invalid/authorize?${"x".repeat(300)}`;
 const CTRL_X = "\x18";

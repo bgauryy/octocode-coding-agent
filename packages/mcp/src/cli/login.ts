@@ -1,7 +1,7 @@
 /** `octocode mcp login`: the OAuth sign-in through the browser, with a pasted redirect URL as fallback. */
 
 import { createInterface } from "node:readline/promises";
-import { openTarget } from "../../../common/src/open-target.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import type { McpServerEntry } from "../config.ts";
 import { type McpOAuthCredentialStore, McpSignInCancelledError, signInMcpServer } from "../oauth.ts";
 import type { McpServerConnection } from "../runtime.ts";

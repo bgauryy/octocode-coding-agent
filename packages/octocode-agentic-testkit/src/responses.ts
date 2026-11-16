@@ -8,6 +8,7 @@ type Item = {
 	content?: unknown;
 	call_id?: string;
 	name?: string;
+	namespace?: string;
 	arguments?: string;
 	output?: unknown;
 };
@@ -23,7 +24,10 @@ export function responsesMessages(body: Record<string, unknown>): ChatMessage[] 
 			const call: ToolCall = {
 				id: it.call_id ?? "",
 				type: "function",
-				function: { name: it.name ?? "", arguments: it.arguments ?? "{}" },
+				function: {
+					name: it.namespace ? `${it.namespace}.${it.name ?? ""}` : (it.name ?? ""),
+					arguments: it.arguments ?? "{}",
+				},
 			};
 			const last = out[out.length - 1];
 			if (last?.role === "assistant" && last.tool_calls) last.tool_calls.push(call);
@@ -75,7 +79,8 @@ export function sendResponsesSse(res: ServerResponse, model: string, r: Reply): 
 				type: "function_call",
 				id: `fc_testkit_${i}`,
 				call_id: c.id,
-				name: c.name,
+				name: c.name.includes(".") ? c.name.split(".").slice(1).join(".") : c.name,
+				...(c.name.includes(".") ? { namespace: c.name.split(".")[0] } : {}),
 				arguments: c.arguments,
 				status: "completed",
 			}))

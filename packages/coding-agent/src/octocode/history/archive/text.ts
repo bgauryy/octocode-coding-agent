@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import { headerText } from "../../shared/fence.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
-import { escapeRegExp } from "../../../../../common/src/regexp.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /** How archived message text may appear in a file: one line, fenced, or an inline code span, controls made visible. */
 

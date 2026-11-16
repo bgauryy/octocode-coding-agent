@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { parseFrontmatter } from "../../../src/utils/frontmatter.ts";
-import { splitBom } from "../../../../common/src/text.ts";
+import { splitBom } from "@octocodeai/octocode-common/text";
 
 describe("UTF-8 BOM parsing", () => {
 	let testDir: string;

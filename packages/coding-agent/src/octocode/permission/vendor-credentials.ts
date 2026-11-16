@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { canonicalPaths } from "../../../../common/src/canonical-path-set.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { canonicalPaths } from "@octocodeai/octocode-common/canonical-path-set";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import type { SourceGrant } from "./request.ts";
 

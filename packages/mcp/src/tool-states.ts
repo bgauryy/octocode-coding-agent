@@ -5,7 +5,7 @@
 
 import type { McpExposure, McpServerEntry } from "./config.ts";
 import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
-import type { UsageAuditSource } from "../../common/src/tool-audit.ts";
+import type { UsageAuditSource } from "@octocodeai/octocode-common/tool-audit";
 import { defersByRecentUse, defersByUsage } from "./deferral.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { configuredMcpToolExposure } from "./servers.ts";
@@ -17,12 +17,16 @@ import { auditReader, sessionUsage } from "./usage-audit.ts";
  * `promoted` or `unused`), another deferral of the session (the `mcpExposure` setting or a deferred
  * role), or nothing (`default`).
  */
+/** What the Tools panel shows of an exposure: an on-demand tool reads as `deferred` there (listed, not in full). */
+export const toolExposureState = (exposure: McpExposure): Exclude<McpExposure, "onDemand"> =>
+	exposure === "onDemand" ? "deferred" : exposure;
+
 type McpToolDecision = "pin" | "pattern" | "server" | "recent" | "usage" | "setting" | "default";
 
 interface McpToolState {
 	/** The tool's name as the server offers it. */
 	name: string;
-	state: McpExposure;
+	state: Exclude<McpExposure, "onDemand">;
 	decidedBy: McpToolDecision;
 	/** What the usage record says of the tool; absent while it holds no data (and the setting is not `usage`). */
 	audit?: ToolAudit;
@@ -70,7 +74,7 @@ export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[]
 			connected,
 			saved: entry.scope !== "extension",
 			tools: (connected ? connection.tools : []).map((tool) => {
-				const state = source.toolExposure(entry, tool.name);
+				const state = toolExposureState(source.toolExposure(entry, tool.name));
 				const decidedBy = decisionOf(entry, tool.name, state, setting);
 				return {
 					name: tool.name,

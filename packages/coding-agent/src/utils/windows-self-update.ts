@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, toNamespacedPath } from "node:path";
-import { getCwdRelativePath } from "../../../common/src/paths.ts";
+import { getCwdRelativePath } from "@octocodeai/octocode-common/paths";
 
 const QUARANTINE_DIR_NAME = ".octocode-native-quarantine";
 

@@ -14,7 +14,8 @@ export function context(sandbox: Sandbox, options: { trusted?: boolean; live?: C
 		home: sandbox.home,
 		projectTrusted,
 		settings: SettingsManager.create(sandbox.cwd, sandbox.agentDir, { projectTrusted }),
-		...(options.live ? { live: options.live } : {}),
+		// The commands run inside a session, which has registered the extension tools (the timer's among them).
+		live: { toolNames: () => ["timer"], ...options.live },
 	};
 }
 

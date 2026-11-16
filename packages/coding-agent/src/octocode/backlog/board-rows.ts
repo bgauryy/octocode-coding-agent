@@ -1,6 +1,6 @@
 import { type RowColumn, fitRows } from "@octocodeai/octocode-tui";
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { BoardRow } from "./board-model.ts";
 import { epicItems } from "./board-model.ts";
 import {

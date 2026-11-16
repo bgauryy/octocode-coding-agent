@@ -51,6 +51,7 @@ export function codexAdapter(opts: CodexOptions = {}): AgentAdapter<ExternalRun>
 				lines.push(
 					``,
 					`[mcp_servers.${name}]`,
+					`default_tools_approval_mode = "approve"`,
 					`url = ${toml(url)}`,
 					`http_headers = { x-testkit-agent = "main", x-testkit-span = "main" }`,
 				);

@@ -1,16 +1,20 @@
-import { MCP_MANAGE_TOOL_NAME } from "../../../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { isToolModifier, resolveDefaultTools } from "../../core/settings-manager/tool-list.ts";
 import { getNativeToolNames } from "../../octocode/permission/native-tools.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 import { applied, closestIds, nameOf, onlySwitch, refused } from "../result.ts";
-import { nestPath, writeSettingsKey } from "../settings-write.ts";
+import { nestPath, updateSettingsKey } from "../settings-write.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry } from "../types.ts";
 
 /**
  * Tools that exist without a session: the native tools (declared in `octocode/permission/native-tools.ts`) and the `mcp`
- * tool. Tools an extension or MCP server adds exist only in a running session; the ones named in settings are listed too.
+ * tool. Tools an extension or MCP server adds exist only in a running session: the ones that session reports
+ * (`live.toolNames`) and the ones named in settings are listed too.
  */
-function knownTools(lists: readonly (readonly unknown[] | undefined)[]): string[] {
+function knownTools(
+	lists: readonly (readonly unknown[] | undefined)[],
+	sessionTools: readonly string[] = [],
+): string[] {
 	const named = lists.flatMap((list) =>
 		(list ?? []).flatMap((entry) =>
 			typeof entry === "string"
@@ -18,7 +22,7 @@ function knownTools(lists: readonly (readonly unknown[] | undefined)[]): string[
 				: [],
 		),
 	);
-	return [...new Set([...getNativeToolNames(), MCP_MANAGE_TOOL_NAME, ...named])].sort();
+	return [...new Set([...getNativeToolNames(), MCP_MANAGE_TOOL_NAME, ...sessionTools, ...named])].sort();
 }
 
 const defaultsOf = () => [...getNativeToolNames(), MCP_MANAGE_TOOL_NAME];
@@ -49,7 +53,7 @@ export const toolAdapter: ConfigAdapter = {
 		const effective = listOf(ctx.settings.getSettings());
 		const on = (list: string[] | undefined, name: string) =>
 			list ? resolveDefaultTools(list, defaultsOf()).includes(name) : undefined;
-		return knownTools([global, project, effective]).map((name): ConfigEntry => {
+		return knownTools([global, project, effective], ctx.live?.toolNames?.()).map((name): ConfigEntry => {
 			const [g, p] = [on(global, name), on(project, name)];
 			return {
 				id: `tool:${name}`,
@@ -74,7 +78,7 @@ export const toolAdapter: ConfigAdapter = {
 			scope === "run"
 				? listOf(ctx.settings.getSettings())
 				: listOf(scope === "project" ? ctx.settings.getProjectSettings() : ctx.settings.getGlobalSettings());
-		const known = knownTools([base]);
+		const known = knownTools([base], ctx.live?.toolNames?.());
 		if (!known.includes(name))
 			return refused(
 				op,
@@ -84,9 +88,19 @@ export const toolAdapter: ConfigAdapter = {
 					known.map((tool) => `tool:${tool}`),
 				),
 			);
-		const next = withToolSwitched(base, name, op.verb === "enable");
+		const on = op.verb === "enable";
+		let next = withToolSwitched(base, name, on);
 		if (scope === "run") ctx.settings.applyOverrides(nestPath("defaultTools", next), { durable: true });
-		else await writeSettingsKey(ctx, scope, "defaultTools", next);
+		else
+			// Built on the file's own list under the lock: another session may have switched a different tool meanwhile.
+			await updateSettingsKey(ctx, scope, "defaultTools", (current) => {
+				next = withToolSwitched(
+					Array.isArray(current) ? current.filter((tool) => typeof tool === "string") : undefined,
+					name,
+					on,
+				);
+				return next;
+			});
 		return applied(op, "next-session", `${op.id} ${op.verb}d (${scope}); defaultTools: ${JSON.stringify(next)}.`);
 	},
 };

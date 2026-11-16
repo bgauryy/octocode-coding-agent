@@ -1,5 +1,5 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 const MAX_SIBLINGS = 6;
 const MAX_GOAL = 80;

@@ -1,5 +1,5 @@
 import { type ContextView, PI_CODE_HINT, activeEntries, problemSummary } from "./context-view.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** `…/deep/folder/SKILL.md`: the end of a path, cut from the left to fit `room` cells. */
 function fitPath(path: string, room: number): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decide, live, posteriorAbove, runTrials } from "../src/live.ts";
+import { decide, live, NoAnswer, posteriorAbove, runTrials } from "../src/live.ts";
 
 describe("decide", () => {
 	it("matches the reference numbers", () => {
@@ -37,6 +37,31 @@ describe("runTrials", () => {
 	it("minTrials delays the decision", async () => {
 		const s = await runTrials({ maxTrials: 30, threshold: 0.8, minTrials: 20 }, () => true);
 		expect(s.trials).toBe(20);
+	});
+
+	it("NoAnswer trials are errors: they never decide, but use up maxTrials", async () => {
+		const s = await runTrials({ maxTrials: 6, threshold: 0.5 }, () => {
+			throw new NoAnswer("timeout");
+		});
+		expect(s).toMatchObject({ decision: "inconclusive", trials: 0, errors: 6, failures: 0 });
+	});
+
+	it("a plain thrown error is still a failure (must-fail contrast)", async () => {
+		const s = await runTrials({ maxTrials: 6, threshold: 0.5 }, () => {
+			throw new Error("boom");
+		});
+		expect(s).toMatchObject({ decision: "fail", errors: 0 });
+		expect(s.failures).toBeGreaterThan(0);
+	});
+
+	it("answers between errors still decide", async () => {
+		const s = await runTrials({ maxTrials: 40, threshold: 0.5 }, ({ trial }) => {
+			if (trial % 2) throw new NoAnswer("429");
+			return true;
+		});
+		expect(s.decision).toBe("pass");
+		expect(s.successes).toBe(s.trials);
+		expect(s.errors).toBeGreaterThan(0);
 	});
 });
 

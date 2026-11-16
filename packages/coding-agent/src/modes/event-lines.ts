@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { randomUUID } from "node:crypto";
 
 /**
@@ -12,9 +13,6 @@ import { randomUUID } from "node:crypto";
 const SHARED_MIN_CHARS = 64 * 1024;
 
 type Record_ = Record<string, unknown>;
-const isRecord = (value: unknown): value is Record_ =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /** The messages an event carries at its top level: `message`, `toolResults`, `messages`. */
 function messagesOf(event: Record_): Record_[] {
 	const found: Record_[] = [];

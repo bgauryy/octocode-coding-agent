@@ -7,8 +7,8 @@ import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "
 import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionThinking } from "../../core/compaction/settings.ts";
@@ -17,7 +17,7 @@ import { type Outline, outlineOf } from "./restore-outline.ts";
 import { restoreLimits, type RestoreLimits, RESTORE_TOTAL_CHARS } from "./restore-limits.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /**
  * After a compaction, the files the agent was working on are read again from disk and put back in its context: the summary names them, but editing one would otherwise need a fresh `read` first (the file guard

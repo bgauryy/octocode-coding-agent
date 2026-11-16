@@ -1,4 +1,4 @@
-import { redactUrlCredentials } from "../../../../../common/src/url-credentials.ts";
+import { redactUrlCredentials } from "@octocodeai/octocode-common/url-credentials";
 import type { Settings } from "../../../core/settings-schema.ts";
 
 /** Where a marketplace is fetched from, as stored under `marketplaces.<name>.source` in user settings. */

@@ -12,7 +12,12 @@ import {
 	splitHeader,
 } from "../../src/octocode/permission/header.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
-import { ownNonce, PERMISSION_ENV, PERMISSION_NONCE_FILE_ENV, PERMISSION_RELAY_ENV } from "../../../common/src/env.ts";
+import {
+	ownNonce,
+	PERMISSION_ENV,
+	PERMISSION_NONCE_FILE_ENV,
+	PERMISSION_RELAY_ENV,
+} from "@octocodeai/octocode-common/env";
 import { degrade } from "../../src/octocode/ask/degrade.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

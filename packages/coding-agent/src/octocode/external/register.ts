@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
-import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { capOutputToFile } from "../shared/spill.ts";
 import { referenceContext } from "../child-sessions/references.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

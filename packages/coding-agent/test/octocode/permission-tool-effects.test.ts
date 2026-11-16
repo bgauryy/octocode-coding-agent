@@ -7,7 +7,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { consequential } from "../../src/octocode/permission/provenance/arguments.ts";
 import { operations } from "../../src/octocode/permission/source-policy/match.ts";
-import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

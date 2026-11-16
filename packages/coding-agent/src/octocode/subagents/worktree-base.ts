@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync, shortHash } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync, shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { HOME_NAMES } from "../shared/home.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";

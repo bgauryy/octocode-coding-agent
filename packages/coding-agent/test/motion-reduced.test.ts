@@ -1,6 +1,5 @@
-import { animationClock, rgbColor, styleText, type TUI } from "@octocodeai/octocode-tui";
+import { CountdownTimer, type TUI, animationClock, rgbColor, styleText } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CountdownTimer } from "../src/modes/interactive/components/countdown-timer.ts";
 import { WorkingStatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { bannerHeader } from "../src/octocode/ui/chrome.ts";

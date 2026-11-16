@@ -7,7 +7,7 @@ import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV } from "@octocodeai/octocode-common/env";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

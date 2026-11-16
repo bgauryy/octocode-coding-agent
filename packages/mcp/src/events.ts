@@ -12,16 +12,16 @@ import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.
 import { reportProblems } from "./report.ts";
 import { say, sayUntrustedProject } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
-import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isSelected } from "./exposure.ts";
-import { deferralOf } from "./deferral.ts";
+import { serverListings } from "./listings.ts";
+import { forgetOnDemandLoads, setOnDemandModel } from "./on-demand.ts";
 import { restoreRecentTools, saveRecentTools } from "./recent-session.ts";
 import { handOver, takeHanded } from "./handover.ts";
 import {
 	MCP_STATUS_SECTION,
 	MCPS_SECTION,
-	type McpServerListing,
 	mcpServerPurposes,
 	renderMcpStatusSection,
 	renderMcpsSection,
@@ -31,7 +31,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { declaredParameters, redeclaresInPlace } from "./redeclare.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { registerTools } from "./tool-registry.ts";
+import { loadOnDemand, registerTools } from "./tool-registry.ts";
 import { preparedCallOf } from "./tool-definition.ts";
 import { takeLaunchWarnings } from "./warnings.ts";
 
@@ -42,49 +42,6 @@ function launchChanged(state: McpExtensionState, server: McpServer, launched: Mc
 	} catch {
 		return false;
 	}
-}
-
-/**
- * The servers the prompt describes: enabled servers this session's selection reaches. Each block's content is what
- * `McpPresentation.describe` fixed when the prompt first described the server's catalog, so a reconnect, a failure or
- * a dropped connection changes only the state, which `mcp_status` carries.
- */
-function serverListings(state: McpExtensionState): McpServerListing[] {
-	const activeTools = state.api.getActiveTools();
-	const active = new Set(activeTools);
-	// Name order, so an `auto:<bytes>` budget fills the same way whichever server connected first.
-	const listed = state.servers
-		.filter((server) => isEnabled(server) && !server.unselected)
-		.sort((a, b) => (a.entry.name < b.entry.name ? -1 : a.entry.name > b.entry.name ? 1 : 0));
-	// A server that leaves the list gets a fresh description if it comes back.
-	state.presentation.retainDescribed(new Set(listed.map((server) => server.entry.name)));
-	return listed.flatMap((server) => {
-		const declared = [...(state.serverTools.get(server.entry.name) ?? [])]
-			.filter((name) => active.has(name) && state.definitions.get(name)?.exposure === "direct")
-			.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name);
-		state.recordToolsDeclared(server.entry.name, declared);
-		const connectionState = server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting");
-		const described = state.presentation.describe(
-			server.entry.name,
-			declared,
-			server.connection?.instructions,
-			connectionState === "connected",
-			deferralOf(server.entry, declared, state.exposureSetting(), activeTools, state.deferRoles(), state.recentTools()),
-		);
-		const undeclared = [...described.tools].filter((tool) => !declared.includes(tool));
-		const deferred = described.deferred.size;
-		return [
-			{
-				entry: server.entry,
-				state: connectionState,
-				declared: described.tools.size > 0,
-				...(described.contract ? { contract: described.contract } : {}),
-				pending: described.pending,
-				...(undeclared.length > 0 ? { undeclared } : {}),
-				...(deferred > 0 ? { defers: true, deferred: deferred === described.tools.size } : {}),
-			},
-		];
-	});
 }
 
 /**
@@ -136,6 +93,8 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	api.on("session_start", (_event, ctx) => {
 		state.presentation.reset();
 		state.declaredBefore = declaredParameters(ctx);
+		forgetOnDemandLoads(state);
+		setOnDemandModel(state, ctx.model);
 		const load = () => (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		const loaded = load();
 		state.configErrors = loaded.errors;
@@ -253,6 +212,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	api.on("session_tree", (_event, ctx) => {
 		state.presentation.rebuild();
 		state.presentation.forgetLoaded();
+		forgetOnDemandLoads(state);
 		state.declaredBefore = declaredParameters(ctx);
 	});
 
@@ -265,7 +225,10 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			state.presentation.load(server, tool);
 	});
 
-	api.on("model_select", () => {
+	// A switch to a transport without in-place additions declares every unloaded on-demand tool deferred; its cache is
+	// cold anyway. A switch the other way never takes a declaration back.
+	api.on("model_select", (_event, ctx) => {
+		setOnDemandModel(state, ctx.model);
 		state.presentation.rebuild();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);
@@ -316,8 +279,10 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	// state is still connected: reconnect first closes the old transport, then opens a new one. Settled promises return
 	// immediately.
 	api.on("tool_call", async (event, ctx) => {
-		const owner = state.toolOwners.get(event.toolName)?.split("\0", 1)[0];
+		const [owner, tool] = state.toolOwners.get(event.toolName)?.split("\0") ?? [];
 		if (owner === undefined) return;
+		// A call to an on-demand tool registered undeclared: the host activated it for this call.
+		if (tool !== undefined && loadOnDemand(state, owner, tool)) state.recordToolLoaded(owner, tool, "calledUndeclared");
 		const waiting = state.servers.filter((server) => isEnabled(server) && server.ready && server.entry.name === owner);
 		await waitForServers(state, waiting, ctx.signal);
 	});

@@ -3,12 +3,11 @@
  * renderer lookup, the fullscreen scrollbar and PNG transcoder, and the startup display flags.
  */
 
-import { GLYPH, type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { GLYPH, type MarkdownTheme, Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MarkdownTransformer, ToolRenderers } from "../../../core/features/index.ts";
 import { withBuiltInRenderers } from "../../../core/tools/renderers/index.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import type { ThemeColor } from "../../../theme/theme-tokens.ts";

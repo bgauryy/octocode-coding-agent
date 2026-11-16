@@ -9,7 +9,12 @@ import {
 } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ApplicationAssets } from "./assets.ts";
-import { jsonLength, listJsonLength, recordJsonLength, rememberJsonLength } from "./json-length.ts";
+import {
+	jsonLength,
+	listJsonLength,
+	recordJsonLength,
+	rememberJsonLength,
+} from "@octocodeai/octocode-common/json-length";
 import { annotations, applyMessageFields } from "./normalize.ts";
 import type { StreamHint } from "./service/wire.ts";
 

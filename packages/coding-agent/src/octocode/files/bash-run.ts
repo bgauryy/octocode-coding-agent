@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { constants as osConstants } from "node:os";
 import type { BashOperations } from "../../core/tools/index.ts";
-import { clampTimeoutSeconds, resolveShell, spawnShell } from "../../utils/shell.ts";
+import { clampTimeoutSeconds, resolveBashShell, spawnShell } from "../../utils/shell.ts";
 import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { recordShellGroup } from "../shared/shell-groups.ts";
 import { signalTree } from "../../utils/process-tree.ts";
@@ -202,7 +202,7 @@ export function foregroundOperations(
 			const timeout = clampTimeoutSeconds(requestedTimeout);
 			if (!fs.existsSync(cwd))
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
-			const child = await spawnShell(resolveShell(settings), command, {
+			const child = await spawnShell(resolveBashShell(settings), command, {
 				cwd,
 				env: nonInteractiveEnv(env ?? process.env),
 			});

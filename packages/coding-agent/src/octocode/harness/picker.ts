@@ -7,7 +7,7 @@ import {
 	truncateToWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { InventoryItem } from "./inventory.ts";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";

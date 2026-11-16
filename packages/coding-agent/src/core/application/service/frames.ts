@@ -3,7 +3,7 @@ import {
 	type ApplicationCursor,
 	type ApplicationFrame,
 } from "@octocodeai/octocode-contracts";
-import { redactData } from "../../../../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 
 export type ApplicationFramePayload =
 	| Omit<Extract<ApplicationFrame, { type: "snapshot" }>, "protocolVersion" | "cursor" | "at">

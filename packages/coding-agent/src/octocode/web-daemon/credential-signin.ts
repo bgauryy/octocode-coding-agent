@@ -18,7 +18,7 @@ import {
 } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Value } from "typebox/value";
-import { redactSecrets, registerSecretValue } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { APP_NAME } from "../../config.ts";
 import { CredentialSynchronizationError, ModelRuntime } from "../../core/model-runtime.ts";

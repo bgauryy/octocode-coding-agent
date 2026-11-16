@@ -16,7 +16,7 @@ import { agentRow, deriveRequests, type ProfilerMember } from "./derive.ts";
 import { withContext, type AgentContext } from "./context.ts";
 import { parseTranscript, prepare, type Prepared } from "./entries.ts";
 import { SessionCodec } from "../../core/session-manager/codec.ts";
-import { reportToStderr } from "../../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 /** What a server needs from the profiler; both /web servers (and the daemon, through the attach protocol) use it. */
 export interface ProfilerPort {

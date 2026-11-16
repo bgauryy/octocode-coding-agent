@@ -20,7 +20,7 @@ import { selectExplicitSkills } from "../skill-mentions.ts";
 import { explicitSkillIdentity } from "../skills.ts";
 import type { SessionInternals } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { mapConcurrent } from "../../../../common/src/map-concurrent.ts";
+import { mapConcurrent } from "@octocodeai/octocode-common/map-concurrent";
 
 /** Images prepared at once: each holds a decoded copy in a worker, so the bound caps peak memory. */
 const IMAGE_PREPARATION_CONCURRENCY = 3;

@@ -29,7 +29,11 @@ function mode() {
 		ui: { requestRender: vi.fn() },
 		settingsManager: SettingsManager.create(sandbox.cwd, sandbox.agentDir, { projectTrusted: false }),
 		sessionManager: { getCwd: () => sandbox.cwd },
-		session: { resourceLoader: {}, extensionRunner: { getRegisteredCommands: () => [], hasHandlers: () => false } },
+		session: {
+			resourceLoader: {},
+			getAllTools: () => [{ name: "timer" }],
+			extensionRunner: { getRegisteredCommands: () => [], hasHandlers: () => false },
+		},
 	};
 	setupEditorSubmitHandler(createFakeHost(instance));
 	return { instance, printed };

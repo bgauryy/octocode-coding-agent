@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { deadline } from "../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 import type { Args } from "../cli/args.ts";
 import type {
 	CreateAgentSessionRuntimeFactory,
@@ -19,7 +19,7 @@ import type { FolderTrustResolver } from "../core/folder-trust.ts";
 import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
-import { isLocalPath } from "../../../common/src/paths.ts";
+import { isLocalPath } from "@octocodeai/octocode-common/paths";
 import { setPlanStartup } from "../octocode/plan/startup.ts";
 import { recordOperatorLimits } from "../octocode/subagents/process/operator-limits.ts";
 import { applyRunConfiguration } from "./run-configuration.ts";

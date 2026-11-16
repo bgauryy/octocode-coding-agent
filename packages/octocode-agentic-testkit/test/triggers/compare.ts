@@ -31,7 +31,8 @@ interface Answered {
 /** The summary without transport errors: errors are neither a fire nor a miss. */
 function answered(s: LiveSummary | undefined, errors = 0): Answered | undefined {
 	if (!s) return undefined;
-	const trials = s.trials - errors;
+	// Newer summaries count errors apart (`s.errors`); older ones folded them into failures.
+	const trials = s.errors === undefined ? s.trials - errors : s.trials;
 	return {
 		successes: s.successes,
 		trials,

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { runInproc, type Skill } from "../../src/agents/inproc.ts";
 import { parseSkillListing, runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
 import { script } from "../../src/gateway.ts";
-import { runTrials, type LiveSummary } from "../../src/live.ts";
+import { NoAnswer, runTrials, type LiveSummary } from "../../src/live.ts";
 import { forwardOf, resolveTier, type Tier } from "../../src/tiers.ts";
 import { requireBundle } from "../guards/support.ts";
 import { gateway } from "../helpers.ts";
@@ -30,10 +30,16 @@ interface Spend {
 }
 
 /** Transport failures (timeout, 429, 5xx) say nothing about the skill description: retry them, then fail the trial loudly. */
-async function loadedSkills(tier: Tier, spend: Spend, skills: Skill[], prompt: string): Promise<string[]> {
+async function loadedSkills(
+	tier: Tier,
+	spend: Spend,
+	skills: Skill[],
+	prompt: string,
+	sample: number,
+): Promise<string[]> {
 	for (let attempt = 0; ; attempt++) {
 		try {
-			return await loadedSkillsOnce(tier, spend, skills, prompt);
+			return await loadedSkillsOnce(tier, spend, skills, prompt, sample);
 		} catch (e) {
 			if (attempt >= 1) throw e;
 			spend.retries++;
@@ -42,8 +48,14 @@ async function loadedSkills(tier: Tier, spend: Spend, skills: Skill[], prompt: s
 	}
 }
 
-async function loadedSkillsOnce(tier: Tier, spend: Spend, skills: Skill[], prompt: string): Promise<string[]> {
-	const gw = await gateway({ forward: forwardOf(tier) });
+async function loadedSkillsOnce(
+	tier: Tier,
+	spend: Spend,
+	skills: Skill[],
+	prompt: string,
+	sample: number,
+): Promise<string[]> {
+	const gw = await gateway({ forward: forwardOf(tier), cassette: { sample } });
 	await runInproc(
 		{
 			gatewayUrl: gw.url,
@@ -118,7 +130,7 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 				return await run();
 			} catch (e) {
 				onError();
-				throw e;
+				throw new NoAnswer(e instanceof Error ? e.message : String(e));
 			}
 		};
 		const unrelated: Record<string, LiveSummary> = {};
@@ -130,10 +142,10 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 			jobs.push(async () => {
 				if (overBudget()) return void skippedForBudget.push(`${name}/fire`);
 				const wrong: string[] = [];
-				const f = await runTrials(trial, async () => {
+				const f = await runTrials(trial, async ({ trial: n }) => {
 					const loaded = await guarded(
 						() => rows[name].fireErrors++,
-						() => loadedSkills(tier, spend, skills, p.fire),
+						() => loadedSkills(tier, spend, skills, p.fire, n),
 					);
 					wrong.push(...loaded.filter((n) => n !== name));
 					return loaded.includes(name);
@@ -146,11 +158,11 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 				if (overBudget()) return void skippedForBudget.push(`${name}/nearMiss`);
 				const s = await runTrials(
 					trial,
-					async () =>
+					async ({ trial: n }) =>
 						!(
 							await guarded(
 								() => rows[name].nearMissErrors++,
-								() => loadedSkills(tier, spend, skills, p.nearMiss),
+								() => loadedSkills(tier, spend, skills, p.nearMiss, n),
 							)
 						).includes(name),
 				);
@@ -165,7 +177,7 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 				if (overBudget()) return void skippedForBudget.push(`unrelated`);
 				unrelated[prompt] = await runTrials(
 					trial,
-					async () => (await loadedSkills(tier, spend, skills, prompt)).length === 0,
+					async ({ trial: n }) => (await loadedSkills(tier, spend, skills, prompt, n)).length === 0,
 				);
 			});
 		mkdirSync(TMP, { recursive: true });

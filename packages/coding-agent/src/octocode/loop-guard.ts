@@ -1,7 +1,7 @@
 import { renderInstruction } from "../core/prompt-template.ts";
 import { memoryMutation } from "./shared/archive-operation.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";

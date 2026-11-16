@@ -12,10 +12,10 @@ import {
 } from "../client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { hostIdentity, hostOutput } from "../host.ts";
-import { visibleControls } from "../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { McpServerLog } from "../log.ts";
-import { cutText } from "../../../common/src/text.ts";
-import { firstLine } from "../../../common/src/clip.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
+import { firstLine } from "@octocodeai/octocode-common/clip";
 
 const DEFAULT_TIMEOUT_SECONDS = 60;
 /** The default bound on one request of a server. */

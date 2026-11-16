@@ -6,7 +6,7 @@ import type { ToolInvocation } from "../../../core/features/types.ts";
 import { agentCall } from "../../child-sessions/agent-call.ts";
 import { toolEffect } from "../tool-effects.ts";
 import { resolveToolPath } from "../../shared/home.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { untilCommand } from "../../shared/until-command.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashCommand } from "../bash-types.ts";

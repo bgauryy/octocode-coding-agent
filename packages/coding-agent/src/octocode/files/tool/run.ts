@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { generateDiffString, normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { splitBom } from "../../../../../common/src/text.ts";
-import { FileLockReleaseError, withFileWriteLock } from "../../../../../common/src/file-write-lock.ts";
+import { splitBom } from "@octocodeai/octocode-common/text";
+import { FileLockReleaseError, withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
 import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
@@ -13,8 +13,8 @@ import {
 	changedOnDisk,
 	sha256,
 	sha256File,
-} from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+} from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { workspaceRoot } from "../../../utils/git-repository.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { notify } from "../../shared/commands.ts";

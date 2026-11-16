@@ -1,5 +1,5 @@
 import { appendFileSync, statSync } from "node:fs";
-import { getFileStamp } from "../../../../common/src/paths.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { scheduleSessionSync, sessionSyncFailed, sessionSyncRecovered } from "./deferred-sync.ts";
 import { mirrorAppended } from "./mirror.ts";
 import type { SessionState } from "./state.ts";

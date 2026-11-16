@@ -4,7 +4,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { withFileWriteLock } from "../../../common/src/file-write-lock.ts";
+import { withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
 import * as gitCommands from "../../src/utils/git-run.ts";
 import { mergeAgent, pendingRefs } from "../../src/octocode/subagents/worktree.ts";
 import { mergeRef } from "../../src/octocode/worktrees/merge.ts";

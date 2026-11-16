@@ -93,6 +93,9 @@ export function rgbToOklab({ r, g, b }: RgbColor): Vector {
 	return linearSrgbToOklab([r / 255, g / 255, b / 255].map(srgbToLinear) as Vector);
 }
 
+/** OKLab lightness of an sRGB color, 0-1. */
+export const rgbToOklabLightness = (rgb: RgbColor): number => rgbToOklab(rgb)[0];
+
 /** Linear sRGB [r, g, b] to sRGB channels (0-255, rounded), clipping out-of-gamut channels. */
 export function linearSrgbToRgb(linear: Vector): RgbColor {
 	const [r, g, b] = linear.map((value) => Math.round(Math.min(1, Math.max(0, linearToSrgb(value))) * 255));

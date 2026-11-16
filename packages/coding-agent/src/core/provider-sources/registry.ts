@@ -5,7 +5,7 @@ import { COPILOT_ENV_VAR } from "./copilot-env.ts";
 import { nodeProviderSourceFs } from "./detect.ts";
 import { isSourceEnabled, normalizeProviderSources, SOURCE_DEFAULTS } from "./gate.ts";
 import type { ProviderSource, ProviderSourceEnvironment, ProviderSourceOverrides } from "./types.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /**
  * The provider sources with their current state, for `/providers`. `overrides` is the `providerSources` setting.

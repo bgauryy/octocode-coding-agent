@@ -4,7 +4,7 @@ import { validateCompactionInstructions } from "../../../core/compaction/manual-
  * /compact, plus project trust after a reload and the trust selector.
  */
 
-import { type Component, Container, Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { type Component, Container, Spacer, ThemedText, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import {
 	SessionImportFileNotFoundError,
@@ -16,7 +16,6 @@ import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { reportBug } from "../bug-report.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { shareSession } from "../session-share.ts";
 import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";

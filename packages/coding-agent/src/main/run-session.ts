@@ -11,8 +11,8 @@ import {
 	PERMISSION_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	SUBAGENT_ENV,
-} from "../../../common/src/env.ts";
-import { normalizePath } from "../../../common/src/paths.ts";
+} from "@octocodeai/octocode-common/env";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { normalizeSessionName, parseArgs, printHelp } from "../cli/args.ts";
 import { listModels } from "../cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "../cli/startup-ui.ts";

@@ -7,8 +7,8 @@ import type { ImageContent } from "@octocodeai/octocode-ai";
 import chalk from "chalk";
 import { openImageFile, resolveUserFilePath } from "../core/image-files.ts";
 import { processImage } from "../utils/image-process.ts";
-import { stripBom } from "../../../common/src/text.ts";
-import { mapConcurrent } from "../../../common/src/map-concurrent.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
+import { mapConcurrent } from "@octocodeai/octocode-common/map-concurrent";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ProcessedFiles {

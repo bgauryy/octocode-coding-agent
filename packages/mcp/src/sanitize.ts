@@ -5,7 +5,7 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Tool as McpTool } from "./client/index.ts";
-import { visibleControls } from "../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 /** Every string in a JSON value with its control and invisible characters made visible; the same object when nothing changed. */
 export function sanitizeJson(value: unknown): unknown {

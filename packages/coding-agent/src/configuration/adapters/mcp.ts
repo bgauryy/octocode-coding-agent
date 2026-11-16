@@ -20,7 +20,7 @@ import {
 } from "../../../../mcp/src/api.ts";
 import { applied, closestIds, nameOf, refused } from "../result.ts";
 import type { ConfigAdapter, ConfigContext, ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "../types.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** The configured servers, as a session started in `ctx.cwd` loads them; connects nothing. */
 export const loadMcpServers = (ctx: Pick<ConfigContext, "agentDir" | "cwd" | "projectTrusted">): LoadedMcpConfig =>

@@ -17,14 +17,16 @@
  */
 
 import type { McpServerEntry } from "./config.ts";
-import { MCP_DEFER_ROLES_ENV } from "../../common/src/env.ts";
+import { MCP_DEFER_ROLES_ENV } from "@octocodeai/octocode-common/env";
 import { configuredMcpToolExposure } from "./servers.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 
 /** What `describe` defers of one server: tools the configuration defers, and tools the auto budget may defer. */
 export interface McpDeferral {
 	deferred: ReadonlySet<string>;
 	auto?: { tools: ReadonlySet<string>; budget: number };
+	/** Tools registered but not declared (`on-demand.ts`): the block lists each by name and trigger. */
+	onDemand?: ReadonlySet<string>;
 }
 
 /** Roles a child may defer (`mcpDefer` in a profile); the value of `OCTOCODE_MCP_DEFER_ROLES` lists them. */
@@ -73,6 +75,8 @@ export function deferralOf(
 	deferRoles: readonly McpDeferRole[] = [],
 	/** `recent`, `usage`: the tools in use (`recentToolKey`); an open tool outside it is deferred. */
 	recent: ReadonlySet<string> = new Set(),
+	/** On-demand tools this session declared in full (`loadedOnDemand`). */
+	loaded: ReadonlySet<string> = new Set(),
 ): McpDeferral {
 	if (!activeTools.includes(MCP_MANAGE_TOOL_NAME)) return { deferred: new Set() };
 	const fallback = parseSetting(setting);
@@ -90,6 +94,12 @@ export function deferralOf(
 	const open = new Set<string>();
 	for (const tool of tools) {
 		const configured = configuredMcpToolExposure(entry.config, tool);
+		// Declared at all, an on-demand tool is deferred (no in-place addition, or the transcript declares it thin), unless
+		// it is in use or this session loaded it: then it is declared in full.
+		if (configured === "onDemand") {
+			if (!loaded.has(tool) && !recent.has(recentToolKey(entry.name, tool))) deferred.add(tool);
+			continue;
+		}
 		const roleDeferred = byRole.has(tool) && configuredMcpToolExposure(serverWide, tool) === undefined;
 		const unused = (fallback === "recent" || fallback === "usage") && !recent.has(recentToolKey(entry.name, tool));
 		if (configured === "deferred" || roleDeferred || (configured === undefined && (fallback === "deferred" || unused)))

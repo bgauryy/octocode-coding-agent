@@ -4,11 +4,11 @@ import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode
 import { hasTmuxSession } from "@octocodeai/octocode-tui/multiplexer";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@octocodeai/octocode-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
-import { redactData, redactSecrets } from "../../../common/src/sanitize.ts";
-import { redactUrlCredentials } from "../../../common/src/url-credentials.ts";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { redactUrlCredentials } from "@octocodeai/octocode-common/url-credentials";
 import { VERSION } from "../config.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
-import { writeZipArchive } from "../utils/zip.ts";
+import { writeZipArchive } from "@octocodeai/octocode-common/zip";
 import {
 	completeSummarization,
 	estimateTokens,

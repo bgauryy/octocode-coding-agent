@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { itemDetail } from "./format.ts";
 import { type BacklogStore, COMPLETION_GUIDANCE, type Item } from "./store.ts";
 

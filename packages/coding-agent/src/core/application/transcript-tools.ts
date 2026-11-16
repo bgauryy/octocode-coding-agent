@@ -1,7 +1,7 @@
 import type { ApplicationTool } from "@octocodeai/octocode-contracts";
 import type { ApplicationAssets } from "./assets.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
-import { recordJsonLength } from "./json-length.ts";
+import { recordJsonLength } from "@octocodeai/octocode-common/json-length";
 import { savedOutputTwin } from "../tools/bash/stored-result.ts";
 
 /** The result a tool's displayed data was last built from. */

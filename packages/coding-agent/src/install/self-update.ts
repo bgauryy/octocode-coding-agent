@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnProcessSync } from "../../../common/src/child-process.ts";
+import { spawnProcessSync } from "@octocodeai/octocode-common/child-process";
 import { getPackageDir, isBunBinary, isBunRuntime } from "./package-detection.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

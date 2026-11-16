@@ -389,6 +389,7 @@ function validationFailure(
 	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
 	const located = errors.filter((error) => error.keyword !== "boolean");
 	const hint = tool.validationHint?.({
+		arguments: toolCall.arguments,
 		properties: failingProperties(located),
 		envelope:
 			located.every((error) => error.instancePath === "") &&

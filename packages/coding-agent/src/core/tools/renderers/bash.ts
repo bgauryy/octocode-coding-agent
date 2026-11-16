@@ -17,7 +17,7 @@ import type { BashToolDetails } from "../bash/outcome.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
 import { reuseText } from "./output.ts";
 import { DEFAULT_MAX_BYTES } from "../truncate.ts";
-import { formatBytes } from "../../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 
 export const BASH_UPDATE_THROTTLE_MS = 100;
 function formatShellCall(args: { command?: string; timeout?: number } | undefined, prompt: string): string {

@@ -1,6 +1,6 @@
 import { readFileSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { registerSecretValue } from "../../common/src/sanitize.ts";
+import { registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { OutputAccumulator } from "../src/core/tools/output-accumulator.ts";
 
 const paths: string[] = [];

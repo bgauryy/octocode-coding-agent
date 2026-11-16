@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
-import { sameSecret } from "../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { EventLog } from "./events.ts";
@@ -76,7 +76,16 @@ export class ApiServer {
 	private readonly token: string;
 	/** Told of each `GET /events` stream that opens: a read that bypasses `dispatch`. */
 	private readonly onStream: ((connection: Connection) => void) | undefined;
-	constructor(dispatch: Dispatch, log: EventLog, token: string, onStream?: (connection: Connection) => void) {
+	/** How long a socket may go without completing a request frame before it is closed. */
+	private readonly frameTimeoutMs: number;
+	constructor(
+		dispatch: Dispatch,
+		log: EventLog,
+		token: string,
+		onStream?: (connection: Connection) => void,
+		frameTimeoutMs: number = API_HTTP_LIMITS.requestTimeout,
+	) {
+		this.frameTimeoutMs = frameTimeoutMs;
 		this.dispatch = dispatch;
 		this.log = log;
 		this.token = token;
@@ -135,7 +144,17 @@ export class ApiServer {
 		const owned = rejected ? this.rejectedSockets : this.sockets;
 		owned.add(socket);
 		let subscription: { close(): void } | undefined;
+		// A peer that connects and sends nothing, or stops mid-frame, would hold a slot until it closes. The deadline runs
+		// only while no complete frame is waiting, so an event stream that has made its request stays open.
+		let deadline: NodeJS.Timeout | undefined;
+		let framed = false;
+		const arm = (waiting: boolean): void => {
+			if (waiting && deadline) return; // dripping bytes does not extend the deadline
+			clearTimeout(deadline);
+			deadline = waiting ? setTimeout(() => socket.destroy(), this.frameTimeoutMs) : undefined;
+		};
 		socket.on("close", () => {
+			arm(false);
 			subscription?.close();
 			owned.delete(socket);
 		});
@@ -169,6 +188,7 @@ export class ApiServer {
 			},
 		};
 		let pending = "";
+		arm(true);
 		socket.setEncoding("utf8");
 		// Every frame is held to MAX_FRAME_BYTES in UTF-8 bytes: a complete line after splitting, and the unterminated rest.
 		const tooLarge = (text: string): boolean => {
@@ -186,11 +206,12 @@ export class ApiServer {
 				pending = pending.slice(newline + 1);
 				if (tooLarge(line)) return;
 				if (!line) continue;
+				framed = true;
 				const parsed = parseRequest(line);
 				if (isResponse(parsed)) write(parsed);
 				else void answer(parsed, this.dispatch, connection).then((response) => response && write(response));
 			}
-			tooLarge(pending);
+			if (!tooLarge(pending)) arm(pending.length > 0 || !framed);
 		});
 	}
 

@@ -160,30 +160,54 @@ describe("what the team shows about an agent", () => {
 		}),
 	];
 
-	it("draws the panel row as tree, name, role, goal › activity, then aligned flags, model, state and time, within the width", () => {
+	it("draws tree, name, role, goal › activity and flags above aligned model, state and time, within the width", () => {
 		const lines = widgetLines(team, "salty-squid", NOW, theme, 150);
-		expect(lines[1]).toBe(
-			" ├ ⠋ 🐙 inky-kraken    implementer  audit auth token refresh › Thinking  20 locks  claude-opus-5-5  working  8m38s  56 tool calls  ≈$2.28",
-		);
-		expect(lines[2]).toBe(
-			" └ ○ 🐙 deep-nautilus  reviewer     review parser changes                                           idle       45s",
-		);
-		for (const width of [150, 100, 70, 40])
+		expect(lines).toHaveLength(5);
+		expect(lines[1]).toBe(" ├ ⠋ 🐙 inky-kraken    implementer  audit auth token refresh › Thinking  20 locks");
+		expect(lines[2]).toMatch(/^ │\s+claude-opus-5-5\s+working\s+8m38s\s+56 tool calls\s+≈\$2\.28$/);
+		expect(lines[3]).toMatch(/^ └ ○ 🐙 deep-nautilus\s+reviewer\s+review parser changes$/);
+		expect(lines[4]).toMatch(/^\s+idle\s+45s$/);
+		for (const [first, second] of [
+			["implementer", "reviewer"],
+			["audit", "review parser"],
+		])
+			expect(lines[1].indexOf(first)).toBe(lines[3].indexOf(second));
+		expect(lines[2].indexOf("working")).toBe(lines[4].indexOf("idle"));
+		expect(lines[2].indexOf("8m38s") + 5).toBe(lines[4].indexOf("45s") + 3);
+		for (const width of [150, 100, 70, 60, 59, 54, 50, 40])
 			for (const line of widgetLines(team, "salty-squid", NOW, theme, width))
 				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 	});
 
 	it("keeps name, model, state and time when the terminal is narrow, dropping stats and shortening the goal first", () => {
-		const medium = widgetLines(team, "salty-squid", NOW, theme, 100)[1];
-		for (const kept of ["inky-kraken", "claude-opus-5-5", "working", "8m38s", "› Thinking"])
-			expect(medium).toContain(kept);
-		expect(medium).toMatch(/audit auth[^›]*… ›/);
-		expect(medium).not.toContain("≈$2.28");
-		// Narrower still: a head row (who, state, time, flags, model) and the activity under it.
-		const narrow = widgetLines(team, "salty-squid", NOW, theme, 70);
-		expect(narrow[1]).toBe(" ├ ⠋ inky-kraken · working · 8m38s · 20 locks · claude-opus-5-5");
-		expect(narrow[2]).toBe(" │   Thinking");
-		expect(narrow.join("\n")).not.toContain("implementer");
+		// Token usage fills the optional stats columns, so narrowing has something to drop.
+		const busy = team.map((m) =>
+			m.id === "inky-kraken" ? { ...m, input: 1_200_000, cacheRead: 1_128_000, output: 35_000 } : m,
+		);
+		const at = (width: number) => widgetLines(busy, "salty-squid", NOW, theme, width);
+		const kept = ["claude-opus-5-5", "working", "8m38s", "1.2M tok", "94% cached"];
+		const wide = at(100);
+		expect(wide[1]).toContain("audit auth token refresh › Thinking");
+		for (const text of [...kept, "56 tool calls", "≈$2.28"]) expect(wide[2]).toContain(text);
+		// Cost goes first, then tool calls; the goal is cut before the activity while the stats shrink.
+		const medium = at(80);
+		expect(medium[2]).not.toContain("≈$2.28");
+		expect(medium[2]).toContain("56 tool calls");
+		const narrow = at(70);
+		expect(narrow[2]).not.toContain("tool calls");
+		for (const text of kept) expect(narrow[2]).toContain(text);
+		expect(narrow[1]).toMatch(/audit auth[^›]*… › Thinking/);
+		expect(narrow[1]).toContain("20 locks");
+		const tighter = at(60);
+		for (const lines of [wide, medium, narrow, tighter]) {
+			expect(lines[1]).toContain("inky-kraken");
+			for (const text of ["claude-opus-5-5", "working", "8m38s"]) expect(lines[2]).toContain(text);
+		}
+		// Below 60 columns: a head row (who, state, time, flags) and the activity under it.
+		const compact = at(59);
+		for (const text of ["inky-kraken", "working", "8m38s", "20 locks"]) expect(compact[1]).toContain(text);
+		expect(compact[2]).toBe(" │   Thinking");
+		expect(compact.join("\n")).not.toContain("implementer");
 	});
 
 	it("lists name, role and goal in `coordinate list` and /agents", () => {

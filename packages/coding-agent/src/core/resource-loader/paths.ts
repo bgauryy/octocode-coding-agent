@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { canonicalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import type { PathMetadata, ResolvedResource } from "../package-manager.ts";
 import { isSyntheticPath } from "../source-info.ts";
 

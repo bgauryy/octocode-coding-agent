@@ -5,7 +5,7 @@ import {
 	type ToolDisplayBlock,
 } from "@octocodeai/octocode-contracts";
 import { GLYPH, Markdown, type Component, renderChanged, trackRenderChanges } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { buildToolDisplay } from "../../../../core/application/transcript-display.ts";
 import type { ToolDefinition, ToolRenderers } from "../../../../core/features/types.ts";
 import { displayText } from "../../../../octocode/render/display.ts";

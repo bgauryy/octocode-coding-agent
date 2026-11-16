@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
-import { redactSecrets, visibleControls } from "../../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
 import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS, WAITING_FOR_USER } from "../protocol.ts";

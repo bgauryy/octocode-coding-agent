@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { Agent, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel, type Model, streamSimple } from "@octocodeai/octocode-ai/compat";
-import { createToolNameMatcher } from "../../../../common/src/mcp-names.ts";
+import { createToolNameMatcher } from "@octocodeai/octocode-common/mcp-names";
 import { AgentSession } from "../agent-session.ts";
 import type { AgentSessionServices } from "../agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "../auth-guidance.ts";

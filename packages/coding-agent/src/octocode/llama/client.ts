@@ -1,6 +1,6 @@
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { raceWithAbortSignal, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
-import { urlCredentialProblem } from "../../../../common/src/url-credentials.ts";
+import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credentials";
 type LlamaModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping";
 
 export interface LlamaModelInfo {

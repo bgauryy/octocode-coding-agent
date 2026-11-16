@@ -237,6 +237,13 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	defaultActive?: boolean;
 
 	/**
+	 * Registered but left undeclared until first use (with `defaultActive: false`): a model call to it activates it, the
+	 * call runs as usual, and the next request declares it after the cached prefix. Without it, a call to an inactive
+	 * tool is refused.
+	 */
+	onDemand?: boolean;
+
+	/**
 	 * Tools this one needs beside it: while it is active they are registered and active too, whatever `--tools`, the
 	 * `defaultTools` setting or a deselection say. The operator's `--exclude-tools` and a tool policy still remove them.
 	 * Honored only on native and base tools; an extension or SDK tool's companions follow the selection like any tool.

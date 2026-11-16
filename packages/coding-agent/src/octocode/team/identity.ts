@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { processStartTime } from "../shared/process.ts";
-import { sanitizeTerminalText, storedText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText, storedText } from "@octocodeai/octocode-common/sanitize";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store/env.ts";
 

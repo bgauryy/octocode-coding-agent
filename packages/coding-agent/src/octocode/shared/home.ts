@@ -13,16 +13,16 @@ export {
 	sessionTempRoot,
 	setCurrentSession,
 } from "../../storage/runtime-paths.ts";
-import { privateDir } from "../../../../common/src/file-mode.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { privateDir } from "@octocodeai/octocode-common/file-mode";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getContextOptimizationDir, getOctocodeHome } from "../../config.ts";
 import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { repoKey, workspaceRoot } from "../../utils/git-repository.ts";
 import { ensureWorkspaceStateDir, WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
 

@@ -61,6 +61,7 @@ export {
 	type DbWriterFallback,
 	type DbWriterStats,
 	dbWriterStats,
+	drainDbWriters,
 	sharedDbWriter,
 	sharedMirrorWriter,
 	writerErrorKind,

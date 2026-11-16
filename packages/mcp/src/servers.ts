@@ -6,7 +6,7 @@ import type {
 	McpServerConfig,
 	RegisteredMcpServer,
 } from "@octocodeai/octocode-contracts/mcp-server";
-import { createToolNameMatcher, isPluginMcpServerName, mcpNamespace } from "../../common/src/mcp-names.ts";
+import { createToolNameMatcher, isPluginMcpServerName, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isStringRecord, LOOPBACK_HOSTS, validateInstall, validateOAuth, validateRoles } from "./server-validation.ts";
 
 /**
@@ -24,7 +24,7 @@ import { isStringRecord, LOOPBACK_HOSTS, validateInstall, validateOAuth, validat
  */
 export const DEFAULT_MCP_EXPOSURE = "direct";
 
-export const MCP_EXPOSURES = ["direct", "deferred", "hidden"] as const satisfies readonly McpExposure[];
+export const MCP_EXPOSURES = ["direct", "deferred", "onDemand", "hidden"] as const satisfies readonly McpExposure[];
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 /**

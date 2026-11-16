@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { splitBom } from "../../../../../common/src/text.ts";
+import { splitBom } from "@octocodeai/octocode-common/text";
 import type { ExtensionToolContext } from "../../../core/features/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { workspaceRoot } from "../../../utils/git-repository.ts";
 import { resolveToolPath } from "../../shared/home.ts";
 import { transformPatch, type ParsedPatch } from "../../tool-input/codex-patch/patch.ts";

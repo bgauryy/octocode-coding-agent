@@ -3,7 +3,7 @@ import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { EXPOSURE_NOTIFY_PREFIX } from "../permission/provenance/exposure.ts";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { Thought } from "../render/thought.ts";
 import { addUsage, contentText, emptyUsage } from "../shared/util.ts";
 import { appliedFileOutcomes } from "../shared/file-outcomes.ts";

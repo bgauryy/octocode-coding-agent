@@ -1,14 +1,14 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { stopTree } from "../../../octocode/shared/process.ts";
 import { adoptTree, prepareTree } from "../../../utils/process-tree.ts";
-import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
+import { attachJsonlLineReader, serializeJsonLine } from "@octocodeai/octocode-common/jsonl";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
 import type { RpcReady } from "../session-identity.ts";
 import { collectUntilSettled, guarded, notifyAll } from "./listeners.ts";
 import { startupTimeout } from "./startup.ts";
 import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
 import { leadsProcessGroup } from "../../../utils/shell.ts";
-import { reportToStderr } from "../../../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 /**
  * The agent process behind an RpcClient: spawns it, reads its JSONL output, dispatches events and

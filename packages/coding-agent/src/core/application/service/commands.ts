@@ -4,7 +4,7 @@ import {
 	type ApplicationEvent,
 	type ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
-import { redactSecrets } from "../../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ApplicationServiceError } from "./delivery.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";

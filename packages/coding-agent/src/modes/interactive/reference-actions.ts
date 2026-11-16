@@ -8,8 +8,8 @@ import {
 	type MarkdownReference,
 } from "@octocodeai/octocode-tui";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { openTarget } from "../../../../common/src/open-target.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openItemLink } from "../../octocode/shared/item-ref.ts";
 import { locationText, openReference, referenceLocation, type ReferenceHost } from "./reference-opener.ts";

@@ -2,11 +2,11 @@ import { activeRates, type ModelCost, type Usage } from "@octocodeai/octocode-ai
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { truncateHead } from "../../core/tools/index.ts";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../../utils/output-budget.ts";
-import { cutText } from "../../../../common/src/text.ts";
-import { clipText, firstLine } from "../../../../common/src/clip.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
+import { clipText, firstLine } from "@octocodeai/octocode-common/clip";
 
 interface TextResult<T = unknown> {
 	content: Array<{ type: "text"; text: string }>;
@@ -140,7 +140,7 @@ export const finiteNumber = (value: unknown): number | undefined =>
 export const stringList = (value: unknown): string[] | undefined =>
 	Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 
-export { MINUTE_MS, HOUR_MS, DAY_MS } from "../../../../common/src/time.ts";
+export { MINUTE_MS, HOUR_MS, DAY_MS } from "@octocodeai/octocode-common/time";
 
 /** Octocode's wording for an extension context used after its session was replaced or reloaded. */
 const STALE_SESSION = "stale after session replacement";

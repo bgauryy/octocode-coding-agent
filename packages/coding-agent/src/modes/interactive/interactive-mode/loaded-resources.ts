@@ -3,8 +3,8 @@
  * a count; ctrl+o lists the items), followed by resource diagnostics.
  */
 
-import { type Component, type Container, GLYPH, SEPARATOR, Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { type Component, type Container, GLYPH, SEPARATOR, Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { getAgentDir } from "../../../config.ts";
 import { contextFilesBudgetWarning, projectContextOf } from "../../../core/context-budget.ts";
 import { collectContextView } from "../../../core/discovery/context-snapshot.ts";
@@ -20,7 +20,6 @@ import {
 	skillListingBudgetChars,
 } from "../../../core/skills/listing-budget.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { legend } from "../../../theme/page-kit.ts";
 import { theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";

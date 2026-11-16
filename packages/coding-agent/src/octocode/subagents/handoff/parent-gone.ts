@@ -1,8 +1,8 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import path from "node:path";
-import { AGENT_ID_ENV, AGENT_RUN_ID_ENV, PARENT_PID_ENV, PARENT_SESSION_ENV } from "../../../../../common/src/env.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { AGENT_ID_ENV, AGENT_RUN_ID_ENV, PARENT_PID_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { sessionDir } from "../../shared/home.ts";
 import { sessionWorkspace } from "../../shared/home/workspace.ts";
 import { savePendingReport } from "./pending.ts";

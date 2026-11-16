@@ -1,7 +1,7 @@
 import { agentCall } from "../child-sessions/agent-call.ts";
 import { fileChanges } from "../tool-input/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
-import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { clipColumns, queryTarget } from "../shared/text.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { Thought } from "../render/thought.ts";

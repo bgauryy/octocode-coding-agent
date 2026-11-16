@@ -12,7 +12,7 @@ import {
 } from "../../../../db/src/api.ts";
 import { agentDbWriter, sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 export type { MemoryFilter, ScopeFilter };
-import { storedSecret, storedText } from "../../../../common/src/sanitize.ts";
+import { storedSecret, storedText } from "@octocodeai/octocode-common/sanitize";
 import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";
 import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, terms } from "./query.ts";
 import { checkRevision, MemoryError, noMemory } from "./errors.ts";

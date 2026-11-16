@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import { OPERATOR_EXCLUDE_TOOLS_ENV, OPERATOR_NO_MCP_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { OPERATOR_EXCLUDE_TOOLS_ENV, OPERATOR_NO_MCP_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { operatorLimits, recordOperatorLimits } from "../../src/octocode/subagents/process/operator-limits.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 

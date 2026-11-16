@@ -4,10 +4,9 @@
  * edits; in one the components take part in signals, in the other each has its own `render` (never tracked), so every
  * frame renders it as before. Their rows must stay identical, and a quiet frame of the tracked tree renders none of them.
  */
-import { Box, type Component, Container, MouseRegion } from "@octocodeai/octocode-tui";
+import { Box, type Component, Container, type Header, Lines, MouseRegion, type Row } from "@octocodeai/octocode-tui";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { ReportView } from "../../src/octocode/render/report.ts";
-import { type Header, Lines, type Row } from "../../src/octocode/render/tool.ts";
 import { purposeBlock } from "../../src/octocode/ui/purpose-block.ts";
 import { reasonRow } from "../../src/octocode/ui/reason-row.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";

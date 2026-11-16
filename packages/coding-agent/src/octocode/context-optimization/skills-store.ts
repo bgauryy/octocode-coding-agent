@@ -10,8 +10,8 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { atomicWriteFileSync, sha256 } from "../../../../common/src/atomic-file.ts";
-import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, withFileLock } from "../../../../common/src/file-write-lock.ts";
+import { atomicWriteFileSync, sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, withFileLock } from "@octocodeai/octocode-common/file-write-lock";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The Agent Skills limit for a description; the prompt cuts a longer one. */

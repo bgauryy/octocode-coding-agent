@@ -28,10 +28,10 @@ export const hasUsageData = (source: UsageAuditSource): boolean => Object.keys(s
 export function toolAudit(
 	source: UsageAuditSource,
 	key: string,
-	state: "direct" | "deferred" | "hidden",
+	state: "direct" | "deferred" | "onDemand" | "hidden",
 	options: { promoted?: boolean; saved?: number } = {},
 ): ToolAudit {
-	const counts = source.counts[key] ?? { declared: 0, called: 0, loaded: 0, refused: 0, used: 0 };
+	const counts = source.counts[key] ?? { declared: 0, called: 0, loaded: 0, calledUndeclared: 0, refused: 0, used: 0 };
 	const lastUsed = source.lastUsed.get(key);
 	const reason =
 		options.promoted === undefined

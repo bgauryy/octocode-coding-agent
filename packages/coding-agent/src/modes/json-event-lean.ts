@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { AgentSessionEvent } from "../core/agent-session.ts";
 import { type JsonAgentSessionEvent, toJsonEvent } from "./json-event.ts";
 
@@ -19,9 +20,6 @@ import { type JsonAgentSessionEvent, toJsonEvent } from "./json-event.ts";
  */
 
 type Record_ = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record_ =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const REFERENCE_FIELDS = ["role", "timestamp", "toolCallId", "toolName", "isError", "stopReason"] as const;
 

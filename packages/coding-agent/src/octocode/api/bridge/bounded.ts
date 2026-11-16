@@ -1,5 +1,5 @@
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { redactData, redactSecrets } from "../../../../../common/src/sanitize.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { saveContentCopy, saveFullOutput } from "../../shared/spill.ts";
 import { capChars } from "../../shared/util.ts";
 import { ERR, MAX_FRAME_BYTES, RpcError } from "../protocol.ts";

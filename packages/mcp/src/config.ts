@@ -45,7 +45,7 @@ import {
 import { mcpLaunchIdentity } from "./launch-identity.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type {

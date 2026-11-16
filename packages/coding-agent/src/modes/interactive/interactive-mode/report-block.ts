@@ -1,8 +1,7 @@
-import { Markdown, Spacer } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { Markdown, Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 type Host = Pick<InteractiveModeHost, "chatContainer" | "getMarkdownThemeWithSettings" | "ui">;

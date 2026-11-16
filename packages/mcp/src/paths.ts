@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { projectMcpConfigPath as projectMcpFile } from "../../common/src/mcp-paths.ts";
+import { projectMcpConfigPath as projectMcpFile } from "@octocodeai/octocode-common/mcp-paths";
 import { hostIdentity, hostPaths, hostVendors } from "./host.ts";
 
 function usesDefaultAgentDir(agentDir: string): boolean {

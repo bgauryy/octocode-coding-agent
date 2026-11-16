@@ -1,4 +1,4 @@
-import { sameSecret } from "../../../../../common/src/env.ts";
+import { sameSecret } from "@octocodeai/octocode-common/env";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The extension event a parent's relay publishes when a child reports what it read (`ChildExposure`). */

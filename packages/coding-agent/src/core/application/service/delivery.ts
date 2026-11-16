@@ -4,7 +4,7 @@ import type { ApplicationStateStore } from "../state.ts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { ApplicationSession } from "../session-port.ts";
 import { inspect } from "node:util";
-import { reportToStderr } from "../../../../../common/src/stderr.ts";
+import { reportToStderr } from "@octocodeai/octocode-common/stderr";
 
 /** Where a subscriber's failure goes: its own handler (a terminal draws it in the transcript), else stderr. */
 export type ListenerErrorHandler = (error: unknown) => void;

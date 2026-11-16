@@ -123,12 +123,19 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 		return;
 	}
 
-	const model = await host.findExactModelMatch(searchTerm);
+	// `/model <id> --set-default` (alias `--default`): switch this chat and save it as the global default.
+	const setDefault = searchTerm.endsWith("--set-default") || searchTerm.endsWith("--default");
+	const modelTerm = setDefault ? searchTerm.replace(/\s+--(?:set-)?default\s*$/, "").trim() : searchTerm.trim();
+
+	const model = await host.findExactModelMatch(modelTerm);
 	if (model) {
 		try {
-			await getApplicationPort(host.session).invoke("setModel", model, { persist: false });
+			await getApplicationPort(host.session).invoke("setModel", model, {
+				persist: setDefault,
+				scope: setDefault ? "global" : undefined,
+			});
 			host.updateEditorBorderColor();
-			host.showStatus(`Model: ${model.id}`);
+			host.showStatus(setDefault ? `Default model: ${model.id}` : `Model: ${model.id}`);
 			void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 		} catch (error) {
 			host.showError(errorMessage(error));
@@ -136,7 +143,8 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 		return;
 	}
 
-	host.showModelSelector(searchTerm);
+	// With `--set-default` and no exact match, search only the model term so the flag never matches a model.
+	host.showModelSelector(setDefault ? modelTerm : searchTerm);
 }
 
 export async function findExactModelMatch(

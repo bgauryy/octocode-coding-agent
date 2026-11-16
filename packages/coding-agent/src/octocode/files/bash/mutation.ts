@@ -2,8 +2,8 @@ import path from "node:path";
 import { shellMutation, shellParserReady } from "../../permission/shell/mutation.ts";
 import { readOnlyCommand } from "../../permission/shell/read-only.ts";
 import { shellPath } from "../../permission/file-access.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspacePaths } from "../../shared/home.ts";
 import { recordMutation } from "../feedback/revisions.ts";
 

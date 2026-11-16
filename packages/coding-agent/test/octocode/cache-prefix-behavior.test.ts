@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getCurrentSystemMessage, getCurrentTools, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { BACKLOG_ITEM_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { VOLATILE_SECTIONS } from "../../src/core/system-prompt-spec.ts";
 import { findToolCacheBoundary } from "../../src/core/tool-roles.ts";

@@ -2,7 +2,7 @@ import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { type ChildFiles, type SessionChild, sessionChildren } from "../child-sessions/session-children.ts";
 import { type ChildSession, childSessionFile } from "./process/session.ts";
 import { REF_PREFIX, repoRoot, worktreesDir } from "./worktree-base.ts";

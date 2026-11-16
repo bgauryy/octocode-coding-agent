@@ -1,6 +1,6 @@
 import type { TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { itemTitle, withItemTitles } from "../render/item-titles.ts";
 import { linkItem } from "../shared/text.ts";
 import { PRIORITY_COLOR, STATE_COLOR, TASK_COLOR, type BoardTheme } from "./board-style.ts";

@@ -6,7 +6,7 @@ import { executeToolCalls } from "../../../agent/src/agent-loop/tool-batch.ts";
 import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { LOOP_HALT_AT, registerLoopGuard } from "../../src/octocode/loop-guard.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";

@@ -1,7 +1,7 @@
 /** The names the model calls MCP tools by. */
 
 import { createHash } from "node:crypto";
-import { isPluginMcpServerName } from "../../common/src/mcp-names.ts";
+import { isPluginMcpServerName } from "@octocodeai/octocode-common/mcp-names";
 
 /** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
 const MAX_TOOL_NAME_LENGTH = 64;

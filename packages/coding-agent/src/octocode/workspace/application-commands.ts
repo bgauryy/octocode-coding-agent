@@ -5,7 +5,7 @@ import {
 } from "@octocodeai/octocode-contracts";
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
 import { type AgentDb, commands } from "../../../../db/src/api.ts";
-import { redactSecrets, storedSecret } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, storedSecret } from "@octocodeai/octocode-common/sanitize";
 
 export class ApplicationCommands implements ApplicationReceiptStore {
 	private readonly db: AgentDb;

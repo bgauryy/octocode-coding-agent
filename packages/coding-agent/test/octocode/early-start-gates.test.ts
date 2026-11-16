@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setMcpReadOnlyTools } from "../../src/octocode/permission/mcp-reads.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { PERMISSION_ID } from "../../src/octocode/permission/mode.ts";
-import { PERMISSION_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { takeTiming } from "../../src/octocode/shared/locks.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

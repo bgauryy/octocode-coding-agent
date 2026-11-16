@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
 import { type AgentDb, type Db, USER_AUTHOR, backlog, meta } from "../../../../db/src/api.ts";
-import { storedText, visibleControls } from "../../../../common/src/sanitize.ts";
+import { storedText, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { refText } from "./row.ts";
 import {
 	type Actor,

@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import path from "node:path";
 import { WORKSPACE_STATE } from "../storage/workspace.ts";
-import { redactSecrets } from "../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 const execFileAsync = promisify(execFile);
 

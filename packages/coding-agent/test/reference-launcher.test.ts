@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectIde } from "../../common/src/terminal-host.ts";
+import { detectIde } from "@octocodeai/octocode-common/terminal-host";
 import {
 	resolveReferenceOpener,
 	windowsLaunchable,

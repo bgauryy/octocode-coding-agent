@@ -22,6 +22,12 @@ setTimeout(() => {
 		tui.stop({ preserveScreen: true });
 		process.exit(0);
 	}
+	if (how === "title-after-stop") {
+		terminal.setTitle("before stop");
+		tui.stop({ preserveScreen: true });
+		terminal.setTitle("late title");
+		process.exit(0);
+	}
 	if (how === "dead-terminal") {
 		// A restore write to a terminal that hung up, then a later exit listener (one that stops child processes).
 		registerExitRestore(() => {

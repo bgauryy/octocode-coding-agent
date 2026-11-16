@@ -1,6 +1,6 @@
 import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
 import { currentToolRoles } from "../../../mcp/src/api.ts";
-import { isMcpToolName } from "../../../common/src/mcp-names.ts";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 /**
  * System prompt construction and project context loading
  */

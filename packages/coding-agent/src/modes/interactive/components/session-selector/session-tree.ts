@@ -1,5 +1,5 @@
 import type { SessionInfo } from "../../../../core/session-manager.ts";
-import { canonicalizePath } from "../../../../../../common/src/paths.ts";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 
 interface SessionTreeNode {
 	session: SessionInfo;

@@ -85,7 +85,7 @@ describe("idle-item nudge gate (rule D2)", () => {
 		const named = nudges(s.fake);
 		expect(named).toHaveLength(1);
 		expect(named[0].message.content).toContain(woken);
-		expect(s.gate.takeDropped()).toBe(0);
+		expect(s.gate.droppedCount()).toBe(0);
 	});
 
 	it("counts a delegation to the item as writing it", async () => {
@@ -101,7 +101,7 @@ describe("idle-item nudge gate (rule D2)", () => {
 			await s.fake.emit("tool_execution_end", { toolCallId: "c1", toolName: "agent", isError: false }, s.ctx);
 		});
 		expect(nudges(s.fake)).toHaveLength(0);
-		expect(s.gate.takeDropped()).toBe(1);
+		expect(s.gate.droppedCount()).toBe(1);
 	});
 
 	it("does not mark a dropped item told: a later run that left it alone gets the nudge", async () => {
@@ -118,12 +118,13 @@ describe("idle-item nudge gate (rule D2)", () => {
 		};
 		await s.run(note);
 		expect(nudges(s.fake)).toHaveLength(0);
-		expect(s.gate.takeDropped()).toBe(1);
+		expect(s.gate.droppedCount()).toBe(1);
+		s.gate.ackDropped(1);
 		// The next run wrote nothing about it while the child keeps running: now it is named, once.
 		await s.run();
 		expect(nudges(s.fake)).toHaveLength(1);
 		expect(nudges(s.fake)[0].message.content).toContain(ref);
-		expect(s.gate.takeDropped()).toBe(0);
+		expect(s.gate.droppedCount()).toBe(0);
 		await s.run();
 		expect(nudges(s.fake)).toHaveLength(1);
 	});
@@ -141,7 +142,7 @@ describe("idle-item nudge gate (rule D2)", () => {
 			await s.fake.emit("tool_execution_end", { toolCallId: "c1", toolName: "backlog", isError: false }, s.ctx);
 		});
 		expect(nudges(s.fake)).toHaveLength(0);
-		expect(s.gate.takeDropped()).toBe(1);
+		expect(s.gate.droppedCount()).toBe(1);
 	});
 
 	it("does not count a failed write, a read, or a write to another item", async () => {
@@ -163,7 +164,7 @@ describe("idle-item nudge gate (rule D2)", () => {
 			await s.fake.emit("tool_execution_end", { toolCallId: "c2", toolName: "backlog", isError: false }, s.ctx);
 		});
 		expect(nudges(s.fake)).toHaveLength(1);
-		expect(s.gate.takeDropped()).toBe(0);
+		expect(s.gate.droppedCount()).toBe(0);
 	});
 
 	it("forgets what the last run did when a new run starts", async () => {
@@ -192,7 +193,7 @@ describe("idle-item nudge gate (rule D2)", () => {
 		await s.run();
 		expect(nudges(s.fake).map((entry) => entry.message.content)).toEqual([expect.stringContaining(other)]);
 		// Not counted as dropped: it was never idle.
-		expect(s.gate.takeDropped()).toBe(0);
+		expect(s.gate.droppedCount()).toBe(0);
 	});
 
 	it("reads item refs the way the backlog spells them", () => {

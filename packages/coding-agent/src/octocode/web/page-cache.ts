@@ -1,4 +1,4 @@
-import { untilAborted } from "../../../../common/src/abort.ts";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
 
 /** A fetched page is reused for this long at most, up to this many pages and bytes in all. */
 const CACHE_TTL_MS = 15 * 60_000;

@@ -2,7 +2,7 @@ import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { USER_SENDER } from "../../shared/messages.ts";
 import { MESSAGE_MAX_CHARS } from "../routing.ts";
 import { saveMessageFile } from "../spill.ts";
-import { cutText } from "../../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /**
  * What goes to the readers of a message: `text` when it fits `MESSAGE_MAX_CHARS`; a longer one is saved whole to a

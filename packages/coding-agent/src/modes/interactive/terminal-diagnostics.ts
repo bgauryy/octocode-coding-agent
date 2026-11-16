@@ -6,7 +6,7 @@ import {
 	type Container,
 	type TuiMainScreen,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 
 interface DiagnosticHost {

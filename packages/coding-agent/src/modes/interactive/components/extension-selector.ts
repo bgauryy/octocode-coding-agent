@@ -3,9 +3,8 @@
  * Displays a list of string options with keyboard navigation.
  */
 
-import { Container, getKeybindings, GLYPH, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
+import { Container, CountdownTimer, GLYPH, Spacer, type TUI, Text, getKeybindings } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar, keyText, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
 import { DETAILS_KEY, hasMore, renderAskCard, startRow, writeInRow } from "../../../octocode/ask/card.ts";

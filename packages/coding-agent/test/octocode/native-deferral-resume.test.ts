@@ -9,7 +9,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { RecentUseRecorder } from "../../../common/src/recent-use.ts";
+import { RecentUseRecorder } from "@octocodeai/octocode-common/recent-use";
 import {
 	type AgentSessionRuntime,
 	type CreateAgentSessionRuntimeFactory,

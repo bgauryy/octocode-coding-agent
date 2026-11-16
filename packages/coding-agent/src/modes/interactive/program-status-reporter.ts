@@ -14,7 +14,7 @@ function firstLine(text: string | undefined): string {
  * settles. Messages are limited to the session name, dialog titles, and the first line of errors; prompts
  * and assistant output are never reported.
  */
-export class ProgramStatusReporter {
+export class SessionStatusReporter {
 	private readonly getTerminal: () => Terminal;
 	private readonly getSessionName: () => string | undefined;
 	private runActive = false;

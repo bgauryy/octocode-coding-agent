@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getAgentDir, getModelsPath } from "../src/config.ts";
-import { homeTilde } from "../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { AuthStatus } from "../src/core/provider-composer/types.ts";
 import { buildProviderSnapshot } from "../src/core/provider-view/snapshot.ts";
 import { providerRows } from "../src/modes/interactive/interactive-mode/provider-rows.ts";

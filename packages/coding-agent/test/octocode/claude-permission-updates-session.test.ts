@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { withFileWriteLock } from "../../../common/src/file-write-lock.ts";
+import { withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixture } from "./permission-session-fixture.ts";
 import { approveFixtureHooks } from "./guard-helpers.ts";

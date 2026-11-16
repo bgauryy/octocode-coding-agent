@@ -3,7 +3,7 @@ import type { ExtensionContext } from "../../src/core/features/index.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { approveFetch } from "../../src/octocode/web/web.ts";
 import { pageFetcher } from "../../src/octocode/web/fetch.ts";
-import type { HostLookup } from "../../../common/src/web-guard.ts";
+import type { HostLookup } from "@octocodeai/octocode-common/web-guard";
 
 const ctx = { cwd: "/tmp" } as ExtensionContext;
 const allowing = (): Permission =>
@@ -42,7 +42,7 @@ describe("approve and fetch share one resolution", () => {
 		const seen: Array<{ addresses?: string[] }> = [];
 		const fetcher = pageFetcher();
 		const options = { addresses: ["93.184.216.34"] };
-		const guard = await import("../../../common/src/web-guard.ts");
+		const guard = await import("@octocodeai/octocode-common/web-guard");
 		const spy = vi.spyOn(guard, "publicFetch").mockImplementation(async (_url, _init, opts) => {
 			seen.push({ addresses: opts?.firstHopAddresses });
 			return new Response("hello", { headers: { "content-type": "text/plain" } });

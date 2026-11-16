@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../../utils/display-path.ts";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { capOutput, contentText } from "../shared/util.ts";
 import {
@@ -13,7 +13,7 @@ import {
 	validateResultAnswer,
 } from "./result-schema.ts";
 import { asRecord, errorMessage as describeError } from "@octocodeai/octocode-contracts/guards";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import {
 	appendScratchFile,
 	snapshotReport,

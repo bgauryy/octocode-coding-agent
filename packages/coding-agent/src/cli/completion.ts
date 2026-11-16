@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { getBuiltinProviders, getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
 import { MCP_COMMANDS, loadMcpConfig, MCP_EXPOSURES } from "../../../mcp/src/api.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 import { getNativeToolNames } from "../octocode/permission/native-tools.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";

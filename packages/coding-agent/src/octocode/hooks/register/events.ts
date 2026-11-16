@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import type { ExtensionAPI } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
-import { envFlag, SUBAGENT_ENV } from "../../../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { claudeSessionEndOverride } from "../profiles.ts";
 import { capContext } from "../runner.ts";

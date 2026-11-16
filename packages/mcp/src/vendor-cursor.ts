@@ -7,7 +7,7 @@
 
 import { basename, sep } from "node:path";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { stripJsonComments } from "../../common/src/json.ts";
+import { stripJsonComments } from "@octocodeai/octocode-common/json";
 import { hostVendors } from "./host.ts";
 import type { McpConfigFile } from "./paths.ts";
 import {

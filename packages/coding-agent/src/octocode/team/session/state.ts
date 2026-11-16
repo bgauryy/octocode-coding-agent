@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
-import { envFlag, ownNonce, SUBAGENT_ENV } from "../../../../../common/src/env.ts";
+import { envFlag, ownNonce, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { interactive } from "../../shared/interactive.ts";
 import { checkInConfig } from "../check-in.ts";
 import { Delivery } from "../delivery.ts";
@@ -118,7 +118,7 @@ export abstract class TeamState {
 		this.name = new SessionTeamName(api, env);
 		this.mail = new Mail(api, () => ownNonce(this.env));
 		this.silenceMs = () => {
-			const minutes = api.getSettings().subagents?.silenceMinutes;
+			const minutes = api.getSettings?.()?.subagents?.silenceMinutes;
 			const valid = typeof minutes === "number" && Number.isFinite(minutes) && minutes >= 0;
 			return (valid ? minutes : SETTINGS_DEFAULTS.subagents.silenceMinutes) * 60_000;
 		};

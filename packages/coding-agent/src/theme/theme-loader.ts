@@ -2,12 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTerminalColorMode, type TerminalColorMode } from "@octocodeai/octocode-tui";
 import { getCustomThemesDir, getThemesDir } from "../config.ts";
-import { stripBom } from "../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { generateSystemThemeColors, SYSTEM_THEME_NAME } from "./system-theme.ts";
 import { resolveThemeColors, splitThemeColors, Theme, withThemeTokenFallbacks } from "./theme-class.ts";
 import type { ValidatedThemeJson } from "./theme-schema.ts";
 import { areTerminalColorsPending, getTerminalColors, getTerminalTheme } from "./theme-terminal.ts";
-import { readJsonFile } from "../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 type ThemeJsonValidator = (label: string, json: unknown) => ValidatedThemeJson;
 

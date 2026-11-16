@@ -8,7 +8,7 @@ import {
 } from "@octocodeai/octocode-contracts/profiler";
 import type { ChromeTrace } from "./trace.ts";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import { redactData } from "../../../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 
 /** The profiler as a route sees it: in this process, or reached through the attach protocol (then answers are promises). */
 export interface ProfilerRoutePort {

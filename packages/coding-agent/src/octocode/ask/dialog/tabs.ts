@@ -1,6 +1,6 @@
 import type { KeybindingsManager } from "@octocodeai/octocode-tui";
 import type { Question } from "@octocodeai/octocode-contracts";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { shortcutText } from "../../shared/keys.ts";
 import type { AskAnswer } from "./answers.ts";
 import { tabMark } from "./marks.ts";

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { workspaces } from "../../../../db/src/api.ts";
-import { resolvePath } from "../../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { getSessionsDir } from "../../config.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";

@@ -9,11 +9,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { spawnProcess, waitForChildProcess } from "../../common/src/child-process.ts";
-import { withFileWriteLock } from "../../common/src/file-write-lock.ts";
+import { spawnProcess, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
+import { withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
 import type { McpServerEntry } from "./config.ts";
 import { binOf, hostDependencyBin } from "./host-dependency.ts";
-import { readManifest } from "../../common/src/package.ts";
+import { readManifest } from "@octocodeai/octocode-common/package";
 import { hostIdentity, hostPaths } from "./host.ts";
 import type { McpInstallConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { warnOnce } from "./warnings.ts";

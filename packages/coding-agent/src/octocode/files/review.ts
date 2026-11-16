@@ -7,7 +7,7 @@ import { kindOption } from "../permission/ask/text.ts";
 import { systemNote } from "../permission/ask/view.ts";
 import { plural } from "../shared/text.ts";
 import { foldLines } from "../permission/effect.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { clipText } from "../shared/util.ts";
 
 /**

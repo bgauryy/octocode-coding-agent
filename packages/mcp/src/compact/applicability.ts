@@ -1,6 +1,6 @@
 import { isNode, type Node } from "./schema-nodes.ts";
 import type { JsonSchema } from "./types.ts";
-import { escapeRegExp } from "../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /**
  * Servers that describe one flat object for several operations state, in each field's description, when the field

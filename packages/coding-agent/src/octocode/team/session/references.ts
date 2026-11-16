@@ -1,4 +1,4 @@
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../../shared/commands.ts";
 import type { Message } from "../model.ts";

@@ -4,12 +4,12 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { DEFAULT_MCP_EXPOSURE } from "./servers.ts";
 import type { McpExposure, McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
-import { hasJsonComments, stripJsonComments } from "../../common/src/json.ts";
-import { stripBom } from "../../common/src/text.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { atomicWriteFileSync } from "../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../common/src/canonical-path.ts";
-import { withFileLockSync } from "../../common/src/file-write-lock.ts";
+import { hasJsonComments, stripJsonComments } from "@octocodeai/octocode-common/json";
+import { stripBom } from "@octocodeai/octocode-common/text";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { withFileLockSync } from "@octocodeai/octocode-common/file-write-lock";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Whether an entry overrides a server defined elsewhere instead of defining one. */
@@ -60,12 +60,14 @@ export function applyMcpServerPatch(
 /**
  * Change one server's settings in the `mcp.json` that defines or overrides it. With `override`, a
  * missing entry is added as an override. Overrides keep default values, since they replace the global
- * server's. Other content is kept; the file is rewritten with its indentation.
+ * server's. Other content is kept; the file is rewritten with its indentation. A patch function receives the server's
+ * entry as the file holds it under the lock (an added override starts empty), so a change built on the current content
+ * does not overwrite a concurrent one.
  */
 export function updateMcpServerConfig(
 	path: string,
 	name: string,
-	patch: McpServerConfigPatch,
+	patch: McpServerConfigPatch | ((current: Record<string, unknown> | undefined) => McpServerConfigPatch),
 	options: { override?: boolean } = {},
 ): void {
 	editMcpServers(path, (servers, parsed) => {
@@ -75,7 +77,7 @@ export function updateMcpServerConfig(
 			parsed.mcpServers = { ...servers, [name]: server };
 		}
 		if (!isRecord(server)) throw new Error(`${path} does not define MCP server "${name}"`);
-		applyMcpServerPatch(server, patch, isMcpOverride(server));
+		applyMcpServerPatch(server, typeof patch === "function" ? patch(server) : patch, isMcpOverride(server));
 		return true;
 	});
 }

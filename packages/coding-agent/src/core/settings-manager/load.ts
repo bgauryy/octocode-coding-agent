@@ -1,5 +1,5 @@
 import { Value } from "typebox/value";
-import { stripBom } from "../../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
 import { ModelAvailabilitySettingsProperties } from "../settings-schema/model-availability.ts";
 import { isMergeableObject } from "./merge.ts";

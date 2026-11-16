@@ -7,7 +7,7 @@ import { activate, activationId } from "../shared/activation.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { projectAgents } from "./projection.ts";
 import { saveCompaction, writeSummaryLibrary } from "./summaries.ts";
 

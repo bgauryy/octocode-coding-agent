@@ -18,7 +18,7 @@ import {
 	SUBAGENT_ENV,
 	SUBAGENT_HOOKS_ENV,
 	TEAM_WORKSPACE_ENV,
-} from "../../../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
 import { processAlive } from "../../shared/process.ts";
 import { SHELL_GROUPS_FILE_ENV } from "../../shared/shell-groups.ts";

@@ -5,8 +5,8 @@ import { resolveToolPath } from "../shared/home.ts";
 import { runsLater, stateFolderRefusal } from "./file-access.ts";
 import { match, type Operation, operations, pathMatch } from "./source-policy/match.ts";
 import { names, type SourceDecision, type SourcePolicy, toolMatches } from "./source-policy/rules.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 
 export function sourceToolDenied(policy: SourcePolicy, name: string): boolean {
 	return names(name).every((sourceName) =>

@@ -1,5 +1,5 @@
 import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
-import { BACKLOG_ITEM_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";

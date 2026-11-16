@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog, type BacklogOptions } from "../../src/octocode/backlog/context.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";

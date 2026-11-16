@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { getMcpToolExposure, type McpServerEntry } from "../config.ts";
 import type { CompactServerInput, CompactToolInput } from "../compact/index.ts";
-import { mcpNamespace } from "../../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { assignMcpToolNames } from "../tool-names.ts";
 import type { McpOAuthCredentialStore } from "../oauth.ts";
 import { createConnection, type McpCommandOptions } from "./shared.ts";

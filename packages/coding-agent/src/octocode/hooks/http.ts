@@ -7,10 +7,10 @@ import {
 	type HookRun,
 } from "./contracts.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { isLinkLocalIp, isLoopbackIp, isMetadataIp } from "../../../../common/src/ip-address.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
-import { escapeRegExp } from "../../../../common/src/regexp.ts";
-import { bareHostname, pinnedFetch } from "../../../../common/src/web-guard.ts";
+import { isLinkLocalIp, isLoopbackIp, isMetadataIp } from "@octocodeai/octocode-common/ip-address";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
+import { bareHostname, pinnedFetch } from "@octocodeai/octocode-common/web-guard";
 
 const RESPONSE_LIMIT = HOOK_OUTPUT_MAX_BYTES;
 const stringArray = (value: unknown): value is string[] =>

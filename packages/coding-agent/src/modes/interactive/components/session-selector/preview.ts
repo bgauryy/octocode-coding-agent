@@ -1,5 +1,5 @@
 import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { sessionTitle } from "../../../../core/session-manager/title.ts";
 import { theme } from "../../../../theme/theme.ts";

@@ -1,4 +1,4 @@
-import { getFileStamp } from "../../../common/src/paths.ts";
+import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { sessions, transcripts } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";

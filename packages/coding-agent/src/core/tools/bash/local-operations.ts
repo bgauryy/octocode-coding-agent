@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
-import { waitForChildProcess } from "../../../../../common/src/child-process.ts";
+import { waitForChildProcess } from "@octocodeai/octocode-common/child-process";
 import { signalTree } from "../../../utils/process-tree.ts";
 import {
 	getShellConfig,

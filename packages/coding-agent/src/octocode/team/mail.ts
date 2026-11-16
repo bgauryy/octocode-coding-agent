@@ -97,7 +97,11 @@ export class Mail {
 
 	/** Like `notice`, but starts a turn when `wake` and the agent is idle (the caller paces wakes). */
 	alert(text: string, wake: boolean): boolean {
-		return this.inject(text, { messages: [{ from: "team", text, at: Date.now() }] }, { triggerTurn: wake, deliverAs: "steer" });
+		return this.inject(
+			text,
+			{ messages: [{ from: "team", text, at: Date.now() }] },
+			{ triggerTurn: wake, deliverAs: "steer" },
+		);
 	}
 
 	private peers: PeerNotices | undefined;

@@ -1,7 +1,7 @@
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext, ToolCallEvent, ToolInfo } from "../../src/core/features/index.ts";
-import { READ_ONLY_ENV, SUBAGENT_ENV, PERMISSION_ENV } from "../../../common/src/env.ts";
+import { READ_ONLY_ENV, SUBAGENT_ENV, PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { toTool } from "../../../mcp/src/client/client/results.ts";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { publishToolRoles, resolveToolRoles, currentToolRoles } from "../../../mcp/src/roles.ts";

@@ -1,7 +1,7 @@
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import { getShellEnv } from "../../utils/shell.ts";
-import { spawnProcessSync } from "../../../../common/src/child-process.ts";
-import { clipText } from "../../../../common/src/clip.ts";
+import { spawnProcessSync } from "@octocodeai/octocode-common/child-process";
+import { clipText } from "@octocodeai/octocode-common/clip";
 import { cliRuntime, resolveOctocodeCli } from "./resolve.ts";
 
 /** What `octocode <path> --help` lists: its commands and its options, each with a short description. */

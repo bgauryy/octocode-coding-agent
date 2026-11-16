@@ -3,8 +3,8 @@ import type { TSchema } from "typebox";
 import { mcpServerGroup } from "./group.ts";
 import { hostPaths } from "./host.ts";
 import type { McpExtensionApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
-import { openTarget } from "../../common/src/open-target.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
 import {
 	getMcpToolExposure,
 	type LoadedMcpConfig,
@@ -34,9 +34,9 @@ import {
 	type McpDeferRole,
 	recentToolKey,
 } from "./deferral.ts";
-import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "../../common/src/env.ts";
-import { recentlyUsed, RecentUseRecorder } from "../../common/src/recent-use.ts";
-import { USAGE_FILE_NAME, UsageRecorder, usageGroupOf, usageSnapshot } from "../../common/src/usage-counts.ts";
+import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { recentlyUsed, RecentUseRecorder } from "@octocodeai/octocode-common/recent-use";
+import { USAGE_FILE_NAME, UsageRecorder, usageGroupOf, usageSnapshot } from "@octocodeai/octocode-common/usage-counts";
 import type { McpNativeTools } from "./manage-tool.ts";
 import { isParentStopped } from "./session-servers.ts";
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
@@ -316,8 +316,8 @@ export class McpExtensionState {
 	}
 
 	/** Counts a tool whose full description the model read with the `mcp` tool. */
-	recordToolLoaded(server: string, tool: string): void {
-		this.#usage.record("loaded", [recentToolKey(server, tool)]);
+	recordToolLoaded(server: string, tool: string, kind: "loaded" | "calledUndeclared" = "loaded"): void {
+		this.#usage.record(kind, [recentToolKey(server, tool)]);
 	}
 
 	/** Counts a call of a deferred tool its schema rejected; the call itself counts as a use. */

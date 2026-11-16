@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { lstatSync } from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { readJsonFile } from "../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 
 export interface ExtensionManifest {
 	extensions?: string[];

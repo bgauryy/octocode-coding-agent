@@ -121,8 +121,19 @@ export default function setup(): () => void {
 		mkdirSync(cacheDir(), { recursive: true });
 		writeFileSync(
 			join(cacheDir(), "testkit-cache-report.json"),
-			JSON.stringify({ generatedAt: new Date().toISOString(), ...summary, cassettes: byFile }, null, "\t"),
+			JSON.stringify(
+				{
+					generatedAt: new Date().toISOString(),
+					...summary,
+					cassettes: byFile,
+					recordedRequests: events
+						.filter((e) => e.outcome === "recorded")
+						.map((e) => ({ file: e.file, latencyMs: e.upstreamMs, usage: e.usage })),
+				},
+				null,
+				"\t",
+			),
 		);
-		if (events.length) console.log(formatSummary(summary));
+		process.stdout.write(`${formatSummary(summary)}\n`);
 	};
 }

@@ -78,6 +78,40 @@ describe.runIf(posix)("api socket overload", () => {
 	});
 });
 
+describe.runIf(posix)("api socket idle deadline", () => {
+	it("closes peers that send no complete frame so later requests are served", async () => {
+		const server = new ApiServer(async () => "ok", new EventLog(), "token", undefined, 150);
+		servers.push(server);
+		const file = socketPath(tmp("octo-idle-"), "s");
+		await server.listenUnix(file);
+		const peers: net.Socket[] = [];
+		const connect = async (): Promise<net.Socket> => {
+			const peer = net.createConnection({ path: file });
+			peers.push(peer);
+			peer.on("error", () => {});
+			await new Promise<void>((resolve) => peer.once("connect", resolve));
+			return peer;
+		};
+		try {
+			const silent = [];
+			for (let i = 0; i < 16; i++) silent.push(await connect());
+			silent[0].write('{"jsonrpc":"2.0"'); // half a frame
+			await Promise.all(silent.map((peer) => new Promise<void>((resolve) => peer.once("close", () => resolve()))));
+			const peer = await connect();
+			const reply = new Promise<{ result?: string }>((resolve) =>
+				peer.once("data", (data) => resolve(JSON.parse(data.toString()))),
+			);
+			peer.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "message.send" })}\n`);
+			expect((await reply).result).toBe("ok");
+			// After its request, a quiet connection is left alone.
+			await new Promise((resolve) => setTimeout(resolve, 400));
+			expect(peer.destroyed).toBe(false);
+		} finally {
+			for (const peer of peers) peer.destroy();
+		}
+	});
+});
+
 describe("api instance ids", () => {
 	it("are Octocode's own and unique", () => {
 		expect(newInstanceId()).toMatch(/^oc-[0-9a-f]{6}$/);

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync, sha256 } from "../../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { atomicWriteFile, atomicWriteFileSync, sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { fence, fieldOf, headerField, oneLine, readHeader } from "./text.ts";
 

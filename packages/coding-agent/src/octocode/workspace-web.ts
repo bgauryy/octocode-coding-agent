@@ -3,7 +3,7 @@ import { startWorkspaceWeb } from "./workspace/server.ts";
 import { createSessionConfig } from "./web-daemon/session-config.ts";
 import type { NativeToolsLive } from "./web-daemon/tool-exposure.ts";
 import { isFolderTrusted } from "./trust/port.ts";
-import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { nativeToolsDeclared, nativeToolsSaved } from "./permission/native-deferral.ts";
 import { getNativeToolNames } from "./permission/native-tools.ts";
 

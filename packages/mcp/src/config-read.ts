@@ -1,7 +1,7 @@
 /** Reads one MCP config file of any vendor into the `mcpServers` shape the loader validates. */
 
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { stripJsonComments } from "../../common/src/json.ts";
+import { stripJsonComments } from "@octocodeai/octocode-common/json";
 import type { McpConfigFile } from "./paths.ts";
 import { readClaudeServers } from "./vendor-claude.ts";
 import { readCodexServers } from "./vendor-codex.ts";

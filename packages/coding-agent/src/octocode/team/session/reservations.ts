@@ -1,5 +1,5 @@
 import { USER_SENDER } from "../../shared/messages.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { HeldLeases } from "../held.ts";
 import type { Lease, LeaseConflict, LeaseRequest } from "../model.ts";
 import type { PeerLease, PeerLeases } from "../peer-leases.ts";

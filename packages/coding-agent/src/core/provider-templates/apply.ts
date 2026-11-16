@@ -1,10 +1,10 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Compile } from "typebox/compile";
-import { atomicWriteFile, sha256 } from "../../../../common/src/atomic-file.ts";
-import { hasJsonComments, stripJsonComments } from "../../../../common/src/json.ts";
-import { stripBom } from "../../../../common/src/text.ts";
-import { urlCredentialProblem } from "../../../../common/src/url-credentials.ts";
+import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { hasJsonComments, stripJsonComments } from "@octocodeai/octocode-common/json";
+import { stripBom } from "@octocodeai/octocode-common/text";
+import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credentials";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ModelsJsonModel, type ModelsJsonProvider, ModelsConfigSchema } from "../model-config.ts";
 import { NO_KEY } from "../models-json-keys.ts";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { READ_ONLY_ENV } from "../../../common/src/env.ts";
+import { READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";

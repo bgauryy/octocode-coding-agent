@@ -1,11 +1,71 @@
 {
 	"name": "@octocodeai/octocode-agentic-testkit",
-	"version": "0.0.0-poc",
+	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "Vitest-native behavior tests for agents: model gateway, MCP mocks, traces and matchers (POC)",
-	"main": "src/index.ts",
+	"description": "Vitest-native behavior tests for any agent: model gateway, MCP mocks, run and prompt caches, traces, statistical trials and matchers",
+	"license": "MIT",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./setup": {
+			"source": "./src/setup.ts",
+			"types": "./dist/setup.d.ts",
+			"import": "./dist/setup.js"
+		},
+		"./cache-report": {
+			"source": "./src/cache-report.ts",
+			"types": "./dist/cache-report.d.ts",
+			"import": "./dist/cache-report.js"
+		},
+		"./tiers": {
+			"source": "./src/tiers.ts",
+			"types": "./dist/tiers.d.ts",
+			"import": "./dist/tiers.js"
+		},
+		"./adapters/reference": {
+			"source": "./src/adapters/reference/index.ts",
+			"types": "./dist/adapters/reference/index.d.ts",
+			"import": "./dist/adapters/reference/index.js"
+		},
+		"./adapters/claude-code": {
+			"source": "./src/adapters/claude-code/index.ts",
+			"types": "./dist/adapters/claude-code/index.d.ts",
+			"import": "./dist/adapters/claude-code/index.js"
+		},
+		"./adapters/codex": {
+			"source": "./src/adapters/codex/index.ts",
+			"types": "./dist/adapters/codex/index.d.ts",
+			"import": "./dist/adapters/codex/index.js"
+		},
+		"./adapters/octocodecode": {
+			"source": "./src/adapters/octocodecode/index.ts",
+			"types": "./dist/adapters/octocodecode/index.d.ts",
+			"import": "./dist/adapters/octocodecode/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"GUIDE.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"sideEffects": [
+		"./dist/setup.js",
+		"./src/setup.ts"
+	],
+	"engines": {
+		"node": ">=24.15"
+	},
 	"scripts": {
+		"build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+		"clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
 		"test": "vitest run",
 		"typecheck": "tsc -p tsconfig.json",
 		"test:guards": "vitest run test/guards",
@@ -13,10 +73,11 @@
 		"tier": "node scripts/run-tier.mjs"
 	},
 	"peerDependencies": {
-		"vitest": "5.1.0"
+		"vitest": ">=5.1.0 <6"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",
+		"typescript": "7.0.2",
 		"vitest": "5.1.0"
 	}
 }

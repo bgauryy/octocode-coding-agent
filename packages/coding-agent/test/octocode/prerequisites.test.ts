@@ -209,7 +209,7 @@ describe("a queued child", () => {
 		await expect(started).resolves.toEqual({});
 		queued.finish();
 		expect(chain.size).toBe(0);
-		expect(chain.start("kelp")).toMatch(/not a held/);
+		expect(chain.start("kelp")).toMatch(/not a queued child/);
 	});
 
 	it("holds when its start is refused, and starts when told", async () => {

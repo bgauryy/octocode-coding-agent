@@ -1,4 +1,4 @@
-import { Text } from "@octocodeai/octocode-tui";
+import { Text } from "./text.ts";
 
 /**
  * Text whose content applies theme colors. Plain `Text` keeps the colors its string was built with, so

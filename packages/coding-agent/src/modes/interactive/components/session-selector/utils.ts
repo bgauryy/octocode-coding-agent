@@ -1,6 +1,7 @@
+import { formatDuration as sharedDuration } from "../../../../utils/duration.ts";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { plainText } from "../styled-line.ts";
-import { homeTilde } from "../../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export function shortenPath(path: string): string {
 	return path && homeTilde(path);
@@ -63,15 +64,7 @@ export function formatStart(date: Date, now: Date = new Date()): string {
 }
 
 /** A span as its two largest units: `45m`, `1h 33m`, `2d 3h`; empty under a minute. */
-export function formatDuration(ms: number): string {
-	const mins = Math.floor(ms / 60_000);
-	if (mins < 1) return "";
-	if (mins < 60) return `${mins}m`;
-	const hours = Math.floor(mins / 60);
-	if (hours < 24) return mins % 60 ? `${hours}h ${mins % 60}m` : `${hours}h`;
-	const days = Math.floor(hours / 24);
-	return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`;
-}
+export const formatDuration = (ms: number): string => sharedDuration(ms, { style: "compact" });
 
 /** A real session start: a valid date after the epoch (listings use the epoch or an invalid date when it is unknown). */
 export const knownStart = (date: Date): boolean => Number.isFinite(date.getTime()) && date.getTime() > 0;

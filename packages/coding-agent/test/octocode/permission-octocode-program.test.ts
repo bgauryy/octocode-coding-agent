@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { recordShellMutation } from "../../src/octocode/files/bash/mutation.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";

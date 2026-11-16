@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
-import { resolvePath } from "../../../../common/src/paths.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { type InheritedSettings, readInheritedSettings } from "./inherited.ts";
 import { noteSettingsWritten, readSettingsFile, writeSettingsFileDeferred } from "./storage-deferred.ts";
 

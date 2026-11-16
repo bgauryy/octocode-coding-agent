@@ -2,7 +2,7 @@ import { basename, dirname } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../package-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 export type ResourceType = "extensions" | "skills" | "prompts" | "themes";
 export type SettingsScope = "user" | "project";

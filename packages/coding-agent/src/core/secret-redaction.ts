@@ -5,7 +5,7 @@
  */
 import type { Credential, ModelAuth, ProviderEnv } from "@octocodeai/octocode-ai";
 import { setProviderTextRedactor } from "@octocodeai/octocode-ai/utils/error-body";
-import { redactSecrets, registerSecretValue } from "../../../common/src/sanitize.ts";
+import { redactSecrets, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 
 /** Header and environment names that carry a credential; other values (content types, account ids) stay readable in errors. */
 const SECRET_NAME = /auth|key|token|secret|password|passwd|cookie|credential|session/iu;

@@ -105,7 +105,7 @@ export function createModelThinkingSubmenu(
 			options: (ctx) => {
 				const model = defaultModelByValue.get(ctx.model);
 				if (!model) return [];
-				const levels = (model.reasoning ? getSupportedThinkingLevels(model) : ["off"]) as ThinkingLevel[];
+				const levels: ThinkingLevel[] = model.reasoning ? getSupportedThinkingLevels(model) : ["off"];
 				const activeLevel = currentModelThinkingLevels[ctx.model];
 				const items: SelectItem[] = levels.map((level) => ({
 					value: level,

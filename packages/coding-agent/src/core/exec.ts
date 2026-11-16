@@ -4,7 +4,7 @@
 
 import { spawn } from "node:child_process";
 import os from "node:os";
-import { waitForChildProcess } from "../../../common/src/child-process.ts";
+import { waitForChildProcess } from "@octocodeai/octocode-common/child-process";
 import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../utils/shell.ts";
 
 /**

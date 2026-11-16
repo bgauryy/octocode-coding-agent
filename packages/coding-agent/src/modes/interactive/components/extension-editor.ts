@@ -13,7 +13,7 @@ import {
 	Text,
 	type TUI,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { editInExternalEditor } from "../external-editor.ts";
 import { getEditorTheme, theme } from "../../../theme/theme.ts";

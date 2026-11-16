@@ -1,5 +1,5 @@
 import { dedupeFieldDocs } from "./field-docs.ts";
-import { escapeRegExp } from "../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /**
  * The generated file as text: the head (instructions, shared docs, shared types) and the tool blocks, with the parts

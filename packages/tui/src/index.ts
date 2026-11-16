@@ -122,7 +122,15 @@ export { splitDoubleEscape } from "./keys/double-escape.ts";
 export { type RenderLatexOptions, renderLatex } from "./latex.ts";
 // Native platform integration
 export { getNativeClipboard, type NativeClipboard } from "./native-platform.ts";
-export { oklabToOkhslLightness } from "./oklab.ts";
+export { oklabToOkhslLightness, rgbToOklabLightness } from "./oklab.ts";
+export {
+	isBusyTitle,
+	TITLE_FRAME_MS,
+	type TitleFormat,
+	type TitleSource,
+	type TitleState,
+	TitlePainter,
+} from "./terminal/title-painter.ts";
 // Terminal multiplexer detection and tmux queries
 export {
 	detectMultiplexer,
@@ -238,3 +246,12 @@ export { stripTerminalSequences } from "./utils.ts";
 export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";
 export { incompleteAnsiStart } from "./utils/ansi-codes.ts";
 export type { WheelScrollLines } from "./wheel-scroll.ts";
+export { createChatViewport } from "./layout/chat-viewport.ts";
+export { type HorizontalViewportRow, renderHorizontalViewport } from "./layout/horizontal-viewport.ts";
+export { CountdownTimer } from "./components/countdown-timer.ts";
+export { ThemedText } from "./components/themed-text.ts";
+export { type Header, Lines, type Row } from "./components/lines.ts";
+export { streamingHighlighter, streamingMarkdownTheme } from "./components/markdown/streaming-highlight.ts";
+export { HighlightCache } from "./components/markdown/highlight-cache.ts";
+export { ReasoningFrames } from "./tui/reasoning-frames.ts";
+export { markPromptRows, Osc133ZoneMarker } from "./terminal/osc133-zone.ts";

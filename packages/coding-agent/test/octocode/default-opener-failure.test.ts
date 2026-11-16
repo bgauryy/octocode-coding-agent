@@ -14,7 +14,7 @@ const opener = vi.hoisted(() => ({
 		throw new Error("spawn xdg-open ENOENT");
 	}),
 }));
-vi.mock("../../../common/src/open-target.ts", () => opener);
+vi.mock("@octocodeai/octocode-common/open-target", () => opener);
 
 let tmp: string;
 let savedDb: string | undefined;

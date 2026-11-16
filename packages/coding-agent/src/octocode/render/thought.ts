@@ -1,4 +1,4 @@
-import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 /** The thinking text kept while it streams: enough to hold its latest sentences. */
 const THOUGHT_TAIL = 2_000;

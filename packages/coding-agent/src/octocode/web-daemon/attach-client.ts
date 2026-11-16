@@ -31,7 +31,7 @@ import type {
 	ProfileUpdate,
 } from "@octocodeai/octocode-contracts/profiler";
 import type { WorkspaceCommand, WorkspaceReceipt, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
-import { LineReader } from "./lines.ts";
+import { LineReader } from "@octocodeai/octocode-common/line-splitter";
 
 const CONNECT_TIMEOUT_MS = 3000;
 const REQUEST_TIMEOUT_MS = 15_000;

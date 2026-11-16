@@ -1,4 +1,4 @@
-import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import fs from "node:fs";
 import path from "node:path";
 import { workspaceStateDir } from "../../../storage/workspace.ts";
@@ -7,7 +7,7 @@ import { readPaths, workspaceScratchDir } from "../../shared/home.ts";
 import { processStartTime, sameProcessAsync } from "../../shared/process.ts";
 import { resolveRetention } from "../../../storage/retention.ts";
 import { DAY_MS } from "../../shared/util.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { teamWorkspace } from "../../team/store/workspace.ts";
 import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";
 

@@ -10,7 +10,7 @@ import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { PermissionRequest } from "../permission/request.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
-import { shortHash } from "../../../../common/src/atomic-file.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { globalPaths } from "../shared/home.ts";
 import { HOOK_MODES, type HookMode } from "../shared/hook-mode.ts";
@@ -26,7 +26,7 @@ import {
 	withCoreTools,
 } from "./profile-tools.ts";
 import { MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/api.ts";
-import { BROWSER_SERVER, mcpNamespace } from "../../../../common/src/mcp-names.ts";
+import { BROWSER_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
 export interface AgentProfile {
 	name: string;

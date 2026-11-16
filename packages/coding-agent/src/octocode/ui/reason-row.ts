@@ -6,8 +6,8 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { isMcpToolName } from "../../../../common/src/mcp-names.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { theme } from "../../theme/theme.ts";
 import { takesCallReason } from "../permission/native-tools.ts";
 import { itemTitle, withItemTitles } from "../render/item-titles.ts";

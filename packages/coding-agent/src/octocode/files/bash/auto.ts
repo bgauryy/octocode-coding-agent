@@ -1,5 +1,5 @@
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
-import { envInt } from "../../../../../common/src/env.ts";
+import { envInt } from "@octocodeai/octocode-common/env";
 import { isKnownLongCommand, type LongCommandSettings, neverExits } from "./long-commands.ts";
 import { effectiveTimeout } from "./results.ts";
 

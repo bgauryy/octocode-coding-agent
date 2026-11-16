@@ -9,9 +9,9 @@ import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "node:timers/promises";
 import { getAgentDir } from "../../config.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { lockSyncWithRetry } from "../../../../common/src/file-write-lock.ts";
-import { normalizePath } from "../../../../common/src/paths.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
+import { normalizePath } from "@octocodeai/octocode-common/paths";
 
 export type AuthStorageData = Record<string, Credential>;
 

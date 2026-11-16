@@ -1,5 +1,5 @@
 import { AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
-import { findOnPath } from "../../../../common/src/find-on-path.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { acpClientHost } from "../external/acp-host.ts";
 import { agentEnv } from "../external/runner-env.ts";
 import { claudeIsolationOptions } from "../external/runner-isolation.ts";

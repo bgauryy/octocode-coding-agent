@@ -15,7 +15,7 @@ import { countsText, itemDetail, itemLine } from "../../src/octocode/backlog/for
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, BacklogStore, type Item, parseRef } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };

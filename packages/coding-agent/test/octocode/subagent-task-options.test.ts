@@ -1,7 +1,7 @@
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { describe, expect, it, vi } from "vitest";
-import { CACHE_RETENTION_ENV } from "../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { childHookMode, type HookMode, sessionHookMode } from "../../src/octocode/shared/hook-mode.ts";

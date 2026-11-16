@@ -7,14 +7,14 @@ import {
 	type FilteringProxyOptions,
 	PROXY_ALL_LOOPBACK,
 	startFilteringProxy,
-} from "../../../../common/src/browser-proxy.ts";
-import { hostKey, portOf } from "../../../../common/src/browser-network.ts";
-import { browserMcpUrls } from "../../../../common/src/browser-mcp.ts";
+} from "@octocodeai/octocode-common/browser-proxy";
+import { hostKey, portOf } from "@octocodeai/octocode-common/browser-network";
+import { browserMcpUrls } from "@octocodeai/octocode-common/browser-mcp";
 import { hostBrowser } from "../../host.ts";
 import { browserStateDir, recordBrowser, recordedProxyPort } from "./owned.ts";
-import { restrictWebRtc as restrictProfile } from "../../../../common/src/browser-webrtc.ts";
-import { classifyHost, type HostLookup, isHttpUrl } from "../../../../common/src/web-guard.ts";
-import { BROWSER_SERVER } from "../../../../common/src/mcp-names.ts";
+import { restrictWebRtc as restrictProfile } from "@octocodeai/octocode-common/browser-webrtc";
+import { classifyHost, type HostLookup, isHttpUrl, reachesMetadata } from "@octocodeai/octocode-common/web-guard";
+import { BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
@@ -166,7 +166,11 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 		}
 	}
 
-	/** The private hosts among the call's own URLs that the permission check asked about (or, with no check, that classify private now). */
+	/**
+	 * The private hosts among the call's own URLs that the permission check asked about (or, with no check, that classify
+	 * private now). A cloud metadata host is never approved, with or without a recorded verdict: a call that skipped the
+	 * permission check (a PermissionRequest hook) must not open one either, and the proxy refuses it again at connect time.
+	 */
 	async function approveOpened(tool: string, args: Record<string, unknown>): Promise<void> {
 		for (const raw of browserMcpUrls(createMcpToolName(BROWSER_SERVER, tool), args)) {
 			let url: URL;
@@ -176,6 +180,7 @@ export function createBrowserGuard(options: BrowserGuardOptions = {}): BrowserGu
 				continue;
 			}
 			if (!isHttpUrl(url)) continue; // A file: or data: page is allowed to open; what it loads is still filtered.
+			if (await reachesMetadata(url, options.lookup)) continue;
 			const key = hostKey(url.hostname, portOf(url));
 			const asked = hostBrowser().mcpAsked(key);
 			if (asked ?? (await classifyHost(url, options.lookup)).kind !== "public") approved.add(key);

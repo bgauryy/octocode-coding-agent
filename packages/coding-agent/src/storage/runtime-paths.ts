@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { privateDir } from "../../../common/src/file-mode.ts";
+import { privateDir } from "@octocodeai/octocode-common/file-mode";
 import { globalPaths } from "./state-paths.ts";
 import { ensureWorkspaceStateDir, workspaceStateDir } from "./workspace.ts";
 

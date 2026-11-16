@@ -1,8 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 import { gitMarkerDir } from "../../../utils/git-marker.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { ownWorktreeRoot } from "../../worktree-paths/own-worktree.ts";
 import { gitOptionsEnd } from "./program-forms.ts";
 import { base, mask, nestedScripts, REMOVERS, SEPARATOR, stdinOf, unhide, words } from "./words.ts";

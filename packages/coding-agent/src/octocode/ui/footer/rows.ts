@@ -1,6 +1,6 @@
 import path from "node:path";
 import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
-import { sanitizeTerminalText, styledLine } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText, styledLine } from "@octocodeai/octocode-common/sanitize";
 import type { StatusEntry } from "../../../core/footer-data-provider.ts";
 import type { ProviderKind } from "../../../core/model-runtime/catalog.ts";
 import { paintStatus } from "../../../theme/status.ts";
@@ -9,9 +9,13 @@ import { CHIPS, type ChipParts, chipLabel, chipShortLabel, PERMISSION_ID } from 
 import { cachedPercent, formatCost, formatTokens, formatTokenUsage, newPromptTokens } from "../../shared/format.ts";
 import { STATUS } from "../../shared/status.ts";
 import type { UsageTotals } from "../../shared/util.ts";
-import { shortThinking } from "./spend.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { fitFooterLine, type FooterPaint, type FooterPart } from "./fit.ts";
+
+const THINKING_SHORT: Record<string, string> = { minimal: "min", medium: "med" };
+
+/** A thinking level in fewer cells for a narrow row. */
+const shortThinking = (level: string) => THINKING_SHORT[level] ?? level;
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing

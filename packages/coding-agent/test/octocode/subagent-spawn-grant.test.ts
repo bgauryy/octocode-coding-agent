@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "../../../common/src/env.ts";
+import { PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "@octocodeai/octocode-common/env";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

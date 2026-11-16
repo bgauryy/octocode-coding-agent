@@ -1,4 +1,4 @@
-import { isJsonDocument } from "../../../common/src/json-color.ts";
+import { isJsonDocument } from "@octocodeai/octocode-common/json-color";
 
 /** A hunk head (`@@ -1,2 +1,3 @@`), a git file head, or the `---`/`+++` pair that opens a file's changes. */
 const UNIFIED_DIFF = /^(?:@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@|diff --git \S+ \S+|--- \S.*\n\+\+\+ \S)/m;

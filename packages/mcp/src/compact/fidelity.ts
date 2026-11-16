@@ -4,7 +4,7 @@ import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
 import { identifier, inert, literal } from "./schema-nodes.ts";
 import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
 import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
-import { escapeRegExp } from "../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/gi;
 

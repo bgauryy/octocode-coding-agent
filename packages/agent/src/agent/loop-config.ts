@@ -14,6 +14,7 @@ type AgentLoopHost = Pick<
 	| "beforeToolCall"
 	| "afterToolCall"
 	| "unknownToolMessage"
+	| "resolveUndeclaredTool"
 	| "finishTurn"
 	| "prepareRequest"
 	| "prepareInput"
@@ -58,6 +59,7 @@ export function createAgentLoopConfig(
 		beforeToolCall: agent.beforeToolCall,
 		afterToolCall: agent.afterToolCall,
 		unknownToolMessage: agent.unknownToolMessage,
+		resolveUndeclaredTool: agent.resolveUndeclaredTool,
 		onListenerError: agent.onListenerError,
 		earlyStart: agent.earlyStart,
 		finishTurn: agent.finishTurn,

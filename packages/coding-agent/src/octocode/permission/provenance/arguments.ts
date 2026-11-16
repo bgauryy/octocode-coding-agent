@@ -1,9 +1,9 @@
 import path from "node:path";
-import { browserMcpUrls } from "../../../../../common/src/browser-mcp.ts";
-import { isMcpToolName } from "../../../../../common/src/mcp-names.ts";
+import { browserMcpUrls } from "@octocodeai/octocode-common/browser-mcp";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { resolveToolPath } from "../../shared/home.ts";
-import { canonicalPath } from "../../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { CONTEXT_FILE_CANDIDATES } from "../../../core/discovery/sources.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { toolEffect } from "../tool-effects.ts";

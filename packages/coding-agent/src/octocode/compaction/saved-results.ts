@@ -8,11 +8,11 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionTempRoot } from "../shared/home.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { SAVED_RESULTS_LIST_LABEL } from "../shared/saved-files.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { contentText } from "../shared/util.ts";
-import { escapeRegExp } from "../../../../common/src/regexp.ts";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /**
  * The files Octocode saved from the part of the conversation a summary replaces. A result bounded when written

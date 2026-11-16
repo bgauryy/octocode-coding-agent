@@ -13,9 +13,9 @@ import {
 import { join } from "node:path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { getFileRevision, normalizePath } from "../../../common/src/paths.ts";
-import { stripBom } from "../../../common/src/text.ts";
-import { watchFileChanges } from "../../../common/src/watch-file.ts";
+import { getFileRevision, normalizePath } from "@octocodeai/octocode-common/paths";
+import { stripBom } from "@octocodeai/octocode-common/text";
+import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
 import {
 	type AuthStorageBackend,
 	type AuthStorageData,

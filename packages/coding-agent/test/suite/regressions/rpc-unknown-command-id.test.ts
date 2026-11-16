@@ -23,7 +23,7 @@ vi.mock("../../../src/core/output-guard.js", () => ({
 
 vi.mock("../../../src/theme/theme.js", () => ({ theme: {} }));
 
-vi.mock("../../../src/modes/rpc/jsonl.js", () => ({
+vi.mock("@octocodeai/octocode-common/jsonl", () => ({
 	attachJsonlLineReader: vi.fn((_stream: NodeJS.ReadableStream, onLine: (line: string) => void) => {
 		rpcIo.lineHandler = onLine;
 		return () => {

@@ -4,10 +4,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type Keybinding, Markdown, Spacer, visibleWidth } from "@octocodeai/octocode-tui";
-import { atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
-import { redactSecrets } from "../../../../../common/src/sanitize.ts";
+import { type Keybinding, Markdown, Spacer, ThemedText, visibleWidth } from "@octocodeai/octocode-tui";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { getDebugLogPath } from "../../../config.ts";
 import { describeCachePolicy } from "../../../core/cache-configuration.ts";
 import { formatCacheWarmingStatus } from "../../../core/cache-warmer.ts";
@@ -16,7 +16,6 @@ import { formatSessionReport } from "../../../octocode/shared/session-report.ts"
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { formatKeyText, keyText } from "../../../theme/theme-tui-helpers.ts";
-import { ThemedText } from "../components/themed-text.ts";
 import { theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
 import { formatResumeCommand } from "./helpers.ts";

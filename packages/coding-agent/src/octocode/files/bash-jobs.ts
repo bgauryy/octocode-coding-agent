@@ -7,12 +7,12 @@ import { bashSessionEnv } from "../../core/tools/bash.ts";
 import {
 	clampTimeoutSeconds,
 	leadsProcessGroup,
-	resolveShell,
+	resolveBashShell,
 	spawnShell,
 	trackDetachedChildPid,
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -26,7 +26,7 @@ import { type JobRecord, recordFile } from "../shared/job-records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
 import type { BashJob, JobExit, ReloadedJob, VerificationReceipt } from "./bash-jobs/types.ts";
 import { jobWhyLine } from "./bash-jobs/message.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /**
  * Background shell jobs for the `bash` tool (bash.ts): each runs in its own process group, with the user's Octocode shell,
@@ -81,7 +81,7 @@ export class BashJobs {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
 		const timeout = clampTimeoutSeconds(asked);
-		const shell = resolveShell(settings);
+		const shell = resolveBashShell(settings);
 		const child = await spawnShell(shell, shellScript(command, settings), { cwd, env: nonInteractiveEnv(env) });
 		if (child.pid === undefined) {
 			// Spawning failed (no shell, EAGAIN, EMFILE): the 'error' event that follows names the cause. Nothing ran.

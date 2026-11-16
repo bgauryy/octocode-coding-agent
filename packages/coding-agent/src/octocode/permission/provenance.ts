@@ -1,12 +1,12 @@
 import type { ToolCallEvent, ToolResultEvent } from "../../core/features/index.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { isWorkspaceReader, readerLocations } from "../shared/local-reads.ts";
-import { secretProblem } from "../../../../common/src/sanitize.ts";
+import { secretProblem } from "@octocodeai/octocode-common/sanitize";
 import { contentText } from "../shared/util.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { archiveRead } from "../shared/archive-operation.ts";

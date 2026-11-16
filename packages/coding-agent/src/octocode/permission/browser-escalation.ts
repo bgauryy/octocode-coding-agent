@@ -1,6 +1,6 @@
 import path from "node:path";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 import { browserMcpEscalations } from "./browser-mcp-escalations.ts";
 

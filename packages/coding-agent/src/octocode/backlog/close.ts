@@ -1,6 +1,6 @@
 import { CLOSE_KINDS, type Closed } from "@octocodeai/octocode-contracts/backlogs";
 import { type Db } from "../../../../db/src/api.ts";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { type Actor, BacklogError, type Item, refuseSecrets } from "./item.ts";
 import { openTasksRefusal } from "./hierarchy.ts";
 import { getItem } from "./reads.ts";

@@ -2,9 +2,9 @@ import { builtinDescription } from "../../core/slash-commands.ts";
 import type { registerPlanning } from "../plan/register.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { PERMISSION_ENV } from "../../../../common/src/env.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { shortcutText } from "../shared/keys.ts";
-import { redactSecrets, sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { type Permission } from "./ask.ts";
 import type { AuditEntry } from "./audit.ts";
 import {

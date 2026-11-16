@@ -1,18 +1,18 @@
 import {
 	hasTmuxSession,
+	TitlePainter,
 	tmuxClientTerminalNames,
 	tmuxPaneAllowsPassthrough,
 	wrapTmuxPassthrough,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../../../../common/src/env.ts";
+import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "@octocodeai/octocode-common/env";
 import { promptTitle } from "../shared/locks.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
-import { TitleTracker } from "./terminal-title.ts";
-import { TitlePainter } from "./title-painter.ts";
+import { plainTitle, TitleTracker, terminalTitle } from "./terminal-title.ts";
 import { registerPresentWarming } from "./present-warming.ts";
 
 /**
@@ -168,12 +168,15 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 
 	const tui = (current: ExtensionContext | undefined): current is ExtensionContext =>
 		current?.mode === "tui" && current.hasUI;
-	const painter = new TitlePainter({
-		state: () => title.state,
-		target: () => (tui(ctx) ? { cwd: ctx.cwd, setTitle: (text) => ctx?.ui.setTitle(text) } : undefined),
-		description: () => api.getSessionName()?.trim() || firstPrompt,
-		agents: () => work.agents() ?? work.background().length,
-	});
+	const painter = new TitlePainter(
+		{
+			state: () => title.state,
+			target: () => (tui(ctx) ? { cwd: ctx.cwd, setTitle: (text) => ctx?.ui.setTitle(text) } : undefined),
+			description: () => api.getSessionName()?.trim() || firstPrompt,
+			agents: () => work.agents() ?? work.background().length,
+		},
+		{ full: terminalTitle, plain: plainTitle },
+	);
 	const paintTitle = (force = false) => painter.paint(force);
 	/** The user is back: drop a finished or failed mark. */
 	const seen = () => {

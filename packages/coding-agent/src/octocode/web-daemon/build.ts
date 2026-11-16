@@ -1,6 +1,6 @@
 import { renderDaemonHtml } from "@octocodeai/octocode-webview";
 import { VERSION } from "../../config.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { inlineScriptHash } from "../workspace/inline-script-hash.ts";
 
 export interface DaemonPage {

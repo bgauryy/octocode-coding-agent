@@ -4,6 +4,7 @@
  */
 
 import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { updateMcpServerConfig } from "../../../../mcp/src/api.ts";
 import type { ConfigContext } from "../types.ts";
 import { loadMcpServers, switchTarget } from "./mcp.ts";
@@ -11,7 +12,7 @@ import { loadMcpServers, switchTarget } from "./mcp.ts";
 /** What a pin or an `Available to` change tells the user: sessions that already started keep what they declared. */
 export const NEXT_SESSION = "It applies from the next session; running sessions keep what they declared.";
 
-type McpServerPatch = Parameters<typeof updateMcpServerConfig>[2];
+type McpServerPatch = Exclude<Parameters<typeof updateMcpServerConfig>[2], (...args: never[]) => unknown>;
 
 /** The scope a change is written for; the file is the one `switchTarget` picks for it. */
 export type McpWriteScope = "global" | "project";
@@ -42,9 +43,19 @@ function patchMcpServer(
 	const entry = loaded.servers.find((candidate) => candidate.name === server);
 	if (!entry) throw new UnknownMcpServerError(server);
 	const target = switchTarget(entry, loaded, scope, ctx);
-	updateMcpServerConfig(target, entry.name, patch({ toolExposure: { ...entry.config.toolExposure } }), {
-		override: target !== entry.source,
-	});
+	// Built from the file's own pins while its lock is held, so a pin another session wrote meanwhile is kept. An entry
+	// without pins of its own (a fresh override) starts from the pins the loaded server has.
+	updateMcpServerConfig(
+		target,
+		entry.name,
+		(current) =>
+			patch({
+				toolExposure: isRecord(current?.toolExposure)
+					? { ...(current.toolExposure as Record<string, McpExposure>) }
+					: { ...entry.config.toolExposure },
+			}),
+		{ override: target !== entry.source },
+	);
 	return target;
 }
 

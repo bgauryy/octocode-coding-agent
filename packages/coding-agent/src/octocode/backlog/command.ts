@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
-import { openTarget } from "../../../../common/src/open-target.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { openTarget } from "@octocodeai/octocode-common/open-target";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { doItPrompt } from "./actions.ts";
 import { type Backlog, openBacklog, userActor } from "./context.ts";

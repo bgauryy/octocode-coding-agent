@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { BacklogError, TaskError, type BacklogStore } from "../backlog/store.ts";
 import { applyBoardWrite } from "../backlog/web-commands.ts";
 import { readJsonBody } from "../shared/json-body.ts";

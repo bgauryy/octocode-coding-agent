@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installedPackageDir, readManifest } from "../../../../common/src/package.ts";
+import { installedPackageDir, readManifest } from "@octocodeai/octocode-common/package";
 import { isBunBinary } from "../../config.ts";
 
 /** The research CLI `octocode` that `@octocodeai/octocodecode` depends on: its entry script and package version. */

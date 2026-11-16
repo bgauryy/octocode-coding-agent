@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { clipText, textResult } from "../shared/util.ts";
 import { SESSION_NOTE_BODY_MAX } from "./limits.ts";
 import { compileQuery, searchable } from "./safe-pattern.ts";

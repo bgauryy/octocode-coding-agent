@@ -2,7 +2,7 @@ import type { ApplicationAwaiting, Question } from "@octocodeai/octocode-contrac
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import type { ExtensionUIAskView } from "../../core/features/types.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { clipText, firstLine } from "../shared/util.ts";
 import { promptTitle } from "../shared/locks.ts";
 

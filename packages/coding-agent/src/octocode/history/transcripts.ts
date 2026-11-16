@@ -4,12 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
-import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
+import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { HISTORY_BYTES, scanCursor, scanHistory, scanResume } from "./search.ts";
 import { sessionsRoot } from "../shared/home.ts";
 import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 
 /**
  * The history a session may read: archives of compacted messages and session records (`archive.ts`). Its own

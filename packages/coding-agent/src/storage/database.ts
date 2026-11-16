@@ -9,6 +9,8 @@ import {
 	sharedDbWriter,
 	sharedMirrorWriter,
 } from "../../../db/src/api.ts";
+/** Waits (bounded) for queued database writes: call before `process.exit`, which skips the exit drain. */
+export { drainDbWriters } from "../../../db/src/api.ts";
 import { agentDbPath, globalPaths, transcriptDbPath } from "./state-paths.ts";
 
 function locations(file: string, env: NodeJS.ProcessEnv) {

@@ -1,5 +1,5 @@
 import { appendFileSync, closeSync, existsSync, fstatSync, openSync, readSync, statSync } from "node:fs";
-import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
+import { parseJsonlLine } from "@octocodeai/octocode-common/jsonl";
 import { scheduleSessionSync } from "./deferred-sync.ts";
 import { generateId } from "./entries.ts";
 import { forkHint, mergeForeignEntries } from "./shared-file.ts";

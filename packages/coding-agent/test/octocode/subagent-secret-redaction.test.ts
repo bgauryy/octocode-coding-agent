@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { clearSecretValues, registerSecretValue } from "../../../common/src/sanitize.ts";
+import { clearSecretValues, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import type { ChildNotices } from "../../src/octocode/subagents/notices.ts";
 import { runSubagent, STARTUP_RETRY_ENV } from "../../src/octocode/subagents/process.ts";

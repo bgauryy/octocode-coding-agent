@@ -7,7 +7,7 @@ import {
 } from "../../../core/tools/edit-diff.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import { dirname } from "node:path";
-import { splitBom } from "../../../../../common/src/text.ts";
+import { splitBom } from "@octocodeai/octocode-common/text";
 
 /** The `file` tool's edit and write engines: exact-match replacement and whole-file writes behind the per-file mutation queue. */
 

@@ -1,6 +1,6 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { Theme } from "../../theme/theme.ts";
 import { textBlock } from "../render/tool.ts";
 import { clip } from "../shared/text.ts";

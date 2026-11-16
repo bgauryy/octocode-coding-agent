@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { parseJsonlLine } from "../../../../../common/src/jsonl.ts";
+import { parseJsonlLine } from "@octocodeai/octocode-common/jsonl";
 import type { ReadonlySessionManager } from "../../../core/session-manager.ts";
 import { EntryCursor } from "../../shared/entry-cursor.ts";
 import { AGENT_RESULT_TYPE } from "../../shared/messages.ts";

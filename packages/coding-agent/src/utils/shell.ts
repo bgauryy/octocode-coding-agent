@@ -171,7 +171,7 @@ export function getPowerShellConfig(): ShellConfig {
 }
 
 /** Which shell runs a command: PowerShell on Windows when asked, else the configured or discovered bash. */
-export function resolveShell(settings: { type?: string; shellPath?: string } = {}): ShellConfig {
+export function resolveBashShell(settings: { type?: string; shellPath?: string } = {}): ShellConfig {
 	return settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
 }
 

@@ -22,7 +22,7 @@ import {
 } from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ConfigWriteError } from "./config-write.ts";
 import { readJsonBody } from "../shared/json-body.ts";
 import type { Reply, TokenAccess } from "./http-util.ts";

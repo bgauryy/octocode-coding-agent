@@ -5,7 +5,7 @@ import { LoginDialogComponent } from "../../../src/modes/interactive/components/
 import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 
-vi.mock("../../../../common/src/open-target.ts", () => ({
+vi.mock("@octocodeai/octocode-common/open-target", () => ({
 	openTarget: vi.fn(async () => undefined),
 }));
 

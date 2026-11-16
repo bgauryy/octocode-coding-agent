@@ -1,5 +1,5 @@
 import type { PathMatch } from "@octocodeai/octocode-contracts/backlogs";
-import { untilAborted } from "../../../../common/src/abort.ts";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
 import {
 	type Note,
 	type NoteKind,

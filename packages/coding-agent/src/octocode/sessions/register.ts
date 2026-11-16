@@ -1,7 +1,7 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { sessions as sessionRows } from "../../../../db/src/api.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
 import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";

@@ -1,5 +1,5 @@
 import { GLYPH, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { DialogTheme } from "./dialog/theme.ts";
 import { type AskView, PREVIEW_LINES } from "../shared/ask-view.ts";
 

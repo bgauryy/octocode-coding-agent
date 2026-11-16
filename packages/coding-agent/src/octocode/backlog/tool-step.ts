@@ -1,4 +1,4 @@
-import { storedText } from "../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { taskLine } from "./task-format.ts";

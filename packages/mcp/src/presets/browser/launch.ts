@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { hostIdentity } from "../../host.ts";
-import { BROWSER_BIN, BROWSER_PACKAGE } from "../../../../common/src/mcp-names.ts";
+import { BROWSER_BIN, BROWSER_PACKAGE } from "@octocodeai/octocode-common/mcp-names";
 
 export interface BrowserLaunch {
 	command: string;

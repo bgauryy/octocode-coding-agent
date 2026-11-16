@@ -7,13 +7,15 @@ import {
 	GLYPH,
 	type Markdown,
 	type MarkdownTheme,
-	renderChanged,
 	MouseRegion,
+	Osc133ZoneMarker,
+	ReasoningFrames,
 	Spacer,
 	Text,
+	renderChanged,
 	trackRenderChanges,
 } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { ApplicationAssets } from "../../../core/application/assets.ts";
 import { normalizeApplicationMessage } from "../../../core/application/normalize.ts";
@@ -22,8 +24,6 @@ import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
 import { AssistantMarkdown } from "./assistant-markdown.ts";
 import { LongResponse } from "./long-response.ts";
-import { ReasoningFrames } from "./reasoning-frames.ts";
-import { Osc133ZoneMarker } from "./osc133-zone.ts";
 import {
 	ContentAttachmentComponent,
 	contentText,

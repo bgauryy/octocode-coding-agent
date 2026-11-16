@@ -1,4 +1,4 @@
-import { formatBytes } from "../../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import type { TruncationResult } from "../truncate.ts";
 
 /** How a command ended, as the first part of the header. */

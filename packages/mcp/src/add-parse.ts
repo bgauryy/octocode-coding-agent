@@ -1,6 +1,6 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { McpAddCommand } from "@octocodeai/octocode-contracts/config";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { validateMcpServerConfig } from "./servers.ts";
 
 /** One server as pasted: the executable or endpoint plus its secrets-bearing maps, before a scope is chosen. */

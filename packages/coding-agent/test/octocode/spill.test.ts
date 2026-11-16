@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sha256 } from "../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import {
 	boundImagePart,

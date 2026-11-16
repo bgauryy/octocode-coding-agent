@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Header, Lines, type Row } from "../../src/octocode/render/tool.ts";
+import { type Header, Lines, type Row } from "@octocodeai/octocode-tui";
 
 const header = (right: string): Header => ({ left: "✓ Read(", summary: "src/some/long/path/to/a/file.ts", right });
 const collapsed = (): Row[] => [

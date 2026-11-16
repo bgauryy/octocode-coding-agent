@@ -7,7 +7,7 @@ import type {
 	ExtensionContext,
 } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
-import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
+import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { interactive } from "../shared/interactive.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 

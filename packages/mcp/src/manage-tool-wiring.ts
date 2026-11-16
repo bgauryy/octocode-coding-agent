@@ -9,7 +9,7 @@ import { createMcpManageTool, type ManagedMcpServer, NATIVE_SERVER } from "./man
 import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
-import { hideTools } from "./tool-registry.ts";
+import { hideTools, loadOnDemand } from "./tool-registry.ts";
 
 // The model's `mcp` tool lists, inspects, restarts and stops this session's servers; configuration files stay unchanged.
 export function registerMcpManageTool(state: McpExtensionState): void {
@@ -39,6 +39,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 			loaded: (server, tool) => {
 				state.recordToolLoaded(server, tool);
 				if (server === NATIVE_SERVER) state.options.nativeTools?.loaded?.(tool);
+				else loadOnDemand(state, server, tool);
 			},
 			...(state.options.nativeTools ? { nativeTools: state.options.nativeTools } : {}),
 			instructions: (name) => serverInstructions(state, name),

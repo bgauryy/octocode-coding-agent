@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { stripBom } from "../../../../common/src/text.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import type { FileGuard } from "../files/tool/guard.ts";
 
 /**

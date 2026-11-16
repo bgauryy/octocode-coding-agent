@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
-import { SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { jobNotice } from "../../src/octocode/subagents/report.ts";
 import { createHarness, getAssistantTexts, type Harness } from "../suite/harness.ts";
 import { tmp } from "./helpers.ts";

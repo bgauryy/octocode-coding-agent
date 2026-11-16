@@ -2,7 +2,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ModelConfig } from "../../../core/model-config.ts";
 import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
 import { getModelsPath } from "../../../config.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { PageRow } from "../../../theme/manage-page.ts";
 import { providerStatus, removeProviderCredential, setProviderEnabled } from "./provider-actions.ts";
 import { providerDefinitionFile } from "./provider-custom.ts";

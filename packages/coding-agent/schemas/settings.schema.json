@@ -1232,6 +1232,12 @@
           "description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
           "default": 300
         },
+        "silenceMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minutes a working subagent may make no progress (no model reply or tool event) before its parent is told, again at twice and four times the interval; the parent decides what to do, nothing is stopped. 0 turns it off.",
+          "default": 10
+        },
         "wakeHoldSeconds": {
           "type": "number",
           "minimum": 0,

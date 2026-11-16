@@ -1,10 +1,10 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { readChildReport, type SessionChild, sessionChildren } from "./session-children.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
 import { formatClock } from "../shared/format.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 
 /**

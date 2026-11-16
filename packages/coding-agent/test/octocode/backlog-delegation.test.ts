@@ -11,7 +11,7 @@ import { attachReport, heldItem } from "../../src/octocode/backlog/delegation.ts
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogError, type BacklogStore, COMPLETION_GUIDANCE } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };

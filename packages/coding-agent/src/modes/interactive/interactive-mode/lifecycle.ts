@@ -1,3 +1,4 @@
+import { drainDbWriters } from "../../../storage/database.ts";
 import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
 /**
  * Exit, suspend and shutdown: Ctrl+C, Ctrl+D and Ctrl+Z, signal handlers, and stopping the terminal UI.
@@ -88,6 +89,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		await host.ui.terminal.drainInput(1000);
 		host.stop();
 		await host.ui.terminal.drainOutput?.();
+		await drainDbWriters();
 		process.exit(0);
 	}
 
@@ -108,6 +110,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	}
 
 	await host.ui.terminal.drainOutput?.();
+	await drainDbWriters();
 	process.exit(0);
 }
 

@@ -14,7 +14,7 @@ import { hookEventsReport } from "../hooks/register/report.ts";
 import type { HooksView } from "../hooks/register/types.ts";
 import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { confirmAction, successNotice } from "../shared/page.ts";
 import { createMcpToolsSource } from "./mcp-tools.ts";
 import { HarnessPicker } from "./picker.ts";

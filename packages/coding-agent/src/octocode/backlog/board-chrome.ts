@@ -1,6 +1,6 @@
 import { type RowColumn, fitRows } from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { shortcutText } from "../shared/keys.ts";
 import { fitHints, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import { type BoardTheme, EPIC_GLYPH, STATE_COLOR, STATE_GLYPH } from "./board-style.ts";

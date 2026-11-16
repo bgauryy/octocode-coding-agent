@@ -54,7 +54,7 @@ import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerProcesses } from "./processes/register.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
 import { Subcommands } from "./shared/commands.ts";
-import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "../../../common/src/env.ts";
+import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { setCurrentSession } from "./shared/home.ts";
 import { registerTrustCommand } from "./trust/command.ts";
 import { registerSecurityCommand } from "./guard/command.ts";

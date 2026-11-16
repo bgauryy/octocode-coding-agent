@@ -3,6 +3,7 @@ import {
 	type EditorOptions,
 	type EditorTheme,
 	type Keybinding,
+	markPromptRows,
 	matchesKey,
 	splitDoubleEscape,
 	type TUI,
@@ -19,6 +20,8 @@ interface BorderStatus {
 export type CustomEditorOptions = EditorOptions & {
 	/** Render working, compaction, summarization, and retry status in the editor's top border. */
 	embedWorkingStatus?: boolean;
+	/** Whether the editor's first row is marked as a shell prompt (OSC 133 A and B); unset: never. */
+	markPrompt?: () => boolean;
 };
 
 /**
@@ -28,6 +31,7 @@ export class CustomEditor extends Editor {
 	private keybindings: KeybindingsManager;
 	private workingStatusIndicator: BorderStatus | undefined;
 	public readonly embedWorkingStatus: boolean;
+	private readonly markPrompt: (() => boolean) | undefined;
 	public actionHandlers: Map<AppKeybinding, () => void> = new Map();
 
 	// Special handlers that can be dynamically replaced
@@ -47,6 +51,12 @@ export class CustomEditor extends Editor {
 		super(tui, theme, options);
 		this.keybindings = keybindings;
 		this.embedWorkingStatus = options?.embedWorkingStatus ?? false;
+		this.markPrompt = options?.markPrompt;
+	}
+
+	override render(width: number): string[] {
+		const lines = super.render(width);
+		return this.markPrompt?.() ? markPromptRows(lines) : lines;
 	}
 
 	setWorkingStatusIndicator(indicator: BorderStatus | undefined): void {

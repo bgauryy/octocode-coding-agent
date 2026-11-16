@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
-import { mask, unhide } from "../../../../common/src/shell-words.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { mask, unhide } from "@octocodeai/octocode-common/shell-words";
 import type { Finding, ItemFile, Rating, ReviewItem } from "./types.ts";
 
 /**

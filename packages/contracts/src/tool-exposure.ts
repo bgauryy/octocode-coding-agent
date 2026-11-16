@@ -4,7 +4,7 @@ import { StringEnum } from "./schema.ts";
 /**
  * The Tools panel of the configuration page: how much of each tool a session declares to the model, and the pin that
  * fixes it. `direct` is the full description and schema, `deferred` the description with thin parameters until the
- * tool is used, `hidden` not declared at all. Rows name configured servers, so only the launch capability reads them
+ * tool is used (an MCP `onDemand` tool shows as `deferred` here), `hidden` not declared at all. Rows name configured servers, so only the launch capability reads them
  * (`DAEMON_ROUTES.configTools` is under `/api/admin/`).
  */
 

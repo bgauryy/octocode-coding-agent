@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
 const watcher = vi.hoisted(() => ({ changed: undefined as (() => void) | undefined }));
-vi.mock("../../common/src/watch-file.ts", () => ({
+vi.mock("@octocodeai/octocode-common/watch-file", () => ({
 	watchFileChanges: (_path: string, changed: () => void) => {
 		watcher.changed = changed;
 		return () => {};

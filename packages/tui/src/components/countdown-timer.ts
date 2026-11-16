@@ -2,7 +2,9 @@
  * Reusable countdown timer for dialog components.
  */
 
-import { animationClock, MOTION, type TUI } from "@octocodeai/octocode-tui";
+import { animationClock } from "../tokens/clock.ts";
+import { MOTION } from "../tokens/design.ts";
+import type { TUI } from "../tui/types.ts";
 
 export class CountdownTimer {
 	private unsubscribe: (() => void) | undefined;

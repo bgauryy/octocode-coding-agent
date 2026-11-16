@@ -13,7 +13,7 @@ import {
 	type DocSummary,
 } from "@octocodeai/octocode-contracts/docs";
 import { mermaidScript } from "@octocodeai/octocode-webview";
-import { redactData } from "../../../../common/src/sanitize.ts";
+import { redactData } from "@octocodeai/octocode-common/sanitize";
 import { WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
 import { workspaceOctocodeDir } from "../shared/home.ts";
 import { docKind, MAX_DOC_BYTES, summarize } from "./doc-summary.ts";

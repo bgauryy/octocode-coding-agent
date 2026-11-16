@@ -32,7 +32,7 @@ import {
 	SKILL_SNAPSHOT_FILE_ENV,
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
-} from "../../../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { outputDir } from "../../shared/home.ts";
 import { childHookMode, type HookMode } from "../../shared/hook-mode.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../worktree-paths/prompt-root.ts";
@@ -51,7 +51,7 @@ import { DEFAULT_MAX_REQUESTS } from "../budget.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
-import { PRIVATE_FILE_MODE } from "../../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /** Asks the Anthropic API for its cache-miss reason (`ai/src/api/anthropic-messages/cache-diagnostics.ts`). */
 const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";

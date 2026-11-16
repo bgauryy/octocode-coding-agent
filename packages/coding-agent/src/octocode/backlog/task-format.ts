@@ -1,5 +1,5 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 
 /** `T3 [ongoing] Goal (B12) — result`: the owner is `(session)` for a session task; `owner: false` omits it (under its item). */
 export function taskLine(task: BacklogTask, options: { owner?: boolean } = {}): string {

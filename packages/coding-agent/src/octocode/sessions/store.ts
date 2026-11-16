@@ -13,7 +13,7 @@ import {
 import { agentDbWriter } from "../../storage/database.ts";
 import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 import { processStartTime } from "../shared/process.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 interface SessionStats {
 	cost: number;

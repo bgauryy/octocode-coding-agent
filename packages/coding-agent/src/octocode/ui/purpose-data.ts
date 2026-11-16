@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 export interface StatedPurpose {
 	row?: number;

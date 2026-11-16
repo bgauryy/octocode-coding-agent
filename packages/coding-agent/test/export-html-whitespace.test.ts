@@ -1,7 +1,7 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ansiLinesToHtml } from "../src/core/export-html/ansi-to-html.ts";
+import { ansiLinesToHtml } from "@octocodeai/octocode-common/ansi-to-html";
 import { purposeRows, reasonRow } from "../src/octocode/ui/reason-row.ts";
 import { createToolHtmlRenderer } from "../src/core/export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../src/core/features/types.ts";

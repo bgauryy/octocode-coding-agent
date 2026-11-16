@@ -1,5 +1,5 @@
 import type { OptionRole, Question, QuestionOption } from "@octocodeai/octocode-contracts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ExtensionUIAskOptions } from "../../core/features/types.ts";
 import { type AskView, isRecommended } from "../shared/ask-view.ts";
 import { type AskQuestion, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";

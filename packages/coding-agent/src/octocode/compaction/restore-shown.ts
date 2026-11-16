@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import type { LineRange } from "../files/coverage.ts";
 
 /**

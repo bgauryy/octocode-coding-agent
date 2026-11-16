@@ -1,15 +1,15 @@
 import { renderInstruction } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../../../common/src/atomic-file.ts";
-import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "../../../../common/src/env.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { formatTokens } from "../shared/format.ts";
 import { sessionFolder, sessionOutputDir } from "../shared/home.ts";
-import { visibleControls } from "../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { stringList } from "../shared/util.ts";
 import { RECORD_FILE } from "./archive/record.ts";
 import { MESSAGES_HEADING, headerField, oneLine, readHeader } from "./archive/text.ts";
-import { PRIVATE_FILE_MODE } from "../../../../common/src/file-mode.ts";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /**
  * The archive of a session's compacted history: one Markdown file per compaction, `<n>-<compaction entry id>.md`, in the

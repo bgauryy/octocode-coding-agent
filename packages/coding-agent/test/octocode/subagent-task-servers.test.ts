@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import type { ExtensionAPI } from "../../src/core/features/types.ts";
-import { MCP_SESSION_SERVERS_FILE_ENV } from "../../../common/src/env.ts";
+import { MCP_SESSION_SERVERS_FILE_ENV } from "@octocodeai/octocode-common/env";
 import { McpExtensionState } from "../../../mcp/src/state.ts";
 import {
 	parseMcpSessionServers,

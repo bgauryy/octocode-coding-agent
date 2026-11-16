@@ -1,5 +1,5 @@
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { plural } from "../../../../common/src/clip.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { plural } from "@octocodeai/octocode-common/clip";
 import type { BashToolDetails } from "../../core/tools/index.ts";
 import { formatDuration } from "../../utils/duration.ts";
 import type { VerificationReceipt } from "./bash-jobs/types.ts";

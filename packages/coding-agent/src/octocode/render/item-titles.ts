@@ -1,4 +1,4 @@
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 /** Longest title drawn next to an ID, in characters, ellipsis included. */
 export const TITLE_CAP = 48;

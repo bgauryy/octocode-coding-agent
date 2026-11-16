@@ -5,7 +5,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
  */
 
 import * as path from "node:path";
-import { SEPARATOR, Spacer, Text } from "@octocodeai/octocode-tui";
+import { SEPARATOR, Spacer, Text, createChatViewport } from "@octocodeai/octocode-tui";
 import { APP_NAME, APP_TITLE } from "../../../config.ts";
 import { setMirrorNoticeHandler } from "../../../core/session-manager/mirror.ts";
 import { deferSettingsWrites } from "../../../core/settings-manager/storage-deferred.ts";
@@ -16,7 +16,6 @@ import { holdCompileCacheFlush } from "../../../cli/compile-cache.ts";
 import { isOfflineModeEnabled } from "../../../utils/env-flag.ts";
 import { ensureTool } from "../../../utils/tools-manager.ts";
 import { checkForNewOctocodeVersion } from "../../../utils/version-check.ts";
-import { createChatViewport } from "../chat-viewport.ts";
 import { formatKeyText, keyHint, keyText, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../../../theme/theme.ts";

@@ -1,5 +1,5 @@
 import { accessSync, constants } from "node:fs";
-import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 
 /** Ordered filename variants shared by synchronous tracking and asynchronous reads. */
 function readPathCandidates(resolved: string): string[] {

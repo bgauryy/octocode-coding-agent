@@ -5,7 +5,7 @@ import {
 	carriesClaudeSubscriptionToken,
 } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { deriveAgentRoute } from "@octocodeai/octocode-contracts/config";
-import { homeTilde } from "../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { getAgentDir, getModelsPath } from "../../config.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import { type CredentialState, credentialState } from "../provider-composer/credential-state.ts";

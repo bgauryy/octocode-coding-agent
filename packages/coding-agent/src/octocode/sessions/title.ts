@@ -4,7 +4,7 @@ import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
-import { deadline } from "../../../../common/src/deadline.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
 
 /** How long the title call may take before it is given up. */
 // The call runs in the background and its write is guarded, so a slow model costs nothing; 5 s dropped 13 of 30 titles

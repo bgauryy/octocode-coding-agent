@@ -6,17 +6,17 @@ import {
 	linkedWorktreeFact,
 	type SessionSurface,
 } from "../core/system-prompt.ts";
-import { terminalHostFacts } from "../../../common/src/terminal-host.ts";
+import { terminalHostFacts } from "@octocodeai/octocode-common/terminal-host";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./instructions/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import { getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
-import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "../../../common/src/env.ts";
+import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "@octocodeai/octocode-common/env";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { BROWSER_SERVER } from "../../../common/src/mcp-names.ts";
-import { browserMcpTool } from "../../../common/src/browser-mcp.ts";
+import { BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
+import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
 import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
 import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
 import { agentCall } from "./child-sessions/agent-call.ts";

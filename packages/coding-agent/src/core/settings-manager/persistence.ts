@@ -1,5 +1,5 @@
 import { retentionProblems } from "../../storage/retention.ts";
-import { stripBom } from "../../../../common/src/text.ts";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
 import { ignoredBuiltinSwitches } from "../features/builtin-ids.ts";
 import { describeIgnoredKeys, ignoredSettingsKeys } from "./ignored-keys.ts";

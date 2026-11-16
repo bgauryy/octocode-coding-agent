@@ -39,10 +39,10 @@ export type ExecutedToolCallOutcome = {
 	durationMs: number;
 };
 
-/** The `beforeToolCall`, `afterToolCall` and `unknownToolMessage` hooks of {@link AgentLoopConfig}. */
+/** The `beforeToolCall`, `afterToolCall`, `unknownToolMessage` and `resolveUndeclaredTool` hooks of {@link AgentLoopConfig}. */
 export type ToolCallHooks = Pick<
 	AgentLoopConfig,
-	"beforeToolCall" | "afterToolCall" | "unknownToolMessage" | "onListenerError"
+	"beforeToolCall" | "afterToolCall" | "unknownToolMessage" | "resolveUndeclaredTool" | "onListenerError"
 >;
 
 function prepareToolCallArguments(tool: AgentTool<any>, toolCall: AgentToolCall): AgentToolCall {
@@ -103,7 +103,7 @@ async function prepareCallUntimed(
 	if (signal?.aborted) {
 		return { kind: "immediate", result: createErrorToolResult("Operation aborted"), isError: true };
 	}
-	const tool = tools.find((t) => t.name === toolCall.name);
+	const tool = tools.find((t) => t.name === toolCall.name) ?? config.resolveUndeclaredTool?.(toolCall.name);
 	if (!tool) {
 		return {
 			kind: "immediate",

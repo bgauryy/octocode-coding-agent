@@ -1,10 +1,10 @@
+import { renderHorizontalViewport } from "@octocodeai/octocode-tui";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { generateDiffString } from "../src/core/tools/edit-diff.ts";
 import { renderDiff } from "../src/theme/diff.ts";
 import { hintLine, hintText } from "../src/theme/theme-tui-helpers.ts";
 import { OAuthSelectorComponent } from "../src/modes/interactive/components/oauth-selector.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
-import { renderHorizontalViewport } from "../src/modes/interactive/components/tree-selector/viewport.ts";
 import { noticeLine } from "../src/modes/interactive/interactive-mode/display.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

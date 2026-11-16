@@ -1,7 +1,7 @@
 import type { ApplicationMessage, ApplicationTool } from "@octocodeai/octocode-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { transcriptHistory, transcriptWindow } from "../src/core/application/transcript-history.ts";
-import { PersistentMap } from "../src/core/application/persistent-map.ts";
+import { PersistentMap } from "@octocodeai/octocode-common/persistent-map";
 import { createApplicationState } from "../src/core/application/state.ts";
 import { ApplicationTranscript } from "../src/core/application/transcript.ts";
 

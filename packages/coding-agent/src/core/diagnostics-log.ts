@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
-import { PRIVATE_FILE_MODE } from "../../../common/src/file-mode.ts";
-import { lockSyncWithRetry } from "../../../common/src/file-write-lock.ts";
-import { redactSecrets } from "../../../common/src/sanitize.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
+import { lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { getAgentDir } from "../config.ts";
 
 /** A background problem that had no reader when it happened (a headless run's failed index write). */
@@ -22,14 +22,8 @@ function problemLogPath(agentDir = getAgentDir()): string {
 	return join(agentDir, "problems.json");
 }
 
-function isRecord(value: unknown): value is ProblemRecord {
-	const record = value as ProblemRecord | null;
-	return (
-		typeof record === "object" &&
-		record !== null &&
-		typeof record.timestamp === "string" &&
-		typeof record.message === "string"
-	);
+function isProblemRecord(value: unknown): value is ProblemRecord {
+	return isRecord(value) && typeof value.timestamp === "string" && typeof value.message === "string";
 }
 
 function load(path: string): { records: ProblemRecord[]; problem?: string } {
@@ -43,7 +37,7 @@ function load(path: string): { records: ProblemRecord[]; problem?: string } {
 	try {
 		const parsed: unknown = JSON.parse(text);
 		if (!Array.isArray(parsed)) return { records: [], problem: "not a JSON array" };
-		return { records: parsed.filter(isRecord) };
+		return { records: parsed.filter(isProblemRecord) };
 	} catch (error) {
 		return { records: [], problem: errorMessage(error) };
 	}

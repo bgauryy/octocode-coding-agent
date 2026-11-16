@@ -5,7 +5,7 @@
 
 import { isDeepStrictEqual } from "node:util";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { mcpNamespace } from "../../common/src/mcp-names.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { LoadedMcpConfig } from "./config.ts";
 import { startConnection } from "./connections.ts";
 import { isSelected } from "./exposure.ts";

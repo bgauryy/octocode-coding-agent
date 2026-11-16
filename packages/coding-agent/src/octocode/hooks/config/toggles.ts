@@ -8,7 +8,7 @@ import {
 } from "../../../core/extensibility/toggles.ts";
 import { vendorDefaultOn } from "../../../core/discovery/vendors/switch.ts";
 import { vendorToggleId } from "../../../core/discovery/vendors/types.ts";
-import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { HOOK_EVENTS, type HookEvent } from "../catalog.ts";
 import type { HookConfig, HookHandler } from "../contracts.ts";
 import { hookIdentity } from "./calls.ts";

@@ -1,5 +1,5 @@
 import os from "node:os";
-import { formatBytes } from "../../utils/bytes.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
 
 /**
  * What a local model of this size means for this machine, when it may not fit: a model is held in memory while it runs,

@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "../../../../common/src/env.ts";
+import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { historyWindows } from "../../storage/retention.ts";
 import { registeredWorkspace, registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";

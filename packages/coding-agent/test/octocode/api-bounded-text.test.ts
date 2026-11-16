@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type * as Sanitize from "../../../common/src/sanitize.ts";
+import type * as Sanitize from "@octocodeai/octocode-common/sanitize";
 
 const calls = vi.hoisted(() => ({ redact: 0, save: 0, saveFails: false }));
-vi.mock("../../../common/src/sanitize.ts", async (importOriginal) => {
+vi.mock("@octocodeai/octocode-common/sanitize", async (importOriginal) => {
 	const original = await importOriginal<typeof Sanitize>();
 	return {
 		...original,

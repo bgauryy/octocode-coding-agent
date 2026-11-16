@@ -107,12 +107,13 @@ The `skills` setting takes patterns and also filters auto-discovered skills: `"s
 
 Core skills ship inside Octocode and load in every root session whatever `OCTOCODE_EXTRA_SKILLS` says. Subagents receive them through their coordinator.
 
-| Skill                           | Use it to                                                                                                                                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `octocode-backlog-grooming`     | Groom the backlog like a sprint review: check every open item's state, age and relevance against the code, close done, obsolete or duplicate items on evidence, release stale claims, assign or comment         |
-| `octocode-context-optimization` | Rewrite what agents read of skills and MCP servers: skill descriptions ([optimized descriptions](#optimized-descriptions)) and MCP server files ([compact presentation](mcp-reference.md#compact-presentation)) |
-| `octocode-debugging`            | Debug and profile programs through `bash`: lldb, gdb, pdb, a Node inspector script, crash and hang stacks, CPU and heap profiles                                                                                |
-| `resume-external-harness`       | Find, read and resume Claude Code, Codex and Cursor sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                   |
+| Skill                           | Use it to                                                                                                                                                                                                                                    |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `octocode-backlog-grooming`     | Groom the backlog like a sprint review: check every open item's state, age and relevance against the code, close done, obsolete or duplicate items on evidence, release stale claims, assign or comment                                      |
+| `octocode-context-optimization` | Rewrite what agents read of skills and MCP servers: skill descriptions ([optimized descriptions](#optimized-descriptions)) and MCP server files ([compact presentation](mcp-reference.md#compact-presentation))                              |
+| `octocode-critical-thinking`    | Stress-test a consequential decision, plan or claim with the mental models that apply (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's Law), scaled to the stakes; ends with conclusion, key risks and confidence |
+| `octocode-debugging`            | Debug and profile programs through `bash`: lldb, gdb, pdb, a Node inspector script, crash and hang stacks, CPU and heap profiles                                                                                                             |
+| `resume-external-harness`       | Find, read and resume Claude Code, Codex and Cursor sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                                                |
 
 ## Invoke a skill
 

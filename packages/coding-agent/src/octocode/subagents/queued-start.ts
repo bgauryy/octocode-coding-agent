@@ -2,7 +2,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Backlog } from "../backlog/context.ts";
 import { heldNotice } from "../backlog/graph-notice.ts";
-import { cutText } from "../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 import type { ChainQueue } from "./chain.ts";
 import { type Prerequisite, prerequisiteName } from "./prerequisites.ts";
 

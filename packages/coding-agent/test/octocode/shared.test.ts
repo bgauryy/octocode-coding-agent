@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { atomicWriteFile, atomicWriteFileSync } from "../../../common/src/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { dirsToRepoRoot } from "../../src/utils/repo-dirs.ts";
 import { repoKey, workspaceRoot } from "../../src/utils/git-repository.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";
@@ -14,11 +14,11 @@ import {
 	PERMISSION_NONCE_FILE_ENV,
 	sameSecret,
 	takeNonce,
-} from "../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { formatCost, formatTokens, formatTokenUsage } from "../../src/octocode/shared/format.ts";
 import { workspaceScratchDir } from "../../src/octocode/shared/home.ts";
 import { getPackageDir } from "../../src/config.ts";
-import { installedPackageDir, readManifest } from "../../../common/src/package.ts";
+import { installedPackageDir, readManifest } from "@octocodeai/octocode-common/package";
 import { killTree, processAlive, stopTree } from "../../src/octocode/shared/process.ts";
 import { staleEntries } from "../../src/octocode/shared/sweep.ts";
 import {
@@ -39,7 +39,7 @@ import {
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
-import { cutText } from "../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 describe("untyped field guards", () => {
 	it("read a string, or nothing, from any value", () => {

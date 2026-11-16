@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { uuidv7 } from "@octocodeai/octocode-ai";
-import { atomicWriteFile, atomicWriteFileSync } from "../../../../../common/src/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ResultDetails } from "../run-types.ts";
 import { claimSuffix, releaseDeadClaims } from "../../shared/claims.ts";

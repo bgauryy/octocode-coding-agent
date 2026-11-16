@@ -1,11 +1,6 @@
-import {
-	type Component,
-	renderChanged,
-	trackRenderChanges,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@octocodeai/octocode-tui";
+import type { Component } from "../tui/component.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils/text.ts";
 
 /**
  * One drawn row. `lead` (such as the `⎿` gutter) prefixes its first line only; a wrapped row's continuation lines take

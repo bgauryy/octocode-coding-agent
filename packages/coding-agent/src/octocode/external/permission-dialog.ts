@@ -3,7 +3,7 @@ import type { ExtensionContext } from "../../core/features/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { ask } from "../ask/ask.ts";
 import { permissionAnswer } from "../ask/decode.ts";
-import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
+import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { ExternalPolicy } from "./manager.ts";
 
 /** What each ACP option kind means to the person: only these two are offered. */

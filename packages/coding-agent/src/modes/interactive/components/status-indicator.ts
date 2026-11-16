@@ -1,12 +1,13 @@
 import {
-	animationClock,
 	type Component,
+	CountdownTimer,
 	Loader,
 	MOTION,
 	SEPARATOR,
+	type TUI,
+	animationClock,
 	stripTerminalSequences,
 	truncateToWidth,
-	type TUI,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
@@ -15,9 +16,8 @@ import { formatDuration, formatTokens } from "../../../octocode/shared/format.ts
 import { liveShimmer } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
 import { getRunClock } from "../../../utils/run-clock.ts";
-import { CountdownTimer } from "./countdown-timer.ts";
 import { hintLine, interruptKey, rawKeyHint } from "../../../theme/theme-tui-helpers.ts";
-import { styledLine } from "../../../../../common/src/sanitize.ts";
+import { styledLine } from "@octocodeai/octocode-common/sanitize";
 
 /** Longer details are thoughts or targets, not a verb: they stay plain. */
 const SHIMMER_MAX_CHARS = 120;

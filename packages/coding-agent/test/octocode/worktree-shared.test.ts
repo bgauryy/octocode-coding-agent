@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { HOME_NAMES } from "../../src/octocode/shared/home.ts";
-import { shortHash } from "../../../common/src/atomic-file.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { pruneNotice } from "../../src/octocode/subagents/prune-notice.ts";
 import { noteMerge } from "../../src/octocode/subagents/ref-link.ts";
 import {

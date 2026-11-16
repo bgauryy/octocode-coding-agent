@@ -1,5 +1,5 @@
 import { renderInstruction } from "../../../core/prompt-template.ts";
-import { storedText } from "../../../../../common/src/sanitize.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
 import { LINE_MAX } from "../identity.ts";

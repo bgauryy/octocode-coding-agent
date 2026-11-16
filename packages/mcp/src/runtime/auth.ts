@@ -3,7 +3,7 @@
 import { McpAuthRequiredError } from "../client/index.ts";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "../client/oauth/index.ts";
 import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
-import { firstLine } from "../../../common/src/clip.ts";
+import { firstLine } from "@octocodeai/octocode-common/clip";
 import type { McpServerEntry } from "../config.ts";
 import {
 	createMcpAuthProvider,

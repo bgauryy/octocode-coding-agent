@@ -2,7 +2,7 @@ import type { ChildProcessByStdio } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { Readable } from "node:stream";
 import type { GitSource } from "../utils/git.ts";
-import { resolvePath } from "../../../common/src/paths.ts";
+import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { runCommand, runCommandCapture, runCommandSync, spawnCaptureCommand } from "./package-manager/commands.ts";
 import {
 	getGitInstallPath,

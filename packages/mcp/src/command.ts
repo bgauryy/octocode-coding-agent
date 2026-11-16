@@ -1,7 +1,7 @@
 /** The `/mcp` slash command: its subcommands, argument completions, and the TUI manager entry. */
 
 import { addMcpWithUi } from "./add-ui.ts";
-import { firstLine } from "../../common/src/clip.ts";
+import { firstLine } from "@octocodeai/octocode-common/clip";
 import { CATALOG_ACTIONS, CATALOG_USAGE, catalogCommand } from "./catalog-command.ts";
 import type { McpCommandContext } from "./host/types.ts";
 import { hostPaths } from "./host.ts";

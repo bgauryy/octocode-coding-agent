@@ -1,5 +1,5 @@
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { readJsonFile } from "../../../../../common/src/json.ts";
+import { readJsonFile } from "@octocodeai/octocode-common/json";
 import { resolvePluginPath } from "../../../core/plugin-manifest.ts";
 import { checkIdentifier, MarketplaceError, type PluginSource, parsePluginSource } from "./source.ts";
 

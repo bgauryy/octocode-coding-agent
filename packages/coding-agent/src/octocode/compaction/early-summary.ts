@@ -14,7 +14,7 @@
  */
 
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { sha256 } from "../../../../common/src/atomic-file.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import type { CompactionPreparation, CompactionResult } from "../../core/compaction/index.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
 import type { ExtensionContext, SessionCompactPrewarmEvent } from "../../core/features/index.ts";

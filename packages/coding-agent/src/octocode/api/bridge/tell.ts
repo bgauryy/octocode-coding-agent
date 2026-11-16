@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "../../../core/features/index.ts";
-import { visibleControls } from "../../../../../common/src/sanitize.ts";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { ERR, RpcError, stringParam } from "../protocol.ts";
 import type { Connection } from "../server.ts";

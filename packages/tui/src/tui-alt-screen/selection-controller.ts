@@ -13,13 +13,10 @@ import {
 	getWordSelection,
 	selectedTextLines,
 } from "./selection.ts";
+import { collectSelectionText, NATIVE_CLIPBOARD_BYTES, TERMINAL_CLIPBOARD_BYTES } from "./selection-copy.ts";
+
+export { NATIVE_CLIPBOARD_BYTES };
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
-
-/** 100,000 base64 characters: the fallback terminal clipboard's existing transfer limit. */
-const TERMINAL_CLIPBOARD_BYTES = 75_000;
-
-/** The most selected text handed whole to an injected (native) clipboard. */
-export const NATIVE_CLIPBOARD_BYTES = 8 * 1024 * 1024;
 
 /** Alternate-screen state and operations the text selection reads and calls live. */
 export interface AltScreenSelectionHost {
@@ -57,6 +54,7 @@ export class AltScreenSelection {
 	private selectionAutoScrollDirection: -1 | 0 | 1 = 0;
 	private selectionAutoScrollTimer?: NodeJS.Timeout;
 	selectionPressActive = false;
+	private copyGeneration = 0;
 	pressedUrl?: string;
 	selectionDragged = false;
 	private readonly host: AltScreenSelectionHost;
@@ -340,28 +338,17 @@ export class AltScreenSelection {
 	}
 
 	async copySelectionToClipboard(): Promise<boolean> {
-		const lines: string[] = [];
-		let bytes = 0;
-		for (const line of selectedTextLines(
-			this.getSelectionBounds(),
-			this.host.getPreviousScreen(),
-			this.host.getCurrentLayout(),
-		)) {
-			bytes += Buffer.byteLength(line) + (lines.length > 0 ? 1 : 0);
-			if (this.host.copySelection) {
-				if (bytes > NATIVE_CLIPBOARD_BYTES) {
-					this.host.flash("Copy failed: selection too large to copy", COPY_ERROR_FLASH_DURATION_MS);
-					return false;
-				}
-			} else if (bytes > TERMINAL_CLIPBOARD_BYTES) {
-				this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
-				return false;
-			}
-			lines.push(line);
+		const generation = ++this.copyGeneration;
+		const result = await collectSelectionText(
+			selectedTextLines(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout()),
+			this.host.copySelection ? NATIVE_CLIPBOARD_BYTES : TERMINAL_CLIPBOARD_BYTES,
+			() => generation !== this.copyGeneration,
+		);
+		if (result.error) {
+			this.host.flash(result.error, COPY_ERROR_FLASH_DURATION_MS);
+			return false;
 		}
-		const text = lines.join("\n");
-		if (!text) return false;
-		return this.copyTextToClipboard(text);
+		return result.text ? this.copyTextToClipboard(result.text) : false;
 	}
 
 	async copyTextToClipboard(text: string): Promise<boolean> {

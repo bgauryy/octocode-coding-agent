@@ -15,7 +15,7 @@ import { shortPath } from "../../utils/display-path.ts";
 import { resultBlock, toolHeader } from "../render/tool.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ENTITY } from "../shared/entity.ts";
 import { noticeText } from "./notices.ts";
 import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../render/row-mark.ts";

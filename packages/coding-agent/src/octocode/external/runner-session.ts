@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { findOnPath } from "../../../../common/src/find-on-path.ts";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { AcpBackend, AcpConnectInput, AcpPermission, AcpTurnUpdate } from "../../../../acp/src/client/client.ts";
 import { authRequiredIn } from "../../../../acp/src/client/auth.ts";
 import { clip } from "../shared/text.ts";

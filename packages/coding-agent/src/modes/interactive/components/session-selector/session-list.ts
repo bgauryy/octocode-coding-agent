@@ -11,7 +11,7 @@ import {
 	type SortMode,
 } from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";
-import { canonicalizePath } from "../../../../../../common/src/paths.ts";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import { checkoutLabel, checkoutText } from "../../../../core/worktree-path.ts";
 import type { SessionCounts } from "./header.ts";
 import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";

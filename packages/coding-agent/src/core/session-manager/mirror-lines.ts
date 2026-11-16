@@ -1,4 +1,4 @@
-import { parseJsonlLine } from "../../../../common/src/jsonl.ts";
+import { parseJsonlLine } from "@octocodeai/octocode-common/jsonl";
 
 /**
  * The records of session-file bytes from `start` (a line start), each with the line that holds it, as

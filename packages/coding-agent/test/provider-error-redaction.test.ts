@@ -13,7 +13,7 @@ import {
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { clearSecretValues } from "../../common/src/sanitize.ts";
+import { clearSecretValues } from "@octocodeai/octocode-common/sanitize";
 
 /** Opaque on purpose: no pattern recognizes it, only the registry of resolved credentials does. */
 const OPAQUE_KEY = "synthetic0123456789abcdef0123456789";

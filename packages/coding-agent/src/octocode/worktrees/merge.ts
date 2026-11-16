@@ -1,7 +1,7 @@
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { withFileWriteLock } from "../../../../common/src/file-write-lock.ts";
+import { withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
 import { git, GitError, gitQuiet, NO_HOOKS, rejectTrackedWorkspaceState } from "../../utils/git-run.ts";
 import { plural } from "../shared/text.ts";
 import { dirtyCounts } from "./status.ts";

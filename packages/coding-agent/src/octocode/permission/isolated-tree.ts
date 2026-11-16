@@ -1,4 +1,4 @@
-import { AGENT_SCRATCH_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV, envFlag } from "../../../../common/src/env.ts";
+import { AGENT_SCRATCH_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV, envFlag } from "@octocodeai/octocode-common/env";
 import { toolEffect } from "./tool-effects.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
@@ -6,8 +6,8 @@ import { shellPath } from "./file-access.ts";
 import { bashSyntax } from "./bash-syntax.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { shellMutation } from "./shell/mutation.ts";
-import { canonicalPath } from "../../../../common/src/canonical-path.ts";
-import { isWithin } from "../../../../common/src/paths.ts";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 
 /**

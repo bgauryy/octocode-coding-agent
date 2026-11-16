@@ -1,3 +1,4 @@
+import { toolExposureState } from "./tool-states.ts";
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
 import { hostIdentity, hostVendors } from "./host.ts";
@@ -5,8 +6,8 @@ import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./pat
 import type { McpServerEntry } from "./config.ts";
 import { type McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { isEnabled, type McpServer } from "./server.ts";
-import { formatAudit, sortByAudit } from "../../common/src/tool-audit.ts";
-import type { UsageAuditSource } from "../../common/src/tool-audit.ts";
+import { formatAudit, sortByAudit } from "@octocodeai/octocode-common/tool-audit";
+import type { UsageAuditSource } from "@octocodeai/octocode-common/tool-audit";
 import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
 import { auditReader, sessionUsage } from "./usage-audit.ts";
 
@@ -100,7 +101,7 @@ export function toolCatalog(state: McpToolCatalogSource, name: string): McpToolL
 			...tool,
 			exposure,
 			...(callName ? { callName } : {}),
-			...(audit ? { audit: audit(server.entry.name, tool, exposure) } : {}),
+			...(audit ? { audit: audit(server.entry.name, tool, toolExposureState(exposure)) } : {}),
 		};
 	});
 	return sortByAudit(listed);

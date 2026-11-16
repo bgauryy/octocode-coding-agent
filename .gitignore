@@ -49,3 +49,4 @@ collect.sh
 .pnp.*
 TMPTMP
 # Disposable host compilation trees
+.context

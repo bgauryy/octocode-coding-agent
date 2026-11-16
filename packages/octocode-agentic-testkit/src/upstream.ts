@@ -8,14 +8,14 @@ export interface Forward {
 	api?: "openai" | "anthropic";
 	key?: string;
 	timeoutMs?: number;
-	/** Anthropic only: put `cache_control` on the system prompt and the last tool, the stable request prefix. */
+	/** Anthropic only: put `cache_control` on the system prompt and the last tool, the stable request prefix. Default on; `false` sends the request unmarked. */
 	promptCache?: boolean;
 }
 
 const EPHEMERAL = { type: "ephemeral" };
 
 /** Mark the stable prefix of an Anthropic request (system, then tools) for the provider's prompt cache. */
-export function withPromptCache(req: Record<string, unknown>): Record<string, unknown> {
+function withPromptCache(req: Record<string, unknown>): Record<string, unknown> {
 	const out = { ...req };
 	if (typeof out.system === "string" && out.system)
 		out.system = [{ type: "text", text: out.system, cache_control: EPHEMERAL }];
@@ -42,7 +42,7 @@ export async function forwardUpstream(body: Record<string, unknown>, forward: Fo
 				...(key ? { "x-api-key": key } : {}),
 			},
 			body: JSON.stringify(
-				forward.promptCache
+				forward.promptCache !== false
 					? withPromptCache(toAnthropicRequest(body, String(payload.model)))
 					: toAnthropicRequest(body, String(payload.model)),
 			),

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { browserMcpUrls } from "../../../common/src/browser-mcp.ts";
+import { browserMcpUrls } from "@octocodeai/octocode-common/browser-mcp";
 import { browserMcpEscalations } from "../../src/octocode/permission/browser-mcp-escalations.ts";
 import {
 	PERMISSION_ENV,
@@ -12,7 +12,7 @@ import {
 	PERMISSION_RELAY_ENV,
 	READ_ONLY_ENV,
 	SUBAGENT_ENV,
-} from "../../../common/src/env.ts";
+} from "@octocodeai/octocode-common/env";
 import { browserMcpRequest, browserMetadataRefusal } from "../../src/octocode/web/browser-mcp.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

@@ -1,5 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { redactSecrets } from "../../../../common/src/sanitize.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { saveContentCopy } from "../shared/spill.ts";
 
 /**

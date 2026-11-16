@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { readSavedOutput } from "../saved-output.ts";
 
 /**
@@ -16,9 +17,6 @@ export const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 const MIN_OUTPUT_CHARS = 64;
 
 type Record_ = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record_ =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The saved full output as `structuredContent.output` holds it, or undefined when the file cannot be read. */
 function savedOutput(path: string): string | undefined {

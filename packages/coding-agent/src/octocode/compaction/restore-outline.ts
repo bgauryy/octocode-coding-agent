@@ -1,4 +1,4 @@
-import { cutText } from "../../../../common/src/text.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
 
 /**
  * The outline of a file too long to come back whole after a compaction: its declarations (functions, classes, types,
