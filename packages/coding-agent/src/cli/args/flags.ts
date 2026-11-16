@@ -4,6 +4,7 @@ import { getToolListError } from "../../core/settings-manager/tool-list.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
+import { API_KEY_FLAGS } from "./api-key-flags.ts";
 import { CONFIGURATION_FLAGS } from "./configuration-flags.ts";
 import { RESUME_FLAG } from "./resume-flag.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
@@ -43,14 +44,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		help: ['Model pattern or ID (supports "provider/id" and optional ":<thinking>")'],
 		apply: (a, v) => void (a.model = v),
 	},
-	{
-		name: "--api-key",
-		kind: "value",
-		arg: "<key>",
-		completion: "text",
-		help: ["API key (prefer env vars or auth.json: a key on the command line shows up in ps and shell history)"],
-		apply: (a, v) => void (a.apiKey = v),
-	},
+	...API_KEY_FLAGS,
 	{
 		name: "--system-prompt",
 		kind: "value",

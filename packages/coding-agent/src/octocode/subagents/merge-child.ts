@@ -1,8 +1,18 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { Team } from "../team/session.ts";
+import { dirtyAmong } from "../worktrees/merge.ts";
 import { noteMerge } from "./ref-link.ts";
+import { repoRoot } from "./worktree-base.ts";
 import { discardAgent, mergeAgent, reservedChanges, savedChanges } from "./worktree.ts";
+
+/** Other agents working now in this team's checkouts: a merge changes files under them, so the ask names them. */
+function livePeers(team: Pick<Team, "members">, id: string): string[] {
+	return team
+		.members()
+		.filter((member) => member.id !== id && member.status === "working")
+		.map((member) => member.id);
+}
 
 export interface MergeResult {
 	ok: boolean;
@@ -16,6 +26,15 @@ function stillWorking(team: Pick<Team, "members">, id: string): string | undefin
 	return team.members().some((member) => member.id === id && member.status === "working")
 		? `Not merged: ${id} is still working, so its saved result may change. Wait for its report, then merge again.`
 		: undefined;
+}
+
+/** Why the saved ref of `id` may not land now: the main checkout has uncommitted changes to files the ref changes. */
+async function dirtyRefusal(cwd: string, id: string): Promise<string | undefined> {
+	const saved = await savedChanges(cwd, id);
+	const dirty = saved ? await dirtyAmong(repoRoot(cwd), saved.files) : [];
+	if (dirty.length === 0) return undefined;
+	const listed = `${dirty.slice(0, 10).join("\n")}${dirty.length > 10 ? `\n(${dirty.length - 10} more)` : ""}`;
+	return `Not merged: this checkout has uncommitted changes to files ${saved?.ref} changes. Commit or stash them (or ask whoever holds them to), then merge again; ${saved?.ref} is kept and nothing changed.\n${listed}`;
 }
 
 /**
@@ -32,6 +51,8 @@ export async function landChild(
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);
 	if (working) return { ok: false, text: working };
+	const dirty = await dirtyRefusal(ctx.cwd, id);
+	if (dirty) return { ok: false, text: dirty };
 	const held = await reservedChanges(ctx.cwd, id, (file, shown) => team.reservation(file, shown));
 	if (held.length > 0) {
 		const listed = `${held.slice(0, 5).join("\n")}${held.length > 5 ? `\n(${held.length - 5} more)` : ""}`;
@@ -57,8 +78,11 @@ export async function mergeChild(
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);
 	if (working) return { ok: false, text: working };
+	const dirty = await dirtyRefusal(ctx.cwd, id);
+	if (dirty) return { ok: false, text: dirty };
 	const saved = await savedChanges(ctx.cwd, id);
 	const shown = saved?.files.slice(0, 10) ?? [];
+	const peers = livePeers(team, id);
 	const more = saved && saved.files.length > shown.length ? [`(${saved.files.length - shown.length} more)`] : [];
 	const verdict = await permission.check(ctx, {
 		action: "file.workspace",
@@ -70,6 +94,7 @@ export async function mergeChild(
 			...(saved
 				? [`changes ${saved.files.length} file${saved.files.length === 1 ? "" : "s"}:`, ...shown, ...more]
 				: []),
+			...(peers.length ? [`agents working now (tell those touching these files first): ${peers.join(", ")}`] : []),
 		],
 		cwd: ctx.cwd,
 		...(signal ? { signal } : {}),
@@ -85,7 +110,7 @@ export async function mergeChild(
 export async function discardChild(
 	team: Pick<Team, "members">,
 	id: string,
-	ctx: Pick<ExtensionContext, "cwd">,
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
 	confirm: (ref: string, files: string[]) => Promise<boolean>,
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);
@@ -93,5 +118,6 @@ export async function discardChild(
 	const saved = await savedChanges(ctx.cwd, id);
 	if (!saved) return { ok: false, text: `No isolated changes for ${id} to discard.` };
 	if (!(await confirm(saved.ref, saved.files))) return { ok: false, text: `Nothing discarded: ${saved.ref} is kept.` };
-	return discardAgent(ctx.cwd, id);
+	const result = await discardAgent(ctx.cwd, id);
+	return result.ok ? { ...result, text: `${result.text}${noteMerge(ctx, saved.ref)}` } : result;
 }

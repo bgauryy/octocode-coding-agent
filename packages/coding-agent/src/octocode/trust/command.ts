@@ -1,7 +1,6 @@
 import path from "node:path";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { keyText, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import { confirmAction, type PageSection, showCommandPage, successNotice } from "../shared/page.ts";
 import type { FolderGrantView, GrantTarget } from "./grants.ts";
 import {
@@ -116,11 +115,6 @@ async function remove(
 	if (closes) ctx.shutdown();
 }
 
-const TRUST_HINTS: RankedHint[] = [
-	[keyText("tui.select.confirm"), "open", 0],
-	[keyText("tui.select.cancel"), "close", 1],
-];
-
 /** The terminal page: decisions (each opens a detail page with Remove), then the wider folders one step from trusting. */
 async function page(
 	ctx: ExtensionCommandContext,
@@ -156,7 +150,6 @@ async function page(
 			notes: [describeFolder(ctx.cwd, resolveFolderTrust(ctx.cwd, options))],
 			sections,
 			initialId,
-			hints: TRUST_HINTS,
 		});
 		if (!choice) return;
 		initialId = choice.id;
@@ -177,10 +170,7 @@ async function detail(ctx: ExtensionCommandContext, row: FolderGrantView, option
 		sections: [
 			{ heading: "Actions", rows: [{ id: "remove", name: "Remove decision", detail: "Octocode asks again" }] },
 		],
-		hints: [
-			[keyText("tui.select.confirm"), "run", 0],
-			[keyText("tui.select.cancel"), "back", 1],
-		],
+		nested: true,
 	});
 	if (!choice) return false;
 	await remove(ctx, row, false, options);

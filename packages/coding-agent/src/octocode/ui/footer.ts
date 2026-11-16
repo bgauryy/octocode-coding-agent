@@ -17,6 +17,7 @@ import {
 } from "../shared/util.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { registerFallbackNotice, registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
+import { githubTokenPresent } from "./footer/github.ts";
 import { type FooterState, footerLines } from "./footer/rows.ts";
 
 export { contextBar, type FooterState, footerLines } from "./footer/rows.ts";
@@ -99,6 +100,7 @@ export function registerFooter(api: ExtensionAPI): void {
 				: undefined,
 			cwd: ctx.cwd,
 			sessionName: ctx.sessionManager.getSessionName?.(),
+			githubToken: githubTokenPresent(),
 		});
 	};
 	// The footer is a terminal component (setFooter does nothing over RPC), so its bookkeeping runs only in the TUI.

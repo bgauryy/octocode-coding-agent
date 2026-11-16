@@ -1,4 +1,4 @@
-import type { ResponseReasoningItem, ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponseReasoningItem, ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { describe, expect, it } from "vitest";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
 import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
@@ -65,7 +65,7 @@ async function* createEvents(
 			status: "completed",
 			output: [completedItem],
 		},
-	} as ResponseStreamEvent;
+	};
 }
 
 function getReplayedReasoning(model: Model<"azure-openai-responses">, assistant: AssistantMessage) {

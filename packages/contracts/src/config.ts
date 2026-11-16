@@ -1,10 +1,12 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
+import { AgentRouteSchema } from "./agent-route.ts";
 
 export * from "./harness-config.ts";
 export * from "./mcp-add.ts";
 export * from "./tool-exposure.ts";
 export * from "./config-settings.ts";
+export * from "./agent-route.ts";
 
 /** Version of the configuration read model; bump when a field changes meaning. */
 export const CONFIG_PROTOCOL_VERSION = 1 as const;
@@ -126,6 +128,8 @@ export const ProviderCredentialStatusSchema = Type.Object(
 		disabled: Type.Optional(Type.Boolean()),
 		/** The sign-ins the provider offers. Names and a public link only: never a credential. */
 		auth: Type.Optional(ProviderAuthMethodsSchema),
+		/** How a request through the provider is billed (`config` or `subscription`), derived from its sign-ins and sources. */
+		route: Type.Optional(AgentRouteSchema),
 	},
 	{ additionalProperties: false },
 );

@@ -47,20 +47,20 @@ export interface ToolGatesOptions {
 }
 
 /**
- * A `timer` call with an until-command (its own, or a `check`'s trigger) is decided as the `bash` call that command is: git
+ * A `wait` call with a command (`on` `check.result`, with or without a `check` question) is decided as the `bash` call that command is: git
  * state, reservations, PreToolUse hooks (as `Bash`), the mode, source rules, a read-only role, the provenance tripwire and the
  * user's answer apply when it is set (`timer/conditions/command.ts` rechecks plan mode and the role each time it runs). Any
- * other timer call has no effect class.
+ * other wait call has no effect class.
  */
 function timerOperation<T extends { toolName: string; input: Record<string, unknown> }>(event: T): T {
-	if (event.toolName !== "timer") return event;
+	if (event.toolName !== "wait") return event;
 	const command = untilCommand(event.input);
 	return command ? { ...event, toolName: "bash", input: { command } } : event;
 }
 
 /**
- * Runs `gate` on the bash form of a timer call (`timerOperation`). A rewrite of that command (a hook's `updatedInput`, the
- * reservation gate's Node confinement) is refused: it would change only the bash form, never the timer's condition.
+ * Runs `gate` on the bash form of a wait call (`timerOperation`). A rewrite of that command (a hook's `updatedInput`, the
+ * reservation gate's Node confinement) is refused: it would change only the bash form, never the wait's condition.
  */
 const asBash =
 	(gate: Gate): Gate =>
@@ -118,7 +118,7 @@ export function registerToolGates(
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
 		peers: peerSessions,
 	});
-	// The invariants and hooks see a timer's until-command as the bash call it is.
+	// The invariants and hooks see a wait's command as the bash call it is.
 	const gitState = sharedTree && asBash(sharedTree);
 	const reservation = asBash(collab.reservationGate);
 	// A browser MCP call that opens a cloud metadata address: an invariant in every mode, on every entry path.
@@ -211,7 +211,7 @@ export function registerToolGates(
 						return undefined;
 					}
 				: undefined;
-			// A shell call's targets (a timer's until-command included) are only checked above; the `file` tool checks its own at write time. Between this
+			// A shell call's targets (a wait's command included) are only checked above; the `file` tool checks its own at write time. Between this
 			// point and the run, a batch's later approvals, a dialog or a peer's lock can change what the checks saw.
 			return event.toolName === "bash" || event.toolName === "powershell" || timerOperation(event) !== event
 				? { revalidate: () => audited(invariants)(event, ctx) }

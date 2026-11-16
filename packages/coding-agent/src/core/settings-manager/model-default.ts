@@ -6,6 +6,8 @@ import type { SettingsState } from "./state.ts";
 export interface DefaultModelSelectionOptions {
 	thinkingLevel?: ThinkingLevel;
 	enabledModels?: string[];
+	/** `project` writes only the project's default model (a trusted project is required); thinking level and enabled models stay global. */
+	scope?: "global" | "project";
 }
 
 const pendingSelections = new WeakMap<SettingsState, Promise<void>>();
@@ -18,6 +20,14 @@ export function saveDefaultModelSelection(
 	modelId: string,
 	options: DefaultModelSelectionOptions = {},
 ): Promise<void> {
+	if (options.scope === "project") {
+		return queueSelection(state, async () => {
+			persistence.updateProjectSettings(["defaultProvider", "defaultModel"], (settings) => {
+				settings.defaultProvider = provider;
+				settings.defaultModel = modelId;
+			});
+		});
+	}
 	const snapshot = { ...options, ...(options.enabledModels ? { enabledModels: [...options.enabledModels] } : {}) };
 	return queueSelection(state, () => commitSelection(state, persistence, provider, modelId, snapshot));
 }

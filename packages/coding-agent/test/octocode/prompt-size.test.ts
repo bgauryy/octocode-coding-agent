@@ -129,14 +129,21 @@ async function promptSize(options: {
  * links in a `backlogPlan` entry): measured 1_532 main. One tool carried them all at 2_176 before the split.
  */
 const BACKLOG_ENTITIES_CEILING = 1_560;
-/** Main policy and tool surfaces, excluding entity fields; tightened after instruction and description compression. */
-const MAIN_CEILING = 36_950;
+/**
+ * Main policy and tool surfaces, excluding entity fields; tightened after instruction and description compression.
+ * Raised from 36_950 for the user-requested rules: self versus delegate, worktree children beside other sessions, teams,
+ * tmux use and grooming the backlog after a close (measured 37_373). Then 37_475 for the coordinate guideline that has every
+ * agent check `coordinate` `list` before merges and repository-wide actions too (measured 37_448).
+ */
+const MAIN_CEILING = 37_475;
 /**
  * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`. Raised from 21_050 for the rules that make every specialist
  * release the processes, timers and servers it starts and spend context on the next decision (measured 21_371).
+ * Raised from 21_400 for the user-requested tmux rule: when to use a private tmux server and how to drive it safely
+ * (measured 21_651). Then 21_755 for the same coordinate guideline as the main ceiling (measured 21_726).
  */
-const SPECIALIST_CEILING = 21_400;
+const SPECIALIST_CEILING = 21_755;
 
 describe("prompt size", () => {
 	it("main session", async () => {

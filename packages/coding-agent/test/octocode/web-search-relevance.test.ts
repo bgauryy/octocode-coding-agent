@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as webGuard from "../../../common/src/web-guard.ts";
 import type { PublicFetchInit } from "../../../common/src/web-guard.ts";
 import { search } from "../../src/octocode/web/search.ts";
+import { queryTerms, relatedHit } from "../../src/octocode/web/search-relevance.ts";
 
 const network = vi.hoisted(() => ({ send: vi.fn<(url: string, init: PublicFetchInit) => Promise<Response>>() }));
 vi.mock("../../../common/src/web-guard.ts", async (original) => ({
@@ -76,5 +77,22 @@ describe("keyless search relevance", () => {
 		const short = await search("js", 3, {});
 		expect(short.provider).toBe("bing");
 		expect(short.hits).toHaveLength(1);
+	});
+});
+
+describe("query terms", () => {
+	const hit = (title: string) => ({ title, url: "https://example.com/x", snippet: "" });
+
+	it("keeps a query of only common words as one phrase term", () => {
+		const terms = queryTerms("What is THE");
+		expect(terms).toEqual(["what is the"]);
+		expect(relatedHit(terms, hit("Unrelated portal front page"))).toBe(false);
+		expect(relatedHit(terms, hit("What is the answer"))).toBe(true);
+	});
+
+	it("leaves operator-only and short-word queries without terms and stems significant words", () => {
+		expect(queryTerms("site:foo.com")).toEqual([]);
+		expect(queryTerms("js")).toEqual([]);
+		expect(queryTerms("typescript what is")).toEqual(["typescri"]);
 	});
 });

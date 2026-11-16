@@ -1,3 +1,4 @@
+import { problemLines, readProblems } from "../core/diagnostics-log.ts";
 import { builtinDescription } from "../core/slash-commands.ts";
 import type { ExtensionAPI } from "../core/features/index.ts";
 import { mcpGroupLabel, mcpServerSource, getMcpSessionStatus } from "../../../mcp/src/api.ts";
@@ -50,6 +51,7 @@ export function statusCommand(
 					`Skills (${skills.length})`,
 					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
 					workersLine(),
+					...problemLines(readProblems()),
 					`MCPs (${servers.length})`,
 					...(servers.length
 						? servers.map(

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { vendorChatModels } from "../../../core/provider-composer/known-models.ts";
@@ -147,12 +148,16 @@ export async function showProviderTemplates(
 	const labels = PROVIDER_TEMPLATES.map(templateLabel);
 	const label = await ui.showExtensionSelector("Add a provider from a template", labels);
 	const template = label ? PROVIDER_TEMPLATES[labels.indexOf(label)] : undefined;
-	if (!template) return false;
+	const cancelled = (): false => {
+		ui.showStatus("Cancelled; nothing was written to models.json.");
+		return false;
+	};
+	if (!template) return cancelled();
 	let serverHost: string | undefined;
 	if (!template.baseUrl) {
 		const hint = template.hostDefault ? `${template.hostHint} (Enter keeps it)` : template.hostHint;
 		serverHost = await ui.showExtensionInput(`${template.name}: API base URL`, hint);
-		if (serverHost === undefined) return false;
+		if (serverHost === undefined) return cancelled();
 		try {
 			templateBaseUrl(template, serverHost);
 		} catch (error) {
@@ -167,15 +172,15 @@ export async function showProviderTemplates(
 		listed: catalogListing(catalog),
 	};
 	const ids = await chooseModels(ui, template, templateModels(template, sources));
-	if (!ids) return false;
+	if (!ids) return cancelled();
 	let models = templateModelEntries(template, ids, sources);
 	if (template.kind === "local") {
 		const configured = await chooseLocalLimits(ui, models);
-		if (!configured) return false;
+		if (!configured) return cancelled();
 		models = configured;
 	}
 	const key = await chooseKey(ui, template);
-	if (!key) return false;
+	if (!key) return cancelled();
 	const directory = runtime.getConfigurationDirectory();
 	if (!directory) {
 		ui.showError("This session has no Octocode configuration folder, so there is no models.json to add to.");
@@ -198,6 +203,12 @@ export async function showProviderTemplates(
 	const name = runtime.getProvider(id)?.name ?? template.name;
 	if (key.kind === "saved") {
 		await ui.showApiKeyLoginDialog(id, name, () => reopen(id));
+		// Leaving the key dialog without saving a key keeps the provider that was already written.
+		if (!runtime.getProviderAuthStatus(id).configured) {
+			ui.showStatus(
+				`${name} was added to ${homeTilde(join(directory, "models.json"))} without a key. It shows under Needs attention in /providers; add a key there or set its environment variable.`,
+			);
+		}
 		return true;
 	}
 	const count = `${ids.length} ${ids.length === 1 ? "model" : "models"}`;

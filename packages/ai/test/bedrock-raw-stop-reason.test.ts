@@ -5,57 +5,21 @@ const bedrockMock = vi.hoisted(() => ({
 	streamEvents: undefined as unknown[] | undefined,
 }));
 
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
-
-	class BedrockRuntimeClient {
-		middlewareStack = {
-			add: () => undefined,
-		};
-
-		async send(): Promise<unknown> {
-			return {
-				$metadata: { httpStatusCode: 200, requestId: "request-id" },
-				stream: (async function* () {
-					if (bedrockMock.streamEvents) {
-						yield* bedrockMock.streamEvents;
-						return;
-					}
-					yield { messageStart: { role: "assistant" } };
-					yield { messageStop: { stopReason: bedrockMock.stopReason } };
-				})(),
-			};
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
-	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
-	};
-});
-
-import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
+import { stream } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockResponse } from "./bedrock-fixtures.ts";
+const streamBedrock: typeof stream = (model, context, options) =>
+	stream(model, context, {
+		apiKey: "test",
+		env: {},
+		...options,
+		fetch: async () =>
+			bedrockResponse(
+				(bedrockMock.streamEvents ?? [
+					{ messageStart: { role: "assistant" } },
+					{ messageStop: { stopReason: bedrockMock.stopReason } },
+				]) as Record<string, unknown>[],
+			),
+	});
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, Model } from "../src/types.ts";
@@ -89,14 +53,13 @@ describe("Bedrock provider stream events", () => {
 		}).result();
 
 		expect(received).toEqual(bedrockMock.streamEvents);
-		for (const [index, item] of received.entries()) expect(item).toBe(bedrockMock.streamEvents[index]);
 		expect(eventModels).toEqual([model, model, model, model]);
 		expect(result.stopReason).toBe("stop");
 		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
 	});
 
 	it("forwards SDK error items before reporting them", async () => {
-		const exception = new Error("bedrock stream failed");
+		const exception = { message: "bedrock stream failed" };
 		bedrockMock.streamEvents = [{ messageStart: { role: "assistant" } }, { internalServerException: exception }];
 		const received: unknown[] = [];
 		const result = await streamBedrock(model, context, {
@@ -108,11 +71,18 @@ describe("Bedrock provider stream events", () => {
 
 		expect(received).toEqual(bedrockMock.streamEvents);
 		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toBe("bedrock stream failed");
+		expect(result.errorMessage).toBe("Internal server error: bedrock stream failed");
+		expect(result.errorMessage).toMatch(/server.?error/i);
 	});
 });
 
 describe("Bedrock raw stop reasons", () => {
+	it("preserves context-window exhaustion as a length stop", async () => {
+		bedrockMock.stopReason = "model_context_window_exceeded";
+		const message = await streamBedrock(model, context, { cacheRetention: "none" }).result();
+		expect(message.stopReason).toBe("length");
+		expect(message.rawStopReason).toBe("model_context_window_exceeded");
+	});
 	it("preserves raw Bedrock stop reasons for successful stops", async () => {
 		bedrockMock.stopReason = "end_turn";
 

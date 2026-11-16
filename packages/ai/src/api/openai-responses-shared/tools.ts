@@ -1,4 +1,4 @@
-import type { Tool as OpenAITool } from "openai/resources/responses/responses.js";
+import type { Tool as OpenAITool } from "../ai-sdk/openai-wire-types.ts";
 import type { Tool } from "../../types.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import type { TranscriptToolSupport } from "../../utils/transcript.ts";
@@ -78,6 +78,6 @@ export function convertResponsesTools(tools: readonly Tool[], options?: ConvertR
 		if (supportsStrictMode) {
 			functionTool.strict = strict;
 		}
-		return functionTool as OpenAITool;
+		return functionTool;
 	});
 }

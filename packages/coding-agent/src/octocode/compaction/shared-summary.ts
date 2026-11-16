@@ -104,6 +104,9 @@ function boundaryNote(
 	return first === undefined ? "" : renderInstruction("workflows/compaction/shared-boundary.md", { first });
 }
 
+/** What the provider keeps free of a request's context window (`clampMaxTokensToContext`). */
+const CONTEXT_MARGIN_TOKENS = 4096;
+
 /** Octocode's cap on a summary: what fits inline (`inlineSummaryTokens`), and never beyond what the model can write. */
 function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: number): number {
 	return Math.min(inlineSummaryTokens(reserveTokens), model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY);
@@ -124,7 +127,9 @@ export function sessionCachePreferences(
  */
 function overCap(response: AssistantMessage, text: string, cap: number): boolean {
 	const output = response.usage?.output;
-	return (output ? output : text.length / CHARS_PER_TOKEN) > cap;
+	const estimate = text.length / CHARS_PER_TOKEN;
+	// The output count includes thinking: only text that is itself past the cap is too long.
+	return (output ? output : estimate) > cap && estimate > cap;
 }
 
 /**
@@ -175,12 +180,15 @@ export async function sharedSummary(
 		const cold = cacheCold || rewritten || historyPrefixRewritten(ctx.sessionManager);
 		if (requireWarmPrefix && cold) return fail("the request prefix is cold");
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
+		// A near-full window leaves less output than the cap (the provider clamps to it): the reply would only be cut off.
+		const room = model.contextWindow - preparation.tokensBefore - CONTEXT_MARGIN_TOKENS;
+		if (model.contextWindow > 0 && room < cap)
+			return fail(`the window leaves ${Math.max(0, room)} output tokens, under the ${cap} cap`);
 		const prompt = [
 			SHARED_SUMMARY_PROMPT,
 			boundaryNote(projection.entries, preparation.firstKeptEntryId),
-			preparation.previousSummary === undefined
-				? ""
-				: `${PREVIOUS_SUMMARY_NOTE} ${summarySizeTarget(summaryTargetTokens(cap))}`.trim(),
+			// Every summary gets the size target: a first one without it ran past the cap on long sessions.
+			`${preparation.previousSummary === undefined ? "" : PREVIOUS_SUMMARY_NOTE} ${summarySizeTarget(summaryTargetTokens(cap))}`.trim(),
 			archivedPreviousNote(projection.entries),
 			`Additional focus:\n${instructions}`,
 		]
@@ -228,7 +236,12 @@ export async function sharedSummary(
 			return attempt;
 		};
 		const response = await retryAssistantCall(produce, policy?.retry, event.signal, policy?.callbacks);
-		if (response.stopReason !== "stop") return fail(`the reply stopped with ${response.stopReason}`);
+		if (response.stopReason !== "stop")
+			return fail(
+				response.stopReason === "length"
+					? `the reply stopped with length (output ${response.usage?.output ?? "?"} tokens, cap ${cap})`
+					: `the reply stopped with ${response.stopReason}`,
+			);
 		if (response.content.some((block) => block.type === "toolCall")) return fail("the reply called a tool");
 		const text = contentText(response.content).trim();
 		if (text === "") return fail("the reply was empty");

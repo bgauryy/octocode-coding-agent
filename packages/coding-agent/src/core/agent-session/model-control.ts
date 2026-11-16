@@ -172,7 +172,12 @@ export class SessionModelControl {
 		this.applyThinkingLevel(thinkingLevel, false);
 		await this._emitModelSelect(selectedModel, previousModel, source, reason);
 		if (options.persist)
-			await persistDefaultModel(session.settingsManager, model, this._addPersistedDefaultToNonEmptyScope(model));
+			await persistDefaultModel(
+				session.settingsManager,
+				model,
+				options.scope === "project" ? undefined : this._addPersistedDefaultToNonEmptyScope(model),
+				options.scope,
+			);
 		return selectedModel;
 	}
 

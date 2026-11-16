@@ -9,7 +9,8 @@ import {
 import { modelsAreEqual, type Model } from "@octocodeai/octocode-ai";
 import { providerAccessLabel } from "../../../../core/provider-label.ts";
 import type { ModelRuntime } from "../../../../core/model-runtime.ts";
-import { positionLabel, hintText, keyText } from "../../../../theme/theme-tui-helpers.ts";
+import { positionLabel } from "../../../../theme/page-kit.ts";
+import { hintText, keyText } from "../../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../../theme/theme.ts";
 import { compactModelDetails, modelDetails } from "./details.ts";
 import { emptyModelListText } from "./empty-state.ts";

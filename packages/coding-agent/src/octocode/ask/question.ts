@@ -22,7 +22,7 @@ const writeInOf = (question: string): NonNullable<Question["writeIn"]> => ({ lab
  * askUser's questions as `Question`s with ids `q1`, `q2`, …: text when it has no options, multi when `multiSelect`, else
  * choice. A label ending in "(Recommended)" marks its option recommended (the label keeps the suffix, as the model wrote
  * it). The write-in row is offered as today. A forwarded child question leads `question` with its label and text, as the
- * answer line has always read it, and travels again as the body: `viewOf` draws only the parent's own question bold.
+ * answer line reads it, and travels again as the body so hosts can identify the forwarded content.
  */
 export function fromAskUser(questions: readonly AskQuestion[]): Question[] {
 	return questions.map((q, index): Question => {
@@ -124,14 +124,15 @@ const forwardedLead = (q: Question): string | undefined =>
 	q.body?.label !== undefined ? `${q.body.label}\n${q.body.text}\n\n` : undefined;
 
 /**
- * The question as the card `ask/card.ts` draws: its text bold (a forwarded child's text is the body, so only the parent's
- * own question), its metadata, body and effect notes, its options and then, when the write-in is not already one of them,
+ * The question as the card draws it: its full text bold, including a forwarded child's question before the parent's.
+ * The duplicate forwarded body is omitted. Then come metadata, effect notes, options and, when not already one of them,
  * the write-in row (and a multi question's submit row). The same view `permissionView` and askUser's `questionView`
  * give for the same content.
  */
 export function viewOf(q: Question): AskView {
 	const lead = forwardedLead(q);
-	const question = lead && q.question.startsWith(lead) ? q.question.slice(lead.length) : q.question;
+	const forwarded = lead !== undefined && q.question.startsWith(lead);
+	const question = q.question;
 	const rows: AskView["options"] = (q.options ?? []).map((option) => ({
 		label: option.label,
 		...(option.description ? { description: option.description } : {}),
@@ -145,7 +146,7 @@ export function viewOf(q: Question): AskView {
 	return {
 		question,
 		...(q.meta?.length ? { meta: q.meta } : {}),
-		...(q.body ? { body: q.body } : {}),
+		...(q.body && !forwarded ? { body: q.body } : {}),
 		...(q.notes?.length ? { notes: q.notes } : {}),
 		options: rows,
 		...(q.writeIn !== undefined ? { writeIn: q.writeIn } : {}),

@@ -25,7 +25,7 @@ export function renderTimerMessage(
 	const wake = details as unknown as TimerWakeDetails;
 	const ended = wake.status === "active" ? "" : ` · ${wake.status}`;
 	const lines = [
-		theme.fg("warning", theme.bold(`⏰ Timer ${wake.id}: ${clean(wake.reason, 200)}${ended}`)),
+		theme.fg("warning", theme.bold(`⏰ Wait ${wake.id}: ${clean(wake.reason, 200)}${ended}`)),
 		theme.fg("warning", `  ${clean(wake.note, expanded ? 2000 : 200)}`),
 	];
 	const output = wake.output?.trim();

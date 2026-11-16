@@ -21,7 +21,7 @@ function seed(dir: string, name: string, declaring: number, callers: number): vo
 describe("native tools under mcpExposure usage", () => {
 	it("defers every deferrable tool with no usage data, memory and timer included", () => {
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp());
-		for (const name of ["web", "archive", "models", "backlogPlan", "memory", "timer"])
+		for (const name of ["web", "archive", "models", "backlogPlan", "memory", "wait"])
 			expect(nativeToolDeferred(name, { mcpExposure: "usage" }, {})).toBe(true);
 		expect(nativeToolDeferred("bash", { mcpExposure: "usage" }, {})).toBe(false);
 	});
@@ -35,14 +35,14 @@ describe("native tools under mcpExposure usage", () => {
 		expect(nativeToolDeferred("web", settings, {})).toBe(false);
 		expect(nativeToolDeferred("memory", settings, {})).toBe(true);
 		expect(nativeToolDeferred("web", { ...settings, nativeToolExposure: { web: "deferred" } }, {})).toBe(true);
-		expect(nativeToolDeferred("timer", { ...settings, nativeToolExposure: { timer: "direct" } }, {})).toBe(false);
+		expect(nativeToolDeferred("wait", { ...settings, nativeToolExposure: { wait: "direct" } }, {})).toBe(false);
 	});
 
 	it("leaves memory and timer in full under recent, direct and deferred unless pinned", () => {
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp());
 		for (const mcpExposure of ["recent", "direct", "deferred"]) {
 			expect(nativeToolDeferred("memory", { mcpExposure }, {})).toBe(false);
-			expect(nativeToolDeferred("timer", { mcpExposure }, {})).toBe(false);
+			expect(nativeToolDeferred("wait", { mcpExposure }, {})).toBe(false);
 		}
 		expect(
 			nativeToolDeferred("memory", { mcpExposure: "recent", nativeToolExposure: { memory: "deferred" } }, {}),

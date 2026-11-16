@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { buildParams } from "../src/api/openai-completions/params.ts";
+import { captureCompletionsParams } from "./capture-completions-payload.ts";
 import type { AssistantMessage, Model, Tool } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -49,8 +49,8 @@ function context(parameters: Tool["parameters"] = Type.Object({ path: Type.Strin
 }
 
 describe("OpenAI-compatible instruction and history cache boundaries", () => {
-	it("omits separate instruction writes when explicitly disabled while retaining history markers", () => {
-		const params = buildParams(model, context(), {
+	it("omits separate instruction writes when explicitly disabled while retaining history markers", async () => {
+		const params = await captureCompletionsParams(model, context(), {
 			cacheRetention: "short",
 			instructionCacheRetention: "none",
 		});
@@ -63,9 +63,9 @@ describe("OpenAI-compatible instruction and history cache boundaries", () => {
 		}
 	});
 
-	it("does not spend breakpoint slots on a tool parameter named cache_control", () => {
+	it("does not spend breakpoint slots on a tool parameter named cache_control", async () => {
 		const parameters = Type.Object({ cache_control: Type.Object({ enabled: Type.Boolean() }) });
-		const params = buildParams(model, context(parameters), { cacheRetention: "short" });
+		const params = await captureCompletionsParams(model, context(parameters), { cacheRetention: "short" });
 		expect(params.messages[1].content).toEqual([
 			{ type: "text", text: "Previous request", cache_control: { type: "ephemeral" } },
 		]);

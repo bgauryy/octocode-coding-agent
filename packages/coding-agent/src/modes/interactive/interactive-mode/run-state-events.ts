@@ -38,12 +38,26 @@ export type RunStateEventsHost = Pick<
 	| "showError"
 	| "showStatus"
 	| "showStatusIndicator"
+	| "showWarning"
 	| "streamingComponent"
 	| "streamingMessage"
 	| "ui"
 >;
 
 /** Renders the run-state events and ignores the rest, which agent-events.ts handles. */
+type RunOutcomeNotices = Pick<RunStateEventsHost, "showError" | "showWarning">;
+
+/** What a settled run's outcome adds beyond its messages. */
+function showRunOutcome(
+	outcome: Extract<AgentSessionEvent, { type: "agent_settled" }>["outcome"],
+	notices: RunOutcomeNotices,
+): void {
+	// A run the session ended for repeated cut-off replies says why; each message only says it was cut off.
+	if (outcome?.status === "truncated" && outcome.errorMessage) notices.showError(outcome.errorMessage);
+	// A warning is about a run that still produced its result (a retry fallback, a held message not yet saved).
+	if (outcome?.warning && outcome.warning !== outcome.errorMessage) notices.showWarning(outcome.warning);
+}
+
 export async function handleRunStateEvent(host: RunStateEventsHost, event: AgentSessionEvent): Promise<void> {
 	switch (event.type) {
 		case "agent_end":
@@ -61,6 +75,7 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			break;
 
 		case "agent_settled":
+			showRunOutcome(event.outcome, host);
 			// A new run that already started keeps the indicator its own `turn_start` shows.
 			if (!host.session.isStreaming) {
 				if (host.settingsManager.getShowTerminalProgress()) {

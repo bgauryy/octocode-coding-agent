@@ -2,6 +2,7 @@ import { Container, type Focusable, Spacer, Text } from "@octocodeai/octocode-tu
 import type { SessionTreeNode } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
+import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
 import { LabelInput, SearchLine, TreeHelp } from "./tree-selector/chrome.ts";
 import { TreeList } from "./tree-selector/tree-list.ts";
 import type { FilterMode } from "./tree-selector/types.ts";
@@ -66,6 +67,13 @@ export class TreeSelectorComponent extends Container implements Focusable {
 		this.addChild(this.treeContainer);
 		this.addChild(this.labelInputContainer);
 		this.addChild(new Spacer(1));
+		this.addChild(
+			new HintBar([
+				moveHint(2),
+				[keyText("tui.select.confirm"), "select", 1],
+				[keyText("tui.select.cancel"), "cancel", 0],
+			]),
+		);
 		this.addChild(new DynamicBorder());
 
 		if (tree.length === 0) {

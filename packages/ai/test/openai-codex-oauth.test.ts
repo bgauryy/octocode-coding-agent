@@ -635,4 +635,52 @@ describe("OpenAI Codex OAuth", () => {
 			blocker.close();
 		}
 	});
+
+	describe("pasted manual input", () => {
+		async function loginWithPaste(paste: (state: string) => string) {
+			const fetchMock = vi.fn(async () =>
+				jsonResponse({ access_token: createAccessToken("acct"), refresh_token: "refresh", expires_in: 3600 }),
+			);
+			vi.stubGlobal("fetch", fetchMock);
+			let authUrl = "";
+			const login = openaiCodexOAuth.login({
+				signal: neverAbortedSignal,
+				notify: (event) => {
+					if (event.type === "auth_url") authUrl = event.url;
+				},
+				prompt: async (prompt) => {
+					if (prompt.type === "select") return "browser";
+					if (prompt.type !== "manual_code") throw new Error(`Unexpected prompt: ${prompt.type}`);
+					return paste(new URL(authUrl).searchParams.get("state") ?? "");
+				},
+			});
+			return { login, fetchMock };
+		}
+
+		it("refuses a bare code: it has no state tying it to this login", async () => {
+			const { login, fetchMock } = await loginWithPaste(() => "bare-code");
+			await expect(login).rejects.toThrow("no state");
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("refuses a redirect URL without state", async () => {
+			const { login, fetchMock } = await loginWithPaste(() => "http://localhost:1455/auth/callback?code=pasted-code");
+			await expect(login).rejects.toThrow("no state");
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("refuses a redirect URL whose state is another login's", async () => {
+			const { login, fetchMock } = await loginWithPaste(
+				() => "http://localhost:1455/auth/callback?code=pasted-code&state=someone-elses",
+			);
+			await expect(login).rejects.toThrow("State mismatch");
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("accepts code#state", async () => {
+			const { login, fetchMock } = await loginWithPaste((state) => `pasted-code#${state}`);
+			await expect(login).resolves.toMatchObject({ accountId: "acct" });
+			expect(fetchMock).toHaveBeenCalledOnce();
+		});
+	});
 });

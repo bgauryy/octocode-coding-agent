@@ -71,7 +71,7 @@ flowchart LR
 - Destructive shell: wiping `/`, home or a system folder, `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, forced `git push`, `rm -r` at or above the checkout root, changes under `~/.ssh`.
 - Tool output reaches the model unredacted; add a `tool_result` [hook](hooks.md) to redact.
 - `workspace` mode does not defend against code an agent hides (`python -c`, `node -e`, computed options, programs a git line names): use `manual` to review every command. Plan mode and peer reservations refuse these.
-- A `timer` until-command runs unattended, so setting it is decided as the `bash` call it is. Claude rules see two operations, `timer` and `Bash`: a deny or ask on either applies, an allow needs both.
+- A `wait` command (`on` `check.result`) runs unattended, so setting it is decided as the `bash` call it is. Claude rules see two operations, `wait` and `Bash`: a deny or ask on either applies, an allow needs both.
 
 ### Project trust
 
@@ -154,6 +154,31 @@ A read of another coding agent's credential store asks in `full` too. This is a 
 | Gemini CLI                                        | the `~/.gemini` folder and `~/.gemini/oauth_creds.json`                                                |
 
 At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers and without the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
+
+## Subagent permission asks
+
+A subagent starts in its parent's mode with the kinds you allowed for the parent's session. When it still needs approval, the ask goes to its parent:
+
+```mermaid
+flowchart TD
+  A[Subagent asks] --> B{Parent mode or a kind you allowed covers it?}
+  B -- yes --> C[Allowed once, audited]
+  B -- no --> D{Parent has a dialog?}
+  D -- yes --> E[Your dialog, labelled with the subagent]
+  D -- no --> F[Refused with the reason]
+```
+
+| Case | Result |
+| --- | --- |
+| The parent's mode or a kind you allowed ("Allow all shell commands") covers every action | allowed without a dialog; external messages, worktree merges and cookies never pass this way |
+| No dialog (print mode, `--no-dialogs`) | refused: nobody can confirm; the subagent reports what it needs |
+| Its earlier ask still open | refused until that one is answered |
+| More than 10 asks in a minute | the rest of that minute is refused |
+| You leave an ask unanswered for 10 minutes | refused; the parent agent is told what waits, so it can ask you |
+
+An external agent (ACP) asks the same way: in `full` and `bypass` it proceeds once and is logged; with nobody to ask it is told you refused.
+
+The parent agent never approves for you: a subagent's message is information, not consent. It answers questions you already settled and asks you otherwise.
 
 ## Subagents and shared git state
 

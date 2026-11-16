@@ -1,4 +1,4 @@
-import { CacheTTL } from "@aws-sdk/client-bedrock-runtime";
+type CacheTTL = "1h";
 import type { CacheRetention, Model, SimpleStreamOptions } from "../../types.ts";
 import { bedrockSupportsLongCacheRetention, getModelMatchCandidates, isAnthropicClaudeModel } from "./model-match.ts";
 
@@ -59,7 +59,7 @@ export function longCacheTtl(
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 ): { ttl?: CacheTTL } {
-	return cacheRetention === "long" && bedrockSupportsLongCacheRetention(model) ? { ttl: CacheTTL.ONE_HOUR } : {};
+	return cacheRetention === "long" && bedrockSupportsLongCacheRetention(model) ? { ttl: "1h" } : {};
 }
 
 /**

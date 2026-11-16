@@ -1,5 +1,4 @@
 import { StringEnum } from "@octocodeai/octocode-ai";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Type } from "typebox";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
@@ -11,6 +10,7 @@ import { exclusive } from "../shared/locks.ts";
 import { clip } from "../shared/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { parseMemoryId } from "./query.ts";
+import { compileQuery } from "./safe-pattern.ts";
 import { noteLabel, parseNoteId } from "./session-notes.ts";
 import { type AppendEntry, deleteNote, getNote, noteForPromotion, readNotes, saveNote } from "./session-notes-tool.ts";
 import { getMemory, readMemories } from "./reads.ts";
@@ -82,7 +82,12 @@ export function createMemoryTool(
 			id: Type.Optional(
 				Type.String({ description: "M<n>, or S<n> for a session note (set it with a durable scope: moves it there)" }),
 			),
-			query: Type.Optional(Type.String({ description: "search: case-insensitive regex filter" })),
+			query: Type.Optional(
+				Type.String({
+					description:
+						"search: case-insensitive regex filter (max 200 chars; nested repeats like (a+)+ and backreferences are rejected)",
+				}),
+			),
 			keywords: Type.Optional(
 				Type.String({
 					description: subagent
@@ -204,7 +209,7 @@ export function createMemoryTool(
 					if (params.op === "search" && !params.query?.trim() && !params.keywords?.trim())
 						throw new Error("Memory search needs query or keywords.");
 					// An invalid regular expression names the fix before any row is read.
-					if (params.query?.trim()) validPattern(params.query.trim());
+					if (params.query?.trim()) compileQuery(params.query.trim());
 					const { op } = params;
 					if (params.scope === "session") {
 						const notes = readNotes(ctx, params);
@@ -230,15 +235,4 @@ export function createMemoryTool(
 			}
 		},
 	});
-}
-
-function validPattern(query: string): void {
-	try {
-		new RegExp(query, "i");
-	} catch (error) {
-		throw new Error(
-			`query is a regular expression, and this one is invalid (${errorMessage(error)}); escape ( [ . * + ? with a backslash.`,
-			{ cause: error },
-		);
-	}
 }

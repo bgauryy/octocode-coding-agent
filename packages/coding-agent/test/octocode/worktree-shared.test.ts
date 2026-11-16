@@ -199,7 +199,7 @@ describe("a saved ref on a backlog item", () => {
 
 		const merged = await mergeAgent(main, "child-1");
 		expect(merged).toMatchObject({ ok: true, ref: "refs/octocode/child-1", into: "main" });
-		expect(noteMerge(ctx, merged.ref!, merged.into!)).toBe("\nNoted on B1.");
+		expect(noteMerge(ctx, merged.ref!, merged.into)).toBe("\nNoted on B1.");
 		expect(
 			store
 				.notes(store.get("B1")!, -1)

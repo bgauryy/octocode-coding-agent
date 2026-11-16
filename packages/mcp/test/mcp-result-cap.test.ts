@@ -97,3 +97,32 @@ describe("the structuredContent of an MCP result", () => {
 		expect(saved).toEqual([]);
 	});
 });
+
+describe("the structured content blocks of an MCP result", () => {
+	it("are the bounded, sanitized blocks, not the raw server content", async () => {
+		const huge = `a\u001b[31m${"x".repeat(1_000_000)}`;
+		const { saveOutput } = saver();
+		const converted = await convertMcpResult(
+			"notes",
+			"dump",
+			{ content: [{ type: "text", text: huge }] },
+			{ saveOutput },
+		);
+		const json = JSON.stringify(converted.structuredContent);
+		expect(json.length).toBeLessThanOrEqual(hostOutput().textMaxChars);
+		expect(json).not.toContain("\\u001b");
+	});
+
+	it("bound image blocks", async () => {
+		const data = "A".repeat(hostOutput().imageBudget() * 4);
+		const { saveOutput } = saver();
+		const converted = await convertMcpResult(
+			"notes",
+			"shot",
+			{ content: [{ type: "image", data, mimeType: "image/png" }] },
+			{ saveOutput },
+		);
+		expect(JSON.stringify(converted.content).length).toBeLessThan(data.length);
+		expect(JSON.stringify(converted.structuredContent).length).toBeLessThanOrEqual(hostOutput().textMaxChars);
+	});
+});

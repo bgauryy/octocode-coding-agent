@@ -5,7 +5,7 @@ import { styleShellLines } from "../../theme/output-style.ts";
 import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { contentText } from "../shared/util.ts";
-import { TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
+import { highlightCode, TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
 import { rowMark, uiStateOf } from "./motion.ts";
 import { Lines, type Row } from "./lines.ts";
 import { phaseOf, rowState, runStart, track } from "./rows.ts";
@@ -141,6 +141,8 @@ interface ResultBlockOptions {
 	spillLabel?: string;
 	/** The pre-run waits `timingOf` read from the details; shown in the header. */
 	waits?: string;
+	/** Highlight the body as this language (`json`, `yaml`); not for an error or a shell body. */
+	language?: string;
 	/** Expanded view; defaults to `context.expanded` (pass renderResult's `options.expanded`). */
 	expanded?: boolean;
 }
@@ -191,9 +193,14 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	// Raw body lines are coloured only where shown: a collapsed preview colours its few lines, not the whole output.
 	const rawLines = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
 	const styled = options.shell && rawLines ? styleShellLines(theme, rawLines, color) : undefined;
-	const raw = styled ? undefined : rawLines;
+	const colored =
+		!styled && !error && !stopped && options.language && rawLines
+			? highlightCode(rawLines.join("\n"), options.language, theme)
+			: undefined;
+	const painted = colored?.length === rawLines?.length ? colored : undefined;
+	const raw = styled || painted ? undefined : rawLines;
 	const paint = (line: string) => (raw ? theme.fg(color, line) : line);
-	const body = options.lines ?? styled ?? raw!;
+	const body = options.lines ?? styled ?? painted ?? raw!;
 	const max = Math.max(0, options.max ?? TOOL_PREVIEW_LINES);
 	// The `⎿` gutter leads the first row of the block only; every later row (and each wrapped continuation) hangs under the text.
 	const lead = () => (rows.length === 0 ? theme.fg("dim", GUTTER) : INDENT);

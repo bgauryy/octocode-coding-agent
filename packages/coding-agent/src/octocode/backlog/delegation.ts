@@ -56,7 +56,7 @@ function waitingOn({ store }: Backlog, item: Item, queue: boolean): string[] {
 	const open = store.openPrerequisites(item);
 	if (open.length && !queue)
 		throw new BacklogError(
-			`${item.ref} waits on ${open.join(", ")}: start it when ${open.length > 1 ? "they are" : "it is"} done (timer until item ${item.ref} ready), or drop the link with backlogPlan edit dependsOn.`,
+			`${item.ref} waits on ${open.join(", ")}: start it when ${open.length > 1 ? "they are" : "it is"} done (wait on item.state ${item.ref} ready), or drop the link with backlogPlan edit dependsOn.`,
 		);
 	return open;
 }

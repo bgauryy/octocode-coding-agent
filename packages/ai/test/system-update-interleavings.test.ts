@@ -97,8 +97,8 @@ async function capture(start: Start, messages: Message[]): Promise<Record<string
 interface MistralMessage {
 	role: string;
 	content?: unknown;
-	toolCalls?: { id: string }[];
-	toolCallId?: string;
+	tool_calls?: { id: string }[];
+	tool_call_id?: string;
 }
 const mistral = async (...messages: Message[]) =>
 	(await capture((context, options) => streamMistral(mistralModel, context, options), messages))
@@ -137,12 +137,12 @@ function expectValidMistralSequence(messages: MistralMessage[]): void {
 	let open: string[] = [];
 	for (const message of messages) {
 		if (message.role === "tool") {
-			expect(open, `result ${message.toolCallId} answers an open call`).toContain(message.toolCallId);
-			open = open.filter((id) => id !== message.toolCallId);
+			expect(open, `result ${message.tool_call_id} answers an open call`).toContain(message.tool_call_id);
+			open = open.filter((id) => id !== message.tool_call_id);
 			continue;
 		}
 		expect(open, `calls answered before ${message.role}`).toEqual([]);
-		open = message.role === "assistant" ? (message.toolCalls ?? []).map((call) => call.id) : [];
+		open = message.role === "assistant" ? (message.tool_calls ?? []).map((call) => call.id) : [];
 	}
 }
 
@@ -217,9 +217,9 @@ describe("Mistral system update interleavings", () => {
 
 	it("keeps every tool call id paired across parallel results and updates", async () => {
 		const payload = await mistral(user("go"), calls("c1", "c2"), result("c1"), version(1), result("c2"), version(2));
-		const ids = payload.flatMap((message) => (message.toolCalls ?? []).map((call) => call.id));
+		const ids = payload.flatMap((message) => (message.tool_calls ?? []).map((call) => call.id));
 		expect(ids).toHaveLength(2);
-		expect(payload.filter((message) => message.role === "tool").map((message) => message.toolCallId)).toEqual(ids);
+		expect(payload.filter((message) => message.role === "tool").map((message) => message.tool_call_id)).toEqual(ids);
 	});
 
 	it("holds only the newest state across two requests", async () => {
@@ -299,7 +299,7 @@ const routes: Route[] = [
 		name: "google-generative-ai",
 		start: (context, options) => streamGoogle(model("google-generative-ai", "google"), context, options),
 		split: (payload) => ({
-			prompt: (payload.config as { systemInstruction?: unknown }).systemInstruction,
+			prompt: payload.systemInstruction,
 			turns: payload.contents as unknown[],
 		}),
 	},

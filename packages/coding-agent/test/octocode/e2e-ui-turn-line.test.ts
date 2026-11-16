@@ -144,7 +144,9 @@ describe("turn summary line", () => {
 
 		it("shows ? for the context fill when usage is unknown after a compaction", async () => {
 			t = await startWide();
-			t.script("an answer", "summary of the earlier turns");
+			// The seeded history leaves the window no room for a cached-request summary, so the standalone one summarizes
+			// it in two parts.
+			t.script("an answer", "summary of the older turns", "summary of the earlier turns");
 			await turn("hello");
 			await t.until(async () => /ctx [▰▱]+ \d+% of/.test(await footer()), "a known context fill");
 			// A real compaction: until the next reply, how full the context is cannot be known.

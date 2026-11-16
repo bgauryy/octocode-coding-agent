@@ -119,8 +119,12 @@ export interface AgentTurnContext {
 	newMessages: AgentMessage[];
 }
 
-/** Decision returned by {@link FinishTurn}. Returning undefined preserves normal scheduling. */
-export type AgentTurnDecision = { action: "continue" } | { action: "end" };
+/**
+ * Decision returned by {@link FinishTurn}. Returning undefined preserves normal scheduling. `messages` on a continue
+ * decision are appended to the context before the next provider request (for example, a request to resume a reply
+ * cut off at the output limit).
+ */
+export type AgentTurnDecision = { action: "continue"; messages?: AgentMessage[] } | { action: "end" };
 
 /**
  * Called after a completed assistant turn and all of its tool-result messages, but before `turn_end`.

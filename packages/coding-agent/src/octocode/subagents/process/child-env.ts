@@ -28,6 +28,7 @@ import {
 	AGENT_ROLE_ENV,
 	PARENT_ID_ENV,
 	PARENT_PID_ENV,
+	PARENT_HOLDS_LEASES_ENV,
 	PARENT_WAITS_ENV,
 } from "../../team/store/env.ts";
 import { SUBAGENT_ASSIGNMENT_ENV } from "../identity-reminder.ts";
@@ -63,6 +64,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	AGENT_ROLE_ENV,
 	PARENT_ID_ENV,
 	PARENT_WAITS_ENV,
+	PARENT_HOLDS_LEASES_ENV,
 	AGENT_GOAL_ENV,
 	AGENT_SCRATCH_ENV,
 	PARENT_SESSION_ENV,

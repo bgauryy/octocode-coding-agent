@@ -4,6 +4,7 @@ Entries are shown once by `octocode` after an update and on demand with `/change
 
 ## [Unreleased]
 
+- Idle-item nudges are skipped when the run that just ended was woken about that item or wrote it, or when a running background `bash` job names it with the new optional `item` argument (`coordinate list` shows the job as work on that item); the turn line counts skipped nudges. Every woken batch shows one `⚡ woke` row (also for the nudge, graph notice, hook feedback and retry wakes that showed nothing before). `subagents.wakeHoldSeconds` (default off) merges wakes that arrive seconds apart into one turn.
 - Fixed: a session whose last record was cut off by a crash, kill or power loss resumes and keeps being written, instead of failing every write with "incomplete final record". The partial record stays in the file as a skipped line, and an `octocode-session-recovery` entry records where it is.
 - Fixed: a session lock left by a killed or crashed process is taken over at once when its recorded owner (pid, host and start time) is verifiably gone; restarting no longer waits up to 10 s, blocks the screen for seconds, or leaves the database mirror behind.
 - `--rpc-lean-events` no longer repeats a finished block in `text_end`, `thinking_end` and `toolcall_end` updates, and ACP workers use lean events. RPC and JSON output serialize a large message once per run (the bytes written are unchanged), and the API bridge redacts and saves a long answer once.

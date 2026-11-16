@@ -11,6 +11,7 @@ import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
 import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
+import { parentGoneReportId } from "./handoff/parent-gone.ts";
 import type { AwaitedReply, LingerWindow } from "./linger.ts";
 import { providerHealth, spentNothing } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
@@ -81,12 +82,16 @@ export function startBackground(
 	const { background, read } = runs;
 	const { identity } = run;
 	const session = runs.session;
-	// A report that arrives after its session ended (a reload, a switch) is kept for the next start of that Octocode session.
+	// A report that arrives after its session ended (a reload, a switch, a shutdown) is kept for the next start of that
+	// Octocode session, under the id the child's own stop report uses when its parent is gone: only one of them is delivered.
 	const reports = {
 		add: (report: Report) =>
 			session === runs.session
 				? runs.reports.add(report)
-				: savePendingReport(pendingReportsDir(sessionId), identity.id, report),
+				: savePendingReport(pendingReportsDir(sessionId), identity.id, {
+						...report,
+						...(details.runId ? { reportId: parentGoneReportId(identity.id, details.runId) } : {}),
+					}),
 	};
 	const controller = new AbortController();
 	const entry: BackgroundRun = { controller, done: Promise.resolve() };
@@ -108,7 +113,10 @@ export function startBackground(
 			if (outcome.error) hintEnd(runs, identity.id, "failed");
 			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
 			// Asked before the footer is written: a child that stays reachable has not ended, and its item's graph line says so.
-			const note = await finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false));
+			// The child's report does not depend on the parent's own bookkeeping: a failure there rides in the footer.
+			const note = await finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false)).catch(
+				(error: unknown) => `\n\n(The parent's record of this run could not be updated: ${errorMessage(error)}.)`,
+			);
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;

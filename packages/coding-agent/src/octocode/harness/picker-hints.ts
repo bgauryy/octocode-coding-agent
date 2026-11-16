@@ -1,34 +1,41 @@
 import type { KeybindingsManager } from "@octocodeai/octocode-tui";
-import type { RankedHint } from "../../theme/theme-tui-helpers.ts";
+import { pageHints } from "../../theme/page-kit.ts";
+import { moveHint, type RankedHint } from "../../theme/theme-tui-helpers.ts";
 import { shortcutText } from "../shared/keys.ts";
 
 /** Hints of the details view: scroll, and the keys that go back. */
 export function detailHints(keys: KeybindingsManager): RankedHint[] {
-	return [
-		[`${shortcutText("tui.select.pageUp", keys)}/${shortcutText("tui.select.pageDown", keys)}`, "scroll", 1],
-		[`f2/${shortcutText("tui.select.cancel", keys)}`, "back", 0],
-	];
+	return pageHints("detail", {
+		nested: true,
+		enter: false,
+		extras: [[`${shortcutText("tui.select.pageUp", keys)}/${shortcutText("tui.select.pageDown", keys)}`, "scroll", 1]],
+		escAlias: "f2",
+		cancelKey: shortcutText("tui.select.cancel", keys),
+	});
 }
 
 /** Hints while the inventory loads or failed to load. */
 export function errorHints(keys: KeybindingsManager, canRetry: boolean): RankedHint[] {
-	const close: RankedHint = [shortcutText("tui.select.cancel", keys), "close", 0];
-	return canRetry ? [["ctrl+r", "retry", 1], close] : [close];
+	return pageHints("detail", {
+		nested: false,
+		enter: false,
+		rowKeys: canRetry ? { "ctrl+r": "retry" } : undefined,
+		cancelKey: shortcutText("tui.select.cancel", keys),
+	});
 }
 
 /** Hints of the item list. */
 export function listHints(keys: KeybindingsManager, view: { overview: boolean; mcpTools: boolean }): RankedHint[] {
 	const { overview, mcpTools } = view;
-	return [
-		[shortcutText("tui.select.cancel", keys), "close", 0],
-		["←/→", "section", 1],
-		["enter", overview ? "open" : mcpTools ? "tools" : "toggle", 1],
-		...(mcpTools ? ([["space", "switch", 1]] as RankedHint[]) : []),
-		...(overview
-			? []
-			: ([
-					["f2", "details", 1],
-					[shortcutText("tui.input.tab", keys), "scope", 2],
-				] as RankedHint[])),
-	];
+	return pageHints("list", {
+		nested: false,
+		enter: overview ? "open" : mcpTools ? "inspect" : "toggle",
+		confirmKey: shortcutText("tui.select.confirm", keys),
+		cancelKey: shortcutText("tui.select.cancel", keys),
+		extras: [moveHint(2), ["←/→", "section", 1]],
+		rowKeys: {
+			...(mcpTools ? { space: "switch" } : {}),
+			...(overview ? {} : { f2: "details", [shortcutText("tui.input.tab", keys)]: "scope" }),
+		},
+	});
 }

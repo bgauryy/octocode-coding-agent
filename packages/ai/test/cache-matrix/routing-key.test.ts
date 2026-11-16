@@ -3,8 +3,6 @@
  * a routing header that carries the fork's own session id sends the identical prefix to another replica.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireWebSocket } from "../../src/api/openai-codex-responses/websocket-session.ts";
-import { cleanupSessionResources } from "../../src/session-resources.ts";
 import { getBuiltinModel } from "../../src/providers/all.ts";
 import type { Model, StreamOptions } from "../../src/types.ts";
 import { normalizeContext } from "../../src/utils/transcript.ts";
@@ -95,76 +93,5 @@ describe("header shape", () => {
 		const wire = await send(ROUTES[0], { sessionId: "s", promptCacheKey: "k", cacheRetention: "short" });
 		expect(wire.headers.has("x-grok-conv-id")).toBe(true);
 		expect(wire.headers.has("x-client-request-id")).toBe(true);
-	});
-});
-
-/** Records the handshake headers of every socket the Codex adapter opens, then fails the connection. */
-class HandshakeSocket extends EventTarget {
-	static handshakes: Record<string, string>[] = [];
-	static instances: HandshakeSocket[] = [];
-	readyState = 0;
-	constructor(_url: string, init?: { headers?: Record<string, string> }) {
-		super();
-		HandshakeSocket.handshakes.push(init?.headers ?? {});
-		HandshakeSocket.instances.push(this);
-		queueMicrotask(() => {
-			this.readyState = 1;
-			this.dispatchEvent(new Event("open"));
-		});
-	}
-	send() {
-		queueMicrotask(() => this.close());
-	}
-	close() {
-		this.readyState = 3;
-		this.dispatchEvent(new Event("close"));
-	}
-}
-
-describe("Codex websocket", () => {
-	afterEach(() => {
-		cleanupSessionResources();
-		vi.unstubAllGlobals();
-		HandshakeSocket.handshakes = [];
-		HandshakeSocket.instances = [];
-	});
-
-	it("opens its handshake with the parent's cache key as session-id on a fork", async () => {
-		vi.stubGlobal("WebSocket", HandshakeSocket);
-		await wireRequest(wireCase("codex"), context(), {
-			transport: "websocket",
-			signal: AbortSignal.timeout(5000),
-			sessionId: "fork-session",
-			promptCacheKey: "root-session",
-			cacheRetention: "short",
-		}).catch(() => undefined);
-		expect(HandshakeSocket.handshakes).toHaveLength(1);
-		const handshake = Object.fromEntries(
-			Object.entries(HandshakeSocket.handshakes[0]).map(([k, v]) => [k.toLowerCase(), v]),
-		);
-		expect(handshake["session-id"]).toBe("root-session");
-		expect(handshake["x-client-request-id"]).toBe("root-session");
-	});
-
-	it("keeps one cached socket per session: a fork never continues its parent's connection", async () => {
-		vi.stubGlobal("WebSocket", HandshakeSocket);
-		const acquire = (session: string) =>
-			acquireWebSocket(
-				"wss://test.invalid",
-				new Headers({ "session-id": "root-session" }),
-				session,
-				"account",
-				undefined,
-				1000,
-				{},
-			);
-		const parent = await acquire("parent-session");
-		parent.release({ keep: true });
-		const fork = await acquire("fork-session");
-		expect(fork.reused).toBe(false);
-		const again = await acquire("parent-session");
-		expect(again.reused).toBe(true);
-		fork.release();
-		again.release();
 	});
 });

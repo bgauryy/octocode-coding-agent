@@ -20,6 +20,8 @@ import { Vouches } from "./vouches.ts";
 import { WaitingApprovals } from "./approvals.ts";
 import { TeamTicker } from "../ticker.ts";
 import { WakePace } from "../wake-pace.ts";
+import { SilenceWatch } from "../silence-watch.ts";
+import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV } from "../store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
@@ -115,6 +117,11 @@ export abstract class TeamState {
 		this.database.forwardTo(api.events);
 		this.name = new SessionTeamName(api, env);
 		this.mail = new Mail(api, () => ownNonce(this.env));
+		this.silenceMs = () => {
+			const minutes = api.getSettings().subagents?.silenceMinutes;
+			const valid = typeof minutes === "number" && Number.isFinite(minutes) && minutes >= 0;
+			return (valid ? minutes : SETTINGS_DEFAULTS.subagents.silenceMinutes) * 60_000;
+		};
 		this.activity = new Activity({
 			me: () => this.me,
 			db: () => this.database.current,
@@ -142,6 +149,10 @@ export abstract class TeamState {
 			this.wakePace,
 		);
 	}
+	/** Which running children went silent (`silence-watch.ts`); checked on the ticker, no timer of its own. */
+	protected readonly silence = new SilenceWatch();
+	/** `subagents.silenceMinutes` in milliseconds, read on each tick so a settings change applies at once. */
+	protected silenceMs: () => number = () => 0;
 	protected readonly vouches = new Vouches();
 	readonly approvals = new WaitingApprovals();
 	/** Registers the secret given to subagent `id` (its `PERMISSION_NONCE_FILE_ENV` file), so the user's messages to it are signed; returns what ends that. */

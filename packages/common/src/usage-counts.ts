@@ -18,6 +18,7 @@
  * only makes a tool look less used until the next snapshot.
  */
 
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import fs from "node:fs";
 import { atomicWriteFileSync } from "./atomic-file.ts";
 import { envFlag, SUBAGENT_ENV } from "./env.ts";
@@ -57,9 +58,6 @@ interface UsageFile {
 const KINDS: readonly UsageKind[] = ["declared", "called", "loaded", "refused", "used"];
 const dayKey = (at: number): string => new Date(at).toISOString().slice(0, 10);
 const emptyCounts = (): UsageCounts => ({ declared: 0, called: 0, loaded: 0, refused: 0, used: 0 });
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 function load(file: string): UsageFile {
 	const usage: UsageFile = { days: {}, snapshots: {} };
 	try {

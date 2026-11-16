@@ -13,7 +13,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
 
 const THINKING_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,
@@ -90,6 +90,7 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new HintBar([
+				moveHint(3),
 				[keyText("tui.select.confirm"), "select", 1],
 				[keyText("app.thinking.save"), "set as default", 2],
 				[keyText("tui.select.cancel"), "cancel", 0],

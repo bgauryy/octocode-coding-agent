@@ -24,7 +24,7 @@ import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path
 import { sha256 } from "../../../../common/src/atomic-file.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { repoKey, workspaceRoot } from "../../utils/git-repository.ts";
-import { ensureWorkspaceStateDir, workspaceStateDir } from "../../storage/workspace.ts";
+import { ensureWorkspaceStateDir, WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
 
 export { privateDir };
 
@@ -181,3 +181,7 @@ export function claudeSettingsSources(
 			: []),
 	];
 }
+
+/** Whether `dir` is a checkout's `temp/sessions` folder: the parent of the session folders (`sessionFolder`). */
+export const isSessionsTempDir = (dir: string): boolean =>
+	dir.endsWith(path.sep + path.join(WORKSPACE_STATE, "temp", "sessions"));

@@ -1,10 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { claimSuffix, releaseDeadClaims } from "../../shared/claims.ts";
-import { sha256 } from "../../../../../common/src/atomic-file.ts";
-import { WORKSPACE_STATE } from "../../../storage/workspace.ts";
-import { currentSessionWorkspace, globalPaths, sessionTempRoot } from "../../shared/home.ts";
+import { currentSessionWorkspace, sessionTempRoot } from "../../shared/home.ts";
 import {
 	groupAlive,
 	groupStartTimes,
@@ -13,28 +10,23 @@ import {
 	sameProcessAsync,
 	stopTree,
 } from "../../shared/process.ts";
-import { validPid } from "../../../utils/process-id.ts";
+import {
+	foreign,
+	type JobRecord,
+	ownerDir,
+	ownersRoot,
+	parseRecord,
+	RECORD_SUFFIX,
+	readRecord,
+	recordFile,
+} from "../../shared/job-records.ts";
+
+export { recordFile };
 
 /** Owner records next to job logs, and stopping the jobs of an Octocode that died without ending them. */
 
-/** A job's owner record: its log path with this suffix instead of `.log`. */
-const RECORD_SUFFIX = ".job.json";
 /** A record being reaped is renamed `<record>.reaping-<pid>-<start time>` by the Octocode that claimed it (`shared/claims.ts`). */
 const CLAIM_MARKER = ".reaping-";
-
-/**
- * What a job's owner record holds: the job (pid plus start time names one process), the Octocode process that owns it and
- * the host both run on (pids mean nothing on another host sharing this folder; records from before it have none).
- */
-export interface JobRecord {
-	id: string;
-	pid: number;
-	started?: string;
-	command: string;
-	log: string;
-	host?: string;
-	owner: { pid: number; started?: string };
-}
 
 /** A job found running after its Octocode died; `stopped` is false when it could not be confirmed as the recorded process. */
 export interface OrphanJob {
@@ -44,39 +36,6 @@ export interface OrphanJob {
 	log: string;
 	stopped: boolean;
 }
-
-/** A checkout can supply arbitrary files. Keep process-signalling authority in private host state, separately from workspace logs. */
-const ownersRoot = () => path.join(globalPaths().agentState, "job-owners");
-function ownerDir(dir: string): string {
-	const sessions = path.dirname(path.dirname(dir));
-	return path.basename(dir) === "bash" && sessions.endsWith(path.sep + path.join(WORKSPACE_STATE, "temp", "sessions"))
-		? path.join(ownersRoot(), sha256(dir))
-		: dir;
-}
-
-export const recordFile = (log: string): string =>
-	path.join(ownerDir(path.dirname(log)), path.basename(log).replace(/\.log$/, "") + RECORD_SUFFIX);
-
-/** A readable owner record, else undefined. A pid of 1 or less would make a stop signal init, a group or everything. */
-function parseRecord(text: string): JobRecord | undefined {
-	try {
-		const record = JSON.parse(text) as JobRecord;
-		return validPid(record.pid) && validPid(record.owner?.pid) && typeof record.log === "string" ? record : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-const readRecord = (file: string): JobRecord | undefined => {
-	try {
-		return parseRecord(fs.readFileSync(file, "utf8"));
-	} catch {
-		return undefined;
-	}
-};
-
-/** Whether a record was written on another host: its processes cannot be judged from here. */
-const foreign = (record: JobRecord): boolean => record.host !== undefined && record.host !== os.hostname();
 
 /**
  * Names in a `bash/` folder that belong to jobs whose Octocode still runs (or runs on another host, which cannot be judged

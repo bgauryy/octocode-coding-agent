@@ -38,7 +38,7 @@ function createTerminalEvent(finishReason = "stop") {
 }
 
 describe("Mistral HTTP transport", () => {
-	it("serializes SDK-style payloads to the Mistral wire format", async () => {
+	it("exposes the SDK-generated wire payload to the payload hook", async () => {
 		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			systemPrompt: "Be precise",
@@ -67,7 +67,25 @@ describe("Mistral HTTP transport", () => {
 		const fetch: FetchFunction = async (input, init) => {
 			requestUrl = String(input);
 			requestInit = init;
-			return createSseResponse([createTerminalEvent()], { "x-request-id": "request-1" });
+			return createSseResponse(
+				[
+					{
+						...createTerminalEvent("tool_calls"),
+						choices: [
+							{
+								index: 0,
+								finish_reason: "tool_calls",
+								delta: {
+									tool_calls: [
+										{ index: 0, id: "abc123456", function: { name: "lookup", arguments: '{"query":"test"}' } },
+									],
+								},
+							},
+						],
+					},
+				],
+				{ "x-request-id": "request-1" },
+			);
 		};
 
 		const message = await streamMistral(model, context, {
@@ -83,22 +101,22 @@ describe("Mistral HTTP transport", () => {
 				callbackPayload = payload as Record<string, unknown>;
 				return {
 					...callbackPayload,
-					topP: 0.9,
-					randomSeed: 42,
-					responseFormat: {
+					top_p: 0.9,
+					random_seed: 42,
+					response_format: {
 						type: "json_schema",
-						jsonSchema: {
+						json_schema: {
 							name: "result",
-							schemaDefinition: {
+							schema: {
 								type: "object",
 								properties: { maxTokens: { type: "number" } },
 							},
 						},
 					},
-					presencePenalty: 0.1,
-					frequencyPenalty: 0.2,
-					parallelToolCalls: true,
-					safePrompt: true,
+					presence_penalty: 0.1,
+					frequency_penalty: 0.2,
+					parallel_tool_calls: true,
+					safe_prompt: true,
 				};
 			},
 			onResponse: (response) => {
@@ -106,7 +124,8 @@ describe("Mistral HTTP transport", () => {
 			},
 		}).result();
 
-		expect(message.stopReason).toBe("stop");
+		expect(message.errorMessage).toBeUndefined();
+		expect(message.stopReason).toBe("toolUse");
 		expect(requestUrl).toBe("https://api.mistral.ai/v1/chat/completions");
 		const headers = new Headers(requestInit?.headers);
 		expect(headers.get("authorization")).toBe("Bearer secret");
@@ -114,9 +133,9 @@ describe("Mistral HTTP transport", () => {
 		expect(headers.get("x-affinity")).toBe("session-1");
 		expect(headers.get("x-custom")).toBe("value");
 		expect(headers.get("user-agent")).toBe(OCTOCODE_USER_AGENT);
-		expect(callbackPayload?.maxTokens).toBe(123);
-		expect(callbackPayload?.promptMode).toBe("reasoning");
-		expect(callbackPayload?.promptCacheKey).toBe("session-1");
+		expect(callbackPayload?.max_tokens).toBe(123);
+		expect(callbackPayload?.prompt_mode).toBe("reasoning");
+		expect(callbackPayload?.prompt_cache_key).toBe("session-1");
 		expect(callbackResponse).toEqual({
 			status: 200,
 			headers: { "content-type": "text/event-stream", "x-request-id": "request-1" },
@@ -212,7 +231,7 @@ describe("Mistral HTTP transport", () => {
 				role: "assistant",
 				prefix: false,
 				content: [
-					{ type: "thinking", thinking: [{ type: "text", text: "reason" }] },
+					{ type: "thinking", thinking: [{ type: "text", text: "reason" }], closed: true },
 					{ type: "text", text: "answer" },
 				],
 				tool_calls: [
@@ -220,7 +239,6 @@ describe("Mistral HTTP transport", () => {
 						id: "abc123456",
 						type: "function",
 						function: { name: "lookup", arguments: '{"query":"pi"}' },
-						index: 0,
 					},
 				],
 			},

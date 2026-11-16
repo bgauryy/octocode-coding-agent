@@ -146,7 +146,7 @@ describe("session picker layout", () => {
 		expect(out).toContain("(no prompt yet)");
 	});
 
-	it("puts extras on line 2 and drops cost and files at 80 columns or fewer", async () => {
+	it("puts extras on line 2 and drops files, not cost, at 80 columns or fewer", async () => {
 		const extras = new Map<string, SessionExtras>([
 			["s000", { branch: "feat/x", cost: "≈$1.84", files: 7, items: ["B12", "B7"], agent: "inky-kraken", live: true }],
 		]);
@@ -157,7 +157,7 @@ describe("session picker layout", () => {
 		expect(wide).toContain("●");
 		const narrow = selector.render(80).map(plain).join("\n");
 		expect(narrow).toContain("feat/x");
-		expect(narrow).not.toContain("≈$1.84");
+		expect(narrow).toContain("≈$1.84");
 		expect(narrow).not.toContain("7 files");
 	});
 

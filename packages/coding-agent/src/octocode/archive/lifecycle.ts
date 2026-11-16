@@ -7,6 +7,7 @@ import { activate, activationId } from "../shared/activation.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { envFlag, SUBAGENT_ENV } from "../../../../common/src/env.ts";
 import { projectAgents } from "./projection.ts";
 import { saveCompaction, writeSummaryLibrary } from "./summaries.ts";
 
@@ -112,7 +113,9 @@ export function registerArchiveLifecycle(
 				return running;
 			};
 			const project = (): Promise<void> => {
-				if (!options.canProject() || !live(ctx)) return Promise.resolve();
+				// The view lists the whole workspace's events from the shared database: the parent's projection already shows a
+				// child's, so a child would only compete for the file lock.
+				if (envFlag(process.env, SUBAGENT_ENV) || !options.canProject() || !live(ctx)) return Promise.resolve();
 				if (running) {
 					again = true;
 					return running;

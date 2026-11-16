@@ -13,6 +13,11 @@ import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
+/** An agent's name line and the stats line under it (two lines per agent from 60 columns). */
+const groupOf = (lines: string[], name: string): [string, string] => {
+	const at = lines.findIndex((line) => line.includes(name));
+	return [lines[at], lines[at + 1]];
+};
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: id.replace(/-[0-9a-f]{4,6}$/, ""),
@@ -108,9 +113,10 @@ describe("agents panel", () => {
 		expect(before).toHaveLength(2);
 	});
 
-	it("narrow layout: the detail row shows the goal of an idle agent, and its activity while it works, from 64 columns", () => {
+	it("narrow layout: the detail row shows the goal of an idle agent, and its activity while it works, from 54 columns", () => {
 		const id = "researcher-with-a-really-long-name-0001";
-		const idle = widgetLines([member(id, { parentId: "main", goal: "Inspect ".repeat(20) })], "main", NOW, theme, 60);
+		// Below 60 columns an agent keeps a head row and a detail row; from 60 the goal and activity share the name line.
+		const idle = widgetLines([member(id, { parentId: "main", goal: "Inspect ".repeat(20) })], "main", NOW, theme, 56);
 		expect(idle[2]).toMatch(/^ {5}Inspect Inspect/);
 		const busy = member(id, {
 			parentId: "main",
@@ -118,9 +124,12 @@ describe("agents panel", () => {
 			goal: "Inspect things",
 			activity: "localFetch x.ts",
 		});
-		expect(widgetLines([busy], "main", NOW, theme, 60)[2]).toContain("Inspect things");
-		expect(widgetLines([busy], "main", NOW, theme, 60)[2]).not.toContain("localFetch");
-		expect(widgetLines([busy], "main", NOW, theme, 70)[2]).toContain("localFetch x.ts");
+		expect(widgetLines([busy], "main", NOW, theme, 56)[2]).toContain("localFetch x.ts");
+		// From 50 to 53 columns the detail row keeps only the goal; below 50 it gives way.
+		expect(widgetLines([busy], "main", NOW, theme, 52)[2]).toContain("Inspect things");
+		expect(widgetLines([busy], "main", NOW, theme, 52)[2]).not.toContain("localFetch");
+		expect(widgetLines([busy], "main", NOW, theme, 48)).toHaveLength(2);
+		expect(groupOf(widgetLines([busy], "main", NOW, theme, 100), id)[0]).toContain("localFetch x.ts");
 	});
 
 	const team = [
@@ -160,7 +169,7 @@ describe("agents panel", () => {
 
 	it("aligns the columns: every row puts model, state, time and tools at the same offsets", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 160);
-		const rows = lines.slice(1, 4);
+		const rows = ["researcher-3fa9", "general-77aa", "reviewer-a1b2"].map((name) => groupOf(lines, name)[1]);
 		const at = (needle: RegExp) => rows.map((row) => row.search(needle));
 		expect(new Set(at(/working|idle/)).size).toBe(1);
 		expect(new Set(at(/claude-opus|claude-haiku|gpt-5/)).size).toBe(1);
@@ -180,14 +189,14 @@ describe("agents panel", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 200);
 		const squash = (line: string | undefined) => line!.replace(/ +/g, " ");
 		expect(squash(lines[0])).toBe(" 🦑 main-aaaaaa 2 working · 1 idle · 20k tok · ≈$0.04");
-		expect(squash(lines[1])).toBe(
-			" ├ ⠋ 🐙 researcher-3fa9 Find where tools register › localSearch registerTool claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04",
-		);
+		// Line 1 says who and what (goal › activity, then flags); line 2 under the name says how.
+		expect(squash(lines[1])).toBe(" ├ ⠋ 🐙 researcher-3fa9 Find where tools register › localSearch registerTool");
+		expect(squash(lines[2])).toBe(" │ claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04");
 		// A grandchild sits under its parent with the tree line beside it; no goal or usage leaves those cells empty.
-		expect(squash(lines[2])).toBe(" │ └ ⠋ 🐙 general-77aa bash yarn test claude-haiku-4-5 working 5s 1 tool call");
-		expect(squash(lines[3])).toBe(
-			" └ ○ 🐙 reviewer-a1b2 Review the diff ✉ 1 · 1 lock gpt-5 idle 45s 5k tok 3 tool calls",
-		);
+		expect(squash(lines[3])).toBe(" │ └ ⠋ 🐙 general-77aa bash yarn test");
+		expect(squash(lines[4])).toBe(" │ claude-haiku-4-5 working 5s 1 tool call");
+		expect(squash(lines[5])).toBe(" └ ○ 🐙 reviewer-a1b2 Review the diff ✉ 1 · 1 lock");
+		expect(squash(lines[6])).toBe(" gpt-5 idle 45s 5k tok 3 tool calls");
 		// A role the id already starts with (`researcher-3fa9`) is not repeated.
 		expect(lines.slice(1).join("\n")).not.toMatch(/ (researcher|reviewer|general) /);
 		// Provider prefixes stay out of the panel.
@@ -195,18 +204,30 @@ describe("agents panel", () => {
 	});
 
 	it("drops per-agent cost and tools first, keeps tokens, and shortens the goal before the activity; then two lines", () => {
-		const medium = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
-		expect(medium.every((line) => visibleWidth(line) <= 120)).toBe(true);
-		expect(medium[1]).not.toContain("$0.04");
-		expect(medium[1]).not.toContain("12 tool calls");
-		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok", "› localSearch registerTo"])
-			expect(medium[1]).toContain(kept);
-		expect(medium[1]).toMatch(/Find where[^›]*… ›/);
-		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 90);
-		expect(narrow.every((line) => visibleWidth(line) <= 90)).toBe(true);
-		expect(narrow[1]).toBe(" ├ ⠋ researcher-3fa9 · working · 2m14s · 15k tok · claude-opus-4-5");
-		expect(narrow[2]).toBe(" │   localSearch registerTool");
+		const wide = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
+		expect(wide.every((line) => visibleWidth(line) <= 120)).toBe(true);
+		const [, wideStats] = groupOf(wide, "researcher-3fa9");
+		for (const kept of ["$0.04", "12 tool calls", "15k tok"]) expect(wideStats).toContain(kept);
+		// Narrower: the cost goes first, then the tool counts; tokens, model, state and time stay.
+		const medium = widgetLines(team, "main-aaaaaa", NOW, theme, 70);
+		expect(medium.every((line) => visibleWidth(line) <= 70)).toBe(true);
+		const [mediumHead, mediumStats] = groupOf(medium, "researcher-3fa9");
+		expect(mediumStats).not.toContain("$0.04");
+		expect(mediumStats).toContain("12 tool calls");
+		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 60);
+		expect(narrow.every((line) => visibleWidth(line) <= 60)).toBe(true);
+		const [narrowHead, narrowStats] = groupOf(narrow, "researcher-3fa9");
+		expect(narrowStats).not.toContain("tool calls");
+		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok"]) expect(narrowStats).toContain(kept);
+		// The goal is shortened before the activity.
+		expect(mediumHead).toMatch(/Find where[^›]*… › localSearch regist/);
+		expect(narrowHead).toContain("Find where");
 		expect(narrow.join("\n")).toContain("✉ 1 · 1 lock");
+		// Below 60 columns an agent keeps the compact head row and detail row.
+		const compact = widgetLines(team, "main-aaaaaa", NOW, theme, 56);
+		expect(compact.every((line) => visibleWidth(line) <= 56)).toBe(true);
+		expect(compact[1]).toContain("researcher-3fa9 · working");
+		expect(compact.join("\n")).toContain("✉ 1 · 1 lock");
 	});
 
 	it("keeps a long activity readable at 120 columns by shortening the goal, not by dropping tokens or the cached share", () => {
@@ -221,15 +242,18 @@ describe("agents panel", () => {
 			output: 135,
 			activity: "Running shell: sleep 25",
 		});
-		const row = widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 120)[1];
+		const [row, stats] = groupOf(
+			widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 70),
+			"glowing-prawn",
+		);
 		expect(row).toContain("› Running shell: sleep 25");
 		expect(row).toMatch(/ask parent a[^›]*… ›/);
-		expect(row).toContain("58.5k tok");
-		expect(row).toContain("100% cached");
+		expect(stats).toContain("58.5k tok");
+		expect(stats).toContain("100% cached");
 		// With room (200 columns) the whole goal shows too.
-		expect(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200)[1]).toContain(
-			"ask parent a color, sleep, report › Running shell: sleep 25",
-		);
+		expect(
+			groupOf(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200), "glowing-prawn")[0],
+		).toContain("ask parent a color, sleep, report › Running shell: sleep 25");
 	});
 
 	it("keeps a departed agent as a neutral row for FINISHED_MS, after the live ones", () => {
@@ -244,18 +268,21 @@ describe("agents panel", () => {
 			{ ...live, updatedAt: at },
 		];
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
-		expect(lines[0]).toBe(" 🦑 main-aaaaaa    1 working · 1 left");
+		expect(lines[0]).toBe(" 🦑 main-aaaaaa  1 working · 1 left");
 		expect(lines[1]).toContain("wobbly-siphon");
-		expect(lines[2]).toMatch(/^ └ ○ 🐙 sly-crab +left +15s/);
-		expect(lines[2]).not.toContain("working");
+		const [goneHead, goneStats] = groupOf(lines, "sly-crab");
+		expect(goneHead).toMatch(/^ └ ○ 🐙 sly-crab/);
+		expect(goneStats).toMatch(/left +15s/);
+		expect(goneStats).not.toContain("working");
+		expect(lines.indexOf(goneHead)).toBeGreaterThan(lines.findIndex((line) => line.includes("wobbly-siphon")));
 		// The elapsed time stays the run's length while the row is shown (`FINISHED_MS` after it left, inclusive).
 		const later = widgetLines(beat(lastShown), "main-aaaaaa", lastShown, theme, 120, [], undefined, finished);
-		expect(later[2]).toMatch(/left +15s/);
-		// Then the row is gone; a lone departed agent keeps the panel for that long only.
+		expect(groupOf(later, "sly-crab")[1]).toMatch(/left +15s/);
+		// Then the row is gone (root plus the live agent's two lines); a lone departed agent keeps the panel for that long only.
 		expect(
 			widgetLines(beat(lastShown + 1), "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished),
-		).toHaveLength(2);
-		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(2);
+		).toHaveLength(3);
+		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(3);
 		expect(widgetLines([main], "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished)).toEqual([]);
 		// Collapsed to one row per agent (few terminal rows) it still reads left.
 		const [row] = collapsedRows([{ member: gone, depth: 0, doneAt: NOW - 9_000 }], NOW, theme, 120);
@@ -294,8 +321,10 @@ describe("agents panel", () => {
 			line.replace(/ +/g, " "),
 		);
 		expect(lines[0]).toBe(" 🦑 main-aaaaaa 2 idle · 1.2M tok · ≈$2.28 + n/a");
-		expect(lines[1]).toBe(" ├ ○ 🐙 researcher-3fa9 idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
-		expect(lines[2]).toBe(" └ ○ 🐙 general-77aa idle 1m 4.5k tok 1 tool call cost n/a");
+		expect(lines[1]).toBe(" ├ ○ 🐙 researcher-3fa9");
+		expect(lines[2]).toBe(" │ idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
+		expect(lines[3]).toBe(" └ ○ 🐙 general-77aa");
+		expect(lines[4]).toBe(" idle 1m 4.5k tok 1 tool call cost n/a");
 	});
 
 	it('keeps every line within a narrow width, the "+N more" line too', () => {
@@ -396,9 +425,10 @@ describe("panel traffic", () => {
 			traffic,
 		);
 		expect(lines.join("\n")).toContain(`#${mine}`);
-		// The message sits on its sender's row, not in a block of its own.
+		// The message follows its sender's two lines, not a block of its own.
 		const at = lines.findIndex((line) => line.includes(`#${mine}`));
-		expect(lines[at - 1]).toContain("researcher-bbbbbb");
+		expect(lines[at - 2]).toContain("researcher-bbbbbb");
+		expect(lines[at - 1]).toContain("idle");
 		expect(lines.join("\n")).not.toContain("theirs");
 	});
 

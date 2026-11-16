@@ -68,7 +68,7 @@ describe("running work rows", () => {
 
 	it("draws a timer with what it waits for, its note and its time left, and an overdue one as due", () => {
 		const [row] = render([timer]);
-		expect(row).toContain("timer");
+		expect(row).toContain("wait");
 		expect(row).toContain("#4");
 		expect(row).toContain("until `nc -z localhost 5173` exits 0 › open the app");
 		expect(row).toMatch(/in 4m\s*$/);
@@ -170,6 +170,12 @@ describe("the work block in the widget", () => {
 	});
 });
 
+/** An agent's name line and the stats line under it, joined: the worktree badge sits on the second line. */
+const groupOf = (lines: string[], id: string) => {
+	const at = lines.findIndex((line) => line.includes(id));
+	return `${lines[at]}\n${lines[at + 1]}`;
+};
+
 describe("the worktree badge", () => {
 	const main = member("main-0001", { status: "idle", checkout: "/repo" });
 	const isolated = member("implementer-1a2b", {
@@ -182,24 +188,21 @@ describe("the worktree badge", () => {
 
 	it("marks an agent that works in another checkout, with its branch, and no other", () => {
 		const lines = widgetLines([main, isolated, plain], "main-0001", NOW, theme, 200);
-		const isolatedRow = lines.find((line) => line.includes("implementer-1a2b"))!;
-		expect(isolatedRow).toContain("worktree ⎇ octocode/implementer-1a2b");
-		expect(lines.find((line) => line.includes("researcher-3c4d"))).not.toContain("worktree");
+		expect(groupOf(lines, "implementer-1a2b")).toContain("worktree ⎇ octocode/implementer-1a2b");
+		expect(groupOf(lines, "researcher-3c4d")).not.toContain("worktree");
 	});
 
 	it("marks an isolated child that joined the coordinator's team: same checkout, a working folder outside it", () => {
 		const child = { ...isolated, checkout: "/repo", cwd: "/home/u/.octocode/worktrees/ab12/implementer-1a2b" };
 		const peer = { ...plain, cwd: "/repo/packages/app" };
 		const lines = widgetLines([main, child, peer], "main-0001", NOW, theme, 200);
-		expect(lines.find((line) => line.includes("implementer-1a2b"))).toContain("worktree ⎇ octocode/implementer-1a2b");
-		expect(lines.find((line) => line.includes("researcher-3c4d"))).not.toContain("worktree");
+		expect(groupOf(lines, "implementer-1a2b")).toContain("worktree ⎇ octocode/implementer-1a2b");
+		expect(groupOf(lines, "researcher-3c4d")).not.toContain("worktree");
 	});
 
 	it("names the folder when the agent has no branch", () => {
 		const detached = { ...isolated, branch: undefined };
-		const row = widgetLines([main, detached], "main-0001", NOW, theme, 200).find((line) =>
-			line.includes("implementer"),
-		)!;
+		const row = groupOf(widgetLines([main, detached], "main-0001", NOW, theme, 200), "implementer");
 		expect(row).toContain(`worktree ${path.basename(detached.checkout!)}`);
 	});
 
@@ -223,8 +226,8 @@ describe("typed counts and the footer", () => {
 	it("counts by type, in a fixed order, and is empty when nothing runs", () => {
 		expect(workCounts(0, [])).toBe("");
 		expect(workCounts(1, [])).toBe("🐙 1 agent");
-		expect(workCounts(2, [bash, bare, timer])).toBe("🐙 2 agents · 2 bash · 1 timer");
-		expect(workCounts(0, [timer, external, bash])).toBe("1 bash · 1 timer · 1 external");
+		expect(workCounts(2, [bash, bare, timer])).toBe("🐙 2 agents · 2 bash · 1 wait");
+		expect(workCounts(0, [timer, external, bash])).toBe("1 bash · 1 wait · 1 external");
 	});
 
 	it("tells its listeners only when the rows differ", () => {
@@ -257,10 +260,10 @@ describe("typed counts and the footer", () => {
 		work.set("bash", [bash]);
 		work.set("timer", [timer]);
 		view.setBackground(["general-1a2b"]);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 bash · 1 timer");
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 bash · 1 wait");
 		expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 		work.set("bash", []);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 timer");
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 wait");
 		work.set("timer", []);
 		view.setBackground([]);
 		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
@@ -291,15 +294,61 @@ describe("typed counts and the footer", () => {
 		tick?.();
 		// Two live team rows plus the one background child the team does not list.
 		expect(work.agents()).toBe(3);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 3 agents");
+		// While the panel shows the team, the root row names the agents: the footer status leaves them out.
+		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
 		// b leaves the team while c is still only a background name.
 		state.members = [main, live("a-0001")];
 		view.setBackground(["a-0001", "b-0002", "c-0003"]);
 		tick?.();
 		expect(work.agents()).toBe(2);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 2 agents");
+		expect(ctx.ui.statuses.get("octocode-running")).toBeUndefined();
 		view.stop(ctx);
 		expect(work.agents()).toBeUndefined();
+	});
+
+	it("clears the team status and leaves agents out of the running status while the panel shows, and publishes the totals", () => {
+		const stamp = () => ({ updatedAt: Date.now(), joinedAt: Date.now() });
+		const usage = { input: 10_000_000, cacheRead: 9_000_000, output: 200_000, cost: 1.5 };
+		const main = member("main-aaaaaa", { status: "idle", ...stamp(), ...usage });
+		const child = (id: string) => member(id, { parentId: "main-aaaaaa", ...stamp(), ...usage });
+		const state = { members: [main], traffic: [] as never[] };
+		let tick: (() => void) | undefined;
+		const team = {
+			id: "main-aaaaaa",
+			view: state,
+			approvals: undefined,
+			watch: (cb: () => void) => {
+				tick = cb;
+				return () => undefined;
+			},
+		} as unknown as Team;
+		const ctx = fakeCtx({ cwd: tmp() });
+		const work = new RunningWork();
+		const view = new AgentsView(team, work);
+		view.start(ctx);
+		tick?.();
+		// Alone, the footer names the session.
+		expect(ctx.ui.statuses.get("octocode-team")).toContain("main-aaaaaa");
+		work.set("bash", [bash]);
+		state.members = [main, child("a-0001"), child("b-0002")];
+		tick?.();
+		expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
+		// The root row names the session: the footer's own team status is gone, and the running status counts work only.
+		expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
+		expect(ctx.ui.statuses.get("octocode-running")).toBe("1 bash");
+		// The tab title still counts the agents.
+		expect(work.agents()).toBe(2);
+		expect(ctx.ui.statuses.get("octocode-team-totals")).toBe("Σ 3 agents · 30.6M tok · 90% cached · ≈$4.50");
+		state.members = [main, child("a-0001")];
+		tick?.();
+		expect(ctx.ui.statuses.get("octocode-team-totals")).toBe("Σ 2 agents · 20.4M tok · 90% cached · ≈$3.00");
+		// Alone again, the session has no totals to show.
+		state.members = [main];
+		work.set("bash", []);
+		tick?.();
+		expect(ctx.ui.statuses.get("octocode-team-totals")).toBeUndefined();
+		view.stop(ctx);
+		expect(ctx.ui.statuses.get("octocode-team-totals")).toBeUndefined();
 	});
 
 	it("repaints the widget when the work changes, and not when it is published unchanged", () => {

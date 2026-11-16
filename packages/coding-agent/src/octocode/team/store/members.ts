@@ -38,9 +38,31 @@ function retire(db: Db, id: string, now: number, reason: string | undefined, end
 	deliveries.deadLetterOf(db, id, now);
 }
 
+/**
+ * A headless child's run ended while `parent` holds its reservations (`ChildLeases`): its row becomes `settled` and names
+ * `parent`, so the leases stay until the parent releases them. Its unread mail and open questions end as when it leaves.
+ * Nothing changes when the row no longer names `owner`; whether it settled.
+ */
+export function settleMember(
+	db: Db,
+	id: string,
+	now: number,
+	owner: ProcessIdentity,
+	parent: ProcessIdentity,
+	reason?: agentEvents.EndReason,
+): boolean {
+	if (!agents.settle(db, id, owner, parent, reason)) return false;
+	deliveries.closeAsksOf(db, id, now);
+	deliveries.deadLetterOf(db, id, now);
+	return true;
+}
+
 /** Check liveness outside the write lock, then validate that identity before running the mutation once. */
 export function memberTransaction<T>(agent: AgentDb, member: Member | undefined, work: (held: boolean) => T): T {
-	if (member) agents.ensureMailbox(agent.db);
+	if (member) {
+		agents.ensureMailbox(agent.db);
+		agents.ensureSettledStatus(agent.db);
+	}
 	if (!member) return agent.transaction(() => work(false));
 	for (;;) {
 		const observed = agents.processOf(agent.db, member.id);
@@ -128,6 +150,7 @@ export function listMembers(db: Db, team: string, now: number, readLeases: () =>
 	const live = agents
 		.inTeam(db, team)
 		.map(toMember)
+		.filter((member) => member.status !== "settled")
 		.filter(
 			(member) => stale(member.updatedAt, now) === stalled && rowLive({ ...member, seenAt: member.updatedAt }, now),
 		);

@@ -296,7 +296,7 @@ export interface PendingRestore {
 }
 
 /**
- * Puts `pending` (from `recentFiles`, taken before the compaction) back into the context right after it, as a hidden
+ * Puts `pending` (from `recentFiles`, taken before the compaction, minus `contextHeld`: the project context files the system prompt shows, `recordContextFiles`) back into the context right after it, as a hidden
  * message, within `total` characters. Run it after the guard was rebuilt from the compacted context; returns what to
  * record once the message is delivered.
  */
@@ -306,6 +306,7 @@ export function deliverRestoredFiles(
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
 	budget: number,
 	thinking?: CompactionThinking,
+	contextHeld: ReadonlySet<string> = new Set(),
 ): PendingRestore | undefined {
 	let total = budget;
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
@@ -323,7 +324,7 @@ export function deliverRestoredFiles(
 	const reads = contextReads(ctx);
 	const restored = restoreFiles(
 		pending,
-		heldFiles(reads),
+		new Set([...heldFiles(reads), ...contextHeld]),
 		ctx.cwd,
 		total,
 		restoreLimits(ctx.model?.contextWindow),

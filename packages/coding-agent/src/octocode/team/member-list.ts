@@ -39,15 +39,23 @@ function shownFolder(folder: string, here: string | undefined): string {
 }
 
 /** The item, why, transcript and shell-log lines of one member; a line with no data is left out. */
-function detailLines(details: MemberDetails | undefined, here: string | undefined): string[] {
+function detailLines(
+	details: MemberDetails | undefined,
+	here: string | undefined,
+	logged: Set<string> = new Set(),
+): string[] {
 	if (!details) return [];
-	const { item, transcripts, shellLogs } = details;
+	const { item, transcripts, shellLogs, jobs } = details;
+	// Agents of one checkout share a transcript folder: the first block names it, the rest would repeat it.
+	const newFolder = transcripts !== undefined && !logged.has(transcripts);
+	if (transcripts !== undefined) logged.add(transcripts);
 	const more = item?.more ? ` (+${item.more} more)` : "";
 	const why = item ? firstLine(item.why).trim() : "";
 	return [
 		...(item ? [detailLine("item", `B${item.seq} ${firstLine(item.title)}${more}`)] : []),
+		...(jobs?.length ? [detailLine("work:", jobs.map((job) => `${job.id} on ${job.item}`).join(", "))] : []),
 		...(why ? [detailLine("why:", why)] : []),
-		...(transcripts ? [detailLine("log:", shownFolder(transcripts, here), true)] : []),
+		...(transcripts && newFolder ? [detailLine("log:", shownFolder(transcripts, here), true)] : []),
 		...(shellLogs ? [detailLine("shell logs:", shownFolder(shellLogs, here), true)] : []),
 	];
 }
@@ -71,7 +79,9 @@ export function describeMembers(
 ): string {
 	const gone = stalled.filter((member) => now - member.updatedAt > STALLED_LISTED_MS);
 	if (members.length === 0 && gone.length === 0) return "No agents have joined in this repository.";
-	const here = members.find((member) => member.id === selfId)?.checkout;
+	const self = members.find((member) => member.id === selfId);
+	const here = self?.checkout;
+	const logged = new Set<string>();
 	// Goals, activity, items and paths come from other processes' rows: untrusted text the model reads.
 	const silent = gone.map(
 		(member) =>
@@ -100,8 +110,11 @@ export function describeMembers(
 					`${member.id}${you} · ${member.role} · ${member.status}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
 					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
-					...(member.cwd ? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`] : []),
-					...detailLines(details?.get(member.id), here),
+					// The viewer's own checkout is the common case and the Worktrees section names it: only a different place is worth a line.
+					...(member.cwd && !(self && member.cwd === self.cwd && member.branch === self.branch)
+						? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`]
+						: []),
+					...detailLines(details?.get(member.id), here, logged),
 					`  ${firstLine(doing)}${output}`,
 					...(stalled
 						? [

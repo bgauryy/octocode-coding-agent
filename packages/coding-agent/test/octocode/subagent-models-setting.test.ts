@@ -143,7 +143,7 @@ describe("subagents.models: the global setting and its surfaces", () => {
 			{ registerTool: (definition: ToolDefinition) => void (tool = definition) } as never,
 			() => new Map(),
 		);
-		const result = await tool!.execute("c", {}, undefined, undefined, {
+		const result = await tool!.execute("c", { routes: true }, undefined, undefined, {
 			model: parent,
 			thinkingLevel: "low",
 			modelRegistry: {

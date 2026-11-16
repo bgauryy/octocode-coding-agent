@@ -16,10 +16,6 @@ import { stream as streamOpenAICompletions } from "../src/api/openai-completions
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
 import type { Model } from "../src/types.ts";
 
-const bedrockMock = vi.hoisted(() => ({
-	sendError: undefined as unknown,
-}));
-
 const openaiMock = vi.hoisted(() => ({
 	// Default parsed body; individual tests may override before invoking.
 	parsedBody: { error: "blocked by gateway WAF" } as unknown,
@@ -27,41 +23,18 @@ const openaiMock = vi.hoisted(() => ({
 
 mockCompletionsFetch(() => new Response(JSON.stringify(openaiMock.parsedBody), { status: 403 }));
 
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
-
-	class BedrockRuntimeClient {
-		middlewareStack = { add: () => {} };
-		send(): Promise<never> {
-			return Promise.reject(bedrockMock.sendError);
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
+// Bedrock errors arrive as real HTTP error responses through the SDK's fetch.
+function bedrockError(status: number, body: string, errorType: string) {
 	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
+		apiKey: "test",
+		env: {},
+		fetch: async () =>
+			new Response(body, {
+				status,
+				headers: { "content-type": "application/json", "x-amzn-errortype": errorType },
+			}),
 	};
-});
+}
 
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -153,14 +126,14 @@ describe("provider error body passthrough (per-tier regression)", () => {
 	});
 
 	it("bedrock (body-blind) surfaces the gateway body instead of Unknown: UnknownError", async () => {
-		bedrockMock.sendError = Object.assign(new Error("UnknownError"), {
-			name: "UnknownError",
-			$metadata: { httpStatusCode: 403 },
-			$response: { statusCode: 403, body: '{"message":"blocked by gateway WAF"}' },
-		});
-
 		const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-		const output = await drainResult(streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}));
+		const output = await drainResult(
+			streamSimpleBedrock(
+				model,
+				normalizeContext({ messages: context.messages }),
+				bedrockError(403, '{"message":"blocked by gateway WAF"}', "UnknownError"),
+			),
+		);
 
 		expect(output.stopReason).toBe("error");
 		expect(output.errorMessage).toContain("403");
@@ -169,22 +142,16 @@ describe("provider error body passthrough (per-tier regression)", () => {
 	});
 
 	it("bedrock preserves the SDK validation message when the response body is a stream", async () => {
-		bedrockMock.sendError = Object.assign(
-			new Error(
-				"Invocation of model ID anthropic.claude-opus-5 with on-demand throughput isn't supported. Retry with an inference profile.",
-			),
-			{
-				name: "ValidationException",
-				$metadata: { httpStatusCode: 400 },
-				$response: {
-					statusCode: 400,
-					body: { pipe: () => undefined, _readableState: { buffer: [], length: 0 } },
-				},
-			},
-		);
-
 		const model = getBuiltinModel("amazon-bedrock", "global.anthropic.claude-opus-5");
-		const output = await drainResult(streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}));
+		const message =
+			"Invocation of model ID anthropic.claude-opus-5 with on-demand throughput isn't supported. Retry with an inference profile.";
+		const output = await drainResult(
+			streamSimpleBedrock(
+				model,
+				normalizeContext({ messages: context.messages }),
+				bedrockError(400, JSON.stringify({ message }), "ValidationException"),
+			),
+		);
 
 		expect(output.stopReason).toBe("error");
 		expect(output.errorMessage).toContain("on-demand throughput isn't supported");

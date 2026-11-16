@@ -54,7 +54,6 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"retry",
 			"httpProxy",
 			"httpIdleTimeoutMs",
-			"websocketConnectTimeoutMs",
 		],
 	},
 	{
@@ -139,7 +138,7 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	defaultThinkingLevel:
 		"Thinking level for the starting model, and for a model switch before the session chooses a level, when neither the model pattern nor `modelThinkingLevels` sets one; `high` when unset. Subagents never take it: each route names its own level.",
 	transport:
-		"Request transport for the OpenAI Codex Responses API, which can stream over SSE or WebSocket; `websocket-cached` and `auto` reuse cached context on WebSocket.",
+		"Request transport for providers that offer more than one. Every built-in provider streams over HTTP (SSE), so `auto` and `sse` behave the same.",
 	steeringMode:
 		"Messages queued while the agent streams: `one-at-a-time` delivers one and waits for the response; `all` delivers them together.",
 	followUpMode:

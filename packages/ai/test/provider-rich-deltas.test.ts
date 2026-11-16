@@ -1,18 +1,12 @@
-import type { ChatCompletionChunk } from "openai/resources/chat/completions.js";
+import { completionsResponse } from "./completions-fetch-fixture.ts";
 import { expect, it } from "vitest";
-import {
-	handleContentBlockDelta,
-	handleContentBlockStart,
-	handleContentBlockStop,
-	finalizeStreamingBlock,
-} from "../src/api/bedrock-converse-stream/stream-events.ts";
-import type { Block } from "../src/api/bedrock-converse-stream/types.ts";
-import { consumeChatStream } from "../src/api/mistral-conversations/stream-events.ts";
-import { createCompletionsChunkProcessor } from "../src/api/openai-completions/stream-events.ts";
-import { ResponsesArtifacts } from "../src/api/openai-responses-shared/stream-artifacts.ts";
+import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockModel, bedrockContext, bedrockResponse } from "./bedrock-fixtures.ts";
+import { stream as streamMistral } from "../src/api/mistral-conversations.ts";
+import { stream as streamCompletions } from "../src/api/openai-completions.ts";
+import { stream as streamResponses } from "../src/api/openai-responses.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
 import type { Api, Model } from "../src/types.ts";
-import { createPendingAssistantMessage } from "../src/utils/assistant-message.ts";
-import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 function model<T extends Api>(api: T): Model<T> {
 	return {
@@ -29,42 +23,35 @@ function model<T extends Api>(api: T): Model<T> {
 	};
 }
 
-it("retains Bedrock image chunks and citations without persisting byte scratch buffers", () => {
-	const output = createPendingAssistantMessage(model("bedrock-converse-stream"));
-	const blocks = output.content as Block[];
-	const stream = new AssistantMessageEventStream();
-	handleContentBlockDelta({ contentBlockIndex: 0, delta: { text: "Answer" } }, blocks, output, stream);
-	handleContentBlockDelta(
-		{
-			contentBlockIndex: 0,
-			delta: {
-				citation: {
-					title: "Document",
-					source: "https://example.invalid/document",
-					sourceContent: [{ text: "Source" }],
-					location: { documentPage: { documentIndex: 0, start: 2, end: 3 } },
+it("retains Bedrock image chunks and citations without persisting byte scratch buffers", async () => {
+	const output = await streamBedrock(bedrockModel, bedrockContext, {
+		apiKey: "test",
+		env: {},
+		fetch: async () =>
+			bedrockResponse([
+				{ messageStart: { role: "assistant" } },
+				{ contentBlockDelta: { contentBlockIndex: 0, delta: { text: "Answer" } } },
+				{
+					contentBlockDelta: {
+						contentBlockIndex: 0,
+						delta: {
+							citation: {
+								title: "Document",
+								source: "https://example.invalid/document",
+								sourceContent: [{ text: "Source" }],
+								location: { documentPage: { documentIndex: 0, start: 2, end: 3 } },
+							},
+						},
+					},
 				},
-			},
-		},
-		blocks,
-		output,
-		stream,
-	);
-	handleContentBlockStop({ contentBlockIndex: 0 }, blocks, output, stream);
-	handleContentBlockStart({ contentBlockIndex: 1, start: { image: { format: "png" } } }, blocks, output, stream);
-	handleContentBlockDelta(
-		{ contentBlockIndex: 1, delta: { image: { source: { bytes: new Uint8Array([1, 2]) } } } },
-		blocks,
-		output,
-		stream,
-	);
-	handleContentBlockDelta(
-		{ contentBlockIndex: 1, delta: { image: { source: { bytes: new Uint8Array([3, 4]) } } } },
-		blocks,
-		output,
-		stream,
-	);
-	for (const block of blocks) finalizeStreamingBlock(block);
+				{ contentBlockStop: { contentBlockIndex: 0 } },
+				{ contentBlockStart: { contentBlockIndex: 1, start: { image: { format: "png" } } } },
+				{ contentBlockDelta: { contentBlockIndex: 1, delta: { image: { source: { bytes: "AQI=" } } } } },
+				{ contentBlockDelta: { contentBlockIndex: 1, delta: { image: { source: { bytes: "AwQ=" } } } } },
+				{ messageStop: { stopReason: "end_turn" } },
+			]),
+	}).result();
+	expect(output.stopReason).toBe("stop");
 	expect(output.content).toEqual([
 		{
 			type: "text",
@@ -85,70 +72,130 @@ it("retains Bedrock image chunks and citations without persisting byte scratch b
 	]);
 });
 
-it("retains Mistral image parts and makes unknown parts explicit", async () => {
-	const selected = model("mistral-conversations");
-	const output = createPendingAssistantMessage(selected);
-	await consumeChatStream(
-		selected,
-		output,
-		new AssistantMessageEventStream(),
-		(async function* () {
-			yield {
-				data: {
-					choices: [
-						{
-							finish_reason: "stop",
-							delta: {
-								content: [
-									{ type: "text", text: "Image follows" },
-									{ type: "image_url", image_url: { url: "data:image/png;base64,AQIDBA==" } },
-									{ type: "future_output", text: "A provider attachment" },
-								],
-							},
-						},
-					],
-				},
-			};
-		})(),
-		undefined,
-	);
+async function mistralContent(content: unknown[], extra = {}) {
+	return streamMistral(
+		model("mistral-conversations"),
+		normalizeContext({ messages: [{ role: "user", content: "generate", timestamp: 0 }] }),
+		{
+			apiKey: "fixture",
+			fetch: async () =>
+				new Response(
+					`data: ${JSON.stringify({ ...extra, choices: [{ index: 0, finish_reason: "stop", delta: { content } }] })}\n\ndata: [DONE]\n\n`,
+					{ headers: { "content-type": "text/event-stream" } },
+				),
+		},
+	).result();
+}
+
+it("retains Mistral generated images through the SDK raw-part boundary", async () => {
+	const output = await mistralContent([
+		{ type: "text", text: "Image follows" },
+		{ type: "image_url", image_url: { url: "data:image/png;base64,AQIDBA==", detail: null } },
+	]);
+	expect(output.errorMessage).toBeUndefined();
 	expect(output.content).toEqual([
 		{ type: "text", text: "Image follows" },
 		{ type: "image", mimeType: "image/png", data: "AQIDBA==" },
-		{ type: "unsupported", providerType: "future_output", text: "A provider attachment" },
 	]);
 });
 
-it("keeps a chat-completions refusal visible instead of producing an empty successful answer", () => {
+it("keeps Mistral text and generated images in wire order within and across chunks", async () => {
+	const image = { type: "image_url", image_url: { url: "data:image/png;base64,AQIDBA==", detail: null } };
+	const chunks = [[{ type: "text", text: "A" }, image, { type: "text", text: "B" }], "C", [image], "D"];
+	const body = chunks
+		.map(
+			(content, index) =>
+				`data: ${JSON.stringify({ choices: [{ index: 0, finish_reason: index === chunks.length - 1 ? "stop" : null, delta: { content } }] })}\n\n`,
+		)
+		.join("");
+	const events = streamMistral(
+		model("mistral-conversations"),
+		normalizeContext({ messages: [{ role: "user", content: "generate", timestamp: 0 }] }),
+		{
+			apiKey: "fixture",
+			fetch: async () => new Response(`${body}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } }),
+		},
+	);
+	const kinds: string[] = [];
+	for await (const event of events) if (event.type.startsWith("text_")) kinds.push(event.type);
+	const output = await events.result();
+	const png = { type: "image", mimeType: "image/png", data: "AQIDBA==" };
+	expect(output.errorMessage).toBeUndefined();
+	expect(output.content).toEqual([
+		{ type: "text", text: "A" },
+		png,
+		{ type: "text", text: "BC" },
+		png,
+		{ type: "text", text: "D" },
+	]);
+	// Each text block opens and closes once.
+	expect(kinds.filter((kind) => kind === "text_start")).toHaveLength(3);
+	expect(kinds.filter((kind) => kind === "text_end")).toHaveLength(3);
+});
+
+it("fails explicitly for Mistral content rejected by the SDK schema", async () => {
+	const output = await mistralContent([{ type: "future_output", text: "A provider attachment" }]);
+	expect(output.stopReason).toBe("error");
+	expect(output.errorMessage).toContain("Mistral provider stream error");
+});
+
+it("accepts unknown extra fields on a normal Mistral reply", async () => {
+	const output = await mistralContent([{ type: "text", text: "normal" }], { future_metadata: { value: true } });
+	expect(output.stopReason).toBe("stop");
+	expect(output.content).toEqual([{ type: "text", text: "normal" }]);
+});
+
+it("keeps a chat-completions refusal visible instead of producing an empty successful answer", async () => {
 	const selected = model("openai-completions");
-	const output = createPendingAssistantMessage(selected);
-	const processor = createCompletionsChunkProcessor(selected, output, new AssistantMessageEventStream(), new Map(), {
-		details: [],
-	});
-	processor.processChunk({
-		choices: [{ index: 0, delta: { refusal: "Cannot complete this request." }, finish_reason: "stop", logprobs: null }],
-	} as ChatCompletionChunk);
-	processor.finishBlocks();
+	const output = await streamCompletions(
+		selected,
+		normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 0 }] }),
+		{
+			apiKey: "fixture",
+			fetch: async () =>
+				completionsResponse([
+					{ choices: [{ index: 0, delta: { refusal: "Cannot complete this request." }, finish_reason: "stop" }] },
+				]),
+		},
+	).result();
 	expect(output.content).toEqual([{ type: "text", text: "Cannot complete this request." }]);
 });
 
-it("updates a partial image in place and retains decoded audio chunk boundaries", () => {
-	const output = createPendingAssistantMessage(model("openai-responses"));
-	const artifacts = new ResponsesArtifacts(output, new AssistantMessageEventStream());
-	artifacts.upsert({ type: "image_generation_call", id: "image", status: "in_progress", result: null }, 0);
-	artifacts.accept({
-		type: "response.image_generation_call.partial_image",
-		item_id: "image",
-		output_index: 0,
-		partial_image_index: 0,
-		sequence_number: 1,
-		partial_image_b64: "AQI=",
-		output_format: "png",
-	});
-	expect(output.content).toEqual([{ type: "image", mimeType: "image/png", data: "AQI=" }]);
-	artifacts.accept({ type: "response.audio.delta", sequence_number: 2, delta: "AQI=" });
-	artifacts.accept({ type: "response.audio.delta", sequence_number: 3, delta: "AwQ=" });
-	artifacts.accept({ type: "response.audio.transcript.delta", sequence_number: 4, delta: "Transcript" });
+it("updates a partial image in place and retains decoded audio chunk boundaries", async () => {
+	const events = [
+		{ type: "response.created", response: { id: "resp_rich" } },
+		{
+			type: "response.output_item.added",
+			output_index: 0,
+			item: { type: "image_generation_call", id: "image", status: "in_progress", result: null },
+		},
+		{
+			type: "response.image_generation_call.partial_image",
+			item_id: "image",
+			output_index: 0,
+			partial_image_index: 0,
+			sequence_number: 1,
+			partial_image_b64: "AQI=",
+			output_format: "png",
+		},
+		{ type: "response.audio.delta", sequence_number: 2, delta: "AQI=" },
+		{ type: "response.audio.delta", sequence_number: 3, delta: "AwQ=" },
+		{ type: "response.audio.transcript.delta", sequence_number: 4, delta: "Transcript" },
+		{ type: "response.completed", response: { id: "resp_rich", status: "completed", output: [] } },
+	];
+	const output = await streamResponses(
+		model("openai-responses"),
+		normalizeContext({ messages: [{ role: "user", content: "generate", timestamp: 0 }] }),
+		{
+			apiKey: "sk-test",
+			fetch: async () =>
+				new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+					headers: { "content-type": "text/event-stream" },
+				}),
+		},
+	).result();
+	expect(output.errorMessage).toBeUndefined();
+	expect(output.content.slice(0, 1)).toEqual([{ type: "image", mimeType: "image/png", data: "AQI=" }]);
 	expect(output.content.slice(1)).toEqual([
 		{ type: "media", mimeType: "application/octet-stream", name: "Response audio", data: "AQIDBA==" },
 		{ type: "text", text: "Transcript" },

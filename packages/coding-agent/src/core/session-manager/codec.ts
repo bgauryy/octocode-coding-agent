@@ -1,5 +1,6 @@
 import type { RequestTrace } from "@octocodeai/octocode-ai";
 import { restoreBashResult, storeBashResult } from "../tools/bash/stored-result.ts";
+import { redactEntry } from "./codec-redact.ts";
 import { SnapshotIndex } from "./codec-snapshots.ts";
 import { isTraceDelta, TraceIndex } from "./codec-trace.ts";
 
@@ -12,6 +13,8 @@ import { isTraceDelta, TraceIndex } from "./codec-trace.ts";
  * | an assistant message's `requestTrace` | the layers after the prefix it shares with an earlier trace (`codec-trace.ts`) |
  * | a system message's prompt text, sections and tool declarations, also inside a compaction | a hash of a part written earlier (`codec-snapshots.ts`) |
  * | a bash result's `details.output` and `structuredContent.output` | a span of its content text, or the path of its saved full output (`stored-result.ts`) |
+ *
+ * Credentials are removed from an entry's text as it is encoded (`codec-redact.ts`); the entry in memory is unchanged.
  *
  * References point only at earlier lines of the same file, so a lone file reads whole: copy, fork, export and archive
  * need nothing else. Files written before this format hold whole entries, which read unchanged. One codec follows one
@@ -36,7 +39,7 @@ export class SessionCodec {
 
 	/** The stored form of `entry` against the lines observed so far. Nothing is remembered until `observe`. */
 	encode<T extends object>(entry: T): T {
-		let stored = entry as unknown as Record_;
+		let stored = redactEntry(entry) as unknown as Record_;
 		const message = messageOf(stored);
 		if (message?.role === "assistant" && isRecord(message.requestTrace)) {
 			const whole = message.requestTrace as unknown as RequestTrace;

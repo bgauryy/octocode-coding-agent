@@ -56,7 +56,7 @@ export class SettingsSelectorComponent extends Container {
 				label: "Transport",
 				description: "Preferred transport for providers that support multiple transports",
 				currentValue: config.transport,
-				values: ["sse", "websocket", "websocket-cached", "auto"],
+				values: ["sse", "auto"],
 			},
 			{
 				id: "http-idle-timeout",

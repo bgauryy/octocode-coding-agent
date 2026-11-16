@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { type Tool, validateToolArguments } from "@octocodeai/octocode-ai";
-import { convertTools as convertAnthropicTools } from "@octocodeai/octocode-ai/api/anthropic-messages/tools";
-import { convertTools as convertGoogleTools } from "@octocodeai/octocode-ai/api/google-shared/tools";
+import { anthropicToolSchema } from "@octocodeai/octocode-ai/api/ai-sdk/anthropic-map";
+import { googleToolWire as convertGoogleTools } from "../../ai/test/google-fetch-fixture.ts";
 import { describe, expect, it } from "vitest";
 import { thinParameters } from "../src/presentation/declaration.ts";
 import { createMcpToolDefinition } from "../src/tool-definition.ts";
@@ -174,19 +174,17 @@ describe("thin MCP declarations of union inputs", () => {
 describe("provider serialization of a thin union field", () => {
 	const tool = { name: "mcp__third__set", description: "Set a value.", parameters: thinParameters(valueUnion) } as Tool;
 
-	it("Gemini sends the property-level anyOf in parametersJsonSchema and in legacy parameters", () => {
-		const [json] = convertGoogleTools([tool]) ?? [];
+	it("Gemini sends the property-level anyOf in parametersJsonSchema", async () => {
+		const [json] = (await convertGoogleTools([tool])) ?? [];
 		expect(json?.functionDeclarations[0]).toMatchObject({
 			name: tool.name,
 			parametersJsonSchema: open({ value: stringOrNumber }),
 		});
-		const [legacy] = convertGoogleTools([tool], true) ?? [];
-		expect(legacy?.functionDeclarations[0]?.parameters).toEqual(open({ value: stringOrNumber }));
 	});
 
 	it("Anthropic sends it in input_schema", () => {
-		const [declared] = convertAnthropicTools([tool], false, false);
-		expect(declared?.input_schema).toEqual({
+		const declared = anthropicToolSchema(tool, false);
+		expect(declared.schema).toEqual({
 			type: "object",
 			properties: { value: stringOrNumber },
 			required: [],

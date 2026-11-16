@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { AgentRuns, Run } from "./claim.ts";
+import { siblingRoster } from "./siblings.ts";
 import type { ItemLink } from "./item-link.ts";
 import type { askSpawn } from "./profiles.ts";
 import type { ResultContract } from "./result-schema.ts";
@@ -21,13 +22,15 @@ interface IdentityParts {
 
 export function configureIdentity(
 	run: Run,
-	runs: Pick<AgentRuns, "items">,
+	runs: Pick<AgentRuns, "items" | "team">,
 	api: Pick<ExtensionAPI, "events">,
 	permission: Permission,
 	ctx: Pick<ExtensionContext, "hasUI">,
 	parts: IdentityParts,
 ): void {
 	const { resultContract, linked, skillPlan, skillResources, taskServers, grants } = parts;
+	// The agents that already run under the same coordinator, as of this start; a resumed run gets a fresh roster.
+	run.identity.siblings = siblingRoster(runs.team, run.identity.id, run.identity.parentId) || undefined;
 	if (resultContract) run.identity.resultContract = resultContract;
 	if (linked) {
 		run.identity.item = linked.ref;

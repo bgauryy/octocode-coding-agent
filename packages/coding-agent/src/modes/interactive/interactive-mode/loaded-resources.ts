@@ -6,6 +6,7 @@
 import { type Component, type Container, GLYPH, SEPARATOR, Spacer } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { getAgentDir } from "../../../config.ts";
+import { contextFilesBudgetWarning, projectContextOf } from "../../../core/context-budget.ts";
 import { collectContextView } from "../../../core/discovery/context-snapshot.ts";
 import { type ContextView, type LoadedRef, sourceInfoLabel } from "../../../core/discovery/context-view.ts";
 import { takePiNotice } from "../../../core/discovery/pi-notice.ts";
@@ -13,9 +14,14 @@ import { keybindingProblems } from "../../../core/keybindings.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import { warningsBesideListing } from "../../../core/resource-loader/feature-loading.ts";
 import type { Skill } from "../../../core/skills.ts";
-import { skillListingBudgetWarning, skillListingOf } from "../../../core/skills/listing-budget.ts";
+import {
+	skillListingBudgetWarning,
+	skillListingOf,
+	skillListingBudgetChars,
+} from "../../../core/skills/listing-budget.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { ThemedText } from "../components/themed-text.ts";
+import { legend } from "../../../theme/page-kit.ts";
 import { theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -120,7 +126,12 @@ export function showLoadedResources(
 		// Collapsed, the listing shows what the agent includes now; agents, prompts, themes and code that does not run are
 		// listed only expanded.
 		view = loadedContextView(host, skillsResult.skills);
-		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path));
+		const budget = skillListingBudgetChars(host.session.model?.contextWindow);
+		const prompt = host.session.systemPrompt ?? "";
+		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path), {
+			context: { chars: projectContextOf(prompt)?.length ?? 0, budget },
+			skill: { chars: skillListingOf(prompt)?.length ?? 0, budget },
+		});
 		const viewRow = (id: string) => viewSpecs.filter((row) => row.id === id).map((row) => row.spec);
 		const rows: LoadedRowSpec[] = [...viewRow("context"), ...viewRow("skill")];
 		piNotice = takePiNotice(view, getAgentDir());
@@ -130,14 +141,16 @@ export function showLoadedResources(
 			rows.push(mcpRow(events));
 		}
 
-		for (const [id, label] of [
-			["hook", "Hooks"],
-			["plugin", "Plugins"],
-		] as const)
-			rows.push(
-				...(viewRow(id).length > 0 ? viewRow(id) : [zeroRow(label)]).map((spec) => ({ ...spec, showZero: true })),
-			);
-		rows.push(...viewRow("model"));
+		rows.push(...viewRow("hook"), ...viewRow("plugin"));
+		const models = host.session.modelRuntime?.getAvailableSnapshot() ?? [];
+		rows.push({
+			label: "Model",
+			count: () => 1,
+			state: () => (host.session.model ? "ready" : "attention"),
+			summary: () =>
+				`${sanitizeTerminalText(host.session.model?.id ?? "none selected")} · ${new Set(models.map((m) => m.provider)).size} providers · ${models.length} models · /model · /providers`,
+			details: () => models.map((m) => `  ${m.provider}/${m.id}`).join("\n"),
+		});
 		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));
 		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/settings")));
 		if (extensions.length > 0) {
@@ -151,8 +164,8 @@ export function showLoadedResources(
 			rows.push({
 				label: "Extensions",
 				count: () => extensions.length,
-				summary: () => formatCompactList(extensionLabels),
-				expandedSummary: () => "",
+				summary: () => `${formatCompactList(extensionLabels)} · /harness`,
+				expandedSummary: () => "/harness",
 				details: extList,
 			});
 		}
@@ -173,9 +186,19 @@ export function showLoadedResources(
 			}
 			// Rows with a list behind them are collapsed: say how to open them, and drop the hint once they are open.
 			if (rows.some((row) => row.details && row.count() > 0))
-				host.loadedResourcesContainer.addChild(
-					new ExpandableText(expandHint, () => "", host.getStartupExpansionState(), 0, 0),
-				);
+				host.loadedResourcesContainer.addChild({
+					invalidate() {},
+					render: (width) =>
+						new ThemedText(
+							() =>
+								theme.fg(
+									"dim",
+									`${legend(rows.filter((r) => (r.count() > 0 || r.showZero) && (!r.expandedOnly || host.getStartupExpansionState())).map((r) => r.state?.() ?? "ready"))} · ${expandHint()}`,
+								),
+							0,
+							0,
+						).render(width),
+				});
 		}
 	}
 
@@ -235,17 +258,25 @@ export function showLoadedResources(
 			keybindingProblems(),
 		);
 		// Measured on the listing the model receives; it is never shortened, so the user is told instead.
-		const listing = skillListingOf(host.session.systemPrompt);
+		const { systemPrompt, model, resourceLoader } = host.session;
+		const contextWindow = model?.contextWindow;
+		const listing = skillListingOf(systemPrompt);
 		const overBudget = listing
-			? skillListingBudgetWarning({
-					skills: skillsResult.skills,
-					listing,
-					contextWindow: host.session.model?.contextWindow,
-				})
+			? skillListingBudgetWarning({ skills: skillsResult.skills, listing, contextWindow })
 			: undefined;
-		addWarningLines(
-			overBudget ? { ...startup, warnings: [...startup.warnings, { text: overBudget.message, details: [] }] } : startup,
-		);
+		const contextOver = contextFilesBudgetWarning({
+			systemPrompt,
+			files: resourceLoader.getAgentsFiles().agentsFiles,
+			contextWindow,
+		});
+		addWarningLines({
+			...startup,
+			warnings: [
+				...startup.warnings,
+				...(!showListing && overBudget ? [{ text: overBudget.message, details: [] }] : []),
+				...(!showListing && contextOver ? [contextOver] : []),
+			],
+		});
 		addDiagnostics(warningTitle("Prompt conflicts"), "prompt", promptsResult.diagnostics);
 
 		const extensionDiagnostics: ResourceDiagnostic[] = [];
@@ -319,9 +350,6 @@ function loadedContextView(host: LoadedResourcesHost, skills: readonly Skill[]):
 		},
 	});
 }
-
-/** A kind with nothing loaded still gets its row (`Hooks  0`), so the listing says it was checked. */
-const zeroRow = (label: string): LoadedRowSpec => ({ label, count: () => 0, summary: () => "" });
 
 /** Appends the command that changes a row's files (`· /settings`) to its collapsed text. */
 function withCommand(spec: LoadedRowSpec, command: string): LoadedRowSpec {

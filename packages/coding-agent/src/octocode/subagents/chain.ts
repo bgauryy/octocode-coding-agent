@@ -145,10 +145,10 @@ export class ChainQueue {
 			});
 	}
 
-	/** Starts held child `id` now; the refusal text when none is held by that name. */
+	/** Starts queued or held child `id` now, without waiting for its prerequisites; the refusal text when none is queued by that name. */
 	start(id: string): string | undefined {
 		const entry = this.entries.get(id);
-		if (!entry?.held) return `${id} is not a held queued child.`;
+		if (!entry) return `${id} is not a queued child.`;
 		entry.release();
 		return undefined;
 	}

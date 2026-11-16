@@ -8,6 +8,7 @@ import { optionalString } from "../shared/util.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
+import { roleExecChange } from "./shell/role-exec.ts";
 import { canonicalPath } from "../../../../common/src/canonical-path.ts";
 import { isWithin } from "../../../../common/src/paths.ts";
 import { workspaceRoot } from "../../utils/git-repository.ts";
@@ -26,7 +27,8 @@ import { mcpCallChange } from "./mcp-reads.ts";
  * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
  * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
- * refuses what the parse shows as a change inside the workspace or the home folder (`shell/mutation.ts`), and any git call
+ * refuses what the parse shows as a change anywhere but the temporary folders (`shell/mutation.ts`), programs
+ * that write or run code through their options or change remote state (`shell/role-exec.ts`: `gh pr merge`, `man -P`), and any git call
  * but a listed read (`shell/git-forms.ts`), and any `octocode` run (the product starts a session without these limits); it is
  * not a sandbox, so a program that writes by itself (`node script.js`) is not seen. Any other MCP tool runs only when a
  * trusted server entry declares it read-only (`mcp-reads.ts`). A browser MCP call that leaves the isolated browser
@@ -74,6 +76,10 @@ const mayCreateDirectory = (target: string, cwd: string, env: NodeJS.ProcessEnv)
 const underHome = (target: string): boolean =>
 	isWithin(target, canonicalPath(os.homedir())) && !isWithin(target, canonicalPath(os.tmpdir()));
 
+/** Where a read-only child may write outside the workspace and home: the temporary folders and devices (`/dev/null`). */
+const throwawayOutside = (target: string): boolean =>
+	[os.tmpdir(), "/tmp", "/var/tmp", "/dev"].some((dir) => isWithin(target, canonicalPath(dir)));
+
 const refusal = (what: string): string =>
 	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octocode/code/temp/\`, \`.octocode/tmp/\`, a topic's \`.octocode/<topic>/tmp/\` or a Markdown doc under \`.octocode/\` (not in a folder later sessions load, such as skills, agents or prompts). The file tool creates missing folders.`;
 
@@ -112,13 +118,16 @@ export function readOnlyRoleRefusal(
 		return readOnlyCommand(command, "powershell")
 			? undefined
 			: refusal("This PowerShell command (its effects cannot be parsed)");
+	const exec = roleExecChange(command);
+	if (exec !== undefined) return refusal(`\`${exec}\``);
 	const effect = shellMutation(command);
 	const root = workspaceRoot(cwd) ?? path.resolve(cwd);
 	const directories = new Set(effect.directories);
 	// A database `sqlite3` opens for writing is a write too.
 	const changed = [...effect.writes, ...effect.databases].find((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
-		if (!isWithin(target, canonicalPath(root)) && !underHome(target)) return false;
+		// Outside the workspace and home only the temporary folders are throwaway: a sibling repository is someone's work.
+		if (!isWithin(target, canonicalPath(root)) && !underHome(target)) return !throwawayOutside(target);
 		return directories.has(file) ? !mayCreateDirectory(target, cwd, env) : !mayWrite(target, cwd, env);
 	});
 	if (changed !== undefined)

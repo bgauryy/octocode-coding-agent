@@ -464,7 +464,7 @@ describe("AgentSession compaction characterization", () => {
 		const transformContext = vi.fn(async (messages: AgentMessage[]) => messages);
 		harness.session.agent.transformContext = transformContext;
 		harness.session.agent.sessionId = "active-routing-session";
-		harness.session.agent.transport = "websocket";
+		harness.session.agent.transport = "sse";
 
 		let requestContext: TranscriptContext | undefined;
 		let requestOptions: SimpleStreamOptions | undefined;
@@ -781,16 +781,20 @@ describe("AgentSession compaction characterization", () => {
 		expect(harness.getPendingResponseCount()).toBe(0);
 	});
 
-	it("does not compact when a length stop reaches the desired output limit", async () => {
+	it("continues instead of compacting when a length stop reaches the desired output limit", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1_000_000, maxTokens: 100 }],
 		});
 		harnesses.push(harness);
-		harness.setResponses([fauxAssistantMessage("x".repeat(400), { stopReason: "length" })]);
+		harness.setResponses([
+			fauxAssistantMessage("x".repeat(400), { stopReason: "length" }),
+			fauxAssistantMessage("rest"),
+		]);
 
 		await harness.session.prompt("hello");
 
-		expect(harness.faux.state.callCount).toBe(1);
+		expect(harness.faux.state.callCount).toBe(2);
+		expect(harness.session.lastRunOutcome?.status).toBe("completed");
 		expect(harness.eventsOfType("compaction_start")).toHaveLength(0);
 		expect(harness.session.getSessionStats().compaction.lengthRecoveries).toBe(0);
 	});

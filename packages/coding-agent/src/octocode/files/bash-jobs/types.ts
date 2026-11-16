@@ -30,6 +30,8 @@ export interface BashJob {
 	command: string;
 	/** Why it runs: the bash call's `reason`. A job has no backlog item; its command says what it does, this says why. */
 	reason?: string;
+	/** The backlog item (`B12`) the job serves: while it runs, the item is not idle. */
+	item?: string;
 	/** Where it runs; its log path is shown relative to it. */
 	cwd: string;
 	pid: number;

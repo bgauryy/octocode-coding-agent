@@ -65,6 +65,8 @@ Add `--local` (`-l`) to save to the workspace file `.octocode/mcp.json` instead 
 | User              | `~/.octocode/mcp.json`           |
 | Trusted workspace | `<workspace>/.octocode/mcp.json` |
 
+With `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` set, the user file is `mcp.json` in that directory, and `~/.octocode/mcp.json` is not read. `/mcp config` prints the paths in use.
+
 ```json
 {
 	"mcpServers": {

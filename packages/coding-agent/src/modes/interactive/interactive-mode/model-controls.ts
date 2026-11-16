@@ -7,9 +7,8 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { DEFAULT_THINKING_LEVEL } from "../../../core/defaults.ts";
-import { DefaultModelSaveError } from "../../../core/agent-session/model-default.ts";
 import { findExactModelReferenceMatch, resolveModelScopeFromModels } from "../../../core/model-resolver.ts";
-import { ModelSelectorComponent } from "../components/model-selector.ts";
+import { showModelSelector } from "../model-picker.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
@@ -27,6 +26,7 @@ type ModelControlsHost = Pick<
 	| "session"
 	| "settingsManager"
 	| "showError"
+	| "showExtensionSelector"
 	| "showModelSelector"
 	| "showSelector"
 	| "showStatus"
@@ -201,71 +201,6 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 	host.showWarning(refusal);
 }
 
-export function showModelSelector(host: ModelControlsHost, initialSearchInput?: string): void {
-	// The picker and its pending save belong to the session that opened it.
-	const { session, settingsManager } = host;
-	host.showSelector((done) => {
-		const selectModel = async (model: Model<any>, persist: boolean) => {
-			if (persist) host.showStatus(`Saving default model: ${model.provider}/${model.id}…`);
-			try {
-				await getApplicationPort(session).invoke("setModel", model, { persist });
-				host.updateAvailableProviderCount();
-				host.updateEditorBorderColor();
-				done();
-				const scopedOverride =
-					Boolean(settingsManager.getEnabledModels()?.length) &&
-					JSON.stringify(settingsManager.getEnabledModels()) !==
-						JSON.stringify(settingsManager.getGlobalSettings().enabledModels);
-				const overridden =
-					persist &&
-					(settingsManager.getDefaultProvider() !== model.provider ||
-						settingsManager.getDefaultModel() !== model.id ||
-						scopedOverride);
-				host.showStatus(
-					persist
-						? `Saved global default: ${model.provider}/${model.id}${overridden ? ". Workspace or run settings take precedence here." : ""}`
-						: `Model: ${model.id}`,
-				);
-				void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
-			} catch (error) {
-				done();
-				if (error instanceof DefaultModelSaveError) {
-					host.updateAvailableProviderCount();
-					host.updateEditorBorderColor();
-					host.showWarning(error.message);
-				} else host.showError(errorMessage(error));
-			}
-		};
-		const defaultProvider = settingsManager.getDefaultProvider();
-		const defaultModel = settingsManager.getDefaultModel();
-		const global = settingsManager.getGlobalSettings();
-		const project = settingsManager.getProjectSettings();
-		const configured = { ...global, ...project };
-		const source =
-			defaultProvider !== configured.defaultProvider || defaultModel !== configured.defaultModel
-				? "run"
-				: project.defaultProvider !== undefined || project.defaultModel !== undefined
-					? "workspace"
-					: "global";
-		const selector = new ModelSelectorComponent(
-			host.ui,
-			session.model,
-			session.modelRuntime,
-			session.scopedModels,
-			(model) => void selectModel(model, false),
-			() => {
-				done();
-				host.ui.requestRender();
-			},
-			initialSearchInput,
-			(model) => void selectModel(model, true),
-			defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
-			{ source },
-		);
-		return { component: selector, focus: selector, dispose: () => selector.dispose() };
-	});
-}
-
 export function showModelsSelector(host: ModelControlsHost): void {
 	let availableModels = [...host.session.modelRuntime.getAvailableSnapshot()];
 	let availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
@@ -395,3 +330,5 @@ export function showModelsSelector(host: ModelControlsHost): void {
 		};
 	});
 }
+
+export { showModelSelector };

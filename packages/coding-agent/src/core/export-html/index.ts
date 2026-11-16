@@ -5,10 +5,12 @@ import { basename, join } from "node:path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
 import { normalizePath, resolvePath } from "../../../../common/src/paths.ts";
+import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ToolDefinition } from "../features/types.ts";
 import type { SessionEntry } from "../session-manager.ts";
 import { SessionManager } from "../session-manager.ts";
+import { redactEntry } from "../session-manager/codec-redact.ts";
 import { writeSessionExport } from "../export-target.ts";
 import { readTemplateScript } from "./template-script.ts";
 
@@ -171,7 +173,13 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 
 	// Base64 encode session data to avoid escaping issues
 	const sessionDataBase64 = Buffer.from(
-		JSON.stringify({ ...sessionData, entries: sessionData.entries.map(withSummaryDisplay) }),
+		JSON.stringify({
+			...sessionData,
+			// Read from memory, not the session file: credentials come out here as the file's encoding removes them.
+			entries: sessionData.entries.map((entry) => withSummaryDisplay(redactEntry(entry))),
+			systemPrompt: sessionData.systemPrompt === undefined ? undefined : redactSecrets(sessionData.systemPrompt),
+			renderedTools: sessionData.renderedTools && redactData(sessionData.renderedTools),
+		}),
 	).toString("base64");
 
 	// Function replacers insert each value verbatim: a string replacement would read `$$`, `$&` and `$'` in the

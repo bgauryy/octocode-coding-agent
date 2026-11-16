@@ -13,6 +13,8 @@ import {
 	resolveConfigValueAsync,
 	resolveConfigValueUncached,
 } from "../config-value.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { recordProblem } from "../diagnostics-log.ts";
 import { registerResolvedSecret } from "../secret-redaction.ts";
 import type { KeychainBackend } from "./keychain.ts";
 
@@ -88,7 +90,7 @@ export async function resolveKeychainOAuthAsync(credential: Credential | undefin
  * What auth.json gets for `next` when `previous` (as stored) kept its tokens in this keychain: the new tokens go to the
  * keychain and auth.json keeps the stub, so a refresh writes the blob. Any other credential is returned as it is. When
  * the keychain refuses, the tokens are written to auth.json instead: a refresh may have rotated the refresh token, and
- * losing it would sign the user out.
+ * losing it would sign the user out. That fallback is recorded in the problem log and named on stderr, never thrown.
  */
 export async function keepInKeychain(
 	keychain: KeychainBackend | undefined,
@@ -102,10 +104,22 @@ export async function keepInKeychain(
 	if (!keychain || !reference || !keychain.isOwnReference(reference, account)) return next;
 	try {
 		await keychain.store(account, oauthBlob(next));
-	} catch {
+	} catch (error) {
+		reportKeychainFallback(provider, error);
 		return next;
 	} finally {
 		clearConfigValueCache();
 	}
 	return oauthStub(next, reference);
+}
+
+/** Says once per failed write that the tokens now sit in auth.json; the keychain's own message never carries them. */
+function reportKeychainFallback(provider: string, error: unknown): void {
+	const message = `The system keychain refused the refreshed ${provider} sign-in (${errorMessage(error)}). The tokens were saved in auth.json instead; sign in again after unlocking the keychain to move them back.`;
+	recordProblem("auth", message);
+	try {
+		process.stderr.write(`${message}\n`);
+	} catch {
+		// stderr is closed: the problem log has the record.
+	}
 }

@@ -1,1 +1,1 @@
-- <project_context> holds the instructions of the working directory and its ancestors. Reading a file under a subdirectory appends its AGENTS.override.md or AGENTS.md; before editing or running commands under one you have not read in, read that file first. A deeper file wins within its directory.
+- <project_context> holds the working directory's and its ancestors' instructions. Before editing or running commands under a subdirectory whose AGENTS.override.md or AGENTS.md you have not read, read it (reading a file there appends it). A deeper file wins within its directory.

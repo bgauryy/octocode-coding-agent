@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { agentRuns, backlog, type Db, sessions } from "../../../../../db/src/api.ts";
 import { sessionFolder } from "../../shared/home.ts";
+import { liveItemJobs } from "../../shared/job-records.ts";
 
 /**
  * What `coordinate list` adds per agent beyond its row: the backlog item it works on (a subagent's from its run, a
@@ -14,6 +15,8 @@ export interface MemberDetails {
 	transcripts?: string;
 	/** The folder its background and trimmed shell output goes to, when it exists. */
 	shellLogs?: string;
+	/** Background bash jobs running now that name a backlog item (`bash` `item`): work on that item. */
+	jobs?: { id: string; item: string }[];
 }
 
 /** The backlog item `member` works on in `workspaceId`, with how many more ongoing items a session holds. */
@@ -42,8 +45,10 @@ export function memberDetails(db: Db, workspaceId: string, members: readonly Mem
 		const item = itemOf(db, workspaceId, member);
 		const transcripts = member.sessionId ? (sessions.byId(db, member.sessionId)?.dir ?? undefined) : undefined;
 		const shellLogs = shellLogsOf(member);
+		const jobs = shellLogs ? liveItemJobs(shellLogs) : [];
 		const found: MemberDetails = {
 			...(item ? { item } : {}),
+			...(jobs.length > 0 ? { jobs } : {}),
 			...(transcripts ? { transcripts } : {}),
 			...(shellLogs ? { shellLogs } : {}),
 		};

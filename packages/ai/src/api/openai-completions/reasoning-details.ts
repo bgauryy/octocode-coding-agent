@@ -1,4 +1,4 @@
-import type { JsonValue, ThinkingContent } from "../../types.ts";
+import type { JsonValue } from "../../types.ts";
 
 type OpenAIReasoningDetailBase = Record<string, JsonValue> & {
 	id?: string | null;
@@ -93,19 +93,4 @@ export function appendOpenAIReasoningDetail(details: OpenAIReasoningDetail[], de
 		return;
 	}
 	details.push({ ...detail });
-}
-
-/** Serializes the streamed details into the block's signature once the block is finalized. */
-export function applyStreamedReasoningDetails(block: ThinkingContent, streamed: StreamedReasoningDetails): void {
-	if (streamed.details !== undefined) {
-		block.thinkingSignature = JSON.stringify(streamed.details);
-	}
-}
-
-const OPENAI_COMPLETIONS_REASONING_FIELDS = ["reasoning", "reasoning_content", "reasoning_text"] as const;
-
-export type OpenAICompletionsReasoningField = (typeof OPENAI_COMPLETIONS_REASONING_FIELDS)[number];
-
-export function isOpenAICompletionsReasoningField(field: string): field is OpenAICompletionsReasoningField {
-	return OPENAI_COMPLETIONS_REASONING_FIELDS.includes(field as OpenAICompletionsReasoningField);
 }

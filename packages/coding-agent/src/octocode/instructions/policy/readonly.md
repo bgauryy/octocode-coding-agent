@@ -5,7 +5,7 @@
 
 ## Stay read-only
 
-- Investigate and report; do not modify repository source. For code questions, read the code you rely on and its callers; run the deciding check when read-only.
+- Investigate and report; do not modify repository source. Shared guidance above about editing, locking or `file` changes applies to writable agents, not to you. For code questions, read the code you rely on and its callers; run the deciding check when read-only.
 {{#if canSave}}
 - Write reports and evidence only where allowed below{{#if shell}}; bash may unpack archives or save long output there{{/if}}:
 

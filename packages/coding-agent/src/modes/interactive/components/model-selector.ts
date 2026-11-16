@@ -31,6 +31,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { filterByProvider, providerLine, providersOf, stepProvider } from "./model-selector/provider-filter.ts";
 import { updateModelList } from "./model-selector/list-view.ts";
 import { ModelPickerHints } from "./model-selector/picker-hints.ts";
+import { type SwitchChoice, SwitchChoiceSlot } from "./model-selector/switch-choice.ts";
 
 /**
  * Component that renders a model selector with search
@@ -75,6 +76,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private details = false;
 	private detailOffset = 0;
 	private layoutWidth = 80;
+	private choiceSlot = new SwitchChoiceSlot();
 
 	constructor(
 		tui: TUI,
@@ -139,7 +141,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 		this.listContainer = new Container();
 		this.addChild(this.listContainer);
-
+		this.addChild(this.choiceSlot);
 		this.addChild(new ModelPickerHints(Boolean(this.onSelectAsDefaultCallback)));
 
 		this.addChild(new DynamicBorder());
@@ -307,6 +309,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	handleInput(keyData: string): void {
 		if (this.closed) return;
+		if (this.choiceSlot.active) {
+			this.choiceSlot.handleInput(keyData);
+			return this.tui.requestRender();
+		}
 		const kb = getKeybindings();
 		if (this.details && (kb.matches(keyData, "tui.select.pageUp") || kb.matches(keyData, "tui.select.pageDown"))) {
 			this.detailOffset += kb.matches(keyData, "tui.select.pageUp") ? -5 : 5;
@@ -358,7 +364,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.dispose();
 			this.onCancelCallback();
-		} else if (kb.matches(keyData, "app.models.save") && this.onSelectAsDefaultCallback) {
+		} else if (
+			this.onSelectAsDefaultCallback &&
+			(kb.matches(keyData, "app.models.save") || (keyData === "d" && this.searchInput.getValue() === ""))
+		) {
 			const selectedModel = this.filteredModels[this.selectedIndex];
 			if (selectedModel) {
 				this.dispose();
@@ -371,9 +380,18 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 	}
 
+	/** Enter: ask what to do when a default can be saved, otherwise switch this chat. */
 	private handleSelect(model: Model<any>): void {
+		const asDefault = this.onSelectAsDefaultCallback;
+		if (!asDefault) return this.finish(model, "chat");
+		this.choiceSlot.open(model, (choice) => this.finish(model, choice));
+		this.tui.requestRender();
+	}
+
+	private finish(model: Model<any>, choice: SwitchChoice): void {
 		this.dispose();
-		this.onSelectCallback(model);
+		if (choice !== "default") this.onSelectCallback(model);
+		if (choice !== "chat") this.onSelectAsDefaultCallback?.(model);
 	}
 
 	getSearchInput(): Input {

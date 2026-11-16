@@ -10,12 +10,15 @@ import { parsedShell, reservationTargets, shellMutation, shellParserReady } from
 import { readOnlyCommand } from "./permission/shell/read-only.ts";
 import { describeWorktrees } from "./worktrees/summary.ts";
 import type { registerPlanning } from "./plan/register.ts";
+import { registerRealm } from "./realm/register.ts";
 import { registerSessions } from "./sessions/register.ts";
 import type { Subcommands } from "./shared/commands.ts";
 import { EXTERNAL_SENDER } from "./shared/messages.ts";
 import type { Team } from "./team/session.ts";
 import { packageVersion } from "./ui/chrome.ts";
 import { spilledMessage } from "./team/session/spilled-message.ts";
+import { onParentGone } from "./team/session/parent.ts";
+import { saveParentGoneReport } from "./subagents/handoff/parent-gone.ts";
 
 export function registerTeamSessions(
 	api: ExtensionAPI,
@@ -36,6 +39,10 @@ export function registerTeamSessions(
 					.map(({ id, from, text }) => ({ id, from, text })),
 		},
 	});
+	// A subagent whose parent died files its own stop report before it exits: nobody else is left to.
+	if (options.isSubagent) onParentGone(saveParentGoneReport);
+	// `/realm` reads the team and the session catalog; a subagent has no command line to type it in.
+	if (!options.isSubagent) registerRealm(api, options.commands, team);
 }
 
 /** The shell checks the collaboration tools run before a command: its reservation targets, read-only status and changes. */

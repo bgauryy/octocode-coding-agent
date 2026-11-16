@@ -131,6 +131,25 @@ export function since(db: DatabaseSync, after: number, limit = 200, workspace?: 
 	).map(decode);
 }
 
+/**
+ * Deletes at most `limit` events written before `cutoff` (ms since epoch) and returns how many went. Spared: the newest
+ * event of each workspace (the highest `seq`, which `head` and `latestSequence` report and followers resume from) and
+ * the `create` event of every registered agent that is still in the team. Call it again while it returns `limit`.
+ */
+export function purgeBefore(db: DatabaseSync, cutoff: number, limit: number): number {
+	return Number(
+		db
+			.prepare(
+				`DELETE FROM agent_events WHERE seq IN (
+					SELECT seq FROM agent_events WHERE time < ?
+						AND seq NOT IN (SELECT MAX(seq) FROM agent_events GROUP BY workspace_id)
+						AND id NOT IN (SELECT registration_id FROM agents WHERE registration_id IS NOT NULL)
+					LIMIT ?)`,
+			)
+			.run(new Date(cutoff).toISOString(), limit).changes,
+	);
+}
+
 export function get(db: DatabaseSync, workspace: string, id: string): EventRow | undefined {
 	const row = db.prepare("SELECT * FROM agent_events WHERE workspace_id = ? AND id = ?").get(workspace, id) as
 		| Row

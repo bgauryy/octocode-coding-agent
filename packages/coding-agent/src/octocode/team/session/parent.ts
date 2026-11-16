@@ -27,14 +27,31 @@ export function namedParent(env: NodeJS.ProcessEnv): ProcessIdentity | undefined
 	return { pid: parentPid, ...(started.length > 0 ? { started: started.join(" ") } : {}) };
 }
 
-/** The parent is gone: where a signal ends the process outright (Windows) nothing runs after it, so the row and reservations go now, not when a peer's sweep finds the pid dead. */
-export function endWithParent(leave: (reason: "parent-gone") => void): void {
+let beforeExit: ((env: NodeJS.ProcessEnv) => void) | undefined;
+
+/**
+ * What a subagent does once its parent is gone, before it leaves the team: the composition root registers the stop report
+ * to the parent session (`subagents/handoff/parent-gone.ts`), which nobody else is left to file.
+ */
+export function onParentGone(run: (env: NodeJS.ProcessEnv) => void): void {
+	beforeExit = run;
+}
+
+/**
+ * The parent is gone: first what `onParentGone` registered runs. Then, since where a signal ends the process outright
+ * (Windows) nothing runs after it, the row and reservations go now, not when a peer's sweep finds the pid dead.
+ */
+export function endWithParent(leave: (reason: "parent-gone") => void, env: NodeJS.ProcessEnv = process.env): void {
 	try {
-		leave("parent-gone");
-	} catch {
-		/* locked database: the sweep reaps the row */
+		beforeExit?.(env);
+	} finally {
+		try {
+			leave("parent-gone");
+		} catch {
+			/* locked database: the sweep reaps the row */
+		}
+		terminateSelf();
 	}
-	terminateSelf();
 }
 
 /**

@@ -32,6 +32,7 @@ import { declaredParameters, redeclaresInPlace } from "./redeclare.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { registerTools } from "./tool-registry.ts";
+import { preparedCallOf } from "./tool-definition.ts";
 import { takeLaunchWarnings } from "./warnings.ts";
 
 /** Whether the launch the server would get now differs from the one it got; a launch that cannot be prepared does not count. */
@@ -185,14 +186,21 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				throw new Error(`MCP tool "${request.server}/${request.tool}" is not available`);
 			await request.authorize({ toolName, input: request.input });
 			callSignal.throwIfAborted();
+			// The model path's preparation and review (a preset's safety boundary, such as the browser's network filter):
+			// a refusal rejects the hook call, and a tool without a preparation is not called unfiltered.
+			const prepare = preparedCallOf(state.definitions.get(toolName) ?? {});
+			if (!prepare) throw new Error(`MCP tool "${request.server}/${request.tool}" is not available`);
+			const call = await prepare(request.input, Object.create(ctx, { signal: { value: callSignal } }) as typeof ctx);
+			callSignal.throwIfAborted();
 			// Through the connection's request path like the model's calls: expired-session retry, sign-in marking and
 			// retiring-client accounting.
 			// A progress handler sends a progress token, so a server's progress keeps the idle timeout from expiring.
-			return connection.callTool(request.tool, request.input, {
+			const reply = await connection.callTool(request.tool, call.args, {
 				signal: callSignal,
 				timeoutMs: connection.timeoutMs,
 				onProgress: () => undefined,
 			});
+			return call.review ? call.review(reply) : reply;
 		});
 		state.configuredEntries = loaded.servers;
 		const registered = state.registeredServers();

@@ -57,6 +57,7 @@ export class Relays {
 	take(db: TeamStore, now = Date.now()): void {
 		const me = this.host.id();
 		if (!me) return;
+		for (const target of this.resumed.keys()) if (this.recent(target, now).length === 0) this.resumed.delete(target);
 		this.settleFailures(db);
 		const requests = db.refs.relays(me);
 		if (requests.length === 0) return;

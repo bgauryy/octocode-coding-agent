@@ -1,16 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { createModels } from "../src/models.ts";
 import { anthropicProvider } from "../src/providers/anthropic.ts";
 import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
-const mockState = vi.hoisted(() => ({
-	constructorOpts: undefined as Record<string, unknown> | undefined,
-	createParams: undefined as Record<string, unknown> | undefined,
+const mockState = {
+	exchange: undefined as Record<string, unknown> | undefined,
+	headers: undefined as Headers | undefined,
+};
+vi.mock("node:fs/promises", async (original) => ({
+	...(await original<object>()),
+	open: vi.fn(async () => ({
+		read: async (buffer: Buffer) => ({ bytesRead: buffer.write("test.identity.token") }),
+		close: async () => undefined,
+	})),
 }));
 
-vi.mock("@anthropic-ai/sdk", () => {
+beforeEach(() => {
 	function createSseResponse(): Response {
 		const body = [
 			`event: message_start\ndata: ${JSON.stringify({
@@ -27,26 +34,14 @@ vi.mock("@anthropic-ai/sdk", () => {
 		return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 	}
 
-	class FakeAnthropic {
-		opts: Record<string, unknown>;
-		constructor(opts: Record<string, unknown>) {
-			this.opts = opts;
-			mockState.constructorOpts = opts;
+	vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+		if (new URL(input).pathname === "/v1/oauth/token") {
+			mockState.exchange = JSON.parse(init?.body as string);
+			return Response.json({ access_token: "exchanged-token", expires_in: 3600, token_type: "Bearer" });
 		}
-		withOptions(options: Record<string, unknown>) {
-			return new FakeAnthropic({ ...this.opts, ...options });
-		}
-		beta = {
-			messages: {
-				create: (params: Record<string, unknown>) => {
-					mockState.createParams = params;
-					return { asResponse: async () => createSseResponse() };
-				},
-			},
-		};
-	}
-
-	return { default: FakeAnthropic };
+		mockState.headers = new Headers(init?.headers);
+		return createSseResponse();
+	});
 });
 
 const neverAbortedSignal = new AbortController().signal;
@@ -58,15 +53,12 @@ const federationEnv = {
 	ANTHROPIC_IDENTITY_TOKEN_FILE: "/tmp/identity.jwt",
 };
 
-const expectedConfig = {
+const expectedExchange = {
+	grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+	assertion: "test.identity.token",
 	organization_id: "org-test",
-	workspace_id: undefined,
-	authentication: {
-		type: "oidc_federation",
-		federation_rule_id: "fdrl_test",
-		service_account_id: "svac_test",
-		identity_token: { source: "file", path: "/tmp/identity.jwt" },
-	},
+	federation_rule_id: "fdrl_test",
+	service_account_id: "svac_test",
 };
 
 const context = normalizeContext({
@@ -95,8 +87,8 @@ function resolveWithEnv(env: Record<string, string>) {
 }
 
 afterEach(() => {
-	mockState.constructorOpts = undefined;
-	mockState.createParams = undefined;
+	mockState.exchange = undefined;
+	mockState.headers = undefined;
 });
 
 describe("Anthropic workload identity federation", () => {
@@ -127,10 +119,8 @@ describe("Anthropic workload identity federation", () => {
 		});
 
 		await streamAnthropic(anthropicModel, context, { env: partial }).result();
-		expect(mockState.constructorOpts?.config).toEqual({
-			...expectedConfig,
-			authentication: { ...expectedConfig.authentication, service_account_id: undefined },
-		});
+		const { service_account_id: _service, ...optionalExchange } = expectedExchange;
+		expect(mockState.exchange).toEqual(optionalExchange);
 	});
 
 	it("keeps API key and auth token precedence over federation", async () => {
@@ -147,12 +137,10 @@ describe("Anthropic workload identity federation", () => {
 	it("hands the SDK a federation config instead of a key", async () => {
 		await streamAnthropic(anthropicModel, context, { env: federationEnv }).result();
 
-		expect(mockState.constructorOpts?.apiKey).toBeNull();
-		expect(mockState.constructorOpts?.authToken).toBeNull();
-		expect(mockState.constructorOpts?.config).toEqual(expectedConfig);
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string | null>;
-		expect(headers.Authorization).toBeUndefined();
-		expect(mockState.createParams?.betas ?? []).not.toContain("oauth-2025-04-20");
+		expect(mockState.headers?.has("x-api-key")).toBe(false);
+		expect(mockState.headers?.get("authorization")).toBe("Bearer exchanged-token");
+		expect(mockState.exchange).toEqual(expectedExchange);
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("oauth-2025-04-20");
 	});
 
 	it("threads authContext federation variables through Models", async () => {
@@ -166,15 +154,16 @@ describe("Anthropic workload identity federation", () => {
 
 		await models.streamSimple(anthropicModel, context).result();
 
-		expect(mockState.constructorOpts?.apiKey).toBeNull();
-		expect(mockState.constructorOpts?.config).toEqual(expectedConfig);
+		expect(mockState.headers?.has("x-api-key")).toBe(false);
+		expect(mockState.headers?.get("authorization")).toBe("Bearer exchanged-token");
+		expect(mockState.exchange).toEqual(expectedExchange);
 	});
 
 	it("lets an explicit API key win over federation env", async () => {
 		await streamAnthropic(anthropicModel, context, { apiKey: "explicit-key", env: federationEnv }).result();
 
-		expect(mockState.constructorOpts?.apiKey).toBe("explicit-key");
-		expect(mockState.constructorOpts?.config).toBeUndefined();
+		expect(mockState.headers?.get("x-api-key")).toBe("explicit-key");
+		expect(mockState.exchange).toBeUndefined();
 	});
 
 	it("does not federate other anthropic-messages providers", async () => {
@@ -186,6 +175,7 @@ describe("Anthropic workload identity federation", () => {
 		const message = await streamAnthropic(kimi, context, { env: federationEnv }).result();
 
 		expect(message.stopReason).toBe("error");
-		expect(mockState.constructorOpts).toBeUndefined();
+		expect(mockState.headers).toBeUndefined();
+		expect(mockState.exchange).toBeUndefined();
 	});
 });

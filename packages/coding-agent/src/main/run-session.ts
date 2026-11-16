@@ -33,6 +33,7 @@ import { InteractiveMode, runPrintMode, runRpcMode } from "../modes/index.ts";
 import { folderTrustResolver } from "../octocode/trust/port.ts";
 import { initTheme, stopThemeWatcher } from "../theme/theme.ts";
 import { isTruthyEnvFlag } from "../utils/env-flag.ts";
+import { drainStdio } from "./drain-stdio.ts";
 import { applyRunConfigurationOrExit } from "./run-configuration.ts";
 import { createCliRuntimeFactory } from "./runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./session-manager.ts";
@@ -291,12 +292,7 @@ export async function runSession(args: string[], { cwd, agentDir, offlineMode }:
 			interactiveMode.stop();
 			stopThemeWatcher();
 			printTimings();
-			if (process.stdout.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
-			}
-			if (process.stderr.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stderr.once("drain", resolve));
-			}
+			await drainStdio();
 			return;
 		}
 

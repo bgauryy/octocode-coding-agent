@@ -14,7 +14,8 @@ import {
 } from "@octocodeai/octocode-tui";
 import { ruleLine } from "./dynamic-border.ts";
 import { theme } from "./theme.ts";
-import { hintLine, keyText, positionLabel, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
+import { type BadgeState, type EnterVerb, legend, pageHints, positionLabel } from "./page-kit.ts";
+import { hintLine, keyText, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
 
 export interface PageRow {
 	id: string;
@@ -24,6 +25,11 @@ export interface PageRow {
 	/** Short state word at the right edge (`enabled`, `on`, `off`). */
 	badge?: string;
 	tone?: "success" | "muted" | "warning" | "error";
+	/**
+	 * Single keys that work on this row (key → verb). The footer shows the selected row's keys, and a page-level key
+	 * the row does not declare does nothing. A page where no row declares keys falls back to `ManagePageOptions.keys`.
+	 */
+	keys?: Readonly<Record<string, string>>;
 }
 
 export interface PageSection {
@@ -40,7 +46,7 @@ interface PageFact {
 
 export interface ManagePageOptions {
 	title: string;
-	/** Wrap facts and the highlighted row's detail inside a bounded, scrollable body. */
+	/** @deprecated Every page is responsive; the flag is ignored. Remove it from callers. */
 	responsive?: boolean;
 	/** Muted lines under the list, above the key hints. */
 	notes?: readonly string[];
@@ -48,12 +54,19 @@ export interface ManagePageOptions {
 	alerts?: readonly string[];
 	facts?: readonly PageFact[];
 	sections: readonly PageSection[];
-	hints: readonly RankedHint[];
+	/** Explicit footer hints. Omit them: the footer is `pageHints` for the selected row. */
+	hints?: readonly RankedHint[];
+	/** The page was opened from another page: Escape reads `back`, at the root `close`. Used when `hints` is omitted. */
+	nested?: boolean;
+	/** What Enter does, for the derived footer; defaults to `open` on a list and `run` on a detail page. */
+	enter?: EnterVerb;
+	/** States named in a legend line under the list. */
+	legend?: readonly BadgeState[];
 	/** Terminal height the body is sized to; defaults to the process terminal. */
 	viewportRows?(): number;
 	/** Row to select first. */
 	initialId?: string;
-	/** Single keys (`e`) reported with the selected row's id. */
+	/** Page-wide single keys (`e`) for rows that declare none of their own; prefer `PageRow.keys`. */
 	keys?: readonly string[];
 	onSelect(id: string): void;
 	/** Called with the row's id when the selection moves, so a page rebuilt later can reopen on it. */
@@ -101,40 +114,25 @@ export class ManagePageComponent implements Component {
 
 	render(width: number): string[] {
 		if (width <= 0) return [];
-		if (this.options.responsive) return this.renderResponsive(width);
-		const { title, notes = [], alerts = [], facts = [], hints } = this.options;
-		const border = ruleLine(Math.max(1, width));
-		const out = [border, truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…")];
-		if (facts.length > 0) {
-			const labelWidth = Math.max(...facts.map((fact) => visibleWidth(fact.label)));
-			out.push("");
-			for (const fact of facts) {
-				out.push(truncateToWidth(` ${theme.fg("muted", pad(fact.label, labelWidth))}  ${fact.value}`, width, "…"));
-			}
-		}
-		out.push("");
-		const lines = this.lines();
-		const selectedRow = this.selectable[this.selected];
-		const at = Math.max(
-			0,
-			lines.findIndex((line) => line.row === selectedRow),
-		);
-		const start = Math.max(0, Math.min(at - Math.floor(MAX_LINES / 2), lines.length - MAX_LINES));
-		const nameWidth = Math.min(MAX_NAME_WIDTH, Math.max(0, ...this.selectable.map((row) => visibleWidth(row.name))));
-		for (const line of lines.slice(start, start + MAX_LINES)) {
-			out.push(this.renderLine(line, width, nameWidth, selectedRow));
-		}
-		if (lines.length > MAX_LINES) {
-			out.push(truncateToWidth(theme.fg("muted", `  (${this.selected + 1}/${this.selectable.length})`), width, "…"));
-		}
-		for (const alert of alerts) out.push(truncateToWidth(` ${theme.fg("error", alert)}`, width, "…"));
-		for (const note of notes) out.push(truncateToWidth(` ${theme.fg("muted", note)}`, width, "…"));
-		out.push(renderHintLine(hints, width), border);
-		return out;
+		return this.renderBody(width);
 	}
 
-	private renderResponsive(width: number): string[] {
-		const { title, facts = [], notes = [], alerts = [], hints } = this.options;
+	private footer(width: number): string {
+		const { hints, facts, nested = false, enter } = this.options;
+		if (hints) return renderHintLine(hints, width);
+		const row = this.selectable[this.selected];
+		return renderHintLine(
+			pageHints(facts?.length ? "detail" : "list", {
+				nested,
+				rowKeys: row?.keys,
+				enter: this.selectable.length === 0 ? false : enter,
+			}),
+			width,
+		);
+	}
+
+	private renderBody(width: number): string[] {
+		const { title, facts = [], notes = [], alerts = [] } = this.options;
 		const border = ruleLine(width);
 		const selected = this.selectable[this.selected];
 		const body: { text: string; id?: string }[] = [];
@@ -163,6 +161,7 @@ export class ManagePageComponent implements Component {
 		const tail = [
 			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
 			...notes.flatMap((note) => wrap(` ${theme.fg("muted", note)}`)),
+			...(this.options.legend?.length ? wrap(` ${theme.fg("muted", legend(this.options.legend))}`) : []),
 		];
 		this.bodyRows = Math.max(
 			3,
@@ -196,7 +195,7 @@ export class ManagePageComponent implements Component {
 					]
 				: []),
 			...tail,
-			renderHintLine(hints, width),
+			this.footer(width),
 			border,
 		];
 	}
@@ -220,10 +219,16 @@ export class ManagePageComponent implements Component {
 		return `${head}  ${badge}`;
 	}
 
+	/** A row that declares keys takes only those; a page where no row declares any uses the page-wide list. */
+	private rowAccepts(row: PageRow, key: string): boolean {
+		if (this.selectable.some((candidate) => candidate.keys)) return row.keys !== undefined && key in row.keys;
+		return this.options.keys?.includes(key) ?? false;
+	}
+
 	handleInput(data: string): void {
 		const kb = getKeybindings();
 		const row = this.selectable[this.selected];
-		if (this.options.responsive && (kb.matches(data, "tui.select.pageUp") || kb.matches(data, "tui.select.pageDown"))) {
+		if (kb.matches(data, "tui.select.pageUp") || kb.matches(data, "tui.select.pageDown")) {
 			this.scroll += kb.matches(data, "tui.select.pageUp") ? -this.bodyRows : this.bodyRows;
 			this.manualScroll = true;
 		} else if (kb.matches(data, "tui.select.up") || kb.matches(data, "tui.select.down")) {
@@ -233,14 +238,13 @@ export class ManagePageComponent implements Component {
 			const moved = this.selectable[this.selected];
 			if (moved) this.options.onHighlight?.(moved.id);
 		} else if (kb.matches(data, "tui.select.confirm")) {
-			if (this.options.responsive && !this.selectionVisible) {
+			if (!this.selectionVisible) {
 				// The selection is scrolled off: bring it back instead of acting on a row the user cannot see.
 				this.manualScroll = false;
 				return;
 			}
 			if (row) this.options.onSelect(row.id);
 		} else if (kb.matches(data, "tui.select.cancel")) this.options.onCancel();
-		else if (row && this.options.keys?.includes(data) && (!this.options.responsive || this.selectionVisible))
-			this.options.onKey?.(data, row.id);
+		else if (row && this.selectionVisible && this.rowAccepts(row, data)) this.options.onKey?.(data, row.id);
 	}
 }

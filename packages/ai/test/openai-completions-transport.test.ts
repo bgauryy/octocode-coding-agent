@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import OpenAI from "openai";
 import { stream } from "../src/api/openai-completions.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -25,17 +24,11 @@ describe("Vercel completion transport", () => {
 			return new Response('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n');
 		};
 		const baseUrl = "https://compatible.example/v1";
-		const previous = new OpenAI({ apiKey: "test", baseURL: baseUrl, fetch, maxRetries: 0 });
-		const events = await previous.chat.completions.create({ model: model.id, messages: [], stream: true });
-		for await (const _event of events) {
-			/* Drain the official SDK's response. */
-		}
 		const result = await stream({ ...model, provider: "custom", baseUrl }, context, { apiKey: "test", fetch }).result();
 		expect(result.stopReason).toBe("stop");
-		for (const name of ["openai-organization", "openai-project", "x-environment"]) {
-			expect(sent[1].get(name)).toBe(sent[0].get(name));
-			expect(sent[1].has(name)).toBe(true);
-		}
+		expect(sent[0].get("openai-organization")).toBe("org-environment");
+		expect(sent[0].get("openai-project")).toBe("project-environment");
+		expect(sent[0].get("x-environment")).toBe("fixture");
 	});
 	it.each([false, true])("applies scoped environment, model and request header precedence (%s)", async (override) => {
 		vi.stubEnv("OPENAI_ORG_ID", "ambient-org");

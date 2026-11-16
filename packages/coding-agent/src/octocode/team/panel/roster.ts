@@ -38,6 +38,7 @@ export function descendants(members: Member[], selfId: string | undefined): Memb
 function rank(entry: PanelEntry, now: number): number {
 	switch (panelState(entry, now).label) {
 		case "needs you":
+		case "asks parent":
 		case "blocked":
 			return 0;
 		case "failed":

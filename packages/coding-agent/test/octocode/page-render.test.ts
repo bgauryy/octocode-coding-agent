@@ -85,7 +85,7 @@ describe("/backlog item page", () => {
 			mode: "tui",
 			ui: {
 				custom: async (factory: (...args: unknown[]) => { render(width: number): string[] }) => {
-					const tui = { requestRender: vi.fn() } as unknown as TUI;
+					const tui = { requestRender: vi.fn(), terminal: { rows: 40 } } as unknown as TUI;
 					page = text(factory(tui, theme, new KeybindingsManager(), () => {}).render(100));
 					return undefined;
 				},

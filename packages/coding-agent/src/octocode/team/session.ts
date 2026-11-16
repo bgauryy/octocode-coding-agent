@@ -1,18 +1,20 @@
 import type { ExtensionContext } from "../../core/features/index.ts";
 import { storedText } from "../../../../common/src/sanitize.ts";
+import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Ask } from "./asks.ts";
 import type { EditLog } from "./edits.ts";
 import { agentName, LINE_MAX } from "./identity.ts";
 import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { type EndReason, settleReason } from "./session/end-reason.ts";
 import { claimName, joinAtStart } from "./session/membership.ts";
-import { endWithParent, watchParentProcess } from "./session/parent.ts";
+import { endWithParent, namedParent, watchParentProcess } from "./session/parent.ts";
 import { isReserved, lockPaths, reservationText, unlockPaths } from "./session/reservations.ts";
 import * as refs from "./session/references.ts";
 import { type SendResult, sendMessage } from "./session/send.ts";
 import type { TeamView } from "./ticker.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamState } from "./session/state.ts";
+import { PARENT_HOLDS_LEASES_ENV } from "./store/env.ts";
 import { patiently } from "./store/patient.ts";
 import { openRunnerBridge } from "./runner-bridge.ts";
 import type { RunnerMemberInput } from "./runner-member.ts";
@@ -109,7 +111,7 @@ export class Team extends TeamState {
 	}
 
 	/** Leave the team and release everything held; the database stays open for the next join. State clears first: a refused removal still throws, but leaves nothing stale (the row ages out). */
-	leave(reason?: EndReason): void {
+	leave(reason?: EndReason, settled = false): void {
 		const me = this.me;
 		this.me = undefined;
 		this.ticker.sync();
@@ -118,7 +120,7 @@ export class Team extends TeamState {
 		this.delivery.reset(db, me?.id);
 		this.mail.reset();
 		// Only a row that still names this process: a name another process holds now is not ours to remove.
-		if (me && db) db.remove(me.id, Date.now(), me, reason);
+		if (me && db && !settled) db.remove(me.id, Date.now(), me, reason);
 	}
 
 	/** Leave and let go of the database (session end; the process connection stays open for the next session). */
@@ -256,7 +258,13 @@ export class Team extends TeamState {
 		if (this.mail.settled()) return; // An interrupt stopped the run: its message starts the next turn.
 		if (this.me && this.headless()) {
 			this.activity.flush();
-			this.leave(settleReason(status));
+			const reason = settleReason(status);
+			// Leases the parent reserved stay with the parent until its run ends (`ChildLeases.release`); the row is settled, not retired.
+			const parent = namedParent(this.env);
+			const db = this.database.current;
+			const settled =
+				this.env[PARENT_HOLDS_LEASES_ENV] === "1" && !!parent && !!db && db.settle(this.me.id, this.me, parent, reason);
+			this.leave(reason, settled);
 			return;
 		}
 		// The activity line was cleared by src/ui/activity.ts, which owns it.
@@ -266,6 +274,29 @@ export class Team extends TeamState {
 	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`, `stepEnded`). */
 	deliverMail(stepEnded = false): void {
 		this.delivery.deliver(this.database.current, stepEnded);
+		this.watchSilence();
+	}
+
+	/** Tells this agent about a working child with no progress for `subagents.silenceMinutes`; reads the database only when one is due. */
+	private watchSilence(now = Date.now()): void {
+		const children = [...(this.running?.keys() ?? [])].map((id) => ({ id, lastOutputAt: this.approvals.lastOutput(id) }));
+		const thresholdMs = this.silenceMs();
+		const due = this.silence.due(children, thresholdMs, now);
+		if (due.length === 0) return;
+		const members = new Map(this.database.read().members.map((member) => [member.id, member]));
+		for (const id of due) {
+			const member = members.get(id);
+			if (!member || member.status !== "working" || this.approvals.waitsOnUser(id)) {
+				this.silence.excused(id, now);
+				continue;
+			}
+			const minutes = Math.round((now - this.approvals.lastOutput(id)!) / 60_000);
+			const text = renderInstruction("notices/subagents/child-silent.md", { id, minutes, activity: member.activity });
+			const wake = this.wakePace.allows();
+			if (!this.mail.alert(text, wake)) continue;
+			if (wake) this.wakePace.record();
+			this.silence.told(id);
+		}
 	}
 
 	/** Octocode is about to call the model with `messages`: team mail among them is now delivered. */

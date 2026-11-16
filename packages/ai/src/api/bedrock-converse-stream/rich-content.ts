@@ -1,4 +1,14 @@
-import type { CitationsDelta } from "@aws-sdk/client-bedrock-runtime";
+export interface CitationsDelta {
+	title?: string;
+	source?: string;
+	sourceContent?: { text?: string }[];
+	location?: {
+		web?: { url?: string };
+		documentChar?: { documentIndex?: number; start?: number; end?: number };
+		documentPage?: { documentIndex?: number; start?: number; end?: number };
+		documentChunk?: { documentIndex?: number };
+	};
+}
 import type { ContentAnnotation } from "../../types.ts";
 
 export function bedrockAnnotation(citation: CitationsDelta): ContentAnnotation {

@@ -148,7 +148,7 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 					["merge", "<branch> — in the main checkout, land a linked worktree's branch"],
 					[
 						"remove",
-						"<name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents or tmux panes",
+						"<name> [--force] — remove one that holds no unsaved work, live agents, reachable finished agents, undelivered reports or tmux panes",
 					],
 				],
 				prefix,

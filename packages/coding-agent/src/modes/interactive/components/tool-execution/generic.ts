@@ -3,6 +3,7 @@ import { queryTarget } from "../../../../../../common/src/clip.ts";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import type { ToolRenderers } from "../../../../core/features/types.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../octocode/render/tool.ts";
+import { outputLanguage } from "../../../../theme/output-style.ts";
 import { toolArgsForDisplay } from "../../../../octocode/ui/reason-row.ts";
 
 /** Arguments that state why the call is made: the reason rows show them, the header does not repeat them. */
@@ -49,7 +50,15 @@ export function withGenericRenderers(renderers: ToolRenderers | undefined, toolN
 		// Nothing wraps this tool in `timed`, so no run start is recorded for its call id: the row times itself from its first drawn frame.
 		renderCall: (args, theme, context) =>
 			toolHeader(theme, { ...context, toolCallId: undefined }, toolName, argsSummary(toolName, args)),
-		renderResult: (result, options, theme, context) =>
-			resultBlock(theme, context, { summary: "", body: resultText(result), expanded: options.expanded }),
+		renderResult: (result, options, theme, context) => {
+			const body = resultText(result);
+			const language = context.isError ? undefined : outputLanguage(body);
+			return resultBlock(theme, context, {
+				summary: "",
+				body,
+				expanded: options.expanded,
+				...(language ? { language } : {}),
+			});
+		},
 	};
 }

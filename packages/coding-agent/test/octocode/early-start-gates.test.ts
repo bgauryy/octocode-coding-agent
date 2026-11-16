@@ -43,7 +43,7 @@ describe("early start policy of the tool gates", () => {
 			annotations,
 		} as unknown as ToolGatesOptions);
 		const mayStart = async (toolName: string, input: Record<string, unknown> = {}) => {
-			await fake.emit("tool_call", { type: "tool_call", toolCallId: "warm", toolName: "timer", input: {} }, ctx);
+			await fake.emit("tool_call", { type: "tool_call", toolCallId: "warm", toolName: "wait", input: {} }, ctx);
 			return (await fake.fire("tool_call_early_start", { origin: "model", toolCallId: "e1", toolName, input }, ctx)) as
 				| boolean
 				| undefined;
@@ -54,7 +54,7 @@ describe("early start policy of the tool gates", () => {
 	it("starts a read role's MCP call without a hint, and refuses an unhinted tool that no mode asks about", async () => {
 		const { mayStart } = await setup();
 		expect(await mayStart(RESEARCH.readOnly, {})).toBe(true);
-		expect(await mayStart("timer", {})).toBe(false);
+		expect(await mayStart("wait", {})).toBe(false);
 	});
 
 	it("refuses an MCP tool without the read role, a shell call and a tool without a verdict of its own", async () => {
@@ -72,8 +72,8 @@ describe("early start policy of the tool gates", () => {
 	});
 
 	it("starts a declared read-only tool that no mode asks about", async () => {
-		const { mayStart } = await setup((name) => (name === "timer" ? { readOnlyHint: true } : undefined));
-		expect(await mayStart("timer", {})).toBe(true);
+		const { mayStart } = await setup((name) => (name === "wait" ? { readOnlyHint: true } : undefined));
+		expect(await mayStart("wait", {})).toBe(true);
 	});
 
 	it("drops a discarded call's local-read snapshot and check timing", async () => {

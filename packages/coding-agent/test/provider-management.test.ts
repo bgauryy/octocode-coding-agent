@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GLYPH, Input, setKeybindings } from "@octocodeai/octocode-tui";
 import type { ProviderPlan } from "@octocodeai/octocode-ai";
-import { CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getBuiltinCommand } from "../src/core/slash-commands.ts";
@@ -66,6 +65,7 @@ function manager() {
 		isUsingOAuth: () => false,
 		getProviderPlan: vi.fn((_id: string): ProviderPlan | undefined => undefined),
 		getPlanDisabledReason: (id: string) => runtime.getProviderPlan(id)?.disabled,
+		getProviderDefinitionFile: () => undefined,
 		readCredential: vi.fn(async () => undefined),
 		getCredentialKind: vi.fn(async (): Promise<"account" | "subscription" | "key"> => "key"),
 		getProviderKind: vi.fn((_id: string): ProviderKind => "API key"),
@@ -138,6 +138,10 @@ function choose(page: { render(width: number): string[]; handleInput(data: strin
 	}
 	throw new Error(`no row "${label}" in:\n${textOf(page)}`);
 }
+/** Escape the list that follows a provider page opened by name. */
+async function closeList(value: Fixture["value"], index: number) {
+	(await pageAt(value, index)).handleInput(ESC);
+}
 const rows = (page: { render(width: number): string[] }) =>
 	textOf(page)
 		.split("\n")
@@ -187,7 +191,7 @@ describe("provider setup flow", () => {
 		installClaude();
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
-		choose(await pageAt(value, 0), "+ Add a provider");
+		choose(await pageAt(value, 0), "+ Provider");
 		const picker = await pageAt(value, 1);
 		for (const key of "anthropic") picker.handleInput(key);
 		const anthropicRows = rows(picker).filter((line) => line.includes("Anthropic"));
@@ -217,22 +221,24 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
 		const output = textOf(page);
-		const at = ["Configured", "Connect", "External agents", "Advanced"].map((heading) =>
+		const at = ["Ready", "External agents", "Add", "Advanced"].map((heading) =>
 			output.search(new RegExp(`^ ${heading}$`, "m")),
 		);
 		expect(at.every((position) => position >= 0)).toBe(true);
 		expect(at).toEqual([...at].sort((a, b) => a - b));
-		expect(output).not.toMatch(/^ Disabled$/m);
+		expect(output).not.toMatch(/^ Off$/m);
 		expect(output.match(/OpenAI\b/g)?.length).toBeGreaterThanOrEqual(1);
-		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · 1 model +connected/);
-		expect(output).toContain("+ Add a provider");
+		expect(output).toMatch(/OpenAI +API key · OPENAI_API_KEY · defined in built-in · 1 model +✓ ready/);
+		expect(output).toContain("+ Provider");
+		expect(output).toContain("+ From template");
+		expect(output).toContain("+ External agent CLI");
 		expect(output).not.toMatch(/^ Sources$/m);
 		expect(output).toContain("not verified");
 		choose(page, "Sources and custom models");
 		const advanced = await pageAt(value, 1);
 		const diagnostic = textOf(advanced);
-		expect(diagnostic).toMatch(/Octocode .*auth\.json.* on/);
-		expect(diagnostic).toMatch(/Pi .*auth\.json.* on/);
+		expect(diagnostic).toMatch(/Octocode .*auth\.json.* ✓ ready/);
+		expect(diagnostic).toMatch(/Pi .*auth\.json.* ✓ ready/);
 		expect(diagnostic).toMatch(/COPILOT_GITHUB_TOKEN .* off/);
 		// Sign in with ChatGPT on OpenAI superseded the legacy Codex provider.
 		expect(diagnostic).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI(?! Codex)/);
@@ -249,12 +255,12 @@ describe("provider setup flow", () => {
 		value.session.settingsManager.setDisabledProviders(["openai"]);
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const first = await pageAt(value, 0);
-		expect(textOf(first)).toMatch(/^ Disabled$/m);
-		expect(textOf(first)).toMatch(/OpenAI .* disabled/);
+		expect(textOf(first)).toMatch(/^ Off$/m);
+		expect(textOf(first)).toMatch(/OpenAI .* ○ off/);
 		first.handleInput("e");
 		const second = await pageAt(value, 1);
 		expect(runtime.setDisabledProviders).toHaveBeenLastCalledWith([]);
-		expect(textOf(second)).not.toMatch(/^ Disabled$/m);
+		expect(textOf(second)).not.toMatch(/^ Off$/m);
 		expect(value.showStatus).toHaveBeenLastCalledWith(expect.stringContaining("Enabled OpenAI"));
 		second.handleInput(ESC);
 		await run;
@@ -264,7 +270,7 @@ describe("provider setup flow", () => {
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
-		choose(page, "+ Add a provider");
+		choose(page, "+ Provider");
 		const picker = await pageAt(value, 1);
 		expect(textOf(picker)).toContain("Sign in — choose a provider");
 		// Providers with a sign-in come first, then API-key-only ones, each group by name.
@@ -342,11 +348,11 @@ describe("provider setup flow", () => {
 		runtime.getProviderKind.mockReturnValue("subscription");
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
-		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · 1 model/);
+		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · defined in built-in · 1 model/);
 		list.handleInput(ENTER);
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail)).toMatch(/Status +Connected · Subscription · OPENAI_API_KEY/);
-		expect(textOf(detail)).not.toContain("Connected · API key");
+		expect(textOf(detail)).toMatch(/Status +✓ ready · subscription · OPENAI_API_KEY/);
+		expect(textOf(detail)).not.toContain("✓ ready · API key");
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -359,7 +365,7 @@ describe("provider setup flow", () => {
 		expect(textOf(list)).toMatch(/OpenAI +API key · OPENAI_API_KEY/);
 		list.handleInput(ENTER);
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail)).toMatch(/Status +Connected · API key/);
+		expect(textOf(detail)).toMatch(/Status +✓ ready · API key/);
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -409,6 +415,7 @@ describe("provider setup flow", () => {
 		answers.error = undefined;
 		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
 		choose(await pageAt(value, 0), "Test credential");
+		await closeList(value, 1);
 		await run;
 		expect(value.showStatus).toHaveBeenCalledWith(expect.stringContaining("OpenAI: ✓ credential worked"));
 		expect(value.showError).not.toHaveBeenCalled();
@@ -419,6 +426,7 @@ describe("provider setup flow", () => {
 		answers.error = "401 invalid x-api-key sk-ant-api03-secretsecretsecretsecret";
 		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
 		choose(await pageAt(value, 0), "Test credential");
+		await closeList(value, 1);
 		await run;
 		const shown = String(value.showError.mock.calls.at(-1)?.[0]);
 		expect(shown).toContain("OpenAI: ✗ credential refused");
@@ -433,8 +441,8 @@ describe("provider setup flow", () => {
 		const page = await pageAt(value, 0);
 		const output = textOf(page);
 		for (const fact of [
-			/Status +Connected · API key · OPENAI_API_KEY/,
-			/Provider +enabled/,
+			/Status +✓ ready · API key · OPENAI_API_KEY/,
+			/Provider +on/,
 			/Models +1 available · 1 in catalog/,
 			/Definition +built-in/,
 		]) {
@@ -459,6 +467,7 @@ describe("provider setup flow", () => {
 		const { host, value, runtime } = manager();
 		const first = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
 		choose(await pageAt(value, 0), "Disable provider");
+		await closeList(value, 1);
 		await first;
 		expect(runtime.setDisabledProviders).toHaveBeenCalledWith(["openai"]);
 		expect(value.session.settingsManager.setDisabledProviders).toHaveBeenCalledWith(["openai"]);
@@ -466,9 +475,10 @@ describe("provider setup flow", () => {
 		expect(value.updateAvailableProviderCount).toHaveBeenCalled();
 
 		const second = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
-		const page = await pageAt(value, 1);
-		expect(textOf(page)).toContain("openai".length ? "disabled" : "");
+		const page = await pageAt(value, 2);
+		expect(textOf(page)).toContain("off · hidden from /model");
 		choose(page, "Enable provider");
+		await closeList(value, 3);
 		await second;
 		expect(runtime.setDisabledProviders).toHaveBeenLastCalledWith([]);
 		expect(value.showStatus).toHaveBeenLastCalledWith(expect.stringContaining("Enabled OpenAI"));
@@ -504,6 +514,7 @@ describe("provider setup flow", () => {
 			const page = await pageAt(value, 2);
 			expect(textOf(page, 320)).toContain(`Show definition file — Octocode models.json: ${join(dir, "models.json")}`);
 			page.handleInput(ESC);
+			await closeList(value, 3);
 			await detail;
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -519,39 +530,54 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
 		expect(textOf(page)).toContain("Needs attention");
-		expect(textOf(page)).toMatch(/gone-gateway +saved credential · provider definition missing.*unavailable/);
+		expect(textOf(page)).toMatch(
+			/gone-gateway +credential in .* but no provider defines it · remove the credential, or define the provider in .*✗ broken/,
+		);
 		expect(textOf(page)).not.toContain("Signed in");
 		page.handleInput(ESC);
 		await run;
 	});
 
-	it("the sign-in picker lists vendor CLIs as external agents and opens the chosen one's page", async () => {
+	it("+ External agent CLI lists the vendor CLIs, and + Provider offers none of them", async () => {
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
-		choose(await pageAt(value, 0), "+ Add a provider");
-		const picker = await pageAt(value, 1);
-		for (const key of "claude") picker.handleInput(key);
-		// A Claude subscription is offered only as the Claude Code external agent.
-		expect(rows(picker).filter((line) => line.includes("Claude Code"))).toEqual([
-			expect.stringMatching(/Claude Code · external agent · its own harness · Claude Pro\/Max subscription/),
-		]);
-		for (let index = 0; index < "claude".length; index++) picker.handleInput("\x7f");
-		for (const key of "gemini") picker.handleInput(key);
-		expect(textOf(picker)).toMatch(/Gemini CLI · external agent · its own harness · Google AI Pro\/Ultra subscription/);
-		choose(picker, "Gemini CLI");
-		const page = await pageAt(value, 2);
+		const list = await pageAt(value, 0);
+		let offered: readonly string[] = [];
+		value.showExtensionSelector.mockImplementation(async (_title: string, labels: string[]) => {
+			offered = labels;
+			return labels.find((label) => label.startsWith("Gemini CLI"));
+		});
+		choose(list, "+ External agent CLI");
+		const page = await pageAt(value, 1);
+		expect(offered.find((label) => label.startsWith("Claude Code"))).toMatch(
+			/external agent · its own harness · Claude Pro\/Max subscription/,
+		);
+		expect(offered.find((label) => label.startsWith("Gemini CLI"))).toMatch(
+			/external agent · its own harness · Google AI Pro\/Ultra subscription/,
+		);
 		expect(textOf(page)).toContain("Gemini CLI — not connected");
 		expect(textOf(page)).toMatch(/external agent: its own harness runs each task/);
 		expect(value.showLoginDialog).not.toHaveBeenCalled();
 		page.handleInput(ESC);
-		(await pageAt(value, 3)).handleInput(ESC);
+		(await pageAt(value, 2)).handleInput(ESC);
+		await run;
+	});
+
+	it("+ Provider lists providers only, not vendor CLIs", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "+ Provider");
+		const picker = await pageAt(value, 1);
+		expect(textOf(picker)).not.toMatch(/external agent/);
+		picker.handleInput(ESC);
+		(await pageAt(value, 2)).handleInput(ESC);
 		await run;
 	});
 
 	it("the sign-in picker names subscription and account sign-ins and finds them by the sign-in's name", async () => {
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
-		choose(await pageAt(value, 0), "+ Add a provider");
+		choose(await pageAt(value, 0), "+ Provider");
 		const picker = await pageAt(value, 1);
 		expect(textOf(picker)).toMatch(/OpenAI · account sign-in or API key/);
 		for (const key of "chatgpt") picker.handleInput(key);
@@ -591,7 +617,7 @@ describe("provider setup flow", () => {
 		await removeProviderCredential(host, "openai", "OpenAI");
 		expect(runtime.logout).toHaveBeenCalledOnce();
 		expect(value.showStatus).toHaveBeenCalledWith(
-			expect.stringContaining("Still configured: Connected · API key · OPENAI_API_KEY"),
+			expect.stringContaining("Still configured: API key · OPENAI_API_KEY"),
 		);
 	});
 
@@ -603,6 +629,7 @@ describe("provider setup flow", () => {
 		expect(textOf(page)).not.toContain("Remove saved credential");
 		expect(textOf(page)).toContain("Add API key");
 		page.handleInput(ESC);
+		await closeList(value, 1);
 		await run;
 	});
 
@@ -634,6 +661,7 @@ describe("provider setup flow", () => {
 		expect(output).toContain("Remove saved and session credentials");
 		expect(output).not.toMatch(/Remove saved credential/);
 		page.handleInput(ESC);
+		await closeList(value, 1);
 		await run;
 	});
 
@@ -671,8 +699,8 @@ describe("provider setup flow", () => {
 		const output = textOf(page);
 		expect(output).toMatch(/^ External agents$/m);
 		// The list starts nothing: the runner is checked when its own page opens.
-		expect(output).toMatch(/Claude Code +CLI · not checked · open to check +not ready/);
-		expect(output).toMatch(/Codex CLI +CLI · not installed · codex not on PATH +absent/);
+		expect(output).toMatch(/Claude Code +not ready · CLI · not checked · open to check +⚠ needs action/);
+		expect(output).toMatch(/Codex CLI +CLI · not installed · codex not on PATH +○ off/);
 		page.handleInput(ENTER);
 		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
 		const detail = await pageAt(value, 1);
@@ -690,7 +718,7 @@ describe("provider setup flow", () => {
 		const again = await pageAt(value, 2);
 		for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
 		expect(textOf(again)).toMatch(
-			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
+			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/,
 		);
 		expect(setExternalAgents).not.toHaveBeenCalled();
 		again.handleInput(ENTER);
@@ -746,7 +774,7 @@ describe("provider setup flow", () => {
 			const again = await pageAt(value, 2);
 			for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
 			expect(textOf(again)).toMatch(
-				/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
+				/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/,
 			);
 			again.handleInput(ESC);
 			await run;
@@ -765,9 +793,7 @@ describe("provider setup flow", () => {
 		(await pageAt(value, 1)).handleInput(ESC);
 		const list = await pageAt(value, 2);
 		for (let step = 0; step < 40 && !selectedLine(list).includes("Claude Code"); step++) list.handleInput(DOWN);
-		expect(textOf(list)).toMatch(
-			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan +connected · off for tasks/,
-		);
+		expect(textOf(list)).toMatch(/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/);
 		list.handleInput(ESC);
 		await first;
 	});
@@ -786,12 +812,14 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		expect(textOf(list, 220)).toMatch(
-			/Anthropic +Claude subscription token refused; use Claude Code in External agents · 0 models.*unavailable/,
+			/Anthropic +Claude subscription token refused · use Claude Code under External agents.* · 0 models.*✗ broken/,
 		);
 		expect(textOf(list, 220)).not.toContain("sk-ant-oat01-test");
 		choose(list, "Anthropic");
 		const detail = await pageAt(value, 1);
-		expect(textOf(detail, 260)).toContain(`Not set: ${CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL}`);
+		expect(textOf(detail, 260)).toMatch(
+			/Status +✗ broken · Claude subscription token refused\s+Next step +use Claude Code under External agents/,
+		);
 		detail.handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));
 		await run;
@@ -828,6 +856,7 @@ describe("provider setup flow", () => {
 		expect(textOf(page)).toContain(query === "codex" ? "Codex CLI —" : "OpenCode —");
 		expect(textOf(page)).toContain("own tools and sign-in");
 		page.handleInput(ESC);
+		await closeList(value, 1);
 		await run;
 		expect(value.showLoginDialog).not.toHaveBeenCalled();
 	});
@@ -848,6 +877,7 @@ describe("provider setup flow", () => {
 		});
 		const run = showProviderManager(host, "codex", { sourceEnvironment: sourceEnvironment() });
 		choose(await pageAt(value, 0), "Enable this CLI for agent tasks");
+		await closeList(value, 1);
 		await run;
 		expect(selected).toEqual(["custom", "codex"]);
 		expect(enabled).toBe(true);

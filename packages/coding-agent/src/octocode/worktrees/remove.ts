@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+import { privateDir } from "../../../../common/src/file-mode.ts";
 import { git, gitQuiet } from "../../utils/git-run.ts";
+import { sessionDir, sessionsRoot } from "../shared/home.ts";
 import { revokeWorktreeGrant } from "../trust/grants.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
 import { entryAt, locateRepo, worktreePath } from "./repo.ts";
@@ -12,6 +16,83 @@ export interface RemoveResult {
 
 const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
+/** What one session saved inside a worktree still owes: reports no session took yet, follow-up windows of finished children. */
+interface HeldState {
+	/** The session's folder name (its id as a folder). */
+	session: string;
+	/** The pending report files (`reports/pending/*.json`). */
+	reports: string[];
+	parked: number;
+}
+
+/** `readdirSync`, with a missing folder read as empty. */
+function names(dir: string): string[] {
+	try {
+		return fs.readdirSync(dir);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+}
+
+/** How many parked windows `<session folder>/parked-workers.json` records; none when there is no record. */
+function parkedCount(folder: string): number {
+	let text: string;
+	try {
+		text = fs.readFileSync(path.join(folder, "parked-workers.json"), "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+		throw error;
+	}
+	const data: unknown = JSON.parse(text);
+	return Array.isArray(data) ? data.length : 0;
+}
+
+/**
+ * The sessions that ran in worktree `target` and still hold undelivered state. A linked worktree is its own workspace
+ * data root, so their session data lives inside it and goes with it.
+ */
+function heldState(target: string): HeldState[] {
+	const root = sessionsRoot(process.env, target);
+	return names(root).flatMap((session) => {
+		const folder = path.join(root, session);
+		const pending = path.join(folder, "reports", "pending");
+		const reports = names(pending)
+			.filter((name) => name.endsWith(".json"))
+			.map((name) => path.join(pending, name));
+		const parked = parkedCount(folder);
+		return reports.length > 0 || parked > 0 ? [{ session, reports, parked }] : [];
+	});
+}
+
+function heldText(held: readonly HeldState[]): string {
+	return held
+		.map((state) =>
+			[
+				state.reports.length > 0 ? plural(state.reports.length, "undelivered subagent report") : "",
+				state.parked > 0 ? plural(state.parked, "parked agent window") : "",
+			]
+				.filter(Boolean)
+				.join(" and ")
+				.concat(` in session ${state.session}`),
+		)
+		.join("; ");
+}
+
+/** Copies each held session's pending reports to the same session's pending folder under the main checkout; returns how many. */
+function copyReports(held: readonly HeldState[], main: string): number {
+	let copied = 0;
+	for (const { session, reports } of held) {
+		if (reports.length === 0) continue;
+		const dest = privateDir(path.join(sessionDir(session, process.env, main), "reports", "pending"));
+		for (const file of reports) {
+			fs.copyFileSync(file, path.join(dest, path.basename(file)), fs.constants.COPYFILE_EXCL);
+			copied++;
+		}
+	}
+	return copied;
+}
+
 export interface RemoveOptions {
 	force?: boolean;
 	sessionCwd?: string;
@@ -24,8 +105,10 @@ export interface RemoveOptions {
 
 /**
  * Removes `<main root>/.octocode/worktrees/<name>`. Without `force` it refuses a worktree with changed or untracked
- * files, with commits no other branch has, or with occupants (`options.occupants`), and says which. It never removes the worktree `sessionCwd` is in. The
- * branch goes only through `git branch -d`, so an unmerged one stays.
+ * files, with commits no other branch has, with occupants (`options.occupants`), or whose sessions still hold undelivered
+ * subagent reports or parked agent windows, and says which. With `force` it first copies those reports to the same
+ * sessions under the main checkout. It never removes the worktree `sessionCwd` is in. The branch goes only through
+ * `git branch -d`, so an unmerged one stays.
  */
 export async function removeWorktree(cwd: string, name: string, options: RemoveOptions = {}): Promise<RemoveResult> {
 	const problem = worktreeNameProblem(name);
@@ -45,6 +128,12 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 				removed: false,
 				message: `Worktree "${name}" is in use (${here}). Close them, or run /worktree remove ${name} --force.`,
 			};
+		const held = heldState(target);
+		if (held.length > 0)
+			return {
+				removed: false,
+				message: `Worktree "${name}" holds ${heldText(held)}. Resume those sessions in the worktree to receive them, or run /worktree remove ${name} --force to copy the reports to the main checkout and discard the rest.`,
+			};
 		const { dirty, untracked } = await dirtyCounts(target);
 		const unmerged = await unmergedCount(entry);
 		const blockers = [
@@ -59,6 +148,9 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 			};
 	}
 
+	// Before anything is deleted: a copy that fails leaves the worktree as it was.
+	const moved = !entry.prunable && options.force ? copyReports(heldState(target), repo.main) : 0;
+	const kept = moved > 0 ? ` Copied ${plural(moved, "undelivered subagent report")} to the main checkout.` : "";
 	// A registered worktree whose folder is gone has nothing to remove: pruning drops the entry.
 	await git(
 		repo.main,
@@ -66,13 +158,13 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 	);
 	revokeWorktreeGrant(target); // the grant of a worktree that no longer exists
 	const branch = worktreeBranch(name);
-	if (entry.branch !== branch) return { removed: true, message: `Removed worktree "${name}".` };
+	if (entry.branch !== branch) return { removed: true, message: `Removed worktree "${name}".${kept}` };
 	const deleted = await gitQuiet(repo.main, ["branch", "-d", branch]);
 	return {
 		removed: true,
 		message:
 			deleted === undefined
-				? `Removed worktree "${name}". Kept branch ${branch}: it has commits that are not merged (delete it with git branch -D ${branch}).`
-				: `Removed worktree "${name}" and its branch ${branch}.`,
+				? `Removed worktree "${name}". Kept branch ${branch}: it has commits that are not merged (delete it with git branch -D ${branch}).${kept}`
+				: `Removed worktree "${name}" and its branch ${branch}.${kept}`,
 	};
 }

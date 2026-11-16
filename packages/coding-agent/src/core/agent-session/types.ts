@@ -196,8 +196,10 @@ export interface PromptOptions {
 }
 
 export interface ModelMutationOptions {
-	/** Persist the new value to global defaults. Defaults to session-only. */
+	/** Persist the new value as a default. Defaults to session-only. */
 	persist?: boolean;
+	/** Where `persist` writes a model default: the global settings (default) or this project's, which needs a trusted project. */
+	scope?: "global" | "project";
 }
 
 export interface ModelCycleResult {

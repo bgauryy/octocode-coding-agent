@@ -18,7 +18,6 @@ import {
 import { skillFolder } from "../../../core/discovery/display-paths.ts";
 import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import type { KeybindingProblem } from "../../../core/keybindings.ts";
-import { foundSummary } from "../../../core/discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "../../../core/discovery/vendors/types.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
@@ -53,13 +52,39 @@ function groupDetails(group: ContextGroup, formatPath: (path: string) => string)
 		.join("\n");
 }
 
-function groupRow(group: ContextGroup, formatPath: (path: string) => string): ViewRow {
+export interface ListingBudget {
+	chars: number;
+	budget: number;
+}
+const size = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+function groupRow(group: ContextGroup, formatPath: (path: string) => string, budget?: ListingBudget): ViewRow {
+	const problems = problemSummary(group);
+	const summary = () =>
+		[
+			budget
+				? `${size(budget.chars)}/${size(budget.budget)} chars${group.id === "context" ? ` · ${sourceSummary(group)}` : ""}`
+				: sourceSummary(group),
+			problems,
+			group.id === "skill"
+				? "octocode context check · /harness"
+				: group.id === "context"
+					? "octocode context check"
+					: "/harness",
+		]
+			.filter(Boolean)
+			.join(" · ");
 	return {
 		id: group.id,
 		spec: {
 			label: group.title,
+			state: () =>
+				(budget && budget.chars > budget.budget) || /duplicate|not trusted/.test(problems)
+					? "attention"
+					: activeEntries(group).length
+						? "ready"
+						: "off",
 			count: () => activeEntries(group).length,
-			summary: () => theme.fg("dim", clean(sourceSummary(group))),
+			summary: () => theme.fg("dim", clean(summary())),
 			cells: () => ({
 				sources: theme.fg("dim", clean(sourceSummary(group))),
 				tail: theme.fg("warning", problemSummary(group)),
@@ -70,37 +95,45 @@ function groupRow(group: ContextGroup, formatPath: (path: string) => string): Vi
 }
 
 /** Every kind with something to show, in the view's order; the view's warnings are lines of their own ({@link startupWarnings}). */
-export function viewRows(view: ContextView, formatPath: (path: string) => string): ViewRow[] {
-	return view.groups.map((group) => groupRow(group, formatPath));
+export function viewRows(
+	view: ContextView,
+	formatPath: (path: string) => string,
+	budgets: Record<string, ListingBudget> = {},
+): ViewRow[] {
+	return view.groups.map((group) => groupRow(group, formatPath, budgets[group.id]));
 }
 
 /**
- * `Harness  .agents ● · Pi ● · Claude Code ○ 1 skill, 1 hook · /harness`: every switchable harness, on (●) or off (○,
- * with what switching it on would add); the count is how many are on. Octocode itself has no switch and is left out.
- * When the line does not fit, the off counts go first, then the harnesses wrap; `/harness` always ends it.
+ * `Harness ✓ 2  on: .agents, Pi · off: Claude Code · /harness`: every switchable harness, grouped on and off; the
+ * count is how many are on. Octocode itself has no switch and is left out. When the line does not fit, the groups wrap;
+ * `/harness` always ends it.
  */
 export function harnessRow(statuses: readonly HarnessStatus[]): LoadedRowSpec {
 	const shown = statuses.filter((status) => status.switchable);
-	const parts = (counts: boolean) => [
-		...shown.map((status) => {
-			if (status.on)
-				return `${theme.fg("muted", status.label)} ${theme.fg("success", "●")}${status.projectOnly ? theme.fg("dim", " project") : ""}`;
-			const found = counts ? foundSummary(status) : "";
-			return `${theme.fg("muted", status.label)} ${theme.fg("dim", `○${found ? ` ${found}` : ""}`)}`;
-		}),
-		theme.fg("dim", "/harness"),
-	];
+	const names = (on: boolean) =>
+		shown
+			.filter((status) => status.on === on)
+			.map((status) => `${clean(status.label)}${on && status.projectOnly ? " (project)" : ""}`);
+	const parts = () => {
+		const [on, off] = [names(true), names(false)];
+		return [
+			...(on.length ? [theme.fg("muted", `on: ${on.join(", ")}`)] : []),
+			...(off.length ? [theme.fg("dim", `off: ${off.join(", ")}`)] : []),
+			theme.fg("dim", "/harness"),
+		];
+	};
 	const separator = theme.fg("dim", " \u00b7 ");
 	return {
 		label: "Harness",
+		state: () => (shown.some((s) => s.on) ? "ready" : "off"),
 		count: () => shown.filter((status) => status.on).length,
 		showZero: true,
-		summary: () => parts(true).join(separator),
+		summary: () => parts().join(separator),
 		fitSummary: (room) => {
-			const full = parts(true).join(separator);
+			const full = parts().join(separator);
 			if (visibleWidth(full) <= room) return [full];
 			// Whole harnesses per line; a wrapped line ends with ` ·`, so all but the last part keep two cells for it.
-			const short = parts(false);
+			const short = parts();
 			const lines: string[] = [];
 			for (const [index, part] of short.entries()) {
 				const reserve = index === short.length - 1 ? 0 : 2;
@@ -148,13 +181,13 @@ export function startupWarnings(
 	const winner = collisions[0]?.collision?.winnerPath;
 	if (collisions.length > 0 && winner)
 		warnings.push({
-			text: `${plural(collisions.length, "duplicate skill", "duplicate skills")} skipped: a skill with the same name loads from ${skillFolder(winner)} (ctrl+o lists them)`,
+			text: `${plural(collisions.length, "duplicate skill", "duplicate skills")} skipped, kept ${skillFolder(winner)} (ctrl+o lists)`,
 			details: collisions.map((d) => `${d.collision?.name}: ${homeTilde(d.collision?.loserPath ?? "")}`),
 		});
 	const problemFiles = new Set(problems.map((d) => d.path ?? d.message));
 	if (problems.length > 0)
 		warnings.push({
-			text: `${plural(problemFiles.size, "skill file", "skill files")} with problems: invalid SKILL.md or folder; fix or remove them (ctrl+o lists them)`,
+			text: `${plural(problemFiles.size, "skill file", "skill files")} with problems: invalid SKILL.md or folder (ctrl+o lists)`,
 			details: problems.map(line),
 		});
 	for (const { path, problem } of keybindings) warnings.push({ text: `${homeTilde(path)}: ${problem}`, details: [] });

@@ -1,22 +1,19 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SettingsSchema } from "../settings-schema.ts";
 
 type ObjectSchema = { properties: Record<string, unknown>; additionalProperties?: unknown };
 
 const KNOWN_KEYS = new Set(Object.keys(SettingsSchema.properties));
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /** The object schema behind an optional property, or undefined when it is not a closed object with named properties. */
 function objectSchema(schema: unknown): ObjectSchema | undefined {
-	if (!isObject(schema) || !isObject(schema.properties) || schema.additionalProperties === true) return undefined;
+	if (!isRecord(schema) || !isRecord(schema.properties) || schema.additionalProperties === true) return undefined;
 	return schema as ObjectSchema;
 }
 
 function nestedIgnored(value: unknown, schema: unknown, prefix: string): string[] {
 	const object = objectSchema(schema);
-	if (!object || !isObject(value)) return [];
+	if (!object || !isRecord(value)) return [];
 	return Object.keys(value).flatMap((key) =>
 		key in object.properties
 			? nestedIgnored(value[key], object.properties[key], `${prefix}.${key}`)

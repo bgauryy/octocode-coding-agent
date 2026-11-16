@@ -44,7 +44,7 @@ describe("linger front matter", () => {
 		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "web"]);
 		expect(tools).not.toContain("browser");
 		// Core tools: commands (still read-only through the permission gate), communication and history.
-		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "timer", "file"]));
+		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "wait", "file"]));
 		expect(tools).not.toContain("task");
 	});
 });
@@ -63,7 +63,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",
@@ -76,7 +76,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",
@@ -90,14 +90,14 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "timer", "archive", "memory"]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "wait", "archive", "memory"]);
 		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
@@ -108,7 +108,7 @@ describe("core tools of a subagent profile", () => {
 			"agent*",
 			"file",
 			"bash",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",
@@ -122,7 +122,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",
@@ -158,8 +158,8 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: mcp__research__read_file", ["mcp__research__read_file"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
-		["excludeTools: timer", ["timer"]],
-		["tools: -timer", ["timer"]],
+		["excludeTools: wait", ["wait"]],
+		["tools: -wait", ["wait"]],
 		[
 			'excludeTools: "*"',
 			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, "mcp__research__read_file", "mcp__research__search_code"],
@@ -190,7 +190,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"timer",
+			"wait",
 			"archive",
 			"memory",
 			"skill",

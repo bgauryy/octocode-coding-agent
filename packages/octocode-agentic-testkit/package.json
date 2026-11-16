@@ -1,0 +1,22 @@
+{
+	"name": "@octocodeai/octocode-agentic-testkit",
+	"version": "0.0.0-poc",
+	"private": true,
+	"type": "module",
+	"description": "Vitest-native behavior tests for agents: model gateway, MCP mocks, traces and matchers (POC)",
+	"main": "src/index.ts",
+	"scripts": {
+		"test": "vitest run",
+		"typecheck": "tsc -p tsconfig.json",
+		"test:guards": "vitest run test/guards",
+		"test:triggers": "TESTKIT_OLLAMA=1 vitest run test/triggers",
+		"tier": "node scripts/run-tier.mjs"
+	},
+	"peerDependencies": {
+		"vitest": "5.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "24.19.2",
+		"vitest": "5.1.0"
+	}
+}

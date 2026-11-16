@@ -121,10 +121,10 @@ describe("tool exposure usage audit", () => {
 
 describe("audit rows of the usage-only native tools", () => {
 	const live = {
-		names: [...NATIVE_PINNABLE_TOOLS, "memory", "timer", "bash"],
+		names: [...NATIVE_PINNABLE_TOOLS, "memory", "wait", "bash"],
 		declared: new Map([
 			["memory", true],
-			["timer", false],
+			["wait", false],
 		]),
 		saved: new Map([["memory", 400]]),
 	};
@@ -142,13 +142,13 @@ describe("audit rows of the usage-only native tools", () => {
 	it("shows memory and timer with their audit under usage", async () => {
 		writeJson(globalSettings(), { mcpExposure: "usage" });
 		seed("memory", 25, 0);
-		seed("timer", 25, 10);
+		seed("wait", 25, 10);
 		const list = await listToolExposure({ agentDir, native: () => live });
 		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
 		expect(tool(list, "native", "memory")).toMatchObject({ state: "deferred", decidedBy: "usage" });
 		expect(tool(list, "native", "memory")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 400 });
-		expect(tool(list, "native", "timer")).toMatchObject({ state: "direct" });
-		expect(tool(list, "native", "timer")?.audit).toMatchObject({ reason: "promoted", rate: 0.4 });
+		expect(tool(list, "native", "wait")).toMatchObject({ state: "direct" });
+		expect(tool(list, "native", "wait")?.audit).toMatchObject({ reason: "promoted", rate: 0.4 });
 	});
 
 	it("shows them when pinned under another setting, and lists an unpinned one as a core tool otherwise", async () => {
@@ -158,8 +158,8 @@ describe("audit rows of the usage-only native tools", () => {
 		expect(tool(list, "native", "memory")).toMatchObject({ pin: "deferred", state: "deferred", decidedBy: "pin" });
 		expect(tool(list, "native", "memory")?.audit).toMatchObject({ called: 1, declared: 3 });
 		// Unpinned and not under usage, timer is a plain core row with no audit.
-		expect(tool(list, "native", "timer")).toMatchObject({ decidedBy: "core" });
-		expect(tool(list, "native", "timer")?.audit).toBeUndefined();
+		expect(tool(list, "native", "wait")).toMatchObject({ decidedBy: "core" });
+		expect(tool(list, "native", "wait")?.audit).toBeUndefined();
 	});
 });
 

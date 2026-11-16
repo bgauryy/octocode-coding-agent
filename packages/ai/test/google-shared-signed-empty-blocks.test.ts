@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { convertMessages } from "../src/api/google-shared/messages.ts";
-import type { AssistantMessage, Context, Model } from "../src/types.ts";
+import { stream } from "../src/api/google-generative-ai.ts";
+import type { AssistantMessage, Context, Model, TranscriptContext } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 // Gemini can attach `thoughtSignature` to a response part whose visible text is empty (e.g. a
@@ -25,6 +25,27 @@ function makeModel(id = "gemini-3-pro-preview"): Model<"google-generative-ai"> {
 }
 
 const VALID_SIG = "AAAAAAAAAAAAAAAAAAAAAA==";
+
+interface WireContent {
+	role: string;
+	parts?: { thoughtSignature?: string; thought?: boolean; functionCall?: unknown }[];
+}
+async function convertMessages(
+	model: Model<"google-generative-ai">,
+	context: TranscriptContext,
+): Promise<WireContent[]> {
+	let contents: WireContent[] | undefined;
+	const result = await stream(model, context, {
+		apiKey: "test-key",
+		onPayload: (payload) => {
+			contents = (payload as { contents: WireContent[] }).contents;
+			throw new Error("request captured");
+		},
+	}).result();
+	expect(result.errorMessage).toBe("request captured");
+	if (!contents) throw new Error("No request captured");
+	return contents;
+}
 
 function makeContext(
 	model: { api: string; provider: string; id: string },
@@ -55,10 +76,10 @@ function makeContext(
 	};
 }
 
-describe("google-shared convertMessages — signed empty blocks", () => {
-	it("keeps a signed empty thinking block so its signature is echoed back", () => {
+describe("Google SDK replay — signed empty blocks", () => {
+	it("keeps a signed empty thinking block so its signature is echoed back", async () => {
 		const model = makeModel();
-		const contents = convertMessages(
+		const contents = await convertMessages(
 			model,
 			normalizeContext(
 				makeContext(model, [
@@ -73,9 +94,9 @@ describe("google-shared convertMessages — signed empty blocks", () => {
 		expect(signed[0]?.thought).toBe(true);
 	});
 
-	it("keeps a signed empty text block the same way", () => {
+	it("keeps a signed empty text block the same way", async () => {
 		const model = makeModel();
-		const contents = convertMessages(
+		const contents = await convertMessages(
 			model,
 			normalizeContext(
 				makeContext(model, [
@@ -89,9 +110,9 @@ describe("google-shared convertMessages — signed empty blocks", () => {
 		expect(signed).toHaveLength(1);
 	});
 
-	it("still drops unsigned empty blocks", () => {
+	it("still drops unsigned empty blocks", async () => {
 		const model = makeModel();
-		const contents = convertMessages(
+		const contents = await convertMessages(
 			model,
 			normalizeContext(
 				makeContext(model, [
@@ -106,9 +127,9 @@ describe("google-shared convertMessages — signed empty blocks", () => {
 		expect(modelTurn?.parts?.[0]?.functionCall).toBeTruthy();
 	});
 
-	it("still drops signed empty blocks from a different provider/model (signature unusable)", () => {
+	it("still drops signed empty blocks from a different provider/model (signature unusable)", async () => {
 		const model = makeModel();
-		const contents = convertMessages(
+		const contents = await convertMessages(
 			model,
 			normalizeContext(
 				makeContext({ ...model, id: "other-model" }, [

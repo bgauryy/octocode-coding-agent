@@ -14,7 +14,7 @@ export function agentBase(member: Member): ProfilerMember {
 		...(member.activity ? { activity: member.activity } : {}),
 		id: member.id,
 		role: member.role,
-		status: member.status,
+		status: member.status === "working" ? "working" : "idle",
 		...(member.parentId ? { parentId: member.parentId } : {}),
 		...(member.model ? { model: member.model } : {}),
 		...(member.goal ? { goal: member.goal } : {}),

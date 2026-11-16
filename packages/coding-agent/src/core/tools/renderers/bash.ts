@@ -16,7 +16,8 @@ import type { ToolDefinition, ToolRenderResultOptions } from "../../features/typ
 import type { BashToolDetails } from "../bash/outcome.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
 import { reuseText } from "./output.ts";
-import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
+import { DEFAULT_MAX_BYTES } from "../truncate.ts";
+import { formatBytes } from "../../../utils/bytes.ts";
 
 export const BASH_UPDATE_THROTTLE_MS = 100;
 function formatShellCall(args: { command?: string; timeout?: number } | undefined, prompt: string): string {
@@ -137,7 +138,7 @@ function rebuildBashResultRenderComponent(
 				warnings.push(`Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`);
 			} else {
 				warnings.push(
-					`Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)`,
+					`Truncated: ${truncation.outputLines} lines shown (${formatBytes(truncation.maxBytes ?? DEFAULT_MAX_BYTES, "compact")} limit)`,
 				);
 			}
 		}

@@ -68,18 +68,74 @@ export async function createWorktree(
 		submodules,
 		included,
 	].filter(Boolean);
-	const sub = path.relative(repo, path.resolve(cwd));
-	const childCwd =
-		sub && !sub.startsWith("..") && fs.existsSync(path.join(worktree, sub)) ? path.join(worktree, sub) : worktree;
 	return {
 		agentId,
 		repo,
 		path: worktree,
 		base,
 		...(snapshot ? { snapshot } : {}),
-		cwd: childCwd,
+		cwd: childCwd(repo, cwd, worktree),
 		...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
 	};
+}
+
+/**
+ * Recreates isolated child `agentId`'s worktree for a resume: at `at.path`, where `createWorktree` put it (so the paths in
+ * its transcript stay valid), detached on `at.ref`, where its changes were saved. Once the owner record names the worktree
+ * the ref is deleted: the worktree's HEAD holds the commit, and finishing (or a prune after a crash) saves it on the ref
+ * again, under the same name. The base is where that commit meets this checkout's HEAD. Refuses when the ref is missing or
+ * the path exists.
+ */
+export async function reopenWorktree(
+	cwd: string,
+	agentId: string,
+	at: { ref: string; path: string },
+	item?: string,
+	ask?: WorktreeTrustAsk,
+): Promise<Worktree> {
+	if (!ID_PATTERN.test(agentId)) throw new Error(`Invalid agent id "${agentId}"`);
+	const repo = repoRoot(cwd);
+	if (fs.existsSync(at.path) || fs.existsSync(`${at.path}.json`))
+		throw new Error(
+			`${agentId}'s worktree ${at.path} already exists (kept when its changes could not be saved, or in use); save or remove it, then resume.`,
+		);
+	const head = await gitQuiet(repo, ["rev-parse", "--verify", "--quiet", `${at.ref}^{commit}`]);
+	if (!head)
+		throw new Error(
+			`${agentId} has no saved changes on ${at.ref} (merged or discarded); start a new agent with the context it needs.`,
+		);
+	const main = await gitQuiet(repo, ["rev-parse", "--verify", "HEAD"]);
+	const base = main && (await gitQuiet(repo, ["merge-base", head, main]));
+	if (!base) throw new Error(`${at.ref} shares no commit with this checkout's HEAD; its worktree cannot be recreated.`);
+	const recordTrust = await approveWorktree({ path: at.path, from: repo }, "worktree", ask);
+	fs.mkdirSync(path.dirname(at.path), { recursive: true });
+	atomicWriteFileSync(
+		`${at.path}.json`,
+		JSON.stringify({ owners: [owner(process.pid)], repo, base, ...(item ? { item } : {}), createdAt: Date.now() }),
+	);
+	try {
+		await git(repo, [...NO_HOOKS, "worktree", "add", "--detach", at.path, head]);
+	} catch (error) {
+		fs.rmSync(`${at.path}.json`, { force: true });
+		throw error;
+	}
+	await git(repo, ["update-ref", "-d", at.ref, head]);
+	recordTrust();
+	const included = await copyIgnoredIncludes(repo, at.path);
+	return {
+		agentId,
+		repo,
+		path: at.path,
+		base,
+		cwd: childCwd(repo, cwd, at.path),
+		...(included ? { warning: included } : {}),
+	};
+}
+
+/** Where the child runs in `worktree`: the same subdirectory as the parent's `cwd` in `repo`, when the worktree has it. */
+function childCwd(repo: string, cwd: string, worktree: string): string {
+	const sub = path.relative(repo, path.resolve(cwd));
+	return sub && !sub.startsWith("..") && fs.existsSync(path.join(worktree, sub)) ? path.join(worktree, sub) : worktree;
 }
 
 /**

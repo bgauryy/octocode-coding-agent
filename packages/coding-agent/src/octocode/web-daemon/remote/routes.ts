@@ -3,7 +3,8 @@ import { Value } from "typebox/value";
 import { RemotePublishSchema, RemoteStatusSchema } from "@octocodeai/octocode-contracts/daemon";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../../../../../common/src/sanitize.ts";
-import { readJsonBody, type Reply } from "../http-util.ts";
+import { readJsonBody } from "../../shared/json-body.ts";
+import type { Reply } from "../http-util.ts";
 import type { RemotePublisher } from "./publisher.ts";
 
 /**

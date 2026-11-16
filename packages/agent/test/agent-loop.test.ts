@@ -1376,6 +1376,39 @@ describe("agentLoop with AgentMessage", () => {
 		expect(finishCalls).toBe(2);
 	});
 
+	it("adds a continue decision's messages to the next request's context", async () => {
+		const seen: string[][] = [];
+		let finishCalls = 0;
+		const stream = agentLoop(
+			[createUserMessage("run")],
+			{ messages: [], tools: [] },
+			{
+				model: createModel(),
+				convertToLlm: identityConverter,
+				finishTurn: () => {
+					finishCalls++;
+					return finishCalls === 1 ? { action: "continue", messages: [createUserMessage("go on")] } : undefined;
+				},
+			},
+			undefined,
+			(_model, context) => {
+				seen.push(context.messages.map((m) => m.role));
+				const response = createAssistantMessageEventStream();
+				queueMicrotask(() => {
+					response.push({
+						type: "done",
+						reason: "stop",
+						message: createAssistantMessage([{ type: "text", text: "part" }]),
+					});
+				});
+				return response;
+			},
+		);
+		await stream.result();
+
+		expect(seen).toEqual([["user"], ["user", "assistant", "user"]]);
+	});
+
 	it("lets a natural tool-result request satisfy continuation", async () => {
 		const toolSchema = Type.Object({});
 		const tool: AgentTool<typeof toolSchema, undefined> = {

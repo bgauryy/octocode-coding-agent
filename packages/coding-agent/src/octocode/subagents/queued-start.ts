@@ -63,8 +63,18 @@ export function queueChild(chain: ChainQueue, tell: (notice: string) => void, sp
 				let seq: number | undefined;
 				let failure: { why: string; failed: string[] } | undefined;
 				if (!forced) {
-					const result = await chain.gate.wait(spec.after, signal);
-					if (result.status === "met") seq = result.seq;
+					// The coordinator may start a waiting child early: `force` ends the prerequisite wait.
+					const early = new AbortController();
+					force = () => early.abort();
+					const result = await chain.gate
+						.wait(spec.after, AbortSignal.any([signal, early.signal]))
+						.catch((error: unknown) => {
+							if (early.signal.aborted && !signal.aborted) return undefined;
+							throw error;
+						});
+					force = undefined;
+					if (result === undefined) forced = true;
+					else if (result.status === "met") seq = result.seq;
 					else
 						failure = {
 							why: result.failed.map((each) => each.why).join("; "),

@@ -12,7 +12,7 @@ import { normalizeContext } from "../src/utils/transcript.ts";
  * system, messages), are under 20K.
  */
 
-class Captured extends Error {}
+import { bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
 type CachePoint = { type: string; ttl?: string };
 type Block = { cachePoint?: CachePoint; [key: string]: unknown };
 interface Payload {
@@ -42,11 +42,13 @@ async function payloadFor(
 	});
 	await bedrockStream(model, context, {
 		env: {},
+		apiKey: "test",
+		fetch: async () => bedrockResponse(bedrockTextEvents),
 		cacheRetention: "short",
 		instructionCacheRetention: "short",
 		onPayload: (value) => {
 			payload = structuredClone(value) as Payload;
-			throw new Captured();
+			return value;
 		},
 	}).result();
 	if (!payload) throw new Error("payload not captured");

@@ -114,7 +114,7 @@ export interface ThinkingBudgets {
 }
 
 // Base options all providers share
-export type Transport = "sse" | "websocket" | "websocket-cached" | "auto";
+export type Transport = "sse" | "auto";
 
 /** Provider-scoped environment overrides. Values take precedence over process.env. */
 export type ProviderEnv = Record<string, string>;
@@ -249,12 +249,6 @@ export interface StreamOptions extends ProviderRequestOptions {
 	sessionId?: string;
 	/** Cache grouping key for related prompts; defaults to sessionId. Does not change transport/session identity. */
 	promptCacheKey?: string;
-	/**
-	 * WebSocket connect timeout in milliseconds for providers that support
-	 * WebSocket transports. This covers the connection/open handshake only;
-	 * stream idleness after connection uses timeoutMs.
-	 */
-	websocketConnectTimeoutMs?: number;
 	/**
 	 * Optional metadata to include in API requests.
 	 * Providers extract the fields they understand and ignore the rest.

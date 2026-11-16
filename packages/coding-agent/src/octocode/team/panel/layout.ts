@@ -48,9 +48,11 @@ function tally(tree: PanelEntry[], others: Member[], now: number): { attention: 
 		unpriced: others.some((member) => member.unpriced),
 	});
 	const summary = [
+		...(count("asks parent") ? [`${count("asks parent")} asks parent`] : []),
 		...(working ? [`${working} working`] : []),
 		...(idle ? [`${idle} idle`] : []),
 		...(done ? [`${GLYPH.done} ${done} done`] : []),
+		...(count("blocked") ? [`${count("blocked")} blocked`] : []),
 		...(failed ? [`${GLYPH.failed} ${failed} failed`] : []),
 		...(stopped ? [`${GLYPH.stopped} ${stopped} stopped`] : []),
 		...(left ? [`${left} left`] : []),

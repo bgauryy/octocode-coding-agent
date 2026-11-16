@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { APPLICATION_IMAGE_MIME_TYPES } from "@octocodeai/octocode-contracts";
-import { formatSize } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { type InlineImageType, sniffImageType } from "@octocodeai/octocode-ai/utils/vision";
 import {
 	CrossHostRedirect,
@@ -238,7 +238,7 @@ async function fetchImage(response: Response, url: string, type: string): Promis
 	if (declared > MAX_BODY_BYTES) {
 		await discardBody(response);
 		return unsupported(
-			`${where} is ${type}, ${formatSize(declared)}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`,
+			`${where} is ${type}, ${formatBytes(declared, "compact")}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`,
 		);
 	}
 	const { bytes, truncated, cut } = await readBytesCapped(response).catch((error: unknown) => {

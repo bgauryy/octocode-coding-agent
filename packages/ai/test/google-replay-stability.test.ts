@@ -1,4 +1,4 @@
-import type { GenerateContentParameters } from "@google/genai";
+import type { GoogleWirePayload as GenerateContentParameters } from "./google-fetch-fixture.ts";
 import { describe, expect, it } from "vitest";
 import { streamSimple as streamSimpleGoogle } from "../src/api/google-generative-ai.ts";
 import { streamSimple as streamSimpleVertex } from "../src/api/google-vertex.ts";
@@ -33,10 +33,13 @@ function model<T extends "google-generative-ai" | "google-vertex">(api: T, id: s
 	};
 }
 
+type ReplayPayload = GenerateContentParameters & { generationConfig?: GenerateContentParameters["config"] };
+const config = (payload: ReplayPayload) => payload.generationConfig ?? payload.config;
+
 type Run = (options: SimpleStreamOptions) => ReturnType<typeof streamSimpleGoogle>;
 
-async function capture(run: Run, options: SimpleStreamOptions): Promise<GenerateContentParameters> {
-	let payload: GenerateContentParameters | undefined;
+async function capture(run: Run, options: SimpleStreamOptions): Promise<ReplayPayload> {
+	let payload: ReplayPayload | undefined;
 	await run({
 		...options,
 		apiKey: "test",
@@ -49,9 +52,9 @@ async function capture(run: Run, options: SimpleStreamOptions): Promise<Generate
 	return payload;
 }
 
-function withoutOutputCap(payload: GenerateContentParameters): GenerateContentParameters {
-	const { maxOutputTokens: _cap, ...config } = payload.config ?? {};
-	return { ...payload, config };
+function withoutOutputCap(payload: ReplayPayload): ReplayPayload {
+	const { maxOutputTokens: _cap, ...rest } = config(payload) ?? {};
+	return { ...payload, [payload.generationConfig ? "generationConfig" : "config"]: rest };
 }
 
 type Case = [string, Run, Model<"google-generative-ai" | "google-vertex">, "thinkingBudget" | "thinkingLevel"];
@@ -77,8 +80,8 @@ describe("Gemini one-token replay with reasoning", () => {
 		async (_name, run, target, control) => {
 			const original = await capture(run, { reasoning: "high", maxTokens: 32000 });
 			const replay = await capture(run, { reasoning: "high", maxTokens: 1 });
-			expect(original.config?.thinkingConfig?.[control]).toBeDefined();
-			expect(replay.config?.maxOutputTokens).toBe(1);
+			expect(config(original)?.thinkingConfig?.[control]).toBeDefined();
+			expect(config(replay)?.maxOutputTokens).toBe(1);
 			expect(withoutOutputCap(replay)).toEqual(withoutOutputCap(original));
 			expect(replaysWithReasoningUnchanged(target)).toBe(true);
 		},

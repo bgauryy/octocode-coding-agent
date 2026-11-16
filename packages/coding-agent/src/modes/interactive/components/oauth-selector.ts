@@ -9,7 +9,8 @@ import {
 	Spacer,
 	TruncatedText,
 } from "@octocodeai/octocode-tui";
-import { emptyState, hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { windowList } from "../../../theme/page-kit.ts";
+import { emptyState, HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 
@@ -129,14 +130,11 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new TruncatedText(
-				hintLine([
-					[keyText("tui.select.confirm"), mode === "logout" ? "remove" : "select"],
-					[keyText("tui.select.cancel"), "cancel"],
-				]),
-				1,
-				0,
-			),
+			new HintBar([
+				moveHint(2),
+				[keyText("tui.select.confirm"), mode === "logout" ? "remove" : "select", 1],
+				[keyText("tui.select.cancel"), "cancel", 0],
+			]),
 		);
 
 		this.addChild(new DynamicBorder());
@@ -162,11 +160,11 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 
 		// One row fewer than before the key-hint line, so the dialog keeps its height.
 		const maxVisible = 7;
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.filteredProviders.length - maxVisible),
+		const { start: startIndex, end: endIndex } = windowList(
+			this.filteredProviders.length,
+			this.selectedIndex,
+			maxVisible,
 		);
-		const endIndex = Math.min(startIndex + maxVisible, this.filteredProviders.length);
 
 		for (let i = startIndex; i < endIndex; i++) {
 			const provider = this.filteredProviders[i];

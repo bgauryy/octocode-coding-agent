@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { formatSize } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { gitQuiet } from "../../utils/git-run.ts";
 import { plural } from "../shared/text.ts";
 import { catastrophicCommand, expandHome } from "./shell/destructive.ts";
@@ -214,7 +214,7 @@ async function destructive(
 	const targets = removalTargets(command);
 	const measured = targets.length > 0 ? measureRemoval(targets, cwd, deadline) : undefined;
 	const effect = measured
-		? `${danger}: removes ${plural(measured.files, "file")} and ${plural(measured.folders, "folder")} (${formatSize(measured.bytes)}) under ${targets.join(", ")}`
+		? `${danger}: removes ${plural(measured.files, "file")} and ${plural(measured.folders, "folder")} (${formatBytes(measured.bytes, "compact")}) under ${targets.join(", ")}`
 		: `${danger}; what it removes: ${UNKNOWN}`;
 	if (!snapshot) return { effect, risk: UNKNOWN };
 	if ("none" in snapshot) return { effect, risk: `nothing can be restored: no snapshot (${snapshot.none})` };

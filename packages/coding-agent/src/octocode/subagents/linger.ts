@@ -321,17 +321,25 @@ export class Lingering {
 			retaken = retakeReservation(runs.team, run);
 			// Retire the parked address before launching. A crash here never auto-replays uncertain execution.
 			this.forget(id);
+			try {
+				this.start(run, ctx, {
+					text,
+					message: request
+						? messageText(request.message, {
+								parentId: last.identity.parentId,
+								// The user's own message, created in this process for this resume; a relayed or forwarded one never is.
+								fromUser: from === USER_SENDER && request.message.from === USER_SENDER && !request.message.forwardedBy,
+							})
+						: `Follow-up from ${from === USER_SENDER ? "the user" : "your coordinator"}:\n${text}`,
+				});
+			} catch (error) {
+				// A launch that threw started nothing: the parked run stays reachable for another resume.
+				this.hold(prior);
+				this.persist();
+				throw error;
+			}
+			// Only a run that started makes its unread reports false.
 			runs.reports.supersede(id);
-			this.start(run, ctx, {
-				text,
-				message: request
-					? messageText(request.message, {
-							parentId: last.identity.parentId,
-							// The user's own message, created in this process for this resume; a relayed or forwarded one never is.
-							fromUser: from === USER_SENDER && request.message.from === USER_SENDER && !request.message.forwardedBy,
-						})
-					: `Follow-up from ${from === USER_SENDER ? "the user" : "your coordinator"}:\n${text}`,
-			});
 		} catch (error) {
 			if (run) run.release();
 			else runs.slots.give();

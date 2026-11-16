@@ -4,6 +4,7 @@
  * the last of them, so a frame that streamed a few rows rescans a few rows.
  */
 
+import { escapeRegExp } from "../utils/regexp.ts";
 import type { SearchCorpus } from "./search-corpus.ts";
 
 export interface AltScreenSearchSegment {
@@ -14,10 +15,6 @@ export interface AltScreenSearchSegment {
 
 export interface AltScreenSearchMatch {
 	segments: AltScreenSearchSegment[];
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Matches made between two clock reads while scanning. */

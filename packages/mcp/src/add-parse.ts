@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { McpAddCommand } from "@octocodeai/octocode-contracts/config";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { validateMcpServerConfig } from "./servers.ts";
@@ -19,9 +20,6 @@ const MAX_ERRORS = 8;
 const NAME_RULE = 'use letters, digits, "_" and "-", with no "__" and no "_" or "-" at the end';
 const STDIO_KEYS = ["type", "command", "args", "env"];
 const HTTP_KEYS = ["type", "url", "headers"];
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** A segment of an error path. Server names are not secrets, but an invalid one may hold anything: quote and cap it. */
 function segment(key: string): string {

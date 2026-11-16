@@ -250,9 +250,9 @@ it("warns when one MCP server's instructions or the context files pass 1% of the
 		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 20_000 });
 		const report = contextReport(session);
 		expect(report.warnings).toEqual([
-			"MCP server typed instructions over budget: 900 chars > 800 budget (1% of the context window). Nothing is cut. Shorten them in the server, or override them for this install (`octocode mcp compact --help`).",
-			"MCP server big instructions over budget: 801 chars > 800 budget (1% of the context window). Nothing is cut. Shorten them in the server, or override them for this install (`octocode mcp compact --help`).",
-			"Context files over budget: 1200 chars > 800 budget (1% of the context window). Nothing is cut. Keep the rules every task needs, and move the rest into files the agent reads when it needs them.",
+			"MCP server typed instructions too long: 900 chars, budget 800 · fix: octocode mcp compact --help",
+			"MCP server big instructions too long: 801 chars, budget 800 · fix: octocode mcp compact --help",
+			"Context files too long: 1200 chars, budget 800 · move rarely needed rules into linked files",
 		]);
 		const text = renderContextReport(report);
 		expect(text.split("\n\n")[1]).toBe(report.warnings.map((warning) => `Warning: ${warning}`).join("\n"));

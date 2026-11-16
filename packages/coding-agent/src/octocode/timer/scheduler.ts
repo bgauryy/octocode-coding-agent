@@ -2,7 +2,14 @@ import { type AgentDb, type TimerRow, timers } from "../../../../db/src/api.ts";
 import { onSecond } from "../shared/clock.ts";
 import type { CheckInput } from "./condition.ts";
 import { conditionTiming } from "./conditions/index.ts";
-import { type CheckOutcome, type TimerCondition, decideFire, rowCondition, rowRemoved } from "./model.ts";
+import {
+	type CheckOutcome,
+	type TimerCondition,
+	decideFire,
+	persistentFired,
+	rowCondition,
+	rowRemoved,
+} from "./model.ts";
 
 /** Events for one path arrive in bursts (a build writing files): one check follows the last event after this long. */
 const POKE_DEBOUNCE_MS = 150;
@@ -260,7 +267,9 @@ export class TimerScheduler {
 		if (!row || row.status !== "active" || !condition) return;
 		await this.guarded(id, async () => {
 			const outcome = await this.deps.check(condition, this.input(row));
-			if (this.stopped || (!outcome.met && !outcome.refused && !outcome.spend)) return;
+			// Quiet: a plain wait is not met yet; a persistent one (its condition held at its last wake) still holds.
+			const quiet = persistentFired(row) === true ? outcome.met : !outcome.met;
+			if (this.stopped || (quiet && !outcome.refused && !outcome.spend)) return;
 			const claimed = timers.claimNow(db, id, this.deps.sessionId, this.now());
 			this.deps.wrote?.();
 			if (claimed) await this.fire(claimed, outcome);
@@ -298,6 +307,11 @@ export class TimerScheduler {
 		}
 		if (this.stopped) return;
 		const decision = decideFire(row, check);
+		if (decision.persist !== undefined) {
+			timers.setBaseline(db, row.id, decision.persist);
+			this.deps.wrote?.();
+			row = timers.get(db, row.id) ?? row;
+		}
 		if (decision.end) {
 			const ended = timers.finish(db, row.id, decision.end.status, decision.end.reason, this.now());
 			this.deps.wrote?.();

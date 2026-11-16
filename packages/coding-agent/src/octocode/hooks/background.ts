@@ -5,6 +5,7 @@ import { visibleControls } from "../../../../common/src/sanitize.ts";
 import type { HookEvent } from "./catalog.ts";
 import type { HookCommand, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
+import { sendHookFeedback } from "../wake/senders.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -91,14 +92,7 @@ export function registerBackgroundHooks(api: ExtensionAPI) {
 	// Sending may await an entire new turn; cleanup must not await that turn through the job that asked.
 	const sendRewake = (reason: string) => {
 		void Promise.resolve(
-			api.sendMessage(
-				{
-					customType: "octocode-hook-context",
-					content: capContext(`Background hook feedback:\n${reason}`),
-					display: false,
-				},
-				{ triggerTurn: true, deliverAs: "followUp" },
-			),
+			sendHookFeedback(api, "octocode-hook-context", capContext(`Background hook feedback:\n${reason}`)),
 		).catch(() => undefined);
 	};
 	return {

@@ -1,10 +1,9 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { parseChunkUsage } from "../src/api/openai-completions/usage.ts";
 import { applyServiceTierPricing } from "../src/api/openai-responses/request.ts";
 import { parseResponsesUsage } from "../src/api/openai-responses-shared/response-result.ts";
-import { normalizeGoogleUsage } from "../src/api/google-shared/response.ts";
+import { googleUsage as normalizeGoogleUsage } from "./google-fetch-fixture.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { calculateCost } from "../src/models.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -24,8 +23,7 @@ const sse = (events: Array<[string, unknown]>): Response =>
 		status: 200,
 		headers: { "content-type": "text/event-stream" },
 	});
-const client = (response: Response) =>
-	({ beta: { messages: { create: () => ({ asResponse: async () => response }) } } }) as unknown as Anthropic;
+const responseOptions = (response: Response) => ({ apiKey: "test-key", fetch: async () => response });
 
 describe("Anthropic usage", () => {
 	// claude-opus-4-8: input 5, output 25, cacheRead 0.5, cacheWrite (5m) 6.25; a 1h write is 2x input = 10.
@@ -61,7 +59,7 @@ describe("Anthropic usage", () => {
 			["message_stop", { type: "message_stop" }],
 		]);
 		const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: Date.now() }] });
-		const { usage } = await streamAnthropic(model, context, { client: client(response) }).result();
+		const { usage } = await streamAnthropic(model, context, responseOptions(response)).result();
 
 		expect(usage).toMatchObject({
 			input: 100,
@@ -184,9 +182,9 @@ describe("OpenAI Responses usage", () => {
 
 describe("Google usage (cachedContentTokenCount is inside promptTokenCount, thoughts bill as output)", () => {
 	// gemini-2.5-pro: input 1.25, output 10, cacheRead 0.125; above 200000 prompt tokens: 2.5, 15, 0.25.
-	it("splits the cache out of the prompt, folds thoughts into output and prices the long-context tier", () => {
+	it("splits the cache out of the prompt, folds thoughts into output and prices the long-context tier", async () => {
 		const model = getBuiltinModel("google", "gemini-2.5-pro");
-		const usage = normalizeGoogleUsage({
+		const usage = await normalizeGoogleUsage({
 			promptTokenCount: 250_000,
 			cachedContentTokenCount: 200_000,
 			candidatesTokenCount: 1000,

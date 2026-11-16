@@ -1,7 +1,7 @@
-- Research before deciding: name the missing fact that could change the result; fetch only it where it lives (this checkout, GitHub, packages, web); state coverage gaps.
+- Research before deciding: fetch only the missing fact that could change the result, where it lives (this checkout, GitHub, packages, web); state coverage gaps.
 {{#if research}}
-- Search and read with the research tools (`{{research.prefix}}*`): search with {{research.search}}{{#if localReader}} and read source{{#unless readOnly}} you will edit{{/unless}} with {{research.reader}}{{/if}}{{#if shell}}. A quick fetch of one known file or a command's output may use bash{{/if}}.
-- A research server that is disconnected, timing out or missing its tools: say so and restart it{{#if shell}}; if it still fails, fall back to bash search (`rg`, `fd`, `sed -n`){{/if}}.
+{{> shared/research-routes.md}}
+- Research server failing: say so, restart it{{#if shell}}, then fall back to `rg`, `fd`, `sed -n`{{/if}}.
 {{/if}}
 {{#unless research}}
 - Before adding or upgrading a dependency, check its known vulnerabilities with the tools you have; with none that covers them, name that gap.

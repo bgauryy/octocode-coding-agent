@@ -7,6 +7,13 @@ import { contextBar, type FooterState, footerLines as paintFooter } from "../../
 import { reasoningTwin } from "../../src/octocode/ui/footer/notices.ts";
 import * as importedModule1 from "./fake-host.ts";
 
+// The wiring reads the GitHub token through this module: never from the real machine.
+const github = vi.hoisted(() => ({ present: true }));
+vi.mock("../../src/octocode/ui/footer/github.ts", () => ({
+	githubTokenPresent: () => github.present,
+	resetGithubToken: () => undefined,
+}));
+
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
 /** Records which colour token painted which text. */
 const painted: Array<[string, string]> = [];
@@ -72,7 +79,10 @@ describe("footer", () => {
 		expect(top).toMatch(
 			/^claude-opus-5-5 · ⏸ permission: manual · shift\+tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash +58 tok\/s · ≈\$0\.84$/,
 		);
-		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
+		// The command hints close the line while it has room.
+		expect(bottom).toBe(
+			"~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok · /providers · /model · /resume",
+		);
 		expect(visibleWidth(top)).toBe(170);
 	});
 
@@ -202,7 +212,22 @@ describe("footer", () => {
 		);
 		expect(top).toBe("claude-opus-5-5 · ctx ? of 200k");
 		// Nothing spent and no compaction yet: no zero counters.
-		expect(bottom).toBe("~/code/app");
+		expect(bottom).toBe("~/code/app · /providers · /model · /resume");
+		expect(
+			footerLines(
+				{
+					...state,
+					usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
+					sessionName: undefined,
+					chip: undefined,
+					context: undefined,
+				},
+				null,
+				new Map(),
+				theme,
+				25,
+			)[1],
+		).toBe("~/code/app");
 	});
 
 	it("drops the least important parts first on narrow terminals, never the model, context, permission mode or running work", () => {
@@ -304,6 +329,58 @@ describe("footer under a busy status row", () => {
 	});
 });
 
+describe("footer bottom line: team totals, GitHub token, hints", () => {
+	const HINTS = "/providers · /model · /resume";
+	const bare: FooterState = { ...state, sessionName: undefined, chip: undefined };
+
+	it("shows the team totals after the cache rate, as a status", () => {
+		const totals = new Map([[STATUS.teamTotals, "Σ 3 agents · 12.2M tok · 97% cached · ≈$5.02"]]);
+		const [, bottom] = footerLines(bare, "main", totals, theme, 200);
+		expect(bottom).toContain("Σ 3 agents · 12.2M tok · 97% cached · ≈$5.02");
+		// It is a placed status, not appended with the other extensions' statuses.
+		expect(bottom.match(/Σ 3 agents/g)).toHaveLength(1);
+	});
+
+	it("ends with the command hints, and drops them before anything else when the line is narrow", () => {
+		const wide = footerLines(bare, "main", new Map(), theme, 200)[1];
+		expect(wide.endsWith(HINTS)).toBe(true);
+		const full = visibleWidth(wide);
+		expect(footerLines(bare, "main", new Map(), theme, full)[1]).toBe(wide);
+		// One cell short: the hints go and the token breakdown stays.
+		const short = footerLines(bare, "main", new Map(), theme, full - 1)[1];
+		expect(short).not.toContain("/providers");
+		expect(short).toContain("15.5k tokens (↑12.4k ↓3.1k)");
+		expect(short).toContain("~/code/app ⎇ main");
+	});
+
+	it("marks the GitHub token with a glyph and a word: ✓ present, ✗ missing, nothing when unknown", () => {
+		const line = (githubToken: boolean | undefined, width = 200) =>
+			footerLines({ ...bare, githubToken }, "main", new Map(), theme, width)[1];
+		expect(line(true)).toContain("✓ GitHub");
+		expect(line(true)).not.toContain("GitHub token");
+		expect(line(false)).toContain("✗ GitHub token");
+		expect(line(undefined)).not.toContain("GitHub");
+		// A missing token outlives the hints; narrow, it shortens to `✗ GitHub` before it goes.
+		const rows = Array.from({ length: 120 }, (_, i) => line(false, 120 - i));
+		const shortened = rows.filter((row) => row.includes("✗ GitHub") && !row.includes("GitHub token"));
+		expect(shortened.length).toBeGreaterThan(0);
+		// The hints give way before the mark does.
+		expect(rows.filter((row) => row.includes("/providers") && !row.includes("✗ GitHub")).length).toBe(0);
+		const painted: string[] = [];
+		const recorder = {
+			fg: (color: string, text: string) => {
+				painted.push(`${color}:${text}`);
+				return text;
+			},
+			bold: (text: string) => text,
+		} as never;
+		footerLines({ ...bare, githubToken: true }, "main", new Map(), recorder, 200);
+		footerLines({ ...bare, githubToken: false }, "main", new Map(), recorder, 200);
+		expect(painted).toContain("success:✓ GitHub");
+		expect(painted).toContain("error:✗ GitHub token");
+	});
+});
+
 describe("footer wiring", () => {
 	it.each([
 		["session context-window override", 60_000, 25_000, "50k"],
@@ -389,11 +466,14 @@ describe("footer wiring", () => {
 			theme,
 			data,
 		);
+		github.present = true;
 		const [initialTop, bottom] = component.render(120) as string[];
 		expect(initialTop).toMatch(/^model-x · API key · thinking medium · ctx ▰▱{7} 12% of 83\.3k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
 		// The cache hit rate is cache reads over the whole prompt: 3k of 4.5k.
-		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · cache 67% · mcp 1/1");
+		expect(bottom).toBe(
+			"/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · cache 67% · mcp 1/1 · ✓ GitHub · /providers · /model · /resume",
+		);
 		percent = 64;
 		await fake.emit(
 			"message_end",

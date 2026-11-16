@@ -241,22 +241,22 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("backlog", { op: "update", id: "B1", state: "done" }), 'backlog has no op "update": use op "done".'),
 		],
 	},
-	timer: {
+	wait: {
 		// Far enough ahead that it never wakes this run; the cancel ends it before the session does.
 		ok: [
 			answers(
-				call("timer", { op: "set", after: 3600, note: "timer-marker" }),
+				call("wait", { op: "set", after: 3600, note: "timer-marker" }),
 				/^Set 1 · once · next wake in 3600s · timer-marker/,
 			),
-			answers(call("timer", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
-			answers(call("timer", { op: "cancel", id: 1 }), /^Cancelled 1 · once · cancelled/),
-			answers(call("timer", { op: "list" }), "No active timers."),
+			answers(call("wait", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
+			answers(call("wait", { op: "off", id: 1 }), /^Cancelled 1 · once · cancelled/),
+			answers(call("wait", { op: "list" }), "No active waits."),
 			// As clearTimeout: cancelling a timer that already ended is a no-op, not an error.
-			answers(call("timer", { op: "cancel", id: 1 }), /^Timer 1 already ended, nothing to cancel/),
+			answers(call("wait", { op: "off", id: 1 }), /^Wait 1 already ended, nothing to turn off/),
 		],
 		fail: [
-			answers(call("timer", { op: "set", after: 60 }), "set needs a note"),
-			answers(call("timer", { op: "cancel", id: 99 }), "No timer 99 in this session. No timer is active."),
+			answers(call("wait", { op: "set", after: 60 }), "set needs a note"),
+			answers(call("wait", { op: "off", id: 99 }), "No wait 99 in this session. No wait is active."),
 		],
 	},
 	archive: {
@@ -322,10 +322,11 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(
 				call("models"),
 				"This session: scripted/model",
-				"scripted · local · models.json · 1 runnable",
-				"Profiles:",
+				"scripted/model ·",
+				"✓ credential worked, ✗ failed, ? untried",
 			),
 			answers(call("models", { provider: "scripted" }), "● scripted/model", "Profiles:"),
+			answers(call("models", { routes: true }), "Subagent purposes:", "Profiles:"),
 		],
 		fail: [answers(call("models", { ability: "nonsense" }), 'Validation failed for tool "models"', "ability")],
 	},

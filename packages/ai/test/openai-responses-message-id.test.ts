@@ -1,4 +1,4 @@
-import type { ResponseOutputMessage } from "openai/resources/responses/responses.js";
+import type { ResponseOutputMessage } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { describe, expect, it } from "vitest";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
 import { normalizeContext } from "../src/compat.ts";

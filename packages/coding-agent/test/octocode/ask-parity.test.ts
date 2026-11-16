@@ -204,6 +204,34 @@ describe("a subagent's ask relayed to its parent", () => {
 		});
 	});
 
+	it("refuses an ask the user leaves unanswered, tells the child why and the parent's model what waits", async () => {
+		// The user never answers; the dialog closes only when the relay aborts it.
+		const ask = vi.fn<AskFn>(
+			(_questions, opts) =>
+				new Promise<Reply[]>((resolve) => opts?.signal?.addEventListener("abort", () => resolve([]), { once: true })),
+		);
+		const told: string[] = [];
+		const sent: Record<string, unknown>[] = [];
+		const fake = fakeHost();
+		const relay = new ChildRelay(
+			{ id: "kid" },
+			{
+				permission: fakePermission("workspace", { api: fake.api }),
+				ui: { select: vi.fn(), confirm: vi.fn(), input: vi.fn(), notify: vi.fn(), ask },
+				tell: (notice) => told.push(notice),
+			},
+			{ nonce: NONCE, send: (response) => sent.push(response), askTimeoutMs: 20 },
+		);
+		relay.handle(childRequest([approval], title));
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(sent[0]).toMatchObject({
+			replies: [{ id: "permission", picks: ["deny_note"], text: expect.stringMatching(/did not answer/) }],
+		});
+		expect(told).toEqual([expect.stringMatching(/^kid waited .* ask the user/)]);
+		expect(told[0]).not.toContain(NONCE);
+		expect(relay.open).toBe(0);
+	});
+
 	it("redacts the child's nonce from every text it draws, and keeps the ids replies name", async () => {
 		const ask = vi.fn<AskFn>(async (): Promise<Reply[]> => [{ id: "q", picks: ["a"] }]);
 		const { relay, sent } = parent("workspace", ask);

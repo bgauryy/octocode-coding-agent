@@ -23,6 +23,8 @@ import { fitFooterLine, type FooterPaint, type FooterPart } from "./fit.ts";
  */
 
 export interface FooterState {
+	/** Whether Octocode's GitHub tools have a token (`footer/github.ts`); undefined hides the mark. */
+	githubToken?: boolean | undefined;
 	model?: string | undefined;
 	/** The model's provider id: the same model id can come from several hosts (Anthropic, Bedrock, OpenRouter). */
 	provider?: string | undefined;
@@ -65,7 +67,10 @@ const OWN = {
 	steps: STATUS.steps,
 	wakeRetry: STATUS.wakeRetry,
 	timers: STATUS.timers,
+	teamTotals: STATUS.teamTotals,
 } as const;
+/** Commands worth knowing, shown last and only when the line has room. */
+const HINTS = "/providers · /model · /resume";
 const BAR_CELLS = 8;
 
 /** An 8-cell gauge and its colour: green under half, yellow to 80%, red above, judged on the rounded percent the label shows. Any use fills at least one cell. */
@@ -220,6 +225,7 @@ export function footerLines(
 			priority: 75,
 		},
 		// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
+		{ text: status(OWN.teamTotals), priority: 78, details: true },
 		{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/web") },
 		{ text: status(OWN.steps), priority: 76, keep: true, details: true },
 		...others.map(([key, entry]) => ({
@@ -230,6 +236,14 @@ export function footerLines(
 			spills: entry.tone === "error" || entry.tone === "warning",
 			details: true,
 		})),
+		// Glyph and word, never colour alone: NO_COLOR still reads.
+		state.githubToken === undefined
+			? { text: "", priority: 0 }
+			: state.githubToken
+				? { text: theme.fg("success", "✓ GitHub"), priority: 30 }
+				: { text: theme.fg("error", "✗ GitHub token"), priority: 60, short: theme.fg("error", "✗ GitHub") },
+		// The first part to give way: it only helps while the line has room.
+		{ text: theme.fg("dim", HINTS), priority: 2 },
 	];
 	let bottom = fitFooterLine(bottomParts, [], theme, width);
 	const detailsHidden = top.detailsHidden || bottom.detailsHidden;

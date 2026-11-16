@@ -218,16 +218,29 @@ interface ConvertMcpResultOptions {
 	saveOutput?: McpOutputSaver;
 }
 
-/** The structured result, or when its JSON exceeds the host text cap a stub naming the file that holds the full JSON. */
+/**
+ * The structured result within the host text cap: an oversized `structuredContent` becomes a stub naming the file that
+ * holds its full JSON, and when the whole result still exceeds the cap its `content` becomes a one-line note.
+ */
 function boundStructured(structured: Record<string, unknown>, saveOutput?: McpOutputSaver): Record<string, unknown> {
+	const cap = hostOutput().textMaxChars;
+	let bounded = structured;
 	const value = structured.structuredContent;
-	if (value === undefined) return structured;
-	const json = JSON.stringify(value);
-	if (json === undefined || json.length <= hostOutput().textMaxChars) return structured;
-	const file = saveOutput ? saveOutput(json, ".json") : hostOutput().saveFullOutput(json, "mcp-structured");
+	if (value !== undefined) {
+		const json = JSON.stringify(value);
+		if (json !== undefined && json.length > cap) {
+			const file = saveOutput ? saveOutput(json, ".json") : hostOutput().saveFullOutput(json, "mcp-structured");
+			bounded = {
+				...structured,
+				structuredContent: { truncated: true, chars: json.length, ...(file ? { fullOutputPath: file } : {}) },
+			};
+		}
+	}
+	const total = JSON.stringify(bounded).length;
+	if (total <= cap) return bounded;
 	return {
-		...structured,
-		structuredContent: { truncated: true, chars: json.length, ...(file ? { fullOutputPath: file } : {}) },
+		...bounded,
+		content: [{ type: "text", text: `Content omitted from the structured result (${total} characters).` }],
 	};
 }
 
@@ -244,8 +257,17 @@ export async function convertMcpResult(
 		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
 	}
 	const paged = roleOf(createMcpToolName(server, tool)) !== undefined;
-	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, paged, options.saveOutput);
-	const { _meta: _ignored, ...structuredResult } = result;
+	const limited = limitMcpContent(converted, `${server}/${tool}`, paged, options.saveOutput);
+	const { fullOutputPath } = limited;
+	const content: (TextContent | ImageContent)[] = [];
+	for (const block of limited.content) {
+		if (block.type === "image")
+			content.push(...(await hostOutput().boundImagePart(block, `mcp ${server}/${tool} image`)));
+		else content.push(block);
+	}
+	// The structured result carries the same bounded, sanitized blocks the model sees, never the raw server content.
+	const { _meta: _ignored, content: _raw, ...rest } = result;
+	const structuredResult = { ...rest, content: result.content.length ? sanitizeJson(content) : [] };
 	// A server that sends its JSON result as one text block gets it as `structuredContent` too, for programmatic readers.
 	const parsed = result.structuredContent === undefined ? jsonText(result, hostOutput().textMaxChars) : undefined;
 	const structured = parsed ? { ...structuredResult, structuredContent: sanitizeJson(parsed) } : structuredResult;

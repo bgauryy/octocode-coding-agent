@@ -24,7 +24,7 @@ import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { REF_PREFIX } from "./worktree-base.ts";
 import { worktreeName } from "../worktree-paths/member-worktree.ts";
 import type { agentToolSpec } from "./agent-tool.ts";
-import { resumableChild, resumedTask, resumeText } from "./children.ts";
+import { resumeChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
@@ -91,9 +91,7 @@ export async function spawnAgent(
 	const startedHeld = params.resume ? startHeld(runs, params.resume) : undefined;
 	if (startedHeld) return startedHeld;
 	// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
-	const resumed = params.resume
-		? resumableChild(ctx.sessionManager.getEntries(), params.resume, new Set(runs.running.keys()))
-		: undefined;
+	const resumed = params.resume ? resumeChild(ctx, params.resume, runs) : undefined;
 	// A continued child keeps its recorded goal unless the call names a new one.
 	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
@@ -197,7 +195,7 @@ export async function spawnAgent(
 	}
 	const run = claimed;
 	const queued = !slot.held;
-	const isolation = new Isolation(run.identity.id, linked?.ref);
+	const isolation = new Isolation(run.identity.id, linked?.ref, resumed?.worktree);
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
 	let lateNote = "";
@@ -243,17 +241,19 @@ export async function spawnAgent(
 		const host = env.relayHost(ctx);
 		const session = resumed?.session ?? childSession(run.identity);
 		const details = runDetails(run, session);
+		run.identity.runId = details.runId;
 		runs.live.set(run.identity.id, details);
 		const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 		// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 		// A runner's conversation lives in its own CLI, so a runner run never lingers for a resume.
-		const lingers = !runner && params.background === true && !params.isolate;
+		const isolated = params.isolate === true || resumed?.worktree !== undefined;
+		const lingers = !runner && params.background === true && !isolated;
 		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 		const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
 		const begin = async (beginSignal: AbortSignal) => {
-			const cwd = params.isolate ? await isolation.start(ctx, run.identity, params.workingCopy, beginSignal) : ctx.cwd;
+			const cwd = isolated ? await isolation.start(ctx, run.identity, params.workingCopy, beginSignal) : ctx.cwd;
 			beginSignal.throwIfAborted();
 			const worktree = isolation.worktree;
 			const onSpawn = worktree ? (pid: number) => void recordWorktreePid(worktree, pid) : undefined;
@@ -262,9 +262,8 @@ export async function spawnAgent(
 			const skillText = told.prefix || !skillPlan.inTask ? "" : taskSkillText(skillResources, skillPlan.inline);
 			const parts = { referenced, browserMode: run.profile?.headless, skillText, resultContract };
 			const assigned = { ...run.identity, background: params.background === true, why: params.reason };
-			const own = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
+			const task = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
 			run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
-			const task = own;
 			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, turn: StaggerTurn) => {
 				const tracked = track(update);
 				const progress: typeof tracked = (change) => {
@@ -362,8 +361,8 @@ export async function spawnAgent(
 			handedOff = true;
 			details.status = "background";
 			details.queued = true;
-			if (chained) return queuedResult(runs, run, goal, after, details, notes);
-			return textResult(queuedText(runs, run, goal, waitsForSiblings, notes), details);
+			if (chained) return queuedResult(runs, run, after, details, notes);
+			return textResult(queuedText(runs, run, waitsForSiblings, notes), details);
 		}
 		const started = await begin(launchSignal);
 		const warning = `${started.warning}${notes}`;
@@ -386,7 +385,7 @@ export async function spawnAgent(
 		handedOff = true;
 		details.status = "background";
 		return textResult(
-			`Started ${run.identity.id} (${run.identity.role}: ${goal}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${isolation.worktree ? ` Works in its own worktree ${worktreeName(isolation.worktree.path)}, removed when it ends; its result lands on ${REF_PREFIX}${run.identity.id}.` : ""}${warning}`,
+			`Started ${run.identity.id} (${run.identity.role}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${isolation.worktree ? ` Works in its own worktree ${worktreeName(isolation.worktree.path)}, removed when it ends; its result lands on ${REF_PREFIX}${run.identity.id}.` : ""}${warning}`,
 			details,
 		);
 	} finally {

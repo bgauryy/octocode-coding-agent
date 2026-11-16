@@ -16,14 +16,26 @@ export function mcpRow(events: EventBus): LoadedRowSpec {
 		label: "MCP",
 		count: () => mcp.getState().length,
 		source: mcp,
-		summary: () => mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
+		state: () =>
+			mcp.getState().some(mcpFailed)
+				? "broken"
+				: mcp.getState().some((s) => s.enabled && s.state !== "unselected")
+					? "ready"
+					: "off",
+		summary: () => {
+			const on = mcp.getState().filter((s) => s.enabled && s.state !== "unselected");
+			const off = mcp.getState().filter((s) => !s.enabled || s.state === "unselected");
+			return sanitizeTerminalText(
+				`${on.length} on (${on.map((s) => s.name).join(", ")})${off.length ? ` · ${off.length} off (${off.map((s) => s.name).join(", ")})` : ""} · /mcp`,
+			);
+		},
 		cells: () => ({
 			sources: mcp.getState().map(mcpListed).join(theme.fg("dim", SEPARATOR)),
 			tail: theme.fg("dim", sanitizeTerminalText(mcpSources(mcp.getState()))),
 		}),
 		expandedSummary: () => {
 			const connected = mcp.getState().filter((server) => server.enabled && server.state === "connected").length;
-			return theme.fg("dim", `${connected} connected`);
+			return theme.fg("dim", `${connected} connected · /mcp`);
 		},
 		details: () =>
 			mcp

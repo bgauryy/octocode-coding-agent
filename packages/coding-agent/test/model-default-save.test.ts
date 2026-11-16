@@ -100,7 +100,7 @@ async function fixture(kind: "local" | "claude" = "local") {
 	};
 }
 
-function picker(context: Awaited<ReturnType<typeof fixture>>) {
+function picker(context: Awaited<ReturnType<typeof fixture>>, choice = "Global: every project") {
 	let component: ModelSelectorComponent | undefined;
 	const done = vi.fn();
 	const host = {
@@ -113,6 +113,7 @@ function picker(context: Awaited<ReturnType<typeof fixture>>) {
 		updateAvailableProviderCount: vi.fn(),
 		updateEditorBorderColor: vi.fn(),
 		maybeWarnAboutAnthropicSubscriptionAuth: vi.fn().mockResolvedValue(undefined),
+		showExtensionSelector: vi.fn().mockResolvedValue(choice),
 		showSelector: (create: (finish: () => void) => { component: ModelSelectorComponent }) => {
 			component = create(done).component;
 		},
@@ -248,6 +249,7 @@ describe("saving a default model", () => {
 		const context = await fixture();
 		const { host, component, done } = picker(context);
 		component.handleInput("\r");
+		component.handleInput("\r");
 		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
 		expect(host.showStatus).toHaveBeenLastCalledWith(`Model: ${context.selected.id}`);
 		expect(context.session.model?.id).toBe(context.selected.id);
@@ -307,6 +309,49 @@ describe("saving a default model", () => {
 			`Saved global default: ${context.selected.provider}/${context.selected.id}. Workspace or run settings take precedence here.`,
 		);
 		expect(context.settings.getDefaultModel()).toBe(context.initial.id);
+		expect(JSON.parse(readFileSync(context.settingsPath, "utf8")).defaultModel).toBe(context.selected.id);
+	});
+
+	it("saves a project default to project settings only when the project is trusted", async () => {
+		const context = await fixture();
+		context.settings.setProjectTrusted(true);
+		const { host, component, done } = picker(context, "This project only");
+		component.handleInput("\x13");
+		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+		await context.settings.flush();
+		expect(host.showExtensionSelector).toHaveBeenCalledOnce();
+		const project = JSON.parse(readFileSync(join(context.root, ".octocode", "settings.json"), "utf8"));
+		expect(project).toMatchObject({ defaultProvider: context.selected.provider, defaultModel: context.selected.id });
+		expect(existsSync(context.settingsPath)).toBe(false);
+		expect(host.showStatus).toHaveBeenLastCalledWith(
+			`Saved project default: ${context.selected.provider}/${context.selected.id}`,
+		);
+	});
+
+	it("refuses a project default write in an untrusted project", async () => {
+		const context = await fixture();
+		await expect(
+			context.settings.saveDefaultModelSelection(context.selected.provider, context.selected.id, { scope: "project" }),
+		).rejects.toThrow();
+		expect(existsSync(join(context.root, ".octocode", "settings.json"))).toBe(false);
+	});
+
+	it("reports that the project default wins after a global save", async () => {
+		const context = await fixture();
+		const folder = join(context.root, ".octocode");
+		mkdirSync(folder, { recursive: true });
+		writeFileSync(
+			join(folder, "settings.json"),
+			JSON.stringify({ defaultProvider: context.initial.provider, defaultModel: context.initial.id }),
+		);
+		context.settings.setProjectTrusted(true);
+		await context.settings.reload();
+		const { host, component, done } = picker(context, "Global: every project");
+		component.handleInput("\x13");
+		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+		expect(host.showStatus).toHaveBeenLastCalledWith(
+			expect.stringContaining(`This project's default (${context.initial.provider}/${context.initial.id}) wins here`),
+		);
 		expect(JSON.parse(readFileSync(context.settingsPath, "utf8")).defaultModel).toBe(context.selected.id);
 	});
 });

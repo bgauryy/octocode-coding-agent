@@ -256,6 +256,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "permissions":
 		case "agents":
+		case "realm":
 		case "plan":
 			if (!(await runNativeCommand(host, name, args))) host.showWarning(`/${name} requires native features.`);
 			return;

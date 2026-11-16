@@ -15,9 +15,22 @@ async function capturePayload<T>(model: Model<Api>, context: Context): Promise<T
 	let captured: T | undefined;
 	const stream = streamSimple(model, context, {
 		apiKey: "test-key",
+		...(model.api === "anthropic-messages"
+			? {
+					fetch: async (_input: unknown, init?: RequestInit) => {
+						captured = {
+							...JSON.parse(init?.body as string),
+							requestHeaders: Object.fromEntries(new Headers(init?.headers)),
+						} as T;
+						throw new PayloadCaptured();
+					},
+				}
+			: {}),
 		onPayload: (payload) => {
-			captured = payload as T;
-			throw new PayloadCaptured();
+			if (model.api !== "anthropic-messages") {
+				captured = payload as T;
+				throw new PayloadCaptured();
+			}
 		},
 	});
 	await stream.result();
@@ -135,7 +148,7 @@ interface AnthropicToolDefinition {
 }
 
 interface AnthropicPayload {
-	betas?: string[];
+	requestHeaders?: Record<string, string>;
 	system?: Array<{ text: string }>;
 	tools?: AnthropicToolDefinition[];
 	messages: Array<{
@@ -153,8 +166,10 @@ describe("transcript system messages", () => {
 	test("sends Anthropic updates and tool changes in native system messages", async () => {
 		const payload = await capturePayload<AnthropicPayload>(anthropicNativeModel, context);
 
-		expect(payload.betas).toContain("inline-tools-2026-09-15");
-		expect(payload.betas).not.toContain("mid-conversation-tool-changes-2026-07-01");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",")).toContain("inline-tools-2026-09-15");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",")).not.toContain(
+			"mid-conversation-tool-changes-2026-07-01",
+		);
 		expect(payload.system?.map((block) => block.text)).toEqual([
 			"base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",
 		]);
@@ -211,7 +226,7 @@ describe("transcript system messages", () => {
 			],
 		});
 
-		expect(payload.betas).toContain("inline-tools-2026-09-15");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",")).toContain("inline-tools-2026-09-15");
 		// The top-level declaration keeps the original definition, so the cached prefix survives.
 		expect(payload.tools).toMatchObject([
 			{ name: "base_tool", description: "base_tool tool" },
@@ -239,7 +254,7 @@ describe("transcript system messages", () => {
 				{ role: "system", content: "updated guidance", toolsAdded: [lateTool], timestamp: 2 },
 			],
 		});
-		expect(payload.betas ?? []).not.toContain("inline-tools-2026-09-15");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",") ?? []).not.toContain("inline-tools-2026-09-15");
 		expect(payload.tools).toMatchObject([{ name: "late_tool", cache_control: { type: "ephemeral" } }]);
 		expect(payload.tools?.[0]?.defer_loading).toBeUndefined();
 		expect(payload.messages.at(-1)?.content.map((block) => block.type)).toEqual(["text"]);
@@ -254,13 +269,14 @@ describe("transcript system messages", () => {
 			provider: "anthropic",
 		};
 		const payload = await capturePayload<{
+			requestHeaders?: Record<string, string>;
 			betas?: string[];
 			system?: Array<{ text: string }>;
 			tools?: Array<{ name: string }>;
 			messages: Array<{ role: string; content: unknown }>;
 		}>(model, context);
 
-		expect(payload.betas ?? []).not.toContain("inline-tools-2026-09-15");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",") ?? []).not.toContain("inline-tools-2026-09-15");
 		expect(payload.system?.map((block) => block.text)).toEqual([
 			"base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",
 		]);
@@ -279,12 +295,13 @@ describe("transcript system messages", () => {
 			compat: { supportsMidConvoToolChanges: true },
 		};
 		const payload = await capturePayload<{
+			requestHeaders?: Record<string, string>;
 			betas?: string[];
 			tools?: Array<{ name: string }>;
 			messages: Array<{ role: string }>;
 		}>(model, context);
 
-		expect(payload.betas ?? []).not.toContain("inline-tools-2026-09-15");
+		expect(payload.requestHeaders?.["anthropic-beta"]?.split(",") ?? []).not.toContain("inline-tools-2026-09-15");
 		expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
 		expect(payload.messages.map((message) => message.role)).toEqual(["user", "user"]);
 	});

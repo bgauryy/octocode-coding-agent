@@ -328,22 +328,6 @@ describe("session stream options", () => {
 		expect(options?.timeoutMs).toBe(0);
 	});
 
-	it("forwards websocketConnectTimeoutMs from settings", async () => {
-		const options = await captureStreamOptions("openai-codex-responses", { websocketConnectTimeoutMs: 1234 });
-
-		expect(options?.websocketConnectTimeoutMs).toBe(1234);
-	});
-
-	it("lets request websocketConnectTimeoutMs override settings", async () => {
-		const options = await captureStreamOptions(
-			"openai-codex-responses",
-			{ websocketConnectTimeoutMs: 1234 },
-			{ websocketConnectTimeoutMs: 0 },
-		);
-
-		expect(options?.websocketConnectTimeoutMs).toBe(0);
-	});
-
 	it("forwards provider retry settings", async () => {
 		const options = await captureStreamOptions("openai-completions", {
 			retry: { provider: { maxRetries: 2, maxRetryDelayMs: 3000 } },

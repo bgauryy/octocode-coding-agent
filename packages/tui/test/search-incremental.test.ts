@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { AltScreenSearchIndex } from "../src/tui-alt-screen/search-index.ts";
 import type { AltScreenSearchMatch, AltScreenSearchSegment } from "../src/tui-alt-screen/search-matches.ts";
 import { SearchMatcher } from "../src/tui-alt-screen/search-matches.ts";
+import { escapeRegExp } from "../src/utils/regexp.ts";
 import { stripTerminalSequences } from "../src/utils.ts";
 import { getGraphemeSegmenter, visibleWidth } from "../src/utils/width.ts";
 
@@ -101,10 +102,6 @@ function buildSearchCorpus(lines: readonly string[]): SearchCorpus {
 
 function normalizeQuery(query: string): string {
 	return query.replace(/\s+/gu, " ").trim();
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function findSearchCorpusMatches(corpus: SearchCorpus, normalizedQuery: string): AltScreenSearchMatch[] {

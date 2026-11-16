@@ -30,6 +30,14 @@ const shell = (command: string): PermissionRequest => ({
 });
 
 describe("allow a whole kind of action for the session", () => {
+	it("lets the parent answer a subagent's ask of a kind the user allowed, but never a kind a child may not inherit", async () => {
+		const { permission, ctx } = manual(["Allow all shell commands for this session"]);
+		expect(permission.allows(["shell"], [])).toBe(false);
+		await permission.check(ctx, shell("cd repo && git status"));
+		expect(permission.allows(["shell"], [])).toBe(true);
+		expect(permission.allows(["shell", "web"], [])).toBe(false);
+	});
+
 	it("offers it even when the exact call cannot be named, and then stops asking for that kind", async () => {
 		const { permission, ctx, asked } = manual(["Allow all shell commands for this session"]);
 		expect(permission.mode).toBe("manual");

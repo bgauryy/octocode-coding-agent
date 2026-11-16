@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { AltScreenSelection, type AltScreenSelectionHost } from "../src/tui-alt-screen/selection-controller.ts";
+import {
+	AltScreenSelection,
+	NATIVE_CLIPBOARD_BYTES,
+	type AltScreenSelectionHost,
+} from "../src/tui-alt-screen/selection-controller.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 function fixture(lines: readonly string[], copySelection?: (text: string) => Promise<boolean | string>) {
@@ -84,4 +88,17 @@ it("counts inserted newlines toward the existing base64 transfer boundary", asyn
 	over.selection.selectionFocus = { row: 1, col: 0 };
 	assert.equal(await over.selection.copySelectionToClipboard(), false);
 	assert.equal(over.writes.length, 0);
+});
+
+it("stops an oversized selection before the injected clipboard", async () => {
+	const rows = Array.from({ length: 4 }, () => "x".repeat(NATIVE_CLIPBOARD_BYTES / 2));
+	let called = false;
+	const { selection, flashes } = fixture(rows, async () => {
+		called = true;
+		return true;
+	});
+	selection.selectionFocus = { row: rows.length - 1, col: rows[0].length };
+	assert.equal(await selection.copySelectionToClipboard(), false);
+	assert.equal(called, false);
+	assert.match(flashes[0], /too large to copy/);
 });

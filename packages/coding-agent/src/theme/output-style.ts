@@ -63,6 +63,31 @@ function highlightLines(theme: Theme, lines: string[], language: string): string
 		: lines.map((line) => theme.fg("toolOutput", line));
 }
 
+/** Text no longer than the highlighter's cache takes is parsed to tell JSON; a longer one is left plain. */
+const MAX_DETECT_CHARS = 256 * 1024;
+
+/**
+ * The language of output whose call named no file: `json` when the whole text parses as an object or array, `yaml` when
+ * at least 2 of its first 5 non-blank lines are `key:` pairs (prose with one colon stays plain). Undefined otherwise.
+ */
+export function outputLanguage(text: string): "json" | "yaml" | undefined {
+	if (text.length > MAX_DETECT_CHARS) return undefined;
+	const body = text.trim();
+	if (/^[[{]/.test(body)) {
+		try {
+			JSON.parse(body);
+			return "json";
+		} catch {
+			// Not a JSON document: it may still be key lines.
+		}
+	}
+	const head = body
+		.split("\n", 40)
+		.filter((line) => line.trim() !== "")
+		.slice(0, 5);
+	return head.filter((line) => STRUCTURED.test(line)).length >= 2 ? "yaml" : undefined;
+}
+
 /**
  * Tool output coloured by what it is: a unified diff, or code when the call named a file of a known language
  * (`path`). Collapsed, only the first `previewLines` lines are coloured (the rest stay plain: they are not shown);
@@ -80,9 +105,11 @@ export function colorToolOutput(
 		if (options.expanded && lines.length > MAX_DIFF_LINES) return undefined;
 		return [...renderDiff(shown.join("\n")).split("\n"), ...rest].join("\n");
 	}
-	const language = options.path ? resolveLanguage(getLanguageFromPath(options.path)) : undefined;
+	const named = options.path ? resolveLanguage(getLanguageFromPath(options.path)) : undefined;
 	const first = lines.find((line) => line.trim() !== "") ?? "";
-	if (!language || (language !== "yaml" && STRUCTURED.test(first))) return undefined;
+	// A named file's language wins unless the text is key lines (data, not source); then, or with no file, its shape decides.
+	const language = named && (named === "yaml" || !STRUCTURED.test(first)) ? named : outputLanguage(text);
+	if (!language) return undefined;
 	if (!isHighlightable(shown.join("\n"))) return undefined;
 	return [...highlightLines(theme, shown, language), ...rest].join("\n");
 }

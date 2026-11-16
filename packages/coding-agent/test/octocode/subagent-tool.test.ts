@@ -301,7 +301,7 @@ describe("agent tool with a scripted child", () => {
 				"--model",
 				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
+				"read,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser,mcp__browser__*",
 			]),
@@ -695,7 +695,7 @@ describe("agent tool with a scripted child", () => {
 			);
 			for (const result of queued) {
 				expect(result.content[0].text).toMatch(
-					/^Queued [a-z]+-[a-z]+ \(general: check things\) in the background: \d+ subagents are ahead of it or running, and it starts when a slot frees\./,
+					/^Queued [a-z]+-[a-z]+ \(general\) in the background: \d+ subagents are ahead of it or running, and it starts when a slot frees\./,
 				);
 				expect(result.details).toMatchObject({ status: "background", queued: true });
 				expect(result.details.id).toBeTruthy();
@@ -974,7 +974,7 @@ describe("agent tool with a scripted child", () => {
 
 	it("runs in the background, delivers the answer as a message, and /agents kill stops one", async () => {
 		const started = await s.run({ task: "report from the background", background: true });
-		expect(started.content[0].text).toMatch(/^Started [a-z]+-[a-z]+ \(general: check things\) in the background/);
+		expect(started.content[0].text).toMatch(/^Started [a-z]+-[a-z]+ \(general\) in the background/);
 		// The coordinator learns the child's model and thinking level as it starts.
 		expect(started.content[0].text).toMatch(
 			/its report arrives as a message\. Runs on faux\/model, medium thinking \(this session's model\)\.$/,
@@ -1139,7 +1139,11 @@ describe("agent tool with a scripted child", () => {
 			await vi.waitFor(() => expect(store.asks(id, parentId, 0)).toHaveLength(2));
 			// The parent answers the first question; the second stays open. /agents shows the live count.
 			store.send(parentId, [id], "Postgres", { replyRequired: false, replyTo: first });
+			// With a UI `/agents` opens a picker (agents-detail.test.ts); the text listing is what a session without one gets.
+			vi.spyOn(process.stderr, "write").mockReturnValue(true);
+			s.ctx.hasUI = false;
 			await s.commands.get("agents").handler("", s.ctx);
+			s.ctx.hasUI = true;
 			expect(s.ctx.ui.notes.at(-1)!.message).toMatch(
 				/\n {2}2 asks \(1 answered in \d+s, 1 unanswered\) to its coordinator/,
 			);

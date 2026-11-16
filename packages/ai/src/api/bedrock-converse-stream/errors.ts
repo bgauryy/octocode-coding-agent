@@ -1,4 +1,3 @@
-import { BedrockRuntimeServiceException } from "@aws-sdk/client-bedrock-runtime";
 import type { AssistantMessage, JsonObject } from "../../types.ts";
 import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { normalizeProviderError } from "../../utils/error-body.ts";
@@ -43,19 +42,24 @@ export function formatBedrockError(error: unknown): string {
 	const dataRetentionHint = /data retention mode/i.test(core)
 		? ` See ${BEDROCK_DATA_RETENTION_DOCS_URL} for supported data retention modes.`
 		: "";
-	if (error instanceof BedrockRuntimeServiceException) {
+	if (error instanceof Error && error.name.endsWith("Exception")) {
 		const prefix = BEDROCK_ERROR_PREFIXES[error.name] ?? error.name;
 		return `${prefix}: ${core}${dataRetentionHint}`;
 	}
 	return `${core}${dataRetentionHint}`;
 }
 
-type SdkErrorMetadata = { $metadata?: { httpStatusCode?: unknown; requestId?: unknown } };
+type SdkErrorMetadata = {
+	$metadata?: { httpStatusCode?: unknown; requestId?: unknown };
+	statusCode?: number;
+	responseHeaders?: Record<string, string>;
+	type?: string;
+};
 
 /** Over-long header values are dropped rather than truncated: a truncated request id is not a request id. */
 const MAX_BEDROCK_DIAGNOSTIC_VALUE_CHARS = 200;
 
-export function normalizeDiagnosticValue(value: unknown): string | undefined {
+function normalizeDiagnosticValue(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (trimmed.length === 0 || trimmed.length > MAX_BEDROCK_DIAGNOSTIC_VALUE_CHARS) return undefined;
@@ -82,15 +86,24 @@ export function appendBedrockFailureDiagnostic(
 	error: unknown,
 	fallbackRequestId: string | undefined,
 ): void {
-	const metadata = (error as SdkErrorMetadata)?.$metadata;
+	const sdkError = error as SdkErrorMetadata;
+	const metadata = sdkError?.$metadata ?? {
+		httpStatusCode: sdkError?.type ? undefined : sdkError?.statusCode,
+		requestId: sdkError?.responseHeaders?.["x-amzn-requestid"],
+	};
 	const details: JsonObject = {};
 
 	if (typeof metadata?.httpStatusCode === "number") details.status = metadata.httpStatusCode;
 
-	const errorCode = extractBedrockErrorCode(error);
+	let errorCode = extractBedrockErrorCode(error);
+	const headerCode = sdkError?.responseHeaders?.["x-amzn-errortype"]?.split(":")[0];
+	if (!errorCode && headerCode?.endsWith("Exception")) errorCode = normalizeDiagnosticValue(headerCode);
+	if (!errorCode && sdkError?.type?.endsWith("Exception")) {
+		errorCode = normalizeDiagnosticValue(sdkError.type[0].toUpperCase() + sdkError.type.slice(1));
+	}
 	if (errorCode !== undefined) details.errorCode = errorCode;
 
-	const requestId = normalizeDiagnosticValue(metadata?.requestId) ?? fallbackRequestId;
+	const requestId = normalizeDiagnosticValue(metadata?.requestId) ?? normalizeDiagnosticValue(fallbackRequestId);
 	if (requestId !== undefined) details.requestId = requestId;
 
 	if (Object.keys(details).length === 0) return;

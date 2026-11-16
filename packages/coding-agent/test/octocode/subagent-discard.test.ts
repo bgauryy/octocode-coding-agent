@@ -42,11 +42,11 @@ describe("discarding an unmerged result", () => {
 	it("names the ref and its files, and keeps the ref unless confirmed", async () => {
 		const dir = repository();
 		const confirm = vi.fn(async () => false);
-		const kept = await discardChild(team, ID, { cwd: dir }, confirm);
+		const kept = await discardChild(team, ID, fakeCtx({ cwd: dir }), confirm);
 		expect(confirm).toHaveBeenCalledWith(`refs/octocode/${ID}`, ["child.txt"]);
 		expect(kept).toMatchObject({ ok: false });
 		expect(refExists(dir)).toBe(true);
-		const gone = await discardChild(team, ID, { cwd: dir }, async () => true);
+		const gone = await discardChild(team, ID, fakeCtx({ cwd: dir }), async () => true);
 		expect(gone).toMatchObject({ ok: true });
 		expect(refExists(dir)).toBe(false);
 		expect(fs.existsSync(path.join(dir, "child.txt"))).toBe(false);
@@ -55,7 +55,7 @@ describe("discarding an unmerged result", () => {
 	it("says so when nothing is saved", async () => {
 		const dir = repository();
 		const confirm = vi.fn(async () => true);
-		const result = await discardChild(team, "nobody-1", { cwd: dir }, confirm);
+		const result = await discardChild(team, "nobody-1", fakeCtx({ cwd: dir }), confirm);
 		expect(result.ok).toBe(false);
 		expect(confirm).not.toHaveBeenCalled();
 	});
@@ -65,9 +65,34 @@ describe("the merge prompt", () => {
 	it("names the ref and the changed files", async () => {
 		const dir = repository();
 		const check = vi.fn(async () => ({ allowed: false as const, message: "declined" }));
-		await mergeChild(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }));
+		await mergeChild(team, { check } as unknown as Permission, ID, fakeCtx(fakeCtx({ cwd: dir })));
 		const asked = (check.mock.calls[0] as unknown as [unknown, { what: string[] }])[1];
 		expect(asked.what.join("\n")).toContain(`refs/octocode/${ID}`);
 		expect(asked.what).toContain("child.txt");
+	});
+});
+
+describe("merging into a checkout with uncommitted work", () => {
+	const allow = { check: vi.fn(async () => ({ allowed: true as const })) } as unknown as Permission;
+
+	it("refuses naming the dirty file it would change, keeping the ref and the work", async () => {
+		const dir = repository();
+		fs.writeFileSync(path.join(dir, "child.txt"), "my own work\n");
+		const head = git(dir, "rev-parse", "HEAD");
+		const result = await mergeChild(team, allow, ID, fakeCtx({ cwd: dir }));
+		expect(result.ok).toBe(false);
+		expect(result.text).toContain("child.txt");
+		expect(refExists(dir)).toBe(true);
+		expect(git(dir, "rev-parse", "HEAD")).toBe(head);
+		expect(fs.readFileSync(path.join(dir, "child.txt"), "utf8")).toBe("my own work\n");
+	});
+
+	it("merges when only unrelated files are dirty", async () => {
+		const dir = repository();
+		fs.writeFileSync(path.join(dir, "a.txt"), "edited\n");
+		const result = await mergeChild(team, allow, ID, fakeCtx({ cwd: dir }));
+		expect(result.ok).toBe(true);
+		expect(fs.existsSync(path.join(dir, "child.txt"))).toBe(true);
+		expect(refExists(dir)).toBe(false);
 	});
 });

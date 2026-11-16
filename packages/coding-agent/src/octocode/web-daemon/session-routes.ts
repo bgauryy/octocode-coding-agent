@@ -7,7 +7,8 @@ import { redactData, redactSecrets } from "../../../../common/src/sanitize.ts";
 import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleApplicationDataRequest } from "../workspace/application-data.ts";
 import type { AttachClient } from "./attach-client.ts";
-import { readJsonBody, type Reply } from "./http-util.ts";
+import { readJsonBody } from "../shared/json-body.ts";
+import type { Reply } from "./http-util.ts";
 
 /**
  * Application and workspace commands for one attached session. The daemon only forwards them: validation of the shape

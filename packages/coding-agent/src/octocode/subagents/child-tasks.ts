@@ -6,7 +6,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { tasks } from "../../../../db/src/api.ts";
 import { redactSecrets, visibleControls } from "../../../../common/src/sanitize.ts";
 import { cutText } from "../../../../common/src/text.ts";
-import type { ItemLink } from "./item-link.ts";
+import { type ItemLink, trackSavedRef } from "./item-link.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 
 type Ctx = Pick<ExtensionContext, "cwd" | "sessionManager">;
@@ -48,7 +48,11 @@ export async function finishChildNotes(
 ): Promise<string> {
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
-	const item = linked?.attach(outcome, agent, isolation.ref, isolation.patch, lingers) ?? "";
+	const item = linked
+		? linked.attach(outcome, agent, isolation.ref, isolation.patch, lingers)
+		: isolation.ref
+			? trackSavedRef(ctx, agent, isolation.ref, isolation.patch)
+			: "";
 	return `${note}${item}${current() ? adoptChildTasks(ctx, agent) : ""}${steps}`;
 }
 

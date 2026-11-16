@@ -1,18 +1,11 @@
-import type { BetaRawMessageStreamEvent } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { expect, it } from "vitest";
-import { handleAnthropicStreamEvent, type AnthropicStreamState } from "../src/api/anthropic-messages/stream-events.ts";
+import { anthropicFrames } from "./anthropic-fetch-fixture.ts";
 import { anthropicNativeOutput } from "../src/api/anthropic-messages/rich-content.ts";
-import {
-	handleContentBlockStart,
-	handleContentBlockDelta,
-	handleContentBlockStop,
-} from "../src/api/bedrock-converse-stream/stream-events.ts";
-import type { Block } from "../src/api/bedrock-converse-stream/types.ts";
-import { googleArtifact } from "../src/api/google-shared/rich-content.ts";
+import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockModel, bedrockContext, bedrockResponse } from "./bedrock-fixtures.ts";
+import { googleArtifact } from "../src/api/ai-sdk/google-rich-content.ts";
 import { responseArtifact } from "../src/api/openai-responses-shared/rich-content.ts";
 import type { Api, AssistantContent, Model } from "../src/types.ts";
-import { createPendingAssistantMessage } from "../src/utils/assistant-message.ts";
-import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 function model<T extends Api>(api: T): Model<T> {
 	return {
@@ -66,7 +59,7 @@ it("retains Responses native execution logs, source URLs, and status without con
 				status: "completed",
 				action: {
 					type: "search",
-					// oxlint-disable-next-line typescript/no-deprecated -- the fixture is the wire shape providers still send
+
 					query: "fixture source",
 					sources: [{ type: "url", url: "https://example.invalid/source" }],
 				},
@@ -202,17 +195,9 @@ it("retains Anthropic native search and execution results without encrypted sour
 	).toEqual({ tool_use_id: "advisor1", content: { type: "advisor_redacted_result", stop_reason: "end_turn" } });
 });
 
-it("assembles native Anthropic tool input deltas in order and keeps scratch buffers out of history", () => {
+it("assembles native Anthropic tool input deltas in order and keeps scratch buffers out of history", async () => {
 	const selected = model("anthropic-messages");
-	const output = createPendingAssistantMessage(selected);
-	const state: AnthropicStreamState = {
-		model: selected,
-		output,
-		stream: new AssistantMessageEventStream(),
-		usageModel: selected,
-		inputTransformations: undefined,
-	};
-	const events: BetaRawMessageStreamEvent[] = [
+	const events = [
 		{
 			type: "content_block_start",
 			index: 0,
@@ -226,40 +211,36 @@ it("assembles native Anthropic tool input deltas in order and keeps scratch buff
 		},
 		{ type: "content_block_stop", index: 0 },
 	];
-	for (const event of events) handleAnthropicStreamEvent(event, state);
+	const output = await anthropicFrames(selected, events).result();
 	expect(visibleJson(output.content[0])).toEqual({ id: "server1", name: "web_search", input: { query: "fixture" } });
-	expect(state.nativeToolInputs?.size).toBe(0);
+	expect(output.stopReason).toBe("stop");
 	expect(JSON.stringify(output)).not.toMatch(/opaque-input|partialJson|nativeToolInputs/);
 	expect(output.content[0]).not.toHaveProperty("index");
 });
 
-it("retains streamed Bedrock native tool text and JSON results through finalization", () => {
-	const output = createPendingAssistantMessage(model("bedrock-converse-stream"));
-	const blocks = output.content as Block[];
-	const stream = new AssistantMessageEventStream();
-	handleContentBlockStart(
-		{ contentBlockIndex: 0, start: { toolResult: { toolUseId: "tool1", status: "success" } } },
-		blocks,
-		output,
-		stream,
-	);
-	handleContentBlockDelta(
-		{
-			contentBlockIndex: 0,
-			delta: { toolResult: [{ text: "line 1\n" }, { json: { result: 42, thoughtSignature: "opaque-result" } }] },
-		},
-		blocks,
-		output,
-		stream,
-	);
-	handleContentBlockDelta(
-		{ contentBlockIndex: 0, delta: { toolResult: [{ text: "line 2\n" }] } },
-		blocks,
-		output,
-		stream,
-	);
-	handleContentBlockStop({ contentBlockIndex: 0 }, blocks, output, stream);
+it("retains streamed Bedrock native tool text and JSON results through finalization", async () => {
+	const output = await streamBedrock(bedrockModel, bedrockContext, {
+		apiKey: "test",
+		env: {},
+		fetch: async () =>
+			bedrockResponse([
+				{ messageStart: { role: "assistant" } },
+				{
+					contentBlockStart: { contentBlockIndex: 0, start: { toolResult: { toolUseId: "tool1", status: "success" } } },
+				},
+				{
+					contentBlockDelta: {
+						contentBlockIndex: 0,
+						delta: { toolResult: [{ text: "line 1\n" }, { json: { result: 42, thoughtSignature: "opaque-result" } }] },
+					},
+				},
+				{ contentBlockDelta: { contentBlockIndex: 0, delta: { toolResult: [{ text: "line 2\n" }] } } },
+				{ contentBlockStop: { contentBlockIndex: 0 } },
+				{ messageStop: { stopReason: "end_turn" } },
+			]),
+	}).result();
 	expect(output.content).toHaveLength(1);
+	expect(output.stopReason).toBe("stop");
 	expect(output.content[0]).toMatchObject({ type: "text", text: expect.stringContaining('"result": 42') });
 	expect(JSON.stringify(output)).toContain("line 1");
 	expect(JSON.stringify(output)).toContain("line 2");
@@ -267,17 +248,9 @@ it("retains streamed Bedrock native tool text and JSON results through finalizat
 	expect(output.content[0]).not.toHaveProperty("index");
 });
 
-it("retains visible Anthropic compaction deltas without encrypted compaction metadata", () => {
+it("retains visible Anthropic compaction deltas without encrypted compaction metadata", async () => {
 	const selected = model("anthropic-messages");
-	const output = createPendingAssistantMessage(selected);
-	const state: AnthropicStreamState = {
-		model: selected,
-		output,
-		stream: new AssistantMessageEventStream(),
-		usageModel: selected,
-		inputTransformations: undefined,
-	};
-	for (const event of [
+	const output = await anthropicFrames(selected, [
 		{
 			type: "content_block_start",
 			index: 0,
@@ -294,7 +267,6 @@ it("retains visible Anthropic compaction deltas without encrypted compaction met
 			delta: { type: "compaction_delta", content: "summary", encrypted_content: "opaque-second" },
 		},
 		{ type: "content_block_stop", index: 0 },
-	] satisfies BetaRawMessageStreamEvent[])
-		handleAnthropicStreamEvent(event, state);
+	]).result();
 	expect(output.content).toEqual([{ type: "text", text: "Provider compaction:\nVisible summary" }]);
 });

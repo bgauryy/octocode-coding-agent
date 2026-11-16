@@ -1,5 +1,22 @@
+/** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
+export const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
+/** The check of files created before `settled` (`ensureSettledStatus` widens them). */
+export const AGENT_STATUS_CHECK_WITHOUT_SETTLED = "CHECK(status IN ('idle','working'))";
 /** Additive on schema10 files; legacy rows and writers leave the capability unset. */
 export const AGENT_MAILBOX_COLUMN = "mailbox TEXT CHECK(mailbox IS NULL OR mailbox = 'pull')";
+
+/** How the run's model was reached and billed (`AgentRoute`); additive, so older rows and writers leave it NULL. */
+export const AGENT_RUN_ROUTE_COLUMN =
+	"route TEXT CHECK(route IS NULL OR route IN ('config','subscription','remote','external'))";
+
+/**
+ * Indexes on `at` for the tables housekeeping ages out (`retention.ts`): without them every pass scans the whole table
+ * for its oldest row. New files get them from the schema; `history.ensureAtIndexes` adds them to existing files.
+ */
+export const HISTORY_AT_INDEXES = {
+	backlog_audits: "CREATE INDEX IF NOT EXISTS backlog_audits_at ON backlog_audits(at);",
+	workspace_commands: "CREATE INDEX IF NOT EXISTS workspace_commands_at ON workspace_commands(at);",
+} as const;
 
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `
@@ -34,7 +51,7 @@ CREATE TABLE agent_runs (
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0,
   outcome TEXT, outcome_source TEXT, report_path TEXT, files_changed TEXT,
-  cache_write INTEGER NOT NULL DEFAULT 0);
+  cache_write INTEGER NOT NULL DEFAULT 0, ${AGENT_RUN_ROUTE_COLUMN});
 CREATE INDEX agent_runs_agent ON agent_runs(agent_id, started_at DESC);
 CREATE INDEX agent_runs_workspace ON agent_runs(workspace_id, started_at DESC);
 CREATE INDEX agent_runs_item ON agent_runs(backlog_workspace, backlog_seq) WHERE backlog_seq IS NOT NULL;
@@ -47,7 +64,8 @@ CREATE INDEX agent_runs_registration ON agent_runs(registration_id);
  * `max_runs` or `deadline_at`; `until` checks its condition (`condition_kind`: `command` exits 0 in `cwd`, `unlocked`: no
  * other agent's reservation covers the path in `condition`; `file`, `item`, `agent`, `port` and `check` store their fields
  * as JSON in `condition`) every `interval_ms` and wakes once when it is met or the deadline passes. `baseline` is what a
- * `file` or `check` condition compares against (set at creation); `checks` and `spent_usd` count a `check`'s model calls
+ * `file` or `check` condition compares against (set at creation), and for an `until` row with `max_runs` (a listener that stays
+ * after a wake) it holds `armed` or `fired` and the wakes so far; `checks` and `spent_usd` count a `check`'s model calls
  * and their cost. Only the owner session (`session_id`) fires a row; a fire claims it with one guarded UPDATE.
  */
 const TIMERS_SCHEMA = `
@@ -150,6 +168,7 @@ CREATE TABLE backlog_audits (
   at INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, entity TEXT NOT NULL,
   before_value TEXT, after_value TEXT);
 CREATE INDEX backlog_audits_item ON backlog_audits(workspace_id, backlog_id, id);
+${HISTORY_AT_INDEXES.backlog_audits}
 CREATE TRIGGER backlog_audits_immutable_update BEFORE UPDATE ON backlog_audits BEGIN
  SELECT RAISE(ABORT, 'Audit events are immutable');
 END;
@@ -237,6 +256,7 @@ CREATE TABLE workspace_commands (
   action TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, message TEXT NOT NULL,
   PRIMARY KEY(workspace_id, session_id, id));
 CREATE INDEX workspace_commands_repo ON workspace_commands(workspace_id, session_id, at);
+${HISTORY_AT_INDEXES.workspace_commands}
 CREATE TRIGGER workspace_commands_audit_insert AFTER INSERT ON workspace_commands WHEN NEW.backlog_id IS NOT NULL BEGIN
  INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, after_value)
  VALUES (NEW.workspace_id, NEW.backlog_id, NEW.at, octocode_audit_actor(), 'insert', 'workspace_commands', json_object('id', NEW.id, 'action', NEW.action, 'input', NEW.input, 'status', NEW.status));
@@ -273,7 +293,7 @@ END;
 
 CREATE TABLE agents (
   id TEXT PRIMARY KEY, team TEXT NOT NULL, workspace_id TEXT NOT NULL REFERENCES workspaces(id), role TEXT NOT NULL, parent_id TEXT, pid INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('idle','working')), task TEXT, activity TEXT,
+  status TEXT NOT NULL ${AGENT_STATUS_CHECK}, task TEXT, activity TEXT,
   joined_at INTEGER NOT NULL, seen_at INTEGER NOT NULL,
   tool_calls INTEGER NOT NULL DEFAULT 0, input INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, unpriced INTEGER NOT NULL DEFAULT 0, model TEXT, started TEXT, lease_workspace_id TEXT REFERENCES workspaces(id) CHECK(lease_workspace_id <> workspace_id), tmux_pane TEXT, session_id TEXT,

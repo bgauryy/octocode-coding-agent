@@ -32,7 +32,7 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 	[
-		"timer",
+		"wait",
 		"gate/classify: an until-command (alone or as a check's trigger) is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; the other until kinds only read this workspace's rows and reservations, and until.check is read-only but spends money only after its own first-use ask; otherwise this session's own timers",
 	],
 ]);

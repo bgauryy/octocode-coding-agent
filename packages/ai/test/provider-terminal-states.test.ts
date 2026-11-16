@@ -1,8 +1,7 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
 import { mapStopReason } from "../src/api/openai-responses-shared/response-result.ts";
-import { resolveGoogleSimpleThinking } from "../src/api/google-shared/params.ts";
+import { resolveGoogleSimpleThinking } from "../src/api/ai-sdk/google-options.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
@@ -15,11 +14,9 @@ async function streamAnthropic(startUsage: object, deltaUsage: object, stopReaso
 	];
 	const body = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n`).join("\n");
 	const response = new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
-	const client = {
-		beta: { messages: { create: () => ({ asResponse: async () => response }) } },
-	} as unknown as Anthropic;
+	const fetch = async () => response;
 	const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] });
-	return stream(getBuiltinModel("anthropic", "claude-sonnet-4-5"), context, { client }).result();
+	return stream(getBuiltinModel("anthropic", "claude-sonnet-4-5"), context, { apiKey: "test-key", fetch }).result();
 }
 
 describe("Anthropic pause_turn", () => {

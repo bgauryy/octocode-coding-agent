@@ -36,7 +36,7 @@ function mode() {
 }
 
 describe("/configuration", () => {
-	it("is the one built-in for configuration; /settings and /config are retired names", async () => {
+	it("is the one built-in for configuration; /settings and /config are aliases that open it", async () => {
 		expect(getBuiltinCommand("configuration")?.argumentHint).toContain("enable");
 		expect(getBuiltinCommand("settings")).toBeUndefined();
 		expect(getBuiltinCommand("config")).toBeUndefined();
@@ -44,10 +44,8 @@ describe("/configuration", () => {
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/settings");
 		await instance.defaultEditor.onSubmit("/config");
-		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
-			"Unknown command /settings. Did you mean /configuration? Enter again sends it as a message.",
-			"Unknown command /config. Did you mean /configuration? Enter again sends it as a message.",
-		]);
+		expect(instance.showWarning).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(instance.showSelector).toHaveBeenCalledTimes(2));
 	});
 
 	it("opens the selector without arguments", async () => {

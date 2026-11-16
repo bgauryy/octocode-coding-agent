@@ -1,3 +1,4 @@
+import { Models, type Model as ModelsDevModel, type ProviderMap } from "@opencode-ai/models";
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFile } from "../../../../common/src/atomic-file.ts";
@@ -13,7 +14,6 @@ import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
  * folder, and used stale or not at all when offline: every decision also works from Octocode's metadata alone.
  */
 
-const CATALOG_URL = "https://models.dev/api.json";
 /** How long a fetched index is fresh. */
 const CATALOG_TTL_MS = DAY_MS;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -21,6 +21,7 @@ const FETCH_TIMEOUT_MS = 10_000;
 /** What Octocode reads from one models.dev model entry (prices per million tokens). */
 interface CatalogModel {
 	description?: string;
+	knowledge?: string;
 	/** Model family (`claude-haiku`, `gpt-mini`): its newest release is the current one. */
 	family?: string;
 	/** Release date, `YYYY-MM-DD`. */
@@ -54,12 +55,12 @@ function field<K extends keyof CatalogModel>(key: K, value: CatalogModel[K] | un
 	return value === undefined ? {} : { [key]: value };
 }
 
-function entry(raw: Record<string, unknown>): CatalogModel {
+function entry(raw: Partial<ModelsDevModel>): CatalogModel {
 	const limit = asRecord(raw.limit);
 	const cost = isRecord(raw.cost) ? raw.cost : undefined;
 	const input =
 		isRecord(raw.modalities) && Array.isArray(raw.modalities.input)
-			? raw.modalities.input.filter((item): item is string => typeof item === "string")
+			? raw.modalities.input.filter((item) => typeof item === "string")
 			: undefined;
 	const price =
 		cost && finiteNumber(cost.input) !== undefined && finiteNumber(cost.output) !== undefined
@@ -69,6 +70,7 @@ function entry(raw: Record<string, unknown>): CatalogModel {
 	const canonical = str(raw.canonical_model_id);
 	return {
 		...field("description", str(raw.description)),
+		...field("knowledge", str(raw.knowledge)),
 		...field("family", str(raw.family)),
 		...field("released", str(raw.release_date)),
 		...field("status", str(raw.status)),
@@ -169,12 +171,10 @@ export async function loadCatalog(
 	if (failedAt !== undefined && now - failedAt < RETRY_AFTER_MS) return saved;
 	refreshing ??= (async () => {
 		try {
-			const response = await (options.fetchImpl ?? fetch)(CATALOG_URL, {
+			const providers: ProviderMap = await Models.make({ fetch: options.fetchImpl }).providers({
 				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-				headers: { accept: "application/json" },
 			});
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
-			const catalog = indexCatalog(await response.json(), now);
+			const catalog = indexCatalog(providers, now);
 			if (Object.keys(catalog.models).length === 0) throw new Error("empty catalog");
 			failedAt = undefined;
 			try {

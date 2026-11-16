@@ -8,7 +8,7 @@ import type { FlatSessionNode } from "./session-tree.ts";
 import type { SessionExtras } from "./types.ts";
 import { formatAge, formatSessionTime, shortenPath } from "./utils.ts";
 
-/** At this width or less, line 2 leaves out cost and files. */
+/** At this width or less, line 2 leaves out the changed-file count. */
 const NARROW_WIDTH = 80;
 
 /** Longest title a row asks `sessionTitle` for; the row cuts it to fit. */
@@ -26,6 +26,8 @@ export interface RowView {
 	/** The session's folder as text, when the list is not grouped by folder. */
 	folder?: string;
 	extras?: SessionExtras;
+	/** Where the folder sits (`worktree x`, `worktree x (gone)`); read from disk by the list, which caches it. */
+	checkout?: string;
 	/** The query matched the transcript but not the title. */
 	transcriptMatch: boolean;
 	/** Title of the session this one was forked from; shown while the fork has no prompt of its own. */
@@ -62,14 +64,17 @@ function detailParts(view: RowView): Part[] {
 	// Kept longer than anything else that may drop: the start time tells sessions of one day apart.
 	if (time) parts.push({ text: time, drop: 0 });
 	if (view.transcriptMatch) parts.push({ text: "matched in transcript" });
-	if (view.folder) parts.push({ text: view.folder, drop: 3 });
-	if (view.showPath) parts.push({ text: shortenPath(session.path), drop: 2 });
-	if (extras?.branch) parts.push({ text: extras.branch, drop: 4 });
-	if (extras?.checkout && extras.checkout !== "main") parts.push({ text: extras.checkout, drop: 4 });
-	if (extras?.cost && !narrow) parts.push({ text: extras.cost, drop: 7 });
-	if (extras?.files && !narrow) parts.push({ text: `${extras.files} file${extras.files === 1 ? "" : "s"}`, drop: 6 });
+	if (view.folder) parts.push({ text: view.folder, drop: 5 });
+	if (view.showPath) parts.push({ text: shortenPath(session.path), drop: 4 });
+	if (extras?.branch) parts.push({ text: extras.branch, drop: 7 });
+	const checkout = view.checkout ?? extras?.checkout;
+	if (checkout && checkout !== "main") parts.push({ text: checkout, drop: 6 });
+	// Cost and the agent count outlast branch and checkout: they say what the session did, not where it ran.
+	if (extras?.cost) parts.push({ text: extras.cost, drop: 2 });
+	if (extras?.children) parts.push({ text: `${extras.children} agent${extras.children === 1 ? "" : "s"}`, drop: 3 });
+	if (extras?.files && !narrow) parts.push({ text: `${extras.files} file${extras.files === 1 ? "" : "s"}`, drop: 9 });
 	if (extras?.items?.length) parts.push({ text: extras.items.join(" ") });
-	if (extras?.agent) parts.push({ text: extras.agent, drop: 5 });
+	if (extras?.agent) parts.push({ text: extras.agent, drop: 8 });
 	parts.push({ text: `${session.messageCount} msgs`, drop: 1 });
 	return parts;
 }

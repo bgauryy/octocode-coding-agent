@@ -1,4 +1,4 @@
-import type { ResponseOutputItem, ResponseOutputText } from "openai/resources/responses/responses.js";
+import type { ResponseOutputItem, ResponseOutputText } from "../ai-sdk/openai-wire-types.ts";
 import type { AssistantContent, ContentAnnotation } from "../../types.ts";
 import { responseNativeOutput } from "./native-output.ts";
 
@@ -12,8 +12,8 @@ export function responseAnnotation(
 		...("title" in annotation ? { title: annotation.title } : {}),
 		...("filename" in annotation ? { title: annotation.filename } : {}),
 		...("file_id" in annotation ? { fileId: annotation.file_id } : {}),
-		...("start_index" in annotation ? { startIndex: offset + annotation.start_index } : {}),
-		...("end_index" in annotation ? { endIndex: offset + annotation.end_index } : {}),
+		...(typeof annotation.start_index === "number" ? { startIndex: offset + annotation.start_index } : {}),
+		...(typeof annotation.end_index === "number" ? { endIndex: offset + annotation.end_index } : {}),
 	};
 }
 

@@ -2,9 +2,8 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { Need } from "./state.ts";
 
 /**
- * The agents that wait for the user, from what the team view already carries: a member whose `waiting` field says it waits
- * (set by the host that shows the dialog), and a member with a question to this session still
- * `awaiting reply`. The newest question names the reply command; `count` says how many wait.
+ * Waiting agents: `parent` for messages awaiting this session's agent; `ask` or `approval` only for a host's pending
+ * user dialog. A dialog outranks a message. The newest message and count stay available for the panel.
  */
 export function needsYou(members: Member[], traffic: Traffic[], selfId: string | undefined): Map<string, Need> {
 	const needs = new Map<string, Need>();
@@ -15,14 +14,18 @@ export function needsYou(members: Member[], traffic: Traffic[], selfId: string |
 		const newest =
 			known?.message &&
 			(known.message.at > message.at || (known.message.at === message.at && known.message.id > message.id));
-		needs.set(message.from, { kind: "ask", message: newest ? known.message : message, count: (known?.count ?? 0) + 1 });
+		needs.set(message.from, {
+			kind: "parent",
+			message: newest ? known.message : message,
+			count: (known?.count ?? 0) + 1,
+		});
 	}
 	for (const member of members) {
 		if (!member.waiting) continue;
 		const known = needs.get(member.id);
 		// An approval dialog outranks a question; the question's message and count stay.
 		if (!known) needs.set(member.id, { kind: member.waiting === "approval" ? "approval" : "ask", count: 1 });
-		else if (member.waiting === "approval") known.kind = "approval";
+		else known.kind = member.waiting === "approval" ? "approval" : "ask";
 	}
 	return needs;
 }

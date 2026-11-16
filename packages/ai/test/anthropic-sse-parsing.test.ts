@@ -1,4 +1,3 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
@@ -70,16 +69,8 @@ const minimalAnthropicEvents = [
 	},
 ];
 
-function createFakeAnthropicClient(response: Response): Anthropic {
-	return {
-		beta: {
-			messages: {
-				create: () => ({
-					asResponse: async () => response,
-				}),
-			},
-		},
-	} as unknown as Anthropic;
+function responseOptions(response: Response) {
+	return { apiKey: "test-key", fetch: async () => response };
 }
 
 describe("Anthropic SSE body lifetime", () => {
@@ -100,7 +91,7 @@ describe("Anthropic SSE body lifetime", () => {
 			getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
 			{
-				client: createFakeAnthropicClient(response),
+				...responseOptions(response),
 				onProviderStreamEvent: () => {
 					throw new Error("consumer failed");
 				},
@@ -123,7 +114,7 @@ describe("Anthropic SSE body lifetime", () => {
 			getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
 			{
-				client: createFakeAnthropicClient(response),
+				...responseOptions(response),
 				onResponse: () => {
 					throw new Error("hook failure");
 				},
@@ -172,7 +163,7 @@ describe("Anthropic raw SSE parsing", () => {
 			model,
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
 			{
-				client: createFakeAnthropicClient(createSseResponse(minimalAnthropicEvents)),
+				...responseOptions(createSseResponse(minimalAnthropicEvents)),
 				onProviderStreamEvent: async (event, eventModel) => {
 					await Promise.resolve();
 					providerEvents.push(event);
@@ -200,7 +191,7 @@ describe("Anthropic raw SSE parsing", () => {
 			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
 		});
 		const first = await streamAnthropic(model, initialContext, {
-			client: createFakeAnthropicClient(
+			...responseOptions(
 				createResponseModelSseResponse(responseModel, {
 					type: "thinking",
 					thinking: "reasoning",
@@ -237,9 +228,7 @@ describe("Anthropic raw SSE parsing", () => {
 			model,
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
 			{
-				client: createFakeAnthropicClient(
-					createResponseModelSseResponse(fallbackModel, { type: "text", text: "done" }),
-				),
+				...responseOptions(createResponseModelSseResponse(fallbackModel, { type: "text", text: "done" })),
 			},
 		).result();
 
@@ -289,7 +278,7 @@ describe("Anthropic raw SSE parsing", () => {
 		const result = await streamAnthropic(
 			model,
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
-			{ client: createFakeAnthropicClient(response) },
+			{ ...responseOptions(response) },
 		).result();
 
 		expect(result.stopReason).toBe("error");
@@ -298,22 +287,17 @@ describe("Anthropic raw SSE parsing", () => {
 
 	it("forces streaming after an onPayload replacement", async () => {
 		let streaming: boolean | undefined;
-		const client = {
-			beta: {
-				messages: {
-					create: (params: { stream?: boolean }) => {
-						streaming = params.stream;
-						return { asResponse: async () => createSseResponse(minimalAnthropicEvents) };
-					},
-				},
-			},
-		} as unknown as Anthropic;
+		const fetch: typeof globalThis.fetch = async (_input, init) => {
+			streaming = JSON.parse(init?.body as string).stream;
+			return createSseResponse(minimalAnthropicEvents);
+		};
 
 		await streamAnthropic(
 			getBuiltinModel("anthropic", "claude-fable-5-1"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
 			{
-				client,
+				apiKey: "test-key",
+				fetch,
 				onPayload: (payload) => ({ ...(payload as Record<string, unknown>), stream: false }),
 			},
 		).result();
@@ -323,21 +307,15 @@ describe("Anthropic raw SSE parsing", () => {
 
 	it("omits the interleaved-thinking beta when thinking is disabled", async () => {
 		let betaFeatures: string[] | undefined;
-		const client = {
-			beta: {
-				messages: {
-					create: (params: { betas?: string[] }) => {
-						betaFeatures = params.betas;
-						return { asResponse: async () => createSseResponse(minimalAnthropicEvents) };
-					},
-				},
-			},
-		} as unknown as Anthropic;
+		const fetch: typeof globalThis.fetch = async (_input, init) => {
+			betaFeatures = new Headers(init?.headers).get("anthropic-beta")?.split(",");
+			return createSseResponse(minimalAnthropicEvents);
+		};
 
 		await streamAnthropic(
 			getBuiltinModel("openrouter", "anthropic/claude-haiku-4.5"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
-			{ client, thinkingEnabled: false },
+			{ apiKey: "test-key", fetch, thinkingEnabled: false },
 		).result();
 
 		expect(betaFeatures ?? []).not.toContain("interleaved-thinking-2025-05-14");
@@ -345,21 +323,15 @@ describe("Anthropic raw SSE parsing", () => {
 
 	it("passes managed beta features to injected clients", async () => {
 		let betaFeatures: string[] | undefined;
-		const client = {
-			beta: {
-				messages: {
-					create: (params: { betas?: string[] }) => {
-						betaFeatures = params.betas;
-						return { asResponse: async () => createSseResponse(minimalAnthropicEvents) };
-					},
-				},
-			},
-		} as unknown as Anthropic;
+		const fetch: typeof globalThis.fetch = async (_input, init) => {
+			betaFeatures = new Headers(init?.headers).get("anthropic-beta")?.split(",");
+			return createSseResponse(minimalAnthropicEvents);
+		};
 
 		const result = await streamAnthropic(
 			getBuiltinModel("anthropic", "claude-fable-5-1"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
-			{ client },
+			{ apiKey: "test-key", fetch },
 		).result();
 
 		expect(result.stopReason).toBe("stop");
@@ -389,7 +361,7 @@ describe("Anthropic raw SSE parsing", () => {
 		const result = await streamAnthropic(
 			getBuiltinModel("anthropic", "claude-fable-5-1"),
 			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
-			{ client: createFakeAnthropicClient(createSseResponse(events)) },
+			{ ...responseOptions(createSseResponse(events)) },
 		).result();
 
 		expect(result.diagnostics).toEqual([
@@ -480,7 +452,7 @@ describe("Anthropic raw SSE parsing", () => {
 		]);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -579,7 +551,7 @@ describe("Anthropic raw SSE parsing", () => {
 		]);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -643,7 +615,7 @@ describe("Anthropic raw SSE parsing", () => {
 		]);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -693,7 +665,7 @@ describe("Anthropic raw SSE parsing", () => {
 		]);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -719,7 +691,7 @@ describe("Anthropic raw SSE parsing", () => {
 		);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -742,7 +714,7 @@ describe("Anthropic raw SSE parsing", () => {
 		]);
 
 		const stream = streamAnthropic(model, context, {
-			client: createFakeAnthropicClient(response),
+			...responseOptions(response),
 		});
 		const result = await stream.result();
 
@@ -766,7 +738,7 @@ describe("Anthropic SSE chunk boundaries", () => {
 			const result = await streamAnthropic(
 				getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 				normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
-				{ client: createFakeAnthropicClient(new Response(body)) },
+				{ ...responseOptions(new Response(body)) },
 			).result();
 			expect(result.stopReason, `split ${split}: ${result.errorMessage}`).toBe("stop");
 			expect(result.content).toEqual([{ type: "text", text: "Hello" }]);

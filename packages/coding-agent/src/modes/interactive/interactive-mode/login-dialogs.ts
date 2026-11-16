@@ -7,10 +7,10 @@ import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import * as path from "node:path";
 import type { AuthEvent, AuthPrompt } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
-import { APP_NAME, getDocsPath } from "../../../config.ts";
+import { APP_NAME, getAgentDir, getDocsPath } from "../../../config.ts";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
-import { KeychainLoginSession } from "../../../core/auth-storage/keychain-login.ts";
+import { KeychainLoginSession, plaintextStorageNotice } from "../../../core/auth-storage/keychain-login.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
@@ -263,11 +263,7 @@ async function loginProvider(
 					return choice === "keychain" ? "keychain" : "file";
 				})
 			: undefined;
-		if (method === "api_key" && !keychain) {
-			dialog.showInfo(
-				"No system keychain is available. API keys are stored in plaintext in auth.json, created with owner-only permissions.",
-			);
-		}
+		if (!keychain) dialog.showInfo(plaintextStorageNotice(method, path.join(getAgentDir(), "auth.json")));
 		if (method === "oauth") await storage?.chooseForSignIn();
 		await host.session.modelRuntime.login(
 			providerId,

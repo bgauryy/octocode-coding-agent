@@ -123,7 +123,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const desc = cmd.description ?? "";
 			// The short description leads so a long argument hint cannot push it off a narrow terminal.
 			const detail = hint ? (desc ? `${desc} · ${hint}` : hint) : desc;
-			return { name, label: name, description: detail || undefined };
+			const aliases = "aliases" in cmd ? (cmd.aliases ?? []) : [];
+			return { name, label: name, aliases, description: detail || undefined };
 		});
 
 		const bareNameMatches = fuzzyFilter(commandItems, query, (item) =>
@@ -135,7 +136,13 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			query,
 			(item) => item.name,
 		);
-		const filtered = [...bareNameMatches, ...fullNameOnlyMatches].map((item) => ({
+		const listed = new Set([...bareNameMatches, ...fullNameOnlyMatches]);
+		const aliasMatches = fuzzyFilter(
+			commandItems.filter((item) => item.aliases.length > 0 && !listed.has(item)),
+			query,
+			(item) => item.aliases.join(" "),
+		);
+		const filtered = [...bareNameMatches, ...fullNameOnlyMatches, ...aliasMatches].map((item) => ({
 			value: item.name,
 			label: item.label,
 			kind: "command" as const,

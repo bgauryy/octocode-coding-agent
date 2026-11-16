@@ -165,7 +165,7 @@ describe("instruction cache boundary", () => {
 			{ role: "user", content: "hi", timestamp: 1 },
 		];
 		const roleVariantTools = new Set(["archive", "memory", "agent", "skill"]);
-		const tools = ["bash", "file", "web", "mcp", "timer", "mcp__octocode__localSearch", "archive", "memory", "agent"];
+		const tools = ["bash", "file", "web", "mcp", "wait", "mcp__octocode__localSearch", "archive", "memory", "agent"];
 		expect(instructionCacheBoundaryOption(withTools(tools), { roleVariantTools }).toolCacheBoundary).toBe("archive");
 		expect(
 			instructionCacheBoundaryOption(withTools(["bash", "agent", "skill"]), { roleVariantTools }).toolCacheBoundary,

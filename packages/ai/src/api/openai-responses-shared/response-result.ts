@@ -1,16 +1,19 @@
-import type OpenAI from "openai";
 import type { StopReason, Usage } from "../../types.ts";
 import { createUsage } from "../../utils/assistant-message.ts";
 
 /** Maps terminal Responses usage onto the message usage, before cost is calculated. */
-export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usage {
-	const inputDetails = usage.input_tokens_details as
-		| {
-				cached_tokens?: number;
-				cache_write_tokens?: number;
-				cache_write_tokens_details?: { ttl_12h_tokens?: number };
-		  }
-		| undefined;
+export function parseResponsesUsage(usage: {
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	input_tokens_details?: {
+		cached_tokens?: number;
+		cache_write_tokens?: number;
+		cache_write_tokens_details?: { ttl_12h_tokens?: number };
+	};
+	output_tokens_details?: { reasoning_tokens?: number };
+}): Usage {
+	const inputDetails = usage.input_tokens_details;
 	const cachedTokens = inputDetails?.cached_tokens ?? 0;
 	const cacheWriteTokens = inputDetails?.cache_write_tokens ?? 0;
 	const result = createUsage({
@@ -19,7 +22,7 @@ export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usag
 		output: usage.output_tokens || 0,
 		cacheRead: cachedTokens,
 		cacheWrite: cacheWriteTokens,
-		reasoning: usage.output_tokens_details?.reasoning_tokens || 0,
+		reasoning: usage.output_tokens_details?.reasoning_tokens ?? 0,
 		totalTokens: usage.total_tokens,
 	});
 	if (inputDetails?.cache_write_tokens_details !== undefined) {
@@ -29,7 +32,7 @@ export function parseResponsesUsage(usage: OpenAI.Responses.ResponseUsage): Usag
 }
 
 export function mapStopReason(
-	status: OpenAI.Responses.ResponseStatus | undefined,
+	status: "completed" | "incomplete" | "failed" | "cancelled" | "queued" | "in_progress" | undefined,
 	incompleteReason?: string,
 ): { stopReason: StopReason; errorMessage?: string } {
 	if (!status) return { stopReason: "stop" };

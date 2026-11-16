@@ -21,6 +21,7 @@ export function beginRun(runs: Pick<AgentRuns, "team">, run: Run): void {
 		startedBy: "agent",
 		profile: identity.role,
 		...(route.model ? { model: route.model } : {}),
+		...(run.agentRoute ? { route: run.agentRoute } : {}),
 		goal: identity.goal,
 		...(item === undefined ? {} : { item }),
 	});

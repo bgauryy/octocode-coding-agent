@@ -1,6 +1,7 @@
 import { type Component, Container, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../../../../common/src/sanitize.ts";
 import { theme } from "../../../../theme/theme.ts";
+import { colorToolOutput } from "../../../../theme/output-style.ts";
 import { foldHint, TOOL_PREVIEW_LINES } from "../../../../theme/theme-tui-helpers.ts";
 
 /** One line naming a renderer failure. Extension renderers are untrusted: the text is sanitized and kept to its first line. */
@@ -41,10 +42,16 @@ export function createResultFallback(output: string, expanded: boolean): Compone
 		return undefined;
 	}
 
-	const lines = sanitizeTerminalText(output).split("\n");
+	const clean = sanitizeTerminalText(output);
+	const lines = clean.split("\n");
 	const displayLines = expanded ? lines : lines.slice(0, TOOL_PREVIEW_LINES);
 	const remaining = lines.length - displayLines.length;
-	let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
+	// Diffs, JSON and key lines come coloured, the folded rest plain (`colorToolOutput`); anything else is flat.
+	let text =
+		colorToolOutput(theme, clean, { expanded, previewLines: TOOL_PREVIEW_LINES })
+			?.split("\n")
+			.slice(0, displayLines.length)
+			.join("\n") ?? displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
 	if (remaining > 0) {
 		text += `\n${foldHint(remaining)}`;
 	}

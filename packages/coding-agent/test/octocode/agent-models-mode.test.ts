@@ -70,6 +70,7 @@ describe("models tool", () => {
 		const { tool } = mode();
 		expect(tool.name).toBe("models");
 		expect(Object.keys((tool.parameters as { properties: object }).properties)).toEqual([
+			"routes",
 			"provider",
 			"ability",
 			"query",
@@ -84,18 +85,20 @@ describe("models tool", () => {
 		expect(text.split("\n")[0]).toBe(
 			"This session: anthropic/claude-opus · thinking high · context budget 180k of 200k capacity.",
 		);
-		expect(text).toContain("\n  anthropic · saved credential · 2 runnable · cheapest anthropic/claude-haiku ($1/$5)");
-		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
+		expect(text).toContain("\nanthropic/claude-haiku · $1/$5 · 200k · tools, images · ?");
+		expect(text).toContain("\nopencode/qwen-coder · $0.50/$2 · 200k · tools · ?");
 	});
 
 	it("names each provider's kind on its row", async () => {
 		const { run } = mode();
-		const text = await run({}, undefined, { anthropic: "subscription" });
-		expect(text).toContain("\n  anthropic · subscription · saved credential · 2 runnable");
-		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it) · 1 runnable");
-		const keyed = await run({}, undefined, { anthropic: "API key" });
-		expect(keyed).toContain("\n  anthropic · API key · saved credential · 2 runnable");
-		expect(await run({}, undefined, { anthropic: "local" })).toContain("\n  anthropic · local · saved credential");
+		const text = await run({ query: "/" }, undefined, { anthropic: "subscription" });
+		expect(text).toContain("\n  anthropic · subscription · saved credential");
+		expect(text).toContain("\n  opencode · --api-key, this session only (tasks cannot use it)");
+		const keyed = await run({ query: "/" }, undefined, { anthropic: "API key" });
+		expect(keyed).toContain("\n  anthropic · API key · saved credential");
+		expect(await run({ query: "/" }, undefined, { anthropic: "local" })).toContain(
+			"\n  anthropic · local · saved credential",
+		);
 	});
 
 	it("lists unconnected catalog models as not runnable only when asked for the catalog scope", async () => {
@@ -116,12 +119,12 @@ describe("models tool", () => {
 			"anthropic/claude-opus",
 			"opencode/qwen-coder",
 		]);
-		expect(text).toMatch(/^ {2}anthropic · saved credential · .* ✓ credential worked \(check, /m);
-		expect(text).toMatch(
-			/^ {2}opencode · .* ✗ credential refused \(check, .*401 api_key_expired — fix with \/providers$/m,
-		);
-		// Said once, on the provider row: the model headings carry no credential mark.
-		expect(text.match(/credential refused/g)).toHaveLength(1);
+		expect(text).toMatch(/^anthropic\/claude-haiku · .* · ✓$/m);
+		expect(text).toMatch(/^anthropic\/claude-opus · .* · ✓$/m);
+		expect(text).toMatch(/^opencode\/qwen-coder · .* · ✗$/m);
+		const details = await run({ provider: "opencode" });
+		expect(details.match(/credential refused/g)).toHaveLength(1);
+		expect(details).toContain("401 api_key_expired — fix with /providers");
 	});
 
 	it("lists one provider's models with the ids `model` accepts, the purposes and the profiles", async () => {

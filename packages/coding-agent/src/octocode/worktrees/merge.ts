@@ -21,6 +21,20 @@ export async function heldChanges(
 		.flatMap((file) => reservation(path.join(repo, file), file) ?? []);
 }
 
+/** The files among `files` the checkout at `repo` has uncommitted changes to (tracked edits, staged or untracked): a merge that writes them would overwrite or be blocked by that work. */
+export async function dirtyAmong(repo: string, files: string[]): Promise<string[]> {
+	if (files.length === 0) return [];
+	const out = await git(
+		repo,
+		["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", ...files],
+		{ raw: true },
+	);
+	return out
+		.split("\0")
+		.filter(Boolean)
+		.map((field) => field.slice(3));
+}
+
 type MergeRefResult = { ok: false; text: string } | { ok: true; text: string; into: string; head: string };
 
 /** Serialize cooperating merges by checkout, including their checks and conflict cleanup. A queued merge can be cancelled. */
@@ -159,9 +173,14 @@ export async function mergeWorktreeBranch(
 		return refuse(
 			`backlog work on ${branch} is not done: ${open.join(", ")}. Ask its session to finish it (backlog done) or to drop it, then send the request again.`,
 		);
-	const held = await heldChanges(main, branch, ports.reservation);
-	if (held.length > 0)
-		return refuse(`${branch} changes files another agent holds. Merge after they are released.\n${held.join("\n")}`);
+	const heldRefusal = async () => {
+		const held = await heldChanges(main, branch, ports.reservation);
+		return held.length > 0
+			? `${branch} changes files another agent holds. Merge after they are released.\n${held.join("\n")}`
+			: undefined;
+	};
+	const heldBefore = await heldRefusal();
+	if (heldBefore) return refuse(heldBefore);
 	const conflicts = await predictedConflicts(main, branch);
 	if (conflicts.length > 0)
 		return refuse(
@@ -175,7 +194,7 @@ export async function mergeWorktreeBranch(
 	]);
 	if (refused) return { ok: false, text: refused };
 	// The dialog can wait: what changed while it did is checked again before anything lands.
-	const changedMeanwhile = stillWorking() ?? (await dirtyWork());
+	const changedMeanwhile = stillWorking() ?? (await dirtyWork()) ?? (await heldRefusal());
 	if (changedMeanwhile) return refuse(changedMeanwhile);
 	const merged = await mergeRef(main, branch, ports.signal);
 	if (!merged.ok) return merged;

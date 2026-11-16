@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import type { AgentRoute } from "@octocodeai/octocode-contracts/config";
 import { num, type Row } from "../rows.ts";
+import { ensureRoute, parseRoute } from "./agent-run-route.ts";
 
 /**
  * The audit of one run of an agent (`agent_runs`): who it was, where it worked, what it was for, how it
@@ -21,6 +23,7 @@ export interface AgentRun {
 	startedBy: string | undefined;
 	profile: string | undefined;
 	model: string | undefined;
+	route: AgentRoute | undefined;
 	goal: string | undefined;
 	backlog: { workspaceId: string; seq: number } | undefined;
 	cwd: string | undefined;
@@ -78,6 +81,7 @@ function decode(row: Row): AgentRun {
 		startedBy: text(row.started_by),
 		profile: text(row.profile),
 		model: text(row.model),
+		route: parseRoute(row.route),
 		goal: text(row.goal),
 		backlog:
 			backlogSeq !== undefined && typeof row.backlog_workspace === "string"
@@ -114,6 +118,7 @@ export interface RunStart {
 	startedBy?: string | undefined;
 	profile?: string | undefined;
 	model?: string | undefined;
+	route?: AgentRoute | undefined;
 	goal?: string | undefined;
 	backlog?: { workspaceId: string; seq: number } | undefined;
 }
@@ -130,11 +135,12 @@ export function latest(db: DatabaseSync, agentId: string): AgentRun | undefined 
 
 /** The parent starts child `start.agentId`: its run opens, and an earlier run of that name that never ended is closed as crashed. Returns the run id. */
 export function begin(db: DatabaseSync, start: RunStart, now = Date.now()): string {
+	ensureRoute(db);
 	db.prepare(CLOSE_OPEN).run(now, "superseded by a new run of the same name", start.agentId);
 	const runId = randomUUID();
 	db.prepare(
-		`INSERT INTO agent_runs (run_id, workspace_id, agent_id, kind, parent_agent_id, parent_session_id, started_by, profile, model, goal, backlog_workspace, backlog_seq, started_at)
-		 VALUES (?, ?, ?, 'child', ?, COALESCE(?, (SELECT lifecycle_session_id FROM agents WHERE id = ?)), ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO agent_runs (run_id, workspace_id, agent_id, kind, parent_agent_id, parent_session_id, started_by, profile, model, route, goal, backlog_workspace, backlog_seq, started_at)
+		 VALUES (?, ?, ?, 'child', ?, COALESCE(?, (SELECT lifecycle_session_id FROM agents WHERE id = ?)), ?, ?, ?, ?, ?, ?, ?, ?)`,
 	).run(
 		runId,
 		start.workspaceId,
@@ -145,6 +151,7 @@ export function begin(db: DatabaseSync, start: RunStart, now = Date.now()): stri
 		start.startedBy ?? null,
 		start.profile ?? null,
 		start.model ?? null,
+		start.route ?? null,
 		start.goal ?? null,
 		start.backlog?.workspaceId ?? null,
 		start.backlog?.seq ?? null,

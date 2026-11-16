@@ -117,6 +117,23 @@ export function finishVerification(
 	};
 }
 
+/**
+ * The line for the model's text: empty when it would only repeat the result's own header, that is a command that exited 0
+ * (or is still running) with no edit made meanwhile, its output intact and its check still valid. Anything that
+ * weakens the check, or a failure, keeps the line.
+ */
+export function verificationText(receipt: VerificationReceipt): string {
+	const running = receipt.state === "running";
+	const clean =
+		receipt.mutationEpoch === mutationEpoch &&
+		currentMutationRevision(receipt.sessionId) === receipt.revisionAtLaunch &&
+		!receipt.stale &&
+		!receipt.output.tailIncomplete &&
+		(running || (receipt.state === "finished" && receipt.revisionAtCompletion === receipt.revisionAtLaunch)) &&
+		(running || receipt.output.complete);
+	return clean ? "" : verificationLine(receipt);
+}
+
 export function verificationLine(receipt: VerificationReceipt): string {
 	const differentProcess = receipt.mutationEpoch !== mutationEpoch;
 	const laterEdit = currentMutationRevision(receipt.sessionId) !== receipt.revisionAtLaunch;

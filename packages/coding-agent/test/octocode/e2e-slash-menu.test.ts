@@ -61,7 +61,7 @@ describe("the slash command menu", () => {
 	it("shows one command's usage for /help <command> and the picker for anything else", async () => {
 		await open(120);
 		const usage = await t!.submit("/help model");
-		expect(usage.text).toMatch(/\/model · Switch this chat's model/);
+		expect(usage.text).toMatch(/\/model · Pick a model for this chat or as the default/);
 		expect(usage.text).toContain("Usage: /model [provider/model]");
 		const worktree = await t!.submit("/help /worktree");
 		expect(worktree.text).toMatch(/merge · <branch>/);

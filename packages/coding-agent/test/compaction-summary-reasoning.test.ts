@@ -312,20 +312,72 @@ describe("generateSummary reasoning options", () => {
 		);
 	});
 
-	it("rejects a length-limited history summary", async () => {
-		completeSimpleMock.mockResolvedValueOnce({
-			...mockSummaryResponse,
-			stopReason: "length",
-			content: [{ type: "text", text: "partial" }],
-		});
+	it("retries a cut-off history summary once, for half the size and without reasoning", async () => {
+		const cut = { ...mockSummaryResponse, stopReason: "length", content: [{ type: "text", text: "partial" }] };
+		completeSimpleMock.mockResolvedValueOnce(cut).mockResolvedValueOnce(mockSummaryResponse);
+		const calls = completeSimpleMock.mock.calls.length;
+		const result = await generateSummaryWithUsage(
+			messages,
+			createModel(true),
+			10_000,
+			"test-key",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"high",
+		);
+		expect(result.text).toBe("## Goal\nTest summary");
+		const [first, retry] = completeSimpleMock.mock.calls.slice(calls);
+		expect(first[2]).toHaveProperty("reasoning");
+		expect(retry[2]).not.toHaveProperty("reasoning");
+		const size = (call: unknown[]) => Number(/under about (\d+) tokens/.exec(JSON.stringify(call[1]))?.[1]);
+		expect(size(retry)).toBe(Math.floor(size(first) / 2));
+	});
 
+	it("keeps shrinking a summary cut off again, halving the cap with the size, until it fits", async () => {
+		const cut = { ...mockSummaryResponse, stopReason: "length", content: [{ type: "text", text: "partial" }] };
+		completeSimpleMock
+			.mockResolvedValueOnce(cut)
+			.mockResolvedValueOnce(cut)
+			.mockResolvedValueOnce(cut)
+			.mockResolvedValueOnce(mockSummaryResponse);
+		const calls = completeSimpleMock.mock.calls.length;
+		const result = await generateSummaryWithUsage(messages, createModel(false), undefined, "test-key");
+		expect(result.text).toBe("## Goal\nTest summary");
+		const sent = completeSimpleMock.mock.calls.slice(calls);
+		expect(sent).toHaveLength(4);
+		const size = (call: unknown[]) => Number(/under about (\d+) tokens/.exec(JSON.stringify(call[1]))?.[1]);
+		const cap = (call: unknown[]) => (call[2] as { maxTokens: number }).maxTokens;
+		expect(sent.map(size)).toEqual([0, 1, 2, 3].map((n) => Math.floor(size(sent[0]) / 2 ** n)));
+		expect(cap(sent[1])).toBe(cap(sent[0]));
+		expect(cap(sent[2])).toBe(Math.floor(cap(sent[1]) / 2));
+		expect(cap(sent[3])).toBe(Math.floor(cap(sent[2]) / 2));
+	});
+
+	it("keeps a summary still cut off after every retry when it says where the work stopped, marked as cut", async () => {
+		const partial = "## Goal\nShip it\n\n## Where We Stopped\n- editing src/a.ts\n\n## Critical Con";
+		const cut = { ...mockSummaryResponse, stopReason: "length", content: [{ type: "text", text: partial }] };
+		completeSimpleMock.mockResolvedValue(cut);
+		const result = await generateSummaryWithUsage(messages, createModel(false), undefined, "test-key");
+		expect(result.text.startsWith(partial)).toBe(true);
+		expect(result.text).toMatch(/cut off at the output token cap/);
+		completeSimpleMock.mockReset();
+	});
+
+	it("rejects a history summary still cut off after every shrinking retry", async () => {
+		const cut = { ...mockSummaryResponse, stopReason: "length", content: [{ type: "text", text: "partial" }] };
+		completeSimpleMock.mockResolvedValue(cut);
+		const calls = completeSimpleMock.mock.calls.length;
 		await expect(generateSummaryWithUsage(messages, createModel(false), undefined, "test-key")).rejects.toThrow(
 			"generation hit the token cap",
 		);
+		expect(completeSimpleMock.mock.calls.length - calls).toBe(4);
+		completeSimpleMock.mockReset();
 	});
 
-	it("rejects a length-limited split-turn summary", async () => {
-		completeSimpleMock.mockResolvedValueOnce({
+	it("rejects a split-turn summary that stays length-limited after its retries", async () => {
+		completeSimpleMock.mockResolvedValue({
 			...mockSummaryResponse,
 			stopReason: "length",
 			content: [{ type: "text", text: "partial" }],

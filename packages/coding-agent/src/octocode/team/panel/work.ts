@@ -8,8 +8,8 @@ import { fitName, safe } from "./compact.ts";
 type Color = Parameters<Theme["fg"]>[0];
 
 const GAP = "  ";
-/** The type label's width in cells: the longest, `timer`. */
-const LABEL_WIDTH = 5;
+/** The type label's width in cells: the longest, `bash` or `wait`. */
+const LABEL_WIDTH = 4;
 /** An id keeps at most this many cells, so a long name cannot take the row. */
 const ID_MAX = 18;
 /** The title and its detail need at least this many cells to be worth drawing. */
@@ -23,7 +23,7 @@ const TEXT_MIN = 8;
 const TYPE: Record<WorkKind, { label: string; color: Color; mark: keyof Marks }> = {
 	agent: { label: ENTITY.subagent, color: "accent", mark: "live" },
 	bash: { label: "bash", color: "accent", mark: "live" },
-	timer: { label: "timer", color: "warning", mark: "waiting" },
+	timer: { label: "wait", color: "warning", mark: "waiting" },
 	external: { label: "ext", color: "accent", mark: "live" },
 };
 

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
 import { credentialState } from "../src/core/provider-composer/credential-state.ts";
+import { buildProviderSnapshot } from "../src/core/provider-view/snapshot.ts";
 import { providerRows } from "../src/modes/interactive/interactive-mode/provider-rows.ts";
 
 const NOW = 1_000_000;
@@ -31,7 +32,7 @@ describe("credential state", () => {
 		expect(credentialState({ configured: true, source: "runtime" }, undefined, NOW)).toBe("connected");
 	});
 
-	it("shows an expired sign-in on its row as needing attention", () => {
+	it("shows an expired sign-in on its row as needing attention", async () => {
 		const runtime = {
 			getProviders: () => [{ id: "p", name: "P" }],
 			getProvider: () => ({ id: "p", name: "P" }),
@@ -40,16 +41,15 @@ describe("credential state", () => {
 			hasConfiguredAuth: () => true,
 			getAvailableSnapshot: () => [{ provider: "p" }],
 			getPlanDisabledReason: () => undefined,
+			getProviderDefinitionFile: () => undefined,
+			listCredentials: async () => [{ providerId: "p", type: "oauth" }],
+			readCredential: async () => oauth({ expires: 1, refresh: "" }),
+			getAuth: async () => undefined,
 		};
-		const rows = providerRows(
-			runtime as never,
-			[],
-			[{ providerId: "p", type: "oauth" }],
-			new Set(),
-			new Map([["p", "expired"]]),
-		);
-		expect(rows.attention[0]).toMatchObject({ badge: "expired" });
-		expect(rows.attention[0].detail).toContain("expired · auth.json");
+		const snapshot = await buildProviderSnapshot({ runtime: runtime as never, disabledProviders: [] });
+		const rows = providerRows(snapshot);
+		expect(rows.attention[0].badge).toBe("⚠ needs action");
+		expect(rows.attention[0].detail).toMatch(/expired · .*auth\.json · sign in again/);
 	});
 });
 

@@ -2,7 +2,8 @@ import type { IncomingMessage } from "node:http";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { BacklogError, TaskError, type BacklogStore } from "../backlog/store.ts";
 import { applyBoardWrite } from "../backlog/web-commands.ts";
-import { readJsonBody, type Reply } from "./http-util.ts";
+import { readJsonBody } from "../shared/json-body.ts";
+import type { Reply } from "./http-util.ts";
 
 /**
  * `POST` on the board route through `applyBoardWrite`, the function the session's own server uses, so an edit is

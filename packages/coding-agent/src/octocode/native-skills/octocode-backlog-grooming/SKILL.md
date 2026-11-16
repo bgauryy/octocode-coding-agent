@@ -58,7 +58,7 @@ There is no assignee field: an item is assigned by claiming it.
 - **A child:** `agent` `task` with `item` claims an unheld todo or backlog item for the child (goal and why set). Pick the profile by the work: researcher for research, implementer for a scoped fix, reviewer for a check.
 - **Another live session:** `message` it with the item id and the reason; never edit its claimed item.
 - **A stale claim**, whose holder ended: `claim` it to take it over, or move it to todo with a note naming the ended holder. The store also returns such claims to todo on its own after a day idle.
-- **Nobody yet:** leave it in todo with a note saying what it waits for, such as a decision, a prerequisite (`dependsOn`) or a platform. Use `timer` `until` `item` `ready` to wake when its prerequisites finish.
+- **Nobody yet:** leave it in todo with a note saying what it waits for, such as a decision, a prerequisite (`dependsOn`) or a platform. Use `wait` `on` `item.state` `ready` to wake when its prerequisites finish.
 
 ## 5. Report
 

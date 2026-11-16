@@ -1,4 +1,4 @@
-import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,10 +7,10 @@ import {
 	resolveJsonSchemaStrictSampling,
 } from "../src/api/constrained-sampling.ts";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
-import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
+import { stream as streamResponses } from "../src/api/openai-responses.ts";
 import { convertResponsesTools } from "../src/api/openai-responses-shared/tools.ts";
 import type { AssistantMessage, Model, Tool, ToolCall } from "../src/types.ts";
-import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 function makeModel(): Model<"openai-responses"> {
@@ -37,23 +37,6 @@ function makeUsage(): AssistantMessage["usage"] {
 		totalTokens: 0,
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
-}
-
-function makeOutput(): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [],
-		api: "openai-responses",
-		provider: "openai",
-		model: "gpt-test",
-		usage: makeUsage(),
-		stopReason: "pending",
-		timestamp: Date.now(),
-	};
-}
-
-async function* iterateEvents(events: ResponseStreamEvent[]): AsyncGenerator<ResponseStreamEvent> {
-	yield* events;
 }
 
 function makeTool(overrides: Partial<Tool> = {}): Tool {
@@ -299,9 +282,6 @@ describe("constrained tool sampling", () => {
 	});
 
 	it("starts custom Responses tool calls with their initial input", async () => {
-		const output = makeOutput();
-		const stream = new AssistantMessageEventStream();
-		const { starts, deltas } = captureToolCallEvents(stream);
 		const events = [
 			{
 				type: "response.output_item.added",
@@ -323,7 +303,14 @@ describe("constrained tool sampling", () => {
 			{
 				type: "response.output_item.done",
 				output_index: 0,
-				item: { type: "custom_tool_call", call_id: "call_1", id: "ctc_1", name: "sample_tool", input: "abc" },
+				item: {
+					type: "custom_tool_call",
+					call_id: "call_1",
+					id: "ctc_1",
+					name: "sample_tool",
+					input: "abc",
+					status: "completed",
+				},
 			},
 			{
 				type: "response.completed",
@@ -331,9 +318,25 @@ describe("constrained tool sampling", () => {
 			},
 		] as ResponseStreamEvent[];
 
-		await processResponsesStream(iterateEvents(events), output, stream, makeModel(), {
-			grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
-		});
+		const stream = streamResponses(
+			{ ...makeModel(), compat: { supportsOpenAIGrammarTools: true } },
+			normalizeContext({
+				messages: [{ role: "user", content: "sample", timestamp: 0 }],
+				tools: [makeTool({ constrainedSampling: { type: "grammar", variants: { openai_regex: "[a-z]+" } } })],
+			}),
+			{
+				apiKey: "sk-test",
+				fetch: async () =>
+					new Response(
+						[{ type: "response.created", response: { id: "resp_1" } }, ...events]
+							.map((event) => `data: ${JSON.stringify(event)}\n\n`)
+							.join(""),
+						{ headers: { "content-type": "text/event-stream" } },
+					),
+			},
+		);
+		const { starts, deltas } = captureToolCallEvents(stream);
+		const output = await stream.result();
 
 		expect(output.stopReason).toBe("toolUse");
 		expect(starts).toEqual([{ payload: "a" }]);

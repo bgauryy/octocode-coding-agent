@@ -52,7 +52,7 @@ describe("the removed steps tool and timer through a real session", () => {
 		const run = box.start([
 			"-p",
 			script([
-				{ tool: "timer", args: { op: "set", after: 1, note } },
+				{ tool: "wait", args: { op: "set", after: 1, note } },
 				{ text: "timer scheduled" },
 				{ text: "woken by the timer" },
 			]),

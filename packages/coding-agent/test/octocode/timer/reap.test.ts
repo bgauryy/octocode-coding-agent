@@ -70,7 +70,7 @@ describe("timers of sessions that ended", () => {
 	it("does not count a dead owner's timers toward another session's cap or list", async () => {
 		for (let i = 0; i < 10; i++) add({ note: `old${i}`, after: 600 }, "gone");
 		const { host, ctx } = await start("live");
-		const tool = host.tools.get("timer");
+		const tool = host.tools.get("wait");
 		await tool.execute("c1", { op: "set", after: 60, note: "mine" }, undefined, undefined, ctx);
 		const list = await tool.execute("c2", { op: "list" }, undefined, undefined, ctx);
 		expect(JSON.stringify(list.content)).toContain("mine");

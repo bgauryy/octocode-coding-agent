@@ -13,6 +13,14 @@ export const ACP_MCP_MANIFEST_ENV = "OCTOCODE_INTERNAL_ACP_MCP_MANIFEST";
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
 /** Set in a subagent: its parent Octocode's pid. The child leaves and shuts down when that process is gone (a crashed parent). */
 export const PARENT_PID_ENV = "OCTOCODE_PARENT_PID";
+/** Set in a subagent: its name, chosen by its parent. */
+export const AGENT_ID_ENV = "OCTOCODE_AGENT_ID";
+/** Set in a subagent: the id of this run (a resume is a new run), which names the stop report either side may save for it. */
+export const AGENT_RUN_ID_ENV = "OCTOCODE_AGENT_RUN_ID";
+/** Set in a subagent: the name of the agent that started it. */
+export const PARENT_ID_ENV = "OCTOCODE_PARENT_ID";
+/** Set in a subagent: the role it was started with (its profile), shown next to its name. */
+export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
 /** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
 export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";

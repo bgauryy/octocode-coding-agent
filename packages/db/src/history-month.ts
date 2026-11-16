@@ -100,19 +100,15 @@ export function readMonth(file: string): ArchiveRecord[] {
 	return load(file).records;
 }
 
-/** Synchronous compatibility read; only small months fit the process-wide decoded-byte and row budgets. */
+/** Synchronous compatibility read; a missing month is empty, a damaged one throws; only small months fit the process-wide decoded-byte and row budgets. */
 export function cachedMonth(file: string): ArchiveRecord[] {
 	const version = stamp(file);
 	const cached = hit(file, version);
 	if (cached) return cached;
 	if (!version) return [];
-	try {
-		const { records, bytes } = load(file);
-		remember(file, version, records, bytes);
-		return records;
-	} catch {
-		return [];
-	}
+	const { records, bytes } = load(file);
+	remember(file, version, records, bytes);
+	return records;
 }
 
 /**

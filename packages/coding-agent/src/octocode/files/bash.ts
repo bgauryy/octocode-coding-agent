@@ -23,13 +23,14 @@ import {
 	foregroundReceipt,
 	pendingVerification,
 	verificationJson,
-	verificationLine,
+	verificationText,
 } from "./bash/verification.ts";
 import { bashConcurrency, recordShellMutation } from "./bash/mutation.ts";
 import { timedTool } from "../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
+import { itemKey, wakeGateOf } from "../wake/gate.ts";
 import { jobDetails, jobReport } from "./bash-jobs/report.ts";
 import { reapOrphanJobs } from "./bash-jobs/records.ts";
 import { registerJobsCommand, reloadNotice } from "./bash-jobs/command.ts";
@@ -78,6 +79,7 @@ export function registerBashTool(
 					title: reason || command,
 					...(reason && command ? { detail: command } : {}),
 					startedAt: job.startedAt,
+					...(job.item ? { item: job.item } : {}),
 				};
 			}),
 		);
@@ -94,7 +96,16 @@ export function registerBashTool(
 		};
 		try {
 			// Follow-up records output after this turn; the log distinguishes job IDs reused by a later instance.
-			const sending = api.sendMessage(
+			const sending = wakeGateOf(api).emit(
+				{
+					kind: "job.exit",
+					job: job.id,
+					exit: exit.code,
+					durationMs: exit.seconds * 1000,
+					startedAt: job.startedAt,
+					log: job.log,
+					...(job.stopped ? { stopped: true } : {}),
+				},
 				{
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
@@ -187,12 +198,16 @@ export function registerBashTool(
 				// Before the receipt begins: a command that changes files makes older checks stale, and its own check starts after its writes.
 				await recordShellMutation(params.command, ctx.cwd, sessionId, settings.type === "powershell");
 				const verification = params.verify ? beginVerification(params.command, ctx.cwd, sessionId) : undefined;
+				const item = itemKey(params.item);
+				if (params.item !== undefined && !item)
+					throw new Error(`item must be a backlog item ref like B12, not "${params.item}"`);
 				if (params.background) {
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
 						env: bashSessionEnv(ctx),
 						shell: settings,
 						verification,
 						reason: params.reason,
+						item,
 					});
 					if (verification) verification.startedAt = job.startedAt;
 					showJobs();
@@ -222,7 +237,7 @@ export function registerBashTool(
 									movedFor = reason;
 									// A call with its own timeout still stops its command then, wherever it runs by that time.
 									const left = timeLeft(plan.stopAfterSeconds, startedAt);
-									const moved = { output, startedAt, verification, reason: params.reason, timeout: left };
+									const moved = { output, startedAt, verification, reason: params.reason, item, timeout: left };
 									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, moved);
 									if (verification) verification.startedAt = startedAt;
 									showJobs();
@@ -254,7 +269,7 @@ export function registerBashTool(
 						settings.type === "bash" && !raw.details?.exitCode
 							? readHint(params.command, ctx.cwd, sessionId)
 							: undefined;
-					const timer = (api.getActiveTools?.() ?? []).includes("timer");
+					const timer = (api.getActiveTools?.() ?? []).includes("wait");
 					const waitHint = settings.type === "bash" ? sleepHint(params.command, timer) : undefined;
 					const notes = [...notices, ...(hint ? [hint] : []), ...(waitHint ? [waitHint] : [])].join("\n\n");
 					const result = notes
@@ -270,13 +285,16 @@ export function registerBashTool(
 						return {
 							...value,
 							content: [
-								{ type: "text" as const, text: `${contentText(value.content)}\n\n${verificationLine(receipt)}` },
+								{
+									type: "text" as const,
+									text: [contentText(value.content), verificationText(receipt)].filter(Boolean).join("\n\n"),
+								},
 							],
 							structuredContent,
 							details: {
 								...finalDetails,
 								verification: receipt,
-								notices: [...(finalDetails.notices ?? []), verificationLine(receipt)],
+								notices: [...(finalDetails.notices ?? []), verificationText(receipt)].filter(Boolean),
 							},
 						};
 					};

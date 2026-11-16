@@ -1,4 +1,4 @@
-import type { BetaCacheControlEphemeral as CacheControlEphemeral } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
+import type { CacheControlEphemeral } from "./shapes.ts";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
 import { ANTHROPIC_LONG_CACHE_HOSTS } from "../../utils/cache-capability-data.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
@@ -36,10 +36,6 @@ export function getLayeredCacheControl(
 		return { instructions, history: { type: "ephemeral" } };
 	}
 	return { instructions, history };
-}
-
-export function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages">): boolean {
-	return (model.compat?.allowedFallbackModels?.length ?? 0) > 0;
 }
 
 /**

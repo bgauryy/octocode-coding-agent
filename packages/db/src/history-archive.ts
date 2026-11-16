@@ -189,6 +189,15 @@ export function archivedAudits(
 	);
 	if (files.length === 0) return [];
 	const selection = auditSelection(archiveSource(agentDb), floor, repo, ref, before, limit);
-	for (const { file } of files) for (const record of cachedMonth(file)) selection.accept(record);
+	for (const { file } of files) for (const record of readableMonth(file)) selection.accept(record);
 	return selection.rows;
+}
+
+/** One month's records for a read; a damaged month is skipped (writers refuse it too) so the other months still load. */
+function readableMonth(file: string): ArchiveRecord[] {
+	try {
+		return cachedMonth(file);
+	} catch {
+		return [];
+	}
 }

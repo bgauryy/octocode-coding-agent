@@ -4,6 +4,7 @@ import type { Tool } from "../protocol/types.ts";
 import type { McpRequestOptions } from "./types.ts";
 
 const MAX_LIST_PAGES = 1_000;
+const MAX_LIST_ITEMS = 10_000;
 
 /** A list item check, applied to each entry of a paginated result. */
 export type ListItemCheck = (item: Record<string, unknown>) => boolean;
@@ -173,6 +174,7 @@ export async function listAll(
 	for (let pageNumber = 0; pageNumber < MAX_LIST_PAGES; pageNumber++) {
 		const page = await listPage(request, method, key, isItem, cursor, options);
 		items.push(...page.items);
+		if (items.length > MAX_LIST_ITEMS) throw new Error(`MCP ${method} exceeded ${MAX_LIST_ITEMS} items`);
 		if (page.nextCursor === undefined) return items;
 		if (cursors.has(page.nextCursor)) throw new Error(`MCP ${method} returned duplicate cursor: ${page.nextCursor}`);
 		cursors.add(page.nextCursor);

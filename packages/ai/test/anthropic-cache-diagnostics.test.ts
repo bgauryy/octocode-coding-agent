@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cacheMissDiagnostic } from "../src/api/anthropic-messages/cache-diagnostics.ts";
-import { handleAnthropicStreamEvent } from "../src/api/anthropic-messages/stream-events.ts";
+import { anthropicFrames } from "./anthropic-fetch-fixture.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
-import { createPendingAssistantMessage } from "../src/utils/assistant-message.ts";
-import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 import {
 	assistant,
 	capture,
@@ -116,8 +114,7 @@ describe("Anthropic cache miss reason", () => {
 		expect(cacheMissDiagnostic({ cache_miss_reason: { type: "previous_message_not_found" } })).toBeUndefined();
 	});
 
-	it("lands on the assistant message from message_start", () => {
-		const output = createPendingAssistantMessage(model);
+	it("lands on the assistant message from message_start", async () => {
 		const start = (diagnosticsValue: unknown) =>
 			({
 				type: "message_start",
@@ -128,19 +125,12 @@ describe("Anthropic cache miss reason", () => {
 					usage: { input_tokens: 2, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 9 },
 				},
 			}) as never;
-		const state = {
-			model,
-			output,
-			stream: new AssistantMessageEventStream(),
-			usageModel: model,
-			inputTransformations: undefined,
-		};
-		handleAnthropicStreamEvent(start(null), state);
-		expect(output.diagnostics).toBeUndefined();
-		handleAnthropicStreamEvent(
+		const empty = await anthropicFrames(model, [start(null)]).result();
+		expect(empty.diagnostics).toBeUndefined();
+		const output = await anthropicFrames(model, [
 			start({ cache_miss_reason: { type: "messages_changed", cache_missed_input_tokens: 1234 } }),
-			state,
-		);
+		]).result();
+		expect(output.stopReason, output.errorMessage).toBe("stop");
 		expect(output.responseId).toBe("msg_now");
 		expect(output.diagnostics).toMatchObject([
 			{ type: "cache_miss", details: { reason: "messages_changed", missedInputTokens: 1234 } },

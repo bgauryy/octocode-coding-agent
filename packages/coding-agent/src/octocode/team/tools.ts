@@ -30,6 +30,7 @@ import {
 	NOT_CHECKED_HELD,
 	PACKAGE_SCRIPT,
 	PACKAGE_SCRIPT_NOTE,
+	PACKAGE_SCRIPT_REPEAT,
 	POWERSHELL_HELD,
 } from "./tools/held-text.ts";
 import { namedReservation } from "./tools/named-reservation.ts";
@@ -168,7 +169,7 @@ export function registerCollab(
 			}
 		}
 		if (command !== undefined && held && PACKAGE_SCRIPT.test(command) && !options.shellReadOnly?.(command))
-			markConfined(event.toolCallId, PACKAGE_SCRIPT_NOTE);
+			markConfined(event.toolCallId, PACKAGE_SCRIPT_NOTE, PACKAGE_SCRIPT_REPEAT);
 		const files =
 			command !== undefined
 				? ((await options.shellWrites?.(command)) ?? [])

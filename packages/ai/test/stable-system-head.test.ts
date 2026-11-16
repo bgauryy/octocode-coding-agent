@@ -118,7 +118,8 @@ interface BedrockPayload {
 	toolConfig?: unknown;
 }
 interface GooglePayload {
-	config: { systemInstruction?: string; tools?: unknown };
+	systemInstruction?: unknown;
+	tools?: unknown;
 	contents: { role: string; parts: Record<string, unknown>[] }[];
 }
 interface CompletionsPayload {
@@ -151,13 +152,13 @@ describe("stable prompt head without mid-conversation system messages", () => {
 		const run = (context: TranscriptContext) =>
 			capture((options) => streamGoogle(googleModel, context, options)) as Promise<GooglePayload>;
 		const [a, b] = [await run(before), await run(after)];
-		expect(b.config.systemInstruction).toBe(a.config.systemInstruction);
-		expect(b.config.tools).toEqual(a.config.tools);
+		expect(b.systemInstruction).toEqual(a.systemInstruction);
+		expect(b.tools).toEqual(a.tools);
 		expect(b.contents.slice(0, 2)).toEqual(a.contents.slice(0, 2));
 		const trailing = b.contents.slice(3);
 		expect(trailing.every((content) => content.role === "user")).toBe(true);
 		expect(JSON.stringify(trailing)).toContain("docs and search connected");
-		expect(a.config.systemInstruction).not.toContain("docs connected");
+		expect(JSON.stringify(a.systemInstruction)).not.toContain("docs connected");
 	});
 
 	it("keeps the leading message and earlier messages identical on an openai-completions provider", async () => {

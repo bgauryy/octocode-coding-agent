@@ -1,7 +1,10 @@
-import type { GenerateContentResponse, GoogleGenAI, Part } from "@google/genai";
 import { describe, expect, it } from "vitest";
-import { convertMessages } from "../src/api/google-shared/messages.ts";
-import { streamGoogle } from "../src/api/google-shared/stream.ts";
+import { stream } from "../src/api/google-generative-ai.ts";
+interface Part {
+	text?: string;
+	thought?: boolean;
+	thoughtSignature?: string;
+}
 import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -21,32 +24,39 @@ const context = normalizeContext({
 	messages: [{ role: "user", content: "Hello", timestamp: 0 }],
 });
 async function replay(chunks: Part[][]) {
-	const client = {
-		models: {
-			generateContentStream: async function* () {
-				for (const parts of chunks)
-					yield {
-						candidates: [{ content: { parts } }],
-					} as GenerateContentResponse;
-				yield {
-					candidates: [{ finishReason: "STOP" }],
-				} as GenerateContentResponse;
-			},
-		},
-	} as unknown as GoogleGenAI;
-	const events = streamGoogle(
-		model,
-		context,
-		{},
-		{
-			name: "test",
-			streamName: "test",
-			prepare: () => ({ client, params: { model: model.id, contents: [] } }),
-		},
-	);
+	const frames = [
+		...chunks.map((parts) => ({ candidates: [{ index: 0, content: { role: "model", parts } }] })),
+		{ candidates: [{ index: 0, finishReason: "STOP" }] },
+	];
+	const events = stream(model, context, {
+		apiKey: "test-key",
+		fetch: async () =>
+			new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""), {
+				headers: { "content-type": "text/event-stream" },
+			}),
+	});
+	const deltas: string[] = [];
+	for await (const event of events) {
+		if (event.type === "text_delta" || event.type === "thinking_delta") deltas.push(event.delta);
+	}
 	const result = await events.result();
+	expect(deltas.join("")).toBe(
+		chunks
+			.flat()
+			.map((part) => part.text ?? "")
+			.join(""),
+	);
 	expect(result.stopReason).toBe("stop");
-	return convertMessages(model, normalizeContext({ messages: [result] }))[0].parts;
+	let contents: { parts?: Part[] }[] | undefined;
+	const replayed = await stream(model, normalizeContext({ messages: [result] }), {
+		apiKey: "test-key",
+		onPayload: (payload) => {
+			contents = (payload as { contents: { parts?: Part[] }[] }).contents;
+			throw new Error("request captured");
+		},
+	}).result();
+	expect(replayed.errorMessage).toBe("request captured");
+	return contents?.[0].parts;
 }
 
 describe("Google streaming thought signature boundaries", () => {

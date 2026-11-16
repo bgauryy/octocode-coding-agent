@@ -423,6 +423,8 @@ describe("Native features through the SDK", () => {
 		const full = /Full report: (.+) \(read only the parts you need\)/.exec(plain.text)?.[1];
 		expect(full ? fs.readFileSync(full, "utf8") : plain.text).toMatch(/"subagent":"1"/);
 		expect(isolated.text).toMatch(/refs\/octocode\/[\w-]+/);
+		// No item was named, so the saved change gets one: it is not done until merged or discarded.
+		expect(isolated.text).toMatch(/Tracked refs\/octocode\/[\w-]+ on B1/);
 		expect(fs.existsSync(path.join(cwd, "child.txt"))).toBe(false);
 		const id = /refs\/octocode\/([\w-]+)/.exec(isolated.text)![1];
 		await session.prompt(`/agents merge ${id}`);
@@ -504,16 +506,16 @@ describe("Native features through the SDK", () => {
 			calls(
 				nativeCall("backlog", {
 					op: "claim",
-					id: "B1",
+					id: "B2",
 					why: "Keep the answer correct",
 					goal: "The answer constant is 43; tests pass.",
 				}),
 			),
-			calls(nativeCall("backlog", { op: "done", id: "B1" })),
+			calls(nativeCall("backlog", { op: "done", id: "B2" })),
 			calls(
 				nativeCall("backlog", {
 					op: "done",
-					id: "B1",
+					id: "B2",
 					completion: {
 						summary: "Changed app.ts; verified by reading it back.",
 						files: [{ path: "app.ts", role: "changed" }],
@@ -546,9 +548,9 @@ describe("Native features through the SDK", () => {
 			say("done"),
 		]);
 		const [added, listed, claimed, noNote, done, saved, found, secret] = t.slice(1).map((turn) => turn.results[0]);
-		expect(added.text).toMatch(/^Added B1\b/);
-		expect(listed.text).toContain("B1");
-		expect(claimed.text).toMatch(/^Updated B1\b/);
+		expect(added.text).toMatch(/^Added B2\b/);
+		expect(listed.text).toContain("B2");
+		expect(claimed.text).toMatch(/^Updated B2\b/);
 		expect(noNote).toMatchObject({ isError: true });
 		expect(noNote.text).toMatch(/needs completion/);
 		expect(done).toMatchObject({ isError: false });
@@ -569,7 +571,7 @@ describe("Native features through the SDK", () => {
 		let out: string[];
 		try {
 			await session.prompt("/backlog add Document the board");
-			await session.prompt("/backlog B2 todo");
+			await session.prompt("/backlog B3 todo");
 			await session.prompt("/backlog");
 			await session.prompt("/memory add Tabs everywhere — the project indents with tabs");
 			await session.prompt("/memory");
@@ -580,9 +582,11 @@ describe("Native features through the SDK", () => {
 			notify.mockRestore();
 			runner.setUIContext(ui, "rpc");
 		}
-		const board = out.find((text) => /^Todo \(|^Done \(|^Ongoing \(/m.test(text) && text.includes("B1"))!;
-		expect(board).toMatch(/Todo \(1\)[\s\S]*B2[\s\S]*Document the board[\s\S]*Done \(1\)[\s\S]*B1/);
-		expect(out.some((text) => /^Moved B2\b/.test(text))).toBe(true);
+		const board = out.find((text) => /^Todo \(|^Done \(|^Ongoing \(/m.test(text) && text.includes("B2"))!;
+		expect(board).toMatch(
+			/Todo \(2\)[\s\S]*B3[\s\S]*Document the board[\s\S]*Land isolated change[\s\S]*Done \(1\)[\s\S]*B2/,
+		);
+		expect(out.some((text) => /^Moved B3\b/.test(text))).toBe(true);
 		expect(out.some((text) => /^Saved M\d+ .*Tabs everywhere/.test(text))).toBe(true);
 		const listed = out.find((text) => text.startsWith("Memories (auto on)"))!;
 		expect(listed).toMatch(/^Workspace:$/m);

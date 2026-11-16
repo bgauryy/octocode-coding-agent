@@ -339,6 +339,19 @@ export function fitHints(hints: readonly RankedHint[], width: number): KeyHintPa
 	return kept.map((entry) => entry.pair);
 }
 
+/**
+ * The move hint of every list page: `↑/↓ move` from the bound select keys. Rank it by how soon it may go on a narrow
+ * terminal; the default keeps it just after the confirm and cancel keys.
+ */
+export function moveHint(rank = 5): RankedHint {
+	const arrow = (key: string | undefined, fallback: string) =>
+		(key ?? fallback).replace(/^up$/, "↑").replace(/^down$/, "↓");
+	const keys = getKeybindings();
+	const up = arrow(keys.getKeys("tui.select.up")[0], "↑");
+	const down = arrow(keys.getKeys("tui.select.down")[0], "↓");
+	return [`${up}/${down}`, "move", rank];
+}
+
 /** One line of key hints, indented by `indent` columns; the last hint left is cut with an ellipsis, never wrapped. */
 export function renderHintLine(hints: readonly RankedHint[], width: number, indent = 1): string {
 	const room = Math.max(1, width - indent);
@@ -364,11 +377,6 @@ export class HintBar implements Component {
 	render(width: number): string[] {
 		return [renderHintLine(this.hints, width, this.indent)];
 	}
-}
-
-/** `1–20/48`: the visible span of a scrolling list, the one position label of every screen. */
-export function positionLabel(first: number, last: number, total: number): string {
-	return first === last ? `${first}/${total}` : `${first}–${last}/${total}`;
 }
 
 /**

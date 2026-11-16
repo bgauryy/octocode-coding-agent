@@ -137,8 +137,4 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 				this.settings.retry?.provider?.maxRetryDelayMs ?? SETTINGS_DEFAULTS.retry.provider.maxRetryDelayMs,
 		};
 	}
-
-	getWebSocketConnectTimeoutMs(): number | undefined {
-		return parseTimeoutSetting(this.settings.websocketConnectTimeoutMs, "websocketConnectTimeoutMs");
-	}
 }

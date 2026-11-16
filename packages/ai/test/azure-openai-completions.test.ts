@@ -23,7 +23,22 @@ const mockState = vi.hoisted(() => ({
 mockCompletionsFetch((params: CapturedCompletionsPayload, _request, url) => {
 	mockState.lastParams = params;
 	mockState.lastUrl = url;
-	mockState.dispatchedTo = "chat.completions";
+	mockState.dispatchedTo = new URL(url).pathname.endsWith("/responses") ? "responses" : "chat.completions";
+	if (mockState.dispatchedTo === "responses")
+		return completionsResponse([
+			{ type: "response.created", response: { id: "resp_1", created_at: 1, model: "gpt-4o-mini" } },
+			{
+				type: "response.completed",
+				response: {
+					id: "resp_1",
+					created_at: 1,
+					model: "gpt-4o-mini",
+					status: "completed",
+					output: [],
+					usage: { input_tokens: 1, output_tokens: 1 },
+				},
+			},
+		]);
 	return completionsResponse([
 		{
 			choices: [{ delta: {}, finish_reason: "stop" }],
@@ -31,16 +46,6 @@ mockCompletionsFetch((params: CapturedCompletionsPayload, _request, url) => {
 		},
 	]);
 });
-vi.mock("openai", () => ({
-	AzureOpenAI: class {
-		responses = {
-			create: () => {
-				mockState.dispatchedTo = "responses";
-				throw new Error("responses reached");
-			},
-		};
-	},
-}));
 
 const azure = azureProvider();
 

@@ -46,6 +46,7 @@ function host(isSubagent = false) {
 		modelRegistry: { getCachePolicy: () => ({ options: {} }) },
 		getContextUsage: () => ({ tokens: state.tokens, contextWindow: 100_000, percent: null }),
 		getSystemPrompt: () => "",
+		getSystemPromptOptions: () => ({ contextFiles: [] }),
 		sessionManager: {
 			getSessionId: () => "s",
 			getBranch: () => [],

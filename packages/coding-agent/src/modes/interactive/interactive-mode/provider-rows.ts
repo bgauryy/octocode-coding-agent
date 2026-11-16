@@ -1,84 +1,59 @@
-import type { CredentialInfo } from "@octocodeai/octocode-ai";
-import { providerAccessLabel } from "../../../core/provider-label.ts";
+import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
+import { type BadgeState, badge } from "../../../theme/page-kit.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
-import type { ModelRuntime } from "../../../core/model-runtime.ts";
-import type { CredentialState } from "../../../core/provider-composer/credential-state.ts";
-import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
 
-type Runtime = Pick<
-	ModelRuntime,
-	| "getProviders"
-	| "getProvider"
-	| "getProviderKind"
-	| "getProviderAuthStatus"
-	| "hasConfiguredAuth"
-	| "getAvailableSnapshot"
-	| "getPlanDisabledReason"
->;
+const BADGE_OF: Record<ProviderEntry["state"], BadgeState> = {
+	ready: "ready",
+	"needs-key": "attention",
+	expired: "attention",
+	paused: "attention",
+	"no-models": "attention",
+	orphaned: "broken",
+	refused: "broken",
+	disabled: "off",
+};
 
-/** Configuration is local evidence; only an explicit credential check proves access. */
-export function providerRows(
-	runtime: Runtime,
-	disabledProviders: readonly string[],
-	saved: readonly CredentialInfo[],
-	refused: ReadonlySet<string>,
-	/** Providers whose saved credential is expired; every other provider shows connected or not set. */
-	states: ReadonlyMap<string, CredentialState> = new Map(),
-) {
-	const disabledIds = new Set(disabledProviders);
-	const counts = new Map<string, number>();
-	for (const model of runtime.getAvailableSnapshot()) counts.set(model.provider, (counts.get(model.provider) ?? 0) + 1);
-	const groups: { configured: PageRow[]; attention: PageRow[]; disabled: PageRow[] } = {
-		configured: [],
-		attention: [],
-		disabled: [],
+/** The page-kit badge state of a provider. */
+export const providerBadge = (entry: ProviderEntry) => badge(BADGE_OF[entry.state]);
+
+const plural = (count: number) => `${count} ${count === 1 ? "model" : "models"}`;
+
+/** One row: the snapshot's sentence, its next step, where it is defined and how many models it offers. */
+function providerRow(entry: ProviderEntry): PageRow {
+	const shown = providerBadge(entry);
+	const parts = [entry.statusText];
+	if (entry.nextStep && entry.state !== "disabled") parts.push(entry.nextStep.label);
+	if (entry.definitionFile) parts.push(`defined in ${homeTilde(entry.definitionFile)}`);
+	else if (entry.state === "ready") parts.push("defined in built-in");
+	if (entry.defined && entry.state !== "needs-key") parts.push(plural(entry.models));
+	return {
+		id: `provider:${entry.id}`,
+		name: entry.name,
+		detail: parts.join(" · "),
+		badge: shown.text,
+		tone: shown.tone,
+		keys: { e: entry.disabled ? "enable" : "disable" },
 	};
-	const ids = new Set([
-		...runtime.getProviders().map((provider) => provider.id),
-		...saved.map((entry) => entry.providerId),
-	]);
-	const nameOf = (id: string) => runtime.getProvider(id)?.name ?? id;
-	for (const id of [...ids].sort((a, b) => nameOf(a).localeCompare(nameOf(b)))) {
-		const disabled = disabledIds.has(id);
-		const configured = runtime.getProviderAuthStatus(id).configured;
-		const stored = saved.some((entry) => entry.providerId === id);
-		if (!disabled && !runtime.hasConfiguredAuth(id) && !stored) continue;
-		const defined = runtime.getProvider(id) !== undefined;
-		const count = counts.get(id) ?? 0;
-		const paused = runtime.getPlanDisabledReason(id);
-		const expired = states.get(id) === "expired";
-		const needsAttention = !defined || !configured || expired || paused !== undefined || count === 0;
-		const state = !defined
-			? "saved credential · provider definition missing"
-			: refused.has(id)
-				? "Claude subscription token refused; use Claude Code in External agents"
-				: paused
-					? `plan paused: ${paused}`
-					: expired
-						? `expired · ${credentialSourceLabel(runtime.getProviderAuthStatus(id))} · sign in again`
-						: configured
-							? `${providerAccessLabel(runtime, id)} · ${credentialSourceLabel(runtime.getProviderAuthStatus(id))}`
-							: "not set; reconnect or remove it";
-		const row: PageRow = {
-			id: `provider:${id}`,
-			name: nameOf(id),
-			detail: `${state} · ${count} ${count === 1 ? "model" : "models"}`,
-			badge: disabled
-				? "disabled"
-				: !defined || refused.has(id)
-					? "unavailable"
-					: expired
-						? "expired"
-						: !configured
-							? "not set"
-							: paused
-								? "paused"
-								: count === 0
-									? "no models"
-									: "connected",
-			tone: !disabled && needsAttention ? "warning" : "muted",
-		};
-		groups[disabled ? "disabled" : needsAttention ? "attention" : "configured"].push(row);
+}
+
+export interface ProviderRowGroups {
+	attention: PageRow[];
+	ready: PageRow[];
+	off: PageRow[];
+	/** Badge states on screen, for the page legend. */
+	states: BadgeState[];
+}
+
+/** The listed providers of a snapshot, grouped for the main page. */
+export function providerRows(snapshot: ProviderSnapshot): ProviderRowGroups {
+	const groups: ProviderRowGroups = { attention: [], ready: [], off: [], states: [] };
+	for (const entry of snapshot.providers) {
+		if (!entry.listed) continue;
+		groups[entry.state === "ready" ? "ready" : entry.state === "disabled" ? "off" : "attention"].push(
+			providerRow(entry),
+		);
+		groups.states.push(BADGE_OF[entry.state]);
 	}
 	return groups;
 }

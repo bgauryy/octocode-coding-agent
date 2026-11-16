@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getCompat } from "../src/api/openai-completions/compat.ts";
-import { convertMessages } from "../src/api/openai-completions/messages.ts";
-import { getGemini25Family } from "../src/api/google-shared/params.ts";
-import { buildChatPayload } from "../src/api/mistral-conversations/request.ts";
+import { captureCompletionsMessages } from "./capture-completions-payload.ts";
+import { getGemini25Family } from "../src/api/ai-sdk/google-options.ts";
+import { captureMistralPayload } from "./mistral-payload-fixture.ts";
 import { DEFAULT_TOOL_CALL_ID_MAX_LENGTH, sanitizeToolCallId } from "../src/api/tool-call-id.ts";
 import { apiKeyEnvVars, findApiKeyEnvVars } from "../src/auth/api-key-env-vars.ts";
 import { findEnvKeys } from "../src/env-api-keys.ts";
@@ -39,7 +39,7 @@ describe("OpenAI Chat Completions tool-call ids", () => {
 			maxTokens: 100,
 		};
 	}
-	function toolCallIds(m: Model<"openai-completions">, id: string): string[] {
+	async function toolCallIds(m: Model<"openai-completions">, id: string): Promise<string[]> {
 		const toolResult: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: id,
@@ -68,7 +68,7 @@ describe("OpenAI Chat Completions tool-call ids", () => {
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hi", timestamp: 0 }, assistant, toolResult],
 		});
-		return convertMessages(m, context, getCompat(m))
+		return (await captureCompletionsMessages(m, context, getCompat(m)))
 			.filter((message) => message.role === "tool")
 			.map((message) => (message as { tool_call_id: string }).tool_call_id);
 	}
@@ -78,15 +78,15 @@ describe("OpenAI Chat Completions tool-call ids", () => {
 		expect(getCompat(model("groq")).toolCallIdMaxLength).toBeUndefined();
 	});
 
-	it("applies the compat limit to plain ids", () => {
+	it("applies the compat limit to plain ids", async () => {
 		const long = "x".repeat(60);
-		expect(toolCallIds(model("openai"), long)[0]).toHaveLength(40);
-		expect(toolCallIds(model("groq"), long)[0]).toHaveLength(60);
+		expect((await toolCallIds(model("openai"), long))[0]).toHaveLength(40);
+		expect((await toolCallIds(model("groq"), long))[0]).toHaveLength(60);
 	});
 
-	it("fits pipe-separated ids into 40 characters with a hash and keeps short ones readable", () => {
-		expect(toolCallIds(model("groq"), "call_1|item+1")[0]).toBe("call_1_item_1");
-		const hashed = toolCallIds(model("groq"), `call_1|${"i".repeat(80)}`)[0];
+	it("fits pipe-separated ids into 40 characters with a hash and keeps short ones readable", async () => {
+		expect((await toolCallIds(model("groq"), "call_1|item+1"))[0]).toBe("call_1_item_1");
+		const hashed = (await toolCallIds(model("groq"), `call_1|${"i".repeat(80)}`))[0];
 		expect(hashed.length).toBeLessThanOrEqual(40);
 		expect(hashed).toMatch(/^call_1_[a-z0-9]{8}$/);
 	});
@@ -176,7 +176,7 @@ describe("API-key environment variables", () => {
 });
 
 describe("Mistral non-vision placeholders", () => {
-	it("uses the shared tool-image placeholder for tool results the model cannot see", () => {
+	it("uses the shared tool-image placeholder for tool results the model cannot see", async () => {
 		const model = getBuiltinModel("mistral", "mistral-large-latest") as Model<"mistral-conversations"> | undefined;
 		if (!model) throw new Error("mistral model missing from the catalog");
 		const blind = { ...model, input: ["text"] as Model<"mistral-conversations">["input"] };
@@ -189,7 +189,7 @@ describe("Mistral non-vision placeholders", () => {
 			timestamp: 0,
 		};
 		const context = normalizeContext({ messages: [{ role: "user", content: "x", timestamp: 0 }, result] });
-		const payload = buildChatPayload(blind, context, context.messages);
+		const payload = await captureMistralPayload(blind, context);
 		const tool = payload.messages.find((m) => m.role === "tool") as { content: Array<{ text: string }> };
 		expect(tool.content[0].text).toBe("[tool error] (tool image omitted: model does not support images)");
 	});

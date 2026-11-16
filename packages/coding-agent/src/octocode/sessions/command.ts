@@ -12,10 +12,11 @@ import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
 import { listingScope, quickList } from "./catalog.ts";
 import { pickerRemoval } from "./delete.ts";
+import { checkoutText } from "../../core/worktree-path.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { workspaces } from "../../../../db/src/api.ts";
+import { agentRuns, workspaces } from "../../../../db/src/api.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import fs from "node:fs";
 
@@ -37,8 +38,23 @@ interface ListedSession {
 	extra: SessionExtra | undefined;
 	/** The backlog items it holds and the team agent it runs as. */
 	links?: SessionLinks;
+	/** Child agents it started (directly), from the run history. */
+	children?: number;
 	/** The first message of the session it was forked from. */
 	parentPrompt?: string;
+}
+
+/** How many child agents each of `ids` started itself, from the agent run history; sessions with none are absent. */
+function childCounts(index: SessionIndex | undefined, ids: readonly string[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	if (!index) return counts;
+	for (const id of ids) {
+		const n = agentRuns
+			.inSessionTree(index.agent.db, id)
+			.filter((run) => run.kind === "child" && run.parentSessionId === id).length;
+		if (n > 0) counts.set(id, n);
+	}
+	return counts;
 }
 
 /** Whether a session's process is running now (this one included). */
@@ -54,10 +70,13 @@ function sessionLine(row: ListedSession, current: string | undefined, all: boole
 	const { info, extra } = row;
 	const parts = [`${live(row) ? GLYPH.live : GLYPH.pending} ${title(row)}`];
 	if (all) parts.push(shownLine(path.basename(info.cwd) || info.cwd || "?", 40));
+	const checkout = checkoutText(info.cwd);
 	if (extra?.branch) parts.push(shownLine(extra.branch, 40));
+	if (checkout && checkout !== "main") parts.push(shownLine(checkout, 40));
 	parts.push(`${shortDuration(now - info.modified.getTime())} ago`);
 	if (extra && (extra.cost > 0 || extra.unpriced === 1))
 		parts.push(formatCost({ cost: extra.cost, unpriced: extra.unpriced === 1 }));
+	if (row.children) parts.push(`${row.children} agent${row.children === 1 ? "" : "s"}`);
 	if (extra && extra.files_changed > 0)
 		parts.push(`${extra.files_changed} file${extra.files_changed === 1 ? "" : "s"}`);
 	if (row.links?.items.length) parts.push(row.links.items.map(itemRef).join(" "));
@@ -118,12 +137,19 @@ async function listSessions(
 	const ids = shown.map((info) => info.id);
 	const extras = index?.extras(ids) ?? new Map<string, SessionExtra>();
 	const links = index?.links(ids) ?? new Map<string, SessionLinks>();
+	const counts = childCounts(index, ids);
 	const needle = query.toLowerCase();
 	const firstByPath = new Map(infos.map((info) => [path.resolve(info.path), info.firstMessage]));
 	return shown
 		.map((info) => {
 			const linked = links.get(info.id);
-			return { info, extra: extras.get(info.id), ...(linked ? { links: linked } : {}) };
+			const children = counts.get(info.id);
+			return {
+				info,
+				extra: extras.get(info.id),
+				...(linked ? { links: linked } : {}),
+				...(children ? { children } : {}),
+			};
 		})
 		.filter(
 			({ info, extra }) =>
@@ -149,8 +175,13 @@ interface SessionsCommandOptions {
 }
 
 /** A row's extras as the picker shows them: what the session table and the backlog and team links say. */
-function pickerExtras(extra: SessionExtra | undefined, links: SessionLinks | undefined): SessionExtras {
+function pickerExtras(
+	extra: SessionExtra | undefined,
+	links: SessionLinks | undefined,
+	children: number | undefined,
+): SessionExtras {
 	return {
+		...(children ? { children } : {}),
 		...(extra
 			? {
 					live: liveProcess(extra.pid, extra.pid_started),
@@ -170,8 +201,13 @@ function pickerExtras(extra: SessionExtra | undefined, links: SessionLinks | und
 function pickerExtrasOf(index: SessionIndex | undefined, ids: readonly string[]): Map<string, SessionExtras> {
 	const extras = index?.extras(ids) ?? new Map<string, SessionExtra>();
 	const links = index?.links(ids) ?? new Map<string, SessionLinks>();
+	const children = childCounts(index, ids);
 	return new Map(
-		ids.flatMap((id) => (extras.has(id) || links.has(id) ? [[id, pickerExtras(extras.get(id), links.get(id))]] : [])),
+		ids.flatMap((id) =>
+			extras.has(id) || links.has(id) || children.has(id)
+				? [[id, pickerExtras(extras.get(id), links.get(id), children.get(id))]]
+				: [],
+		),
 	);
 }
 
@@ -183,7 +219,10 @@ async function pick(
 	start: { all: boolean; query: string; current: string | undefined; only?: ReadonlySet<string> },
 ): Promise<void> {
 	const { current } = start;
-	const row = (info: SessionInfo): ListedSession => ({ info, extra: index?.get(info.id) });
+	const row = (info: SessionInfo): ListedSession => {
+		const children = childCounts(index, [info.id]).get(info.id);
+		return { info, extra: index?.get(info.id), ...(children ? { children } : {}) };
+	};
 	const picked = await pickSession({
 		initialScope: start.all ? "all" : "current",
 		initialQuery: start.query,

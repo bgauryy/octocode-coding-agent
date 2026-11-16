@@ -1,4 +1,5 @@
 import type { AgentDb } from "./db.ts";
+import * as agentEvents from "./queries/agent-events.ts";
 import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
 import * as timers from "./queries/timers.ts";
@@ -19,7 +20,7 @@ import {
 /**
  * History housekeeping: rows of the history tables older than `archiveAfterDays` (default 14) move from the agent
  * database into gzip monthly JSONL files under the Octocode home (`AgentDb.archiveDir`), and archived rows older than
- * `keepDays` (default 30, 0 = never) are dropped; agent runs (`agent_runs`) are dropped at `keepDays` without an archive. Backlog items, notes and comments are never deleted by age. The caller
+ * `keepDays` (default 30, 0 = never) are dropped; agent runs (`agent_runs`) and agent events (`agent_events`, except each workspace's newest) are dropped at `keepDays` without an archive. Backlog items, notes and comments are never deleted by age. The caller
  * passes the windows (`HistoryWindows`): one database and one archive serve every repository and process, so the value
  * must be the user's global one, never a per-project setting that could prune another project's history.
  */
@@ -66,6 +67,7 @@ export function archiveHistory(
 		assertActive();
 		trimArchive(agentDb.archiveDir, now, keepMs, assertActive);
 		withoutWaiting(db, () => {
+			history.ensureAtIndexes(db);
 			for (const { table, family, key } of FAMILIES) {
 				const oldest = history.oldestAt(db, table);
 				if (oldest === undefined || oldest >= cutoff) continue;
@@ -91,6 +93,14 @@ export function archiveHistory(
 			// Agent runs are the audit of who ran what: they stay for the keep window and are not archived.
 			assertActive();
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => agentRuns.purgeBefore(db, now - keepMs));
+			// The agent event log: rows past the window go in batches; each workspace's newest event stays (see `agentEvents.purgeBefore`).
+			if (Number.isFinite(keepMs))
+				for (;;) {
+					assertActive();
+					const purged = agentDb.transaction(() => agentEvents.purgeBefore(db, now - keepMs, BATCH));
+					result.deleted += purged;
+					if (purged < BATCH) break;
+				}
 			// Timers likewise: ended ones, and active ones left overdue and untouched for the whole window.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
 		});

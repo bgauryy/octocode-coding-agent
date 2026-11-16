@@ -87,7 +87,7 @@ describe("models tool agents and credentials", () => {
 			asked.push(provider);
 			return provider === "openai" ? "subscription" : "API key";
 		};
-		const text = await run({}, undefined, { getProviderKind });
+		const text = await run({ provider: "openai" }, undefined, { getProviderKind });
 		expect(asked.sort()).toEqual(["gateway", "openai"]);
 		expect(text).toContain("\n  openai · subscription · saved credential");
 		expect(text).toContain("\n  gateway · API key · saved credential");

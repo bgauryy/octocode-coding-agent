@@ -1,8 +1,8 @@
-import type { GenerateContentParameters } from "@google/genai";
+import type { GoogleWirePayload as GenerateContentParameters } from "./google-fetch-fixture.ts";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { streamSimple as streamSimpleGoogle } from "../src/api/google-generative-ai.ts";
-import { buildChatPayload } from "../src/api/mistral-conversations/request.ts";
+import { captureMistralPayload } from "./mistral-payload-fixture.ts";
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
 import type { Model, ThinkingLevelMap, Tool } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
@@ -68,7 +68,7 @@ describe("Google supportsTemperature and disabled thinking", () => {
 		compat,
 	});
 	const payload = (m: Model<"google-generative-ai">, reasoning?: "low") =>
-		capture<GenerateContentParameters>((onPayload) =>
+		capture<{ generationConfig?: GenerateContentParameters["config"] }>((onPayload) =>
 			streamSimpleGoogle(m, normalizeContext({ messages: [userMessage] }), {
 				apiKey: "k",
 				temperature: 0.4,
@@ -78,14 +78,16 @@ describe("Google supportsTemperature and disabled thinking", () => {
 		);
 
 	it("sends temperature by default and omits it when disabled", async () => {
-		expect((await payload(model())).config?.temperature).toBe(0.4);
-		expect((await payload(model({ supportsTemperature: false }))).config?.temperature).toBeUndefined();
+		expect((await payload(model())).generationConfig?.temperature).toBe(0.4);
+		expect((await payload(model({ supportsTemperature: false }))).generationConfig?.temperature).toBeUndefined();
 	});
 
 	it("disables a budget model with budget 0 unless its off mapping says otherwise", async () => {
-		expect((await payload(model())).config?.thinkingConfig).toEqual({ thinkingBudget: 0 });
-		expect((await payload(model(undefined, { off: "128" }))).config?.thinkingConfig).toEqual({ thinkingBudget: 128 });
-		expect((await payload(model(undefined, { off: null }))).config?.thinkingConfig).toEqual({});
+		expect((await payload(model())).generationConfig?.thinkingConfig).toEqual({ thinkingBudget: 0 });
+		expect((await payload(model(undefined, { off: "128" }))).generationConfig?.thinkingConfig).toEqual({
+			thinkingBudget: 128,
+		});
+		expect((await payload(model(undefined, { off: null }))).generationConfig?.thinkingConfig).toEqual({});
 	});
 });
 
@@ -111,16 +113,16 @@ describe("Mistral supportsTemperature and supportsStrictMode", () => {
 	};
 	const build = (m: Model<"mistral-conversations">) => {
 		const context = normalizeContext({ messages: [userMessage], tools: [tool] });
-		return buildChatPayload(m, context, [userMessage], { temperature: 0.4 });
+		return captureMistralPayload(m, context, { temperature: 0.4 });
 	};
 
-	it("omits temperature when disabled", () => {
-		expect(build(model()).temperature).toBe(0.4);
-		expect(build(model({ supportsTemperature: false })).temperature).toBeUndefined();
+	it("omits temperature when disabled", async () => {
+		expect((await build(model())).temperature).toBe(0.4);
+		expect((await build(model({ supportsTemperature: false }))).temperature).toBeUndefined();
 	});
 
-	it("sends strict tools unless the model does not support them", () => {
-		expect(build(model()).tools?.[0]?.function.strict).toBe(true);
-		expect(build(model({ supportsStrictMode: false })).tools?.[0]?.function.strict).toBe(false);
+	it("sends strict tools unless the model does not support them", async () => {
+		expect((await build(model())).tools?.[0]?.function.strict).toBe(true);
+		expect((await build(model({ supportsStrictMode: false }))).tools?.[0]?.function.strict).toBe(false);
 	});
 });

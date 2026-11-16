@@ -79,9 +79,8 @@ export class McpAbortError extends Error {
 	}
 }
 
-export function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/** Alias of the contracts guard, kept for this module's consumers. */
+export const isObject = isRecord;
 
 export function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
@@ -110,6 +109,7 @@ export function parseJsonRpcMessage(value: unknown): JsonRpcMessage {
 		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid JSON-RPC message");
 	}
 }
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import {
 	isJSONRPCNotification,
 	isJSONRPCRequest,

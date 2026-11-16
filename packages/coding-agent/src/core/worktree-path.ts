@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /** The folder `<repo root>/.octocode` that `octocode/shared/home.ts` names `OCTOCODE_DIR` (`core/` may not import that layer). */
@@ -41,4 +41,10 @@ export function worktreeRecoveryHint(missingFolder: string): string | undefined 
 	const worktree = octocodeWorktreeAt(missingFolder);
 	if (!worktree) return undefined;
 	return `This was worktree ${worktree.name}: recreate it with /worktree new ${worktree.name} (or octocode --worktree ${worktree.name}) from a checkout of the same repository, then resume the session.`;
+}
+
+/** `checkoutLabel` of a session folder, with `(gone)` after the label of a worktree whose folder no longer exists. */
+export function checkoutText(folder: string): string | undefined {
+	const label = checkoutLabel(folder);
+	return label?.startsWith("worktree ") && !existsSync(folder) ? `${label} (gone)` : label;
 }

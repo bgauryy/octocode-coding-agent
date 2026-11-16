@@ -1,12 +1,12 @@
-import type OpenAI from "openai";
 import type {
+	ChatCompletionTool,
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionDeveloperMessageParam,
 	ChatCompletionMessageParam,
 	ChatCompletionSystemMessageParam,
 	ChatCompletionToolMessageParam,
 	ChatCompletionContentPartText,
-} from "openai/resources/chat/completions.js";
+} from "../ai-sdk/openai-wire-types.ts";
 import type { CacheRetention } from "../../types.ts";
 import { instructionBlockTexts, keepsToolBreakpoint, type InstructionBlocks } from "../../utils/instruction-split.ts";
 import {
@@ -22,7 +22,7 @@ type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
 	cache_control?: OpenAICompatCacheControl;
 };
 
-type ChatCompletionToolWithCacheControl = OpenAI.Chat.Completions.ChatCompletionTool & {
+type ChatCompletionToolWithCacheControl = ChatCompletionTool & {
 	cache_control?: OpenAICompatCacheControl;
 };
 
@@ -51,7 +51,7 @@ export function getCompatCacheControl(
  */
 export function applyAnthropicCacheControl(
 	messages: ChatCompletionMessageParam[],
-	tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
+	tools: ChatCompletionTool[] | undefined,
 	cacheControl: OpenAICompatCacheControl | undefined,
 	instructionCacheControl: OpenAICompatCacheControl | undefined,
 	splitSystem?: InstructionBlocks,
@@ -125,7 +125,7 @@ function addCacheControlToLastConversationMessage(
 }
 
 function addCacheControlToLastTool(
-	tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
+	tools: ChatCompletionTool[] | undefined,
 	cacheControl: OpenAICompatCacheControl,
 ): void {
 	if (!tools || tools.length === 0) {

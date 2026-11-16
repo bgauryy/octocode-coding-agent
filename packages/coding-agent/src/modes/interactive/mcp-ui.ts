@@ -8,13 +8,35 @@ import type { ExtensionCommandContext } from "../../core/features/types.ts";
 import { type Theme } from "../../theme/theme.ts";
 import { AuthUrlComponent } from "./components/auth-url.ts";
 import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";
-import { keyHint, keyText } from "../../theme/theme-tui-helpers.ts";
+import type { EnterVerb } from "../../theme/page-kit.ts";
+import { keyHint } from "../../theme/theme-tui-helpers.ts";
 import { ManagePageComponent } from "../../theme/manage-page.ts";
 
 type Keybinding = Parameters<typeof keyHint>[0];
 
 /** The terminal of the view the `/mcp` command runs in: its pages are sized to its rows. */
 let viewTerminal: { rows: number } | undefined;
+
+/** The MCP manager's confirm labels in the page vocabulary; `choose` is a selection. */
+const ENTER_VERBS: Readonly<Record<string, EnterVerb>> = {
+	open: "open",
+	run: "run",
+	choose: "select",
+	inspect: "inspect",
+	confirm: "confirm",
+	edit: "edit",
+	close: "close",
+};
+
+function enterVerb(label: string): EnterVerb | undefined {
+	if (label === "") return undefined;
+	const verb = ENTER_VERBS[label];
+	if (!verb) throw new Error(`Unknown MCP page confirm label: ${label}`);
+	return verb;
+}
+
+const rowKeys = (keys: ReadonlyArray<{ key: string; label: string }>): Record<string, string> =>
+	Object.fromEntries(keys.map(({ key, label }) => [key, label]));
 
 const ui: McpHostPorts["ui"] = {
 	keyHint: (keybinding, description) => keyHint(keybinding as Keybinding, description),
@@ -27,15 +49,19 @@ const ui: McpHostPorts["ui"] = {
 			facts: options.facts,
 			alerts: options.alerts,
 			notes: options.notes,
-			sections: [{ heading: options.heading, rows: options.rows, empty: options.empty }],
-			initialId: options.initialId,
-			keys: options.keys?.map(({ key }) => key),
-			onKey: options.onKey,
-			hints: [
-				...(options.rows.length ? ([[keyText("tui.select.confirm"), options.confirmLabel, 0]] as const) : []),
-				...(options.rows.length ? (options.keys ?? []).map(({ key, label }) => [key, label, 1] as const) : []),
-				[keyText("tui.select.cancel"), options.cancelLabel, 2],
+			sections: [
+				{
+					heading: options.heading,
+					rows: options.keys?.length
+						? options.rows.map((row) => ({ ...row, keys: rowKeys(options.keys ?? []) }))
+						: options.rows,
+					empty: options.empty,
+				},
 			],
+			initialId: options.initialId,
+			onKey: options.onKey,
+			nested: options.cancelLabel !== "close",
+			enter: enterVerb(options.confirmLabel),
 			onSelect: options.onSelect,
 			onHighlight: options.onHighlight,
 			onCancel: options.onCancel,

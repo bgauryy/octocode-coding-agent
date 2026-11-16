@@ -22,10 +22,10 @@ export interface AgentEnd {
 	headline?: string;
 }
 
-/** Why an agent needs the user: its process waits for an approval dialog, or it asked this session a question that still waits for the answer. */
+/** Why an agent waits: a user dialog, or a message awaiting this session's agent. */
 export interface Need {
-	kind: "approval" | "ask";
-	/** The newest unanswered question to this session (`ask`). */
+	kind: "approval" | "ask" | "parent";
+	/** The newest unanswered message to this session's agent. */
 	message?: Traffic;
 	/** How many questions wait. */
 	count: number;
@@ -38,7 +38,7 @@ export interface PanelEntry {
 	doneAt?: number;
 	/** How the run ended, when the host reported it. */
 	end?: AgentEnd;
-	/** Set while the agent waits for the user. */
+	/** Set while the agent waits for a dialog or a message reply. */
 	need?: Need;
 	/** Set when it works in its own worktree (a checkout other than this session's): the worktree's folder. */
 	isolated?: { folder: string };
@@ -47,7 +47,17 @@ export interface PanelEntry {
 /** What a panel row says about an agent: the design state (mark and colour) and its word. */
 export interface PanelState {
 	state: UiState;
-	label: "needs you" | "working" | "idle" | "left" | "done" | "partial" | "blocked" | "failed" | "stopped";
+	label:
+		| "needs you"
+		| "asks parent"
+		| "working"
+		| "idle"
+		| "left"
+		| "done"
+		| "partial"
+		| "blocked"
+		| "failed"
+		| "stopped";
 }
 
 const ENDED: Record<AgentOutcome, PanelState> = {
@@ -64,12 +74,12 @@ const ENDED: Record<AgentOutcome, PanelState> = {
  */
 export function panelState({ member, doneAt, end, need }: PanelEntry, now: number): PanelState {
 	if (doneAt !== undefined) return end ? { ...ENDED[end.outcome] } : { state: "pending", label: "left" };
-	if (need) return { state: "waiting", label: "needs you" };
+	if (need) return { state: "waiting", label: need.kind === "parent" ? "asks parent" : "needs you" };
 	return shownWorking(member, now) ? { state: "running", label: "working" } : { state: "pending", label: "idle" };
 }
 
-/** Whether a row waits on the user: a live agent that needs an answer, or a run that ended blocked. */
-export const needsAttention = (state: PanelState): boolean => state.label === "needs you" || state.label === "blocked";
+/** Whether a row waits on the user rather than another agent. */
+export const needsAttention = (state: PanelState): boolean => state.label === "needs you";
 
 /** The colour role of `state`'s word and of its mark. */
 export const panelColor = (state: PanelState) => STATE_COLOR[state.state];

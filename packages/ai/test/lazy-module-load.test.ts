@@ -8,7 +8,22 @@ const aiEntryUrl = new URL("../src/index.ts", import.meta.url).href;
 const compatEntryUrl = new URL("../src/compat.ts", import.meta.url).href;
 const providersAllUrl = new URL("../src/providers/all.ts", import.meta.url).href;
 
-const SDK_SPECIFIERS = ["@anthropic-ai/sdk", "openai", "@google/genai", "@aws-sdk/client-bedrock-runtime"] as const;
+const SDK_SPECIFIERS = [
+	"@anthropic-ai/sdk",
+	"@ai-sdk/anthropic",
+	"openai",
+	"@google/genai",
+	"@ai-sdk/amazon-bedrock",
+	"@ai-sdk/mistral",
+	"@ai-sdk/openai",
+	"@ai-sdk/google",
+	"@ai-sdk/google-vertex",
+	"@ai-sdk/azure",
+	"@ai-sdk/openai-compatible",
+	"google-auth-library",
+	"@aws-sdk/credential-providers",
+	"aws4fetch",
+] as const;
 
 type ProbeResult = {
 	loadedSpecifiers: string[];
@@ -94,10 +109,11 @@ describe("lazy provider module loading", () => {
 				maxTokens: 8192,
 			};
 			const context = { messages: [{ role: "user", content: "hi" }] };
-			await compat.anthropicMessagesApi().streamSimple(model, context).result();
+			const fetch = async () => new Response("{}", { status: 400 });
+			await compat.anthropicMessagesApi().streamSimple(model, context, { apiKey: "test", fetch }).result();
 		`);
 
-		expect(result.loadedSpecifiers).toEqual(["@anthropic-ai/sdk"]);
+		expect(result.loadedSpecifiers).toEqual(["@ai-sdk/anthropic"]);
 	});
 
 	it("loads only the Anthropic SDK when dispatching through streamSimple", () => {
@@ -106,9 +122,24 @@ describe("lazy provider module loading", () => {
 			const { getBuiltinModel } = await import(${JSON.stringify(providersAllUrl)});
 			const model = getBuiltinModel("anthropic", "claude-sonnet-4-6");
 			const context = { messages: [{ role: "user", content: "hi" }] };
-			await compat.streamSimple(model, context).result();
+			const fetch = async () => new Response("{}", { status: 400 });
+			await compat.streamSimple(model, context, { apiKey: "test", fetch }).result();
 		`);
 
-		expect(result.loadedSpecifiers).toEqual(["@anthropic-ai/sdk"]);
+		expect(result.loadedSpecifiers).toEqual(["@ai-sdk/anthropic"]);
+	});
+
+	it("loads only the Bedrock SDK when dispatching a Bedrock model", () => {
+		const result = runProbe(`
+			const compat = await import(${JSON.stringify(compatEntryUrl)});
+			const { getBuiltinModel } = await import(${JSON.stringify(providersAllUrl)});
+			const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+			const context = { messages: [{ role: "user", content: "hi" }] };
+			const fetch = async () => new Response("{}", { status: 400 });
+			await compat.streamSimple(model, context, { apiKey: "test", env: {}, fetch }).result();
+		`);
+
+		// aws4fetch is Bedrock's own request signer.
+		expect(result.loadedSpecifiers).toEqual(["@ai-sdk/amazon-bedrock", "aws4fetch"]);
 	});
 });

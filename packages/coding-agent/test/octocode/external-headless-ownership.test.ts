@@ -118,3 +118,47 @@ process.stdin.on("end", () => { fs.writeFileSync(${JSON.stringify(eof)}, "eof");
 		}
 	},
 );
+
+it.skipIf(process.platform === "win32")("stops a helper the CLI forks after its first result line", async () => {
+	const cwd = tmp("octocode-headless-late-helper-");
+	const script = path.join(cwd, "late.cjs");
+	const journal = path.join(cwd, "helper.json");
+	fs.writeFileSync(
+		script,
+		`
+const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+let started = false;
+process.stdin.on("data", () => {
+  if (started) return; started = true;
+  process.stdout.write(JSON.stringify({ type: "result", subtype: "success", result: "late reply" }) + "\\n");
+  setTimeout(() => {
+    const helper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    fs.writeFileSync(${JSON.stringify(journal)}, String(helper.pid));
+  }, 100);
+});
+// The CLI lingers after its input ends, so a poll sees the helper before the root exits and orphans it.
+process.stdin.on("end", () => setTimeout(() => process.exit(0), 1500));
+`,
+	);
+	const reply = headlessTurn({
+		runner: "claude-code",
+		command: process.execPath,
+		args: [script, ...HEADLESS_ARGS],
+		cwd,
+		sessionCwd: cwd,
+		text: "start",
+		signal: new AbortController().signal,
+		onActivity: () => undefined,
+		awake: () => undefined,
+	});
+	let helper: number | undefined;
+	try {
+		expect((await reply).text).toBe("late reply");
+		helper = Number(fs.readFileSync(journal, "utf8"));
+		expect(helper).toBeGreaterThan(0);
+		await expect.poll(() => processAlive(helper!), { timeout: 3000 }).toBe(false);
+	} finally {
+		if (helper && processAlive(helper)) process.kill(helper, "SIGKILL");
+	}
+});

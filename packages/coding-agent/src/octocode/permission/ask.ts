@@ -22,6 +22,7 @@ import {
 	reasonAsks,
 	runsUnasked,
 	sessionStartMode,
+	SPAWN_GRANTABLE,
 } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type CheckHost, checkPermission, selectedFileQueries } from "./ask/check.ts";
@@ -374,12 +375,11 @@ export class Permission {
 	/** The default dialog: allow once, allow exactly this for the session (when it can be named), deny, deny with a note. */
 	readonly #select: Dialog = async (ctx, request) => selectAnswer(ctx, request, this.mode, this.#relay, this.#nonce);
 
-	/** Whether this session's own mode allows every class of a subagent's prompt and no reason on it asks: the parent may answer it itself. */
+	/** Whether the user already allowed every class of a subagent's prompt here (mode, or a kind a child may inherit) and no reason asks: the parent answers it itself. */
 	allows(classes: readonly ActionClass[], reasons: readonly AskReason[]): boolean {
-		return (
-			classes.every((each) => decide(this.mode, each) === "allow") &&
-			!reasons.some((reason) => reasonAsks(this.mode, reason))
-		);
+		const kind = (each: ActionClass) => this.#kinds.has(each) && SPAWN_GRANTABLE.has(each);
+		const granted = (each: ActionClass) => decide(this.mode, each) === "allow" || kind(each);
+		return classes.every(granted) && !reasons.some((reason) => reasonAsks(this.mode, reason));
 	}
 
 	/** Records an audit entry a subagent sent (already validated by `childAuditEntry`): under its own name, in this session's log and tallies. */

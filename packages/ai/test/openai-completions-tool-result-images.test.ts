@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertMessages } from "../src/api/openai-completions.ts";
+import { captureCompletionsMessages } from "./capture-completions-payload.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model, OpenAICompletionsCompat, ToolResultMessage, Usage } from "../src/types.ts";
@@ -77,8 +77,8 @@ function buildEmptyToolResult(toolCallId: string, timestamp: number, text = ""):
 	};
 }
 
-describe("openai-completions convertMessages", () => {
-	it("omits empty text parts from user messages with images", () => {
+describe("openai-completions SDK wire messages", () => {
+	it("omits empty text parts from user messages with images", async () => {
 		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model: Model<"openai-completions"> = {
 			...baseModel,
@@ -98,7 +98,7 @@ describe("openai-completions convertMessages", () => {
 			],
 		});
 
-		expect(convertMessages(model, context, compat)).toEqual([
+		expect(await captureCompletionsMessages(model, context, compat)).toEqual([
 			{
 				role: "user",
 				content: [{ type: "image_url", image_url: { url: "data:image/png;base64,ZmFrZQ==" } }],
@@ -106,7 +106,7 @@ describe("openai-completions convertMessages", () => {
 		]);
 	});
 
-	it("batches tool-result images after consecutive tool results", () => {
+	it("batches tool-result images after consecutive tool results", async () => {
 		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model: Model<"openai-completions"> = {
 			...baseModel,
@@ -138,7 +138,7 @@ describe("openai-completions convertMessages", () => {
 			],
 		});
 
-		const messages = convertMessages(model, context, compat);
+		const messages = await captureCompletionsMessages(model, context, compat);
 		const roles = messages.map((message) => message.role);
 		expect(roles).toEqual(["user", "assistant", "tool", "tool", "user"]);
 
@@ -153,7 +153,7 @@ describe("openai-completions convertMessages", () => {
 	// Whitespace-only cases.
 	it.each(["", "\r\n", " \n\t"])(
 		"uses '(no tool output)' placeholder for tool result text %j without images",
-		(text) => {
+		async (text) => {
 			const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 			const model: Model<"openai-completions"> = {
 				...baseModel,
@@ -181,7 +181,7 @@ describe("openai-completions convertMessages", () => {
 				],
 			});
 
-			const messages = convertMessages(model, context, compat);
+			const messages = await captureCompletionsMessages(model, context, compat);
 			const toolMessage = messages.find((m) => m.role === "tool") as { role: "tool"; content: string } | undefined;
 			expect(toolMessage).toBeTruthy();
 			expect(toolMessage?.content).toBe("(no tool output)");

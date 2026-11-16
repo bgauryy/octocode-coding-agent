@@ -70,7 +70,6 @@ async function chainHandoff(
 function queuedChainText(
 	id: string,
 	role: string,
-	goal: string,
 	after: readonly Prerequisite[],
 	working: (name: string) => string | undefined,
 ): string {
@@ -79,7 +78,7 @@ function queuedChainText(
 		const by = working(name);
 		return by ? `${name} (${by} works on it)` : name;
 	});
-	return `Queued ${id} (${role}: ${goal}): starts when ${names.join(", ")} ${names.length > 1 ? "are" : "is"} done; it holds no slot, paths or item until then. Its report arrives as a message; cancel with \`coordinate\` \`stop\` ${id}.`;
+	return `Queued ${id} (${role}): starts when ${names.join(", ")} ${names.length > 1 ? "are" : "is"} done; it holds no slot, paths or item until then. Its report arrives as a message; cancel with \`coordinate\` \`stop\` ${id}.`;
 }
 
 /** A queued run: it waits for its prerequisites, takes what they left, and tells the coordinator when it starts. */
@@ -149,34 +148,32 @@ export function queueRun(
 export function queuedResult(
 	runs: Pick<AgentRuns, "items">,
 	run: Run,
-	goal: string,
 	after: readonly Prerequisite[],
 	details: RunDetails,
 	notes: string,
 ): AgentToolResult<RunDetails> {
 	details.after = after.map(prerequisiteName);
 	const working = (name: string) => [...runs.items].find(([, ref]) => ref === name)?.[0];
-	return textResult(`${queuedChainText(run.identity.id, run.identity.role, goal, after, working)}${notes}`, details);
+	return textResult(`${queuedChainText(run.identity.id, run.identity.role, after, working)}${notes}`, details);
 }
 
-/** A held queued child `id` starts now; the call's result, or undefined when `id` is no queued child. */
+/** A queued or held child `id` starts now; the call's result, or undefined when `id` is no queued child. */
 export function startHeld(runs: Pick<AgentRuns, "chain">, id: string): AgentToolResult<RunDetails> | undefined {
 	if (!runs.chain?.get(id)) return undefined;
 	const refused = runs.chain.start(id);
 	if (refused) throw new Error(refused);
-	return textResult(`Starting held ${id} now; its report arrives as a message.`);
+	return textResult(`Starting queued ${id} now; its report arrives as a message.`);
 }
 
 /** The result of a background call that queued for a slot or for the paths of a running child (not for prerequisites). */
 export function queuedText(
 	runs: Pick<AgentRuns, "running">,
 	run: Pick<Run, "identity" | "route">,
-	goal: string,
 	waitsForSiblings: boolean,
 	notes: string,
 ): string {
 	const wait = waitsForSiblings
 		? "it holds no paths yet: it waits for the children holding them, then for a slot"
 		: `${runs.running.size - 1} subagents are ahead of it or running, and it starts when a slot frees`;
-	return `Queued ${run.identity.id} (${run.identity.role}: ${goal}) in the background: ${wait}. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`;
+	return `Queued ${run.identity.id} (${run.identity.role}) in the background: ${wait}. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`;
 }

@@ -14,7 +14,7 @@ import type {
 	ToggleableSourceId,
 } from "../../../core/provider-sources/types.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { badge } from "../../../theme/page-kit.ts";
 import type { PageResult } from "./provider-detail.ts";
 import { piConfigDirs, showPiProviders } from "./provider-pi.ts";
 import { type PageContext, signInToProvider } from "./provider-signin.ts";
@@ -54,8 +54,9 @@ function sourceRow(source: ProviderSource): PageRow {
 		id: sourceRowId(source.id),
 		name: source.label,
 		detail: source.paths.length > 2 ? `${shown}, …` : shown,
-		badge: source.state.enabled ? "on" : "off",
-		tone: source.state.enabled ? "success" : "muted",
+		badge: badge(source.state.enabled ? "ready" : "off").text,
+		tone: badge(source.state.enabled ? "ready" : "off").tone,
+		...(source.toggleable ? { keys: { e: source.state.enabled ? "turn off" : "turn on" } } : {}),
 	};
 }
 
@@ -80,10 +81,14 @@ function fileRow(file: CustomModelsFile, index: number): PageRow {
 		name: `${file.origin} models.json`,
 		detail: `${file.path}${defines}`,
 		...(file.unreadable
-			? { badge: "unreadable", tone: "warning" as const }
+			? {
+					badge: badge("broken").text,
+					tone: badge("broken").tone,
+					detail: `${file.path} · unreadable; fix or remove the file`,
+				}
 			: file.exists
 				? {}
-				: { badge: "not found", tone: "muted" as const }),
+				: { badge: badge("off").text, tone: badge("off").tone, detail: `${file.path} · not found` }),
 	};
 }
 
@@ -99,7 +104,6 @@ export async function showSourcesPage(
 		const choice = await showPage(ctx.host, {
 			title: "Provider sources and custom models",
 			initialId,
-			keys: ["e"],
 			sections: [
 				{ heading: "Sources", rows: view.sources.map(sourceRow) },
 				{
@@ -109,11 +113,7 @@ export async function showSourcesPage(
 				},
 				{ heading: "Custom models", rows: view.files.map(fileRow) },
 			],
-			hints: [
-				[keyText("tui.select.confirm"), "open", 0],
-				["e", "toggle source", 2],
-				[keyText("tui.select.cancel"), "back", 0],
-			],
+			nested: true,
 		});
 		if (!choice) return "again";
 		initialId = choice.id;
@@ -217,10 +217,7 @@ async function showSourceDetail(
 				empty: source.toggleable ? undefined : `${source.label} is ours and always on.`,
 			},
 		],
-		hints: [
-			[keyText("tui.select.confirm"), "run", 0],
-			[keyText("tui.select.cancel"), "back", 1],
-		],
+		nested: true,
 	});
 	const run = choice ? actions.get(choice.id) : undefined;
 	if (!run) return "again";

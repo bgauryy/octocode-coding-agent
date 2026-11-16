@@ -122,6 +122,12 @@ export function ItemDetail({
 						)}
 					</Property>
 				)}
+				{it.workers && it.workers.length > 0 && (
+					<Property label="Subagents">
+						{it.workers.join(", ")}
+						{it.assignee && <span className="muted"> · for {it.assignee}</span>}
+					</Property>
+				)}
 				<Property label="Created">
 					<RelativeTime at={it.createdAt} now={index.now} /> <span className="muted">by {it.createdBy}</span>
 				</Property>

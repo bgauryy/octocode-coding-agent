@@ -936,6 +936,26 @@ describe("InteractiveMode.showLoadedResources", () => {
 		];
 	}
 
+	test("folds budgets into rows and keeps model commands and the legend", () => {
+		const fake = createShowLoadedResourcesThis({
+			quietStartup: false,
+			contextFiles: [{ path: "/tmp/AGENTS.md", content: "rules" }],
+			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "review" }],
+		});
+		fake.session.model = { id: "test-model", contextWindow: 100 };
+		fake.session.modelRuntime = { getAvailableSnapshot: () => [{ provider: "local", id: "test-model" }] };
+		fake.session.systemPrompt = `<project_context>\n${"a".repeat(100)}\n</project_context>\n<available_skills>\n${"b".repeat(100)}\n</available_skills>`;
+		loadedResources.showLoadedResources(createFakeHost(fake), { force: true });
+		const output = renderAll(fake.loadedResourcesContainer);
+		expect(output).toMatch(/Context\s+⚠/);
+		expect(output).toMatch(/Skills\s+⚠/);
+		expect(output).toContain("/4 chars");
+		expect(output).not.toMatch(/Skill list too long|Context files too long/);
+		expect(output).toContain("test-model · 1 providers · 1 models · /model · /providers");
+		expect(output).toContain("ctrl+o details");
+		expect(output).not.toMatch(/Hooks|Plugins/);
+	});
+
 	test("shows a compact resource listing by default", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
@@ -947,10 +967,18 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toMatch(/^Skills\s+1/m);
+		expect(output).toMatch(/^Skills\s+✓ 1/m);
 		// Names are for ctrl+o: collapsed, the section is one row with a count and where the skills came from.
-		expect(output).toMatch(/Skills\s+1\s+other 1/);
+		expect(output).toMatch(/Skills\s+✓ 1\s+0\/8.0k chars.*octocode context check/);
 		expect(output).not.toContain("commit");
+		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 100)).toBe(
+			[
+				"Skills   ✓ 1  0/8.0k chars · octocode context check · /harness",
+				"Model    ⚠ 1  none selected · 0 providers · 0 models · /model · /providers",
+				"Harness  ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness",
+				"✓ ready  ⚠ needs action · ctrl+o details",
+			].join("\n"),
+		);
 	});
 
 	test("shows full resource listing when expanded", () => {
@@ -965,7 +993,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toMatch(/^Skills\s+1/m);
+		expect(output).toMatch(/^Skills\s+✓ 1/m);
 		expect(output).toMatch(/commit\s+\/tmp\/skill\/SKILL\.md/);
 	});
 
@@ -982,7 +1010,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toMatch(/^Skills\s+1/m);
+		expect(output).toMatch(/^Skills\s+✓ 1/m);
 		expect(output).toMatch(/commit\s+\/tmp\/skill\/SKILL\.md/);
 	});
 
@@ -1007,8 +1035,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const render = () => renderAll(fakeThis.loadedResourcesContainer);
 		const initial = render();
 		expect(initial.indexOf("Skills")).toBeLessThan(initial.indexOf("MCP "));
-		expect(initial).toMatch(/^MCP\s+2\s+○ docs disabled · octocode/m);
-		expect(initial).toContain("○ docs disabled");
+		expect(initial).toMatch(/^MCP\s+✓ 2\s+1 on \(octocode\) · 1 off \(docs\)/m);
+		expect(initial).toContain("1 off (docs)");
 		expect(initial).not.toContain("connecting");
 		// A connection state that moves on after the row scrolled off must not touch the row: the renderer would clear and
 		// redraw the whole scrollback for it.
@@ -1037,7 +1065,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			{ ...server, name: "extra", state: "connected" },
 		]);
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(2);
-		expect(render()).toMatch(/^MCP\s+3\s+.*✗ octocode failed/m);
+		expect(render()).toMatch(/^MCP\s+✗ 3/m);
 		// After the listing is disposed, status changes no longer reach it.
 		loadedResources.disposeLoadedResources(fakeThis.loadedResourcesContainer);
 		setMcpSessionStatus(events, [{ ...server, name: "other" }]);
@@ -1055,7 +1083,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toMatch(/^Extensions\s+2/m);
+		expect(output).toMatch(/^Extensions\s+✓ 2/m);
 		expect(output).toContain("answer.ts, btw.ts");
 		expect(output).not.toContain("extensions/answer.ts");
 	});
@@ -1073,10 +1101,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1124,10 +1152,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  3  alpha/one, beta/one, gamma/one
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 3  alpha/one, beta/one, gamma/one · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1157,10 +1185,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  1  plan-mode
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 1  plan-mode · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1190,10 +1218,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  1  plan-mode
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 1  plan-mode · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1232,10 +1260,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  2  plan-mode, webfetch.ts
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 2  plan-mode, webfetch.ts · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1274,10 +1302,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  2  bar, foo
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 2  bar, foo · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1316,10 +1344,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  2  alpha/tools, beta/tools
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 2  alpha/tools, beta/tools · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1349,10 +1377,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  1  main.ts
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 1  main.ts · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1385,10 +1413,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  1  pi-markdown-preview
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 1  pi-markdown-preview · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1427,10 +1455,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  2  primary-package, primary-package:../sibling-package
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 2  primary-package, primary-package:../sibling-package · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1472,10 +1500,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Hooks       0
-			Plugins     0
-			Extensions  2  primary-package, primary-package:../sibling-package
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Extensions  ✓ 2  primary-package, primary-package:../sibling-package · /harness
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`,
 		);
 	});
@@ -1493,24 +1521,25 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-			"Hooks       0
-			Plugins     0
-			Extensions  8
-			               project
-			                 /tmp/project/.octocode/extensions/answer.ts
-			                 /tmp/project/.octocode/extensions/local-index
-			                 git:github.com/HazAT/pi-interactive-subagents
-			                   extensions
-			                   extensions/subagents
-			                 npm:@scope/pi-scoped
-			                   extensions
-			                 npm:pi-markdown-preview
-			                   extensions
-			               user
-			                 /tmp/agent/extensions/user-index
-			               path
-			                 /tmp/temp/cli-extension.ts
-			Harness     3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness"
+			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+
+			Extensions  ✓ 8  /harness
+			                 project
+			                   /tmp/project/.octocode/extensions/answer.ts
+			                   /tmp/project/.octocode/extensions/local-index
+			                   git:github.com/HazAT/pi-interactive-subagents
+			                     extensions
+			                     extensions/subagents
+			                   npm:@scope/pi-scoped
+			                     extensions
+			                   npm:pi-markdown-preview
+			                     extensions
+			                 user
+			                   /tmp/agent/extensions/user-index
+			                 path
+			                   /tmp/temp/cli-extension.ts
+			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · ctrl+o details"
 		`);
 	});
 
@@ -1531,8 +1560,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toMatch(/^Context\s+\d/m);
-		expect(output).toContain("project AGENTS.md ×2");
+		expect(output).toMatch(/^Context\s+✓ \d/m);
+		expect(output).toContain("0/8.0k chars");
 		expect(output).not.toContain(`${cwd.replace(/\\/g, "/")}/AGENTS.md`);
 	});
 
@@ -1551,8 +1580,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toMatch(/^Context\s+\d/m);
-		expect(output).toContain("path SYSTEM.md · path APPEND_SYSTEM.md · project AGENTS.md");
+		expect(output).toMatch(/^Context\s+✓ \d/m);
+		expect(output).toContain("0/8.0k chars");
 	});
 
 	test("shows full context paths when expanded", () => {
@@ -1573,7 +1602,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer).replace(/\\/g, "/");
-		expect(output).toMatch(/^Context\s+\d/m);
+		expect(output).toMatch(/^Context\s+✓ \d/m);
 		expect(output).toContain("~/.octocode/agent/AGENTS.md");
 		expect(output).toContain("~/Development/octocodecode/AGENTS.md");
 		expect(output).toContain("project");
@@ -1586,7 +1615,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const contextFiles = [{ path: path.join(homedir(), ".octocode", "agent", "AGENTS.md") }];
 		const collapsed = createShowLoadedResourcesThis({ quietStartup: false, contextFiles });
 		loadedResources.showLoadedResources(createFakeHost(collapsed), { force: true });
-		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/\(.*to expand\)/);
+		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/ctrl\+o details/);
 		const expanded = createShowLoadedResourcesThis({ quietStartup: false, contextFiles, toolsExpanded: true });
 		loadedResources.showLoadedResources(createFakeHost(expanded), { force: true });
 		expect(renderAll(expanded.loadedResourcesContainer)).not.toContain("to expand");
@@ -1671,9 +1700,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const wide = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 120);
 		// One line says what was skipped, where the winner loads from and how to list them.
-		expect(wide).toMatch(
-			/^⚠ 3 duplicate skills skipped: a skill with the same name loads from \/a \(ctrl\+o lists them\)$/m,
-		);
+		expect(wide).toMatch(/^⚠ 3 duplicate skills skipped, kept \/a \(ctrl\+o lists\)$/m);
 		expect(wide).not.toContain("Skill conflicts");
 		const narrow = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 40).split("\n");
 		const start = narrow.findIndex((line) => line.startsWith("⚠ 3 duplicate skills"));
@@ -1681,7 +1708,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const wrapped = narrow.slice(start).filter((line) => line.length > 0);
 		expect(wrapped.length).toBeGreaterThan(1);
 		expect(wrapped.every((line) => line.length <= 40)).toBe(true);
-		expect(wrapped.join(" ").replace(/\s+/g, " ")).toContain("(ctrl+o lists them)");
+		expect(wrapped.join(" ").replace(/\s+/g, " ")).toContain("(ctrl+o lists)");
 	});
 
 	test("separates its blocks by one blank line and leaves the gap after it to what follows", () => {

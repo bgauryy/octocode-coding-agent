@@ -35,19 +35,27 @@ export function noteSavedRef(backlog: Backlog, item: string, ref: string, patch?
 	);
 }
 
-/** Notes the merge of `ref` on each item that links it; the refs of those items, as `B12`. */
-function noteMergedRef(backlog: Backlog, ref: string, into: string): string[] {
+/** Notes the merge (or, without `into`, the discard) of `ref` on each item that links it; the refs of those items, as `B12`. */
+function noteMergedRef(backlog: Backlog, ref: string, into?: string): string[] {
 	const link = refLink(backlog, ref);
 	const linked = backlog.store
 		.list()
 		.items.filter((item) => item.links.some((each) => JSON.stringify(each.target) === JSON.stringify(link.target)));
 	for (const item of linked)
-		backlog.store.update(item.ref, { note: `The isolated change on ${ref} was merged into ${into}.` }, backlog.actor);
+		backlog.store.update(
+			item.ref,
+			{
+				note: into
+					? `The isolated change on ${ref} was merged into ${into}.`
+					: `The isolated change on ${ref} was discarded, not merged: finish the item another way or close it.`,
+			},
+			backlog.actor,
+		);
 	return linked.map((item) => item.ref);
 }
 
-/** `/agents merge`'s footer: the items the merge was noted on, or why it could not be (never throws: the merge itself happened). */
-export function noteMerge(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">, ref: string, into: string): string {
+/** `/agents merge`'s (and, without `into`, `/agents discard`'s) footer: the items noted, or why not (never throws: the git change happened). */
+export function noteMerge(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">, ref: string, into?: string): string {
 	try {
 		const items = noteMergedRef(openBacklog(ctx, { isSubagent: false }), ref, into);
 		return items.length ? `\nNoted on ${items.join(", ")}.` : "";

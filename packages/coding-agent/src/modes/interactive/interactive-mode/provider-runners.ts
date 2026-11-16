@@ -14,7 +14,7 @@ import { runnerRoute } from "../../../octocode/external/runner-headless.ts";
 import { checkRunners, isConnected, listRunners, type RunnerState } from "../../../octocode/external/runner-status.ts";
 import { RUNNERS, runnerSpec } from "../../../octocode/external/runners.ts";
 import { holdTerminalForChild } from "../../../utils/foreground-child.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { type BadgeState, badge } from "../../../theme/page-kit.ts";
 import type { PageRow, PageSection } from "../../../theme/manage-page.ts";
 import type { ProviderSourceEnvironment } from "../../../core/provider-sources/types.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
@@ -87,23 +87,24 @@ function row(state: RunnerState, enabled: boolean): PageRow {
 			]
 				.filter(Boolean)
 				.join(" · ");
+	const shown = badge(runnerBadgeState(state, enabled));
 	const connected = isConnected(state);
+	const lead = state.cli && !connected ? `${signedOutWord(state)} · ` : "";
 	return {
 		id: runnerRowId(state.id),
 		name: state.name,
-		detail,
-		// Connected but not used: `externalAgents` is off, so no task starts in it. The badge says so.
-		badge: connected
-			? enabled
-				? "connected"
-				: "connected · off for tasks"
-			: state.cli
-				? state.auth?.signedIn === false
-					? "signed out"
-					: "not ready"
-				: "absent",
-		tone: connected ? "success" : state.cli ? "warning" : "muted",
+		detail: `${lead}${detail}${connected && !enabled ? " · off for tasks" : ""}`,
+		badge: shown.text,
+		tone: shown.tone,
+		keys: { e: enabled ? "disable for tasks" : "enable for tasks" },
 	};
+}
+
+const signedOutWord = (state: RunnerState): string => (state.auth?.signedIn === false ? "signed out" : "not ready");
+
+/** Connected and used by tasks is ready; connected but off for tasks, or not installed, is off; installed but not usable needs action. */
+function runnerBadgeState(state: RunnerState, enabled: boolean): BadgeState {
+	return isConnected(state) ? (enabled ? "ready" : "off") : state.cli ? "attention" : "off";
 }
 
 /** The environment runners are looked up and checked in: the page's own (tests point it at a temporary home), else this process's. */
@@ -267,10 +268,7 @@ export async function showRunnerDetail(
 			{ label: "Agent tasks", value: active ? "enabled · /reload applies changes" : "off · enable this CLI to use it" },
 		],
 		sections: [{ heading: "ACTIONS", rows: [...actions.keys()].map((label) => ({ id: label, name: label })) }],
-		hints: [
-			[keyText("tui.select.confirm"), "run", 0],
-			[keyText("tui.select.cancel"), "back", 1],
-		],
+		nested: true,
 	});
 	await (choice ? actions.get(choice.id) : undefined)?.();
 	return "again";

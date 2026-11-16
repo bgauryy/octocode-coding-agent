@@ -1,115 +1,63 @@
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const bedrockMock = vi.hoisted(() => ({
-	constructorCalls: [] as Array<Record<string, unknown>>,
-}));
-
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
-
-	class BedrockRuntimeClient {
-		constructor(config: Record<string, unknown>) {
-			bedrockMock.constructorCalls.push(config);
-		}
-
-		send(): Promise<never> {
-			return Promise.reject(new Error("mock send"));
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
-	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
-	};
+import { stream, type BedrockOptions } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockModel, bedrockContext, bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
+const dirs: string[] = [];
+afterEach(() => {
+	vi.unstubAllEnvs();
+	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-
-import type { BedrockOptions } from "../src/api/bedrock-converse-stream.ts";
-import { stream as streamBedrock } from "../src/compat.ts";
-import { getBuiltinModel } from "../src/providers/all.ts";
-import type { Context, Model } from "../src/types.ts";
-
-const context: Context = {
-	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-};
-
-async function captureClientConfig(
-	model: Model<"bedrock-converse-stream">,
-	options: BedrockOptions = {},
-): Promise<Record<string, unknown>> {
-	bedrockMock.constructorCalls.length = 0;
-	await streamBedrock(model, context, { cacheRetention: "none", ...options }).result();
-	expect(bedrockMock.constructorCalls).toHaveLength(1);
-	return bedrockMock.constructorCalls[0];
+async function authorization(options: BedrockOptions = {}) {
+	let auth: string | null = null;
+	const result = await stream(bedrockModel, bedrockContext, {
+		...options,
+		fetch: async (_input, init) => {
+			auth = new Headers(init?.headers).get("authorization");
+			return bedrockResponse(bedrockTextEvents);
+		},
+	}).result();
+	expect(result.stopReason, result.errorMessage).toBe("stop");
+	return auth;
 }
-
-describe("bedrock credential priority", () => {
-	afterEach(() => {
-		vi.unstubAllEnvs();
+describe("Bedrock credential priority", () => {
+	it.each([undefined, "ambient-profile"])("uses env keys with ambient profile %s", async (profile) => {
+		vi.stubEnv("AWS_ACCESS_KEY_ID", "ambient-key");
+		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "ambient-secret");
+		vi.stubEnv("AWS_PROFILE", profile);
+		expect(await authorization()).toContain("Credential=ambient-key/");
 	});
-
-	it("prefers explicit and scoped profiles over ambient AWS access keys", async () => {
-		vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
-		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "secretexample");
-		const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-
-		let config = await captureClientConfig(model, { profile: "explicit-profile" });
-
-		expect(config.profile).toBe("explicit-profile");
-		expect(config.credentials).toBeUndefined();
-
-		config = await captureClientConfig(model, { env: { AWS_PROFILE: "scoped-profile" } });
-
-		expect(config.profile).toBe("scoped-profile");
-		expect(config.credentials).toBeUndefined();
+	it.each(["explicit", "scoped"])("uses %s profile over ambient keys", async (source) => {
+		const dir = mkdtempSync(join(tmpdir(), "bedrock-auth-"));
+		dirs.push(dir);
+		const filepath = join(dir, "credentials");
+		writeFileSync(filepath, "[fixture]\naws_access_key_id = profile-key\naws_secret_access_key = profile-secret\n");
+		vi.stubEnv("AWS_ACCESS_KEY_ID", "ambient-key");
+		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "ambient-secret");
+		const env = {
+			AWS_SHARED_CREDENTIALS_FILE: filepath,
+			AWS_CONFIG_FILE: join(dir, "missing"),
+			...(source === "scoped" ? { AWS_PROFILE: "fixture" } : {}),
+		};
+		expect(await authorization({ env, ...(source === "explicit" ? { profile: "fixture" } : {}) })).toContain(
+			"Credential=profile-key/",
+		);
 	});
-
-	it("uses ambient AWS access keys when no profile is configured", async () => {
-		vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
-		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "secretexample");
-		const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-
-		const config = await captureClientConfig(model);
-
-		expect(config.profile).toBeUndefined();
-		expect(config.credentials).toEqual({
-			accessKeyId: "AKIAEXAMPLE",
-			secretAccessKey: "secretexample",
-		});
+	it("uses scoped keys and session token", async () => {
+		expect(
+			await authorization({
+				env: { AWS_ACCESS_KEY_ID: "scoped-key", AWS_SECRET_ACCESS_KEY: "scoped-secret", AWS_SESSION_TOKEN: "session" },
+			}),
+		).toContain("Credential=scoped-key/");
 	});
-
-	it("uses ambient AWS access keys when only an ambient profile is set", async () => {
-		vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
-		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "secretexample");
-		vi.stubEnv("AWS_PROFILE", "ambient-profile");
-		const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-
-		const config = await captureClientConfig(model);
-
-		expect(config.profile).toBe("ambient-profile");
-		expect(config.credentials).toEqual({
-			accessKeyId: "AKIAEXAMPLE",
-			secretAccessKey: "secretexample",
-		});
+	it("allows a dynamic credential provider", async () => {
+		const provider = vi.fn(async () => ({ accessKeyId: "dynamic-key", secretAccessKey: "dynamic-secret" }));
+		expect(await authorization({ credentialProvider: provider })).toContain("Credential=dynamic-key/");
+		expect(provider).toHaveBeenCalledOnce();
+	});
+	it.each(["bearerToken", "apiKey", "env"])("uses bearer source %s without credentials", async (source) => {
+		const options = source === "env" ? { env: { AWS_BEARER_TOKEN_BEDROCK: "real-token" } } : { [source]: "real-token" };
+		expect(await authorization(options)).toBe("Bearer real-token");
 	});
 });

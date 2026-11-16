@@ -6,7 +6,7 @@ import { confirm } from "../ask/question.ts";
 import { teamWorkspace } from "../team/store/workspace.ts";
 import { type WorktreeTrustRequest, worktreeTrustTitle } from "../worktrees/approval.ts";
 import type { Identity } from "./process/env.ts";
-import { createWorktree, finishWorktree, isolationReport, type Worktree } from "./worktree.ts";
+import { createWorktree, finishWorktree, isolationReport, reopenWorktree, type Worktree } from "./worktree.ts";
 
 /** An isolated run's private worktree; `finish` commits its changes to the agent's ref and removes it, once, and returns the text for the report. */
 export class Isolation {
@@ -19,12 +19,18 @@ export class Isolation {
 	private readonly id: string;
 	/** The backlog item the child works on, kept with the worktree so a later prune can link what it saves. */
 	private readonly item: string | undefined;
-	constructor(id: string, item?: string) {
+	/** A resumed isolated child's saved ref and recorded worktree path: `start` recreates the worktree from them. */
+	private readonly reopen: { ref: string; path: string } | undefined;
+	constructor(id: string, item?: string, reopen?: { ref: string; path: string }) {
 		this.id = id;
 		this.item = item;
+		this.reopen = reopen;
 	}
 
-	/** Creates the worktree and returns the child's cwd. The worktree is its own git root: the child stays on this team. */
+	/**
+	 * Creates the worktree (a resumed child's: recreates it, `reopenWorktree`) and returns the child's cwd. The worktree is
+	 * its own git root: the child stays on this team.
+	 */
 	async start(
 		ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">,
 		identity: Identity,
@@ -41,7 +47,9 @@ export class Isolation {
 					return confirmed(question, reply);
 				}
 			: undefined;
-		this.worktree = await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, approve);
+		this.worktree = this.reopen
+			? await reopenWorktree(ctx.cwd, this.id, this.reopen, this.item, approve)
+			: await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, approve);
 		identity.isolation = { path: this.worktree.path, repo: this.worktree.repo, cwd: this.worktree.cwd };
 		identity.workspace = teamWorkspace(ctx.cwd);
 		return this.worktree.cwd;

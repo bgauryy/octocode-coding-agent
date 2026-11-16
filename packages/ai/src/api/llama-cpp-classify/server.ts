@@ -1,33 +1,9 @@
 import type { ClassifierApi, ClassifierModel, ClassifierOptions } from "../../types.ts";
-import { headersToRecord, providerHeadersToRecord } from "../../utils/headers.ts";
-import { retryProviderRequest } from "../../utils/provider-retry.ts";
+import { postClassifierRequest } from "../classifier-shared.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export const LABEL = "llama.cpp";
-
-interface HttpError extends Error {
-	status: number | undefined;
-	headers: Headers | undefined;
-	body: string;
-}
-
-function httpError(response: Response, body: string): HttpError {
-	const error = new Error(`${LABEL} returned ${response.status}`) as HttpError;
-	error.status = response.status;
-	error.headers = response.headers;
-	error.body = body;
-	return error;
-}
-
-function timeoutError(timeoutMs: number): HttpError {
-	const error = new Error(`Request timed out after ${timeoutMs}ms`) as HttpError;
-	error.name = "TimeoutError";
-	error.status = undefined;
-	error.headers = undefined;
-	error.body = "";
-	return error;
-}
 
 export interface RequestContext {
 	model: ClassifierModel<ClassifierApi>;
@@ -36,49 +12,18 @@ export interface RequestContext {
 }
 
 async function post(request: RequestContext, path: string, body: unknown, observe: boolean): Promise<unknown> {
-	const { model, root, options } = request;
-	let payload = body;
-	if (observe) {
-		const transformed = await options?.onPayload?.(payload, model);
-		if (transformed !== undefined) payload = transformed;
-	}
-	const requestFetch = options?.fetch ?? globalThis.fetch;
-	const headers =
-		providerHeadersToRecord(
-			{
-				"content-type": "application/json",
-				...(options?.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
-			},
-			model.headers,
-			options?.headers,
-		) ?? {};
-	const { response, json } = await retryProviderRequest(
-		async () => {
-			const timeoutSignal = options?.timeoutMs !== undefined ? AbortSignal.timeout(options.timeoutMs) : undefined;
-			const signal =
-				options?.signal && timeoutSignal
-					? AbortSignal.any([options.signal, timeoutSignal])
-					: (options?.signal ?? timeoutSignal);
-			try {
-				const next = await requestFetch(`${root}${path}`, {
-					method: "POST",
-					headers,
-					body: JSON.stringify(payload),
-					signal,
-				});
-				if (!next.ok) throw httpError(next, await next.text());
-				return { response: next, json: (await next.json()) as unknown };
-			} catch (error) {
-				if (timeoutSignal?.aborted && !options?.signal?.aborted) throw timeoutError(options!.timeoutMs!);
-				throw error;
-			}
+	return postClassifierRequest(
+		LABEL,
+		new URL(`${request.root}${path}`),
+		request.model,
+		body,
+		request.options,
+		undefined,
+		{
+			optionalAuth: true,
+			observe,
 		},
-		{ maxRetries: options?.maxRetries ?? 2, maxRetryDelayMs: options?.maxRetryDelayMs, signal: options?.signal },
 	);
-	if (observe) {
-		await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
-	}
-	return json;
 }
 
 function tokenIds(body: unknown): number[] {

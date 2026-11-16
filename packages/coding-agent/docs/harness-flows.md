@@ -149,7 +149,7 @@ The `auto` budget counts bytes, not a share of the context window, so changing m
 | Promoted by use      | At least 10% of declaring sessions called or read it, and at least 20 sessions of that group declared it                                                                   |
 | Promoted by refusals | Refused calls exceed one per session that used the tool                                                                                                                    |
 | Snapshot             | Each group keeps one for 1 hour, built at the next session start after it expires; the session, its resumptions and its subagents keep it                                  |
-| Native tools         | `memory` and `timer` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`                                |
+| Native tools         | `memory` and `wait` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`                                |
 | No data              | Nothing is promoted; deleting the counts file defers every tool again                                                                                                      |
 
 The default stays `"recent"`. Counts are a hint: an unreadable file reads as no data.

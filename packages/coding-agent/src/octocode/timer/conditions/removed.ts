@@ -31,7 +31,7 @@ function shellWord(value: unknown, fallback: string): string {
 }
 
 const note = (kind: RemovedKind, value: unknown) =>
-	`until.${kind} was removed; set the timer with until.command instead: ${REMOVED[kind](value)}`;
+	`until.${kind} was removed; set the wait with on check.result and this command instead: ${REMOVED[kind](value)}`;
 
 /** Why an `until` argument is refused when it names a removed kind, with the `command` that replaces it; else undefined. */
 export function removedUntil(until: unknown): string | undefined {

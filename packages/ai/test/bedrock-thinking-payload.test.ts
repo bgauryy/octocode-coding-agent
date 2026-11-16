@@ -4,6 +4,7 @@ import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Context, Model } from "../src/types.ts";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
+import { bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
 
 interface BedrockThinkingPayload {
 	additionalModelRequestFields?: {
@@ -27,13 +28,6 @@ const ADAPTIVE_WITH_BINDING = {
 	block_binding: { prefix_mismatch_behavior: "drop_block" },
 };
 
-class PayloadCaptured extends Error {
-	constructor() {
-		super("payload captured");
-		this.name = "PayloadCaptured";
-	}
-}
-
 function makeContext(): Context {
 	return {
 		messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
@@ -46,11 +40,14 @@ async function capturePayload(
 ): Promise<BedrockThinkingPayload> {
 	let capturedPayload: BedrockThinkingPayload | undefined;
 	const s = streamBedrock(model, normalizeContext(makeContext()), {
+		apiKey: "test",
+		env: {},
+		fetch: async () => bedrockResponse(bedrockTextEvents),
 		...options,
 		reasoning: options?.reasoning ?? "high",
 		onPayload: (payload) => {
 			capturedPayload = payload as BedrockThinkingPayload;
-			throw new PayloadCaptured();
+			return payload;
 		},
 	});
 
@@ -248,9 +245,12 @@ describe("Bedrock OpenAI reasoning payload", () => {
 			getBuiltinModel("amazon-bedrock", "global.openai.gpt-6-sol"),
 			normalizeContext(makeContext()),
 			{
+				apiKey: "test",
+				env: {},
+				fetch: async () => bedrockResponse(bedrockTextEvents),
 				onPayload: (payload) => {
 					captured = payload as BedrockThinkingPayload;
-					throw new PayloadCaptured();
+					return payload;
 				},
 			},
 		);
@@ -327,9 +327,12 @@ describe("Application inference profile support", () => {
 				messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
 			}),
 			{
+				apiKey: "test",
+				env: {},
+				fetch: async () => bedrockResponse(bedrockTextEvents),
 				onPayload: (payload) => {
 					capturedPayload = payload;
-					throw new PayloadCaptured();
+					return payload;
 				},
 			},
 		);

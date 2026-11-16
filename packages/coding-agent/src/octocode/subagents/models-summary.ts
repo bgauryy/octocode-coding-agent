@@ -1,10 +1,29 @@
+import { deriveAgentRoute } from "@octocodeai/octocode-contracts/config";
 import type { ProviderKind } from "../../core/model-runtime/catalog.ts";
 import { credentialSourceLabel } from "../../core/provider-composer/types.ts";
 import type { ExtensionContext } from "../../core/features/index.ts";
 import type { Catalog } from "./catalog.ts";
 import { canRunTask, type ModelRef } from "./model.ts";
-import { modelCost, priceRank, priceText } from "./models-command.ts";
+import { modelLine, modelCost, priceRank, priceText } from "./models-command.ts";
 import { describeHealth, providerHealth } from "./provider-health.ts";
+
+/** All connected models, including ones unsuitable for tasks; credential marks reflect the last check or run. */
+export function compactModels(available: readonly ModelRef[], catalog: Catalog | undefined): string {
+	return [
+		"Models ($/M in/out · context; ✓ credential worked, ✗ failed, ? untried):",
+		...[...available]
+			.sort(
+				(a, b) =>
+					a.provider.localeCompare(b.provider) || priceRank(modelCost(a, catalog)) - priceRank(modelCost(b, catalog)),
+			)
+			.map((model) => {
+				const status = providerHealth.get(model.provider);
+				const mark = status ? (status.ok ? "✓" : "✗") : "?";
+				return `${modelLine(model, undefined, catalog).trim().replace(" per M in/out", "")} · ${mark}`;
+			}),
+		...(available.length ? [] : ["No models are configured."]),
+	].join("\n");
+}
 
 type Registry = Pick<ExtensionContext, "modelRegistry">["modelRegistry"];
 
@@ -23,7 +42,11 @@ function credentialText(
 	const auth = registry.getProviderAuthStatus?.(provider);
 	if (auth?.source === "runtime") return "--api-key, this session only (tasks cannot use it)";
 	const source = auth && (auth.label || auth.source) ? credentialSourceLabel(auth) : undefined;
-	return [kinds?.get(provider), source].filter(Boolean).join(" · ") || undefined;
+	const kind = kinds?.get(provider);
+	const route = kind
+		? `route ${deriveAgentRoute({ runner: kind === "CLI", subscription: kind === "subscription" })}`
+		: undefined;
+	return [kind, source, route].filter(Boolean).join(" · ") || undefined;
 }
 
 const providersOf = (available: readonly ModelRef[]): string[] =>
@@ -41,7 +64,7 @@ export function providerRows(
 	const providers = providersOf(available);
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	return [
-		"Providers (kind · credential source; last result):",
+		"Providers (kind · credential source · route; last result):",
 		...providers.map((provider) => {
 			const from = credentialText(registry, provider, kinds);
 			return `  ${provider}${from ? ` · ${from}` : ""}${describeHealth(providerHealth.get(provider))}`;
@@ -65,7 +88,7 @@ export function providerSummary(
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	const priced = (model: ModelRef) => `${model.provider}/${model.id} (${priceText(modelCost(model, catalog))})`;
 	return [
-		"Providers (kind · credential source; last result; models that can run a task; cheapest and highest priced of them, price per million tokens in/out):",
+		"Providers (kind · credential source · route; last result; models that can run a task; cheapest and highest priced of them, price per million tokens in/out):",
 		...providers.map((provider) => {
 			const own = available.filter((model) => model.provider === provider);
 			const runnable = own.filter((model) => canRunTask(model, catalog));

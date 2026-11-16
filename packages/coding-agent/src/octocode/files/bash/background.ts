@@ -2,14 +2,14 @@
 import { formatDuration } from "../../shared/format.ts";
 import type { BashJob, VerificationReceipt } from "../bash-jobs/types.ts";
 import { jobLines } from "./results.ts";
-import { verificationJson, verificationLine } from "./verification.ts";
+import { verificationJson, verificationText } from "./verification.ts";
 
 export function backgroundStarted(job: BashJob, cwd: string, verification: VerificationReceipt | undefined) {
 	const timeout = job.timeout;
 	const text = [
 		`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, stopped after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
 		...jobLines(job, cwd),
-		...(verification ? [verificationLine(verification)] : []),
+		...(verification ? [verificationText(verification)].filter(Boolean) : []),
 	].join("\n");
 	return {
 		content: [{ type: "text" as const, text }],
@@ -23,7 +23,7 @@ export function backgroundStarted(job: BashJob, cwd: string, verification: Verif
 			job: job.id,
 			pid: job.pid,
 			log: job.log,
-			...(verification ? { verification, notices: [verificationLine(verification)] } : {}),
+			...(verification ? { verification, notices: [verificationText(verification)].filter(Boolean) } : {}),
 		},
 	};
 }

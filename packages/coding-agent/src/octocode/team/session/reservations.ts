@@ -157,11 +157,11 @@ function describeReservation(
 	if (lapsed) return `Your reservation on ${lapsed} lapsed; lock it again before editing ${display}.`;
 	if (peer)
 		return visibleControls(
-			`${display} is reserved by ${peer.name} (${peer.vendor} agent in agents-communication; ${peer.reason}; ${leaseAge(peer)}). Do other work: to be woken when it is free, set a timer until unlocked; or message ${peer.name} through agents-communication.`,
+			`${display} is reserved by ${peer.name} (${peer.vendor} agent in agents-communication; ${peer.reason}; ${leaseAge(peer)}). Do other work: to be woken when it is free, set a wait on path.unlocked; or message ${peer.name} through agents-communication.`,
 		);
 	return lease
 		? visibleControls(
-				`${display} is reserved by ${lease.owner} (${lease.reason}; ${leaseAge(lease)}). Do other work: to be woken when it is free, set a timer until unlocked; or message ${lease.owner} with agent type message.`,
+				`${display} is reserved by ${lease.owner} (${lease.reason}; ${leaseAge(lease)}). Do other work: to be woken when it is free, set a wait on path.unlocked; or message ${lease.owner} with agent type message.`,
 			)
 		: undefined;
 }

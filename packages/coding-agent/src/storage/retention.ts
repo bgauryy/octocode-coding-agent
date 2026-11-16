@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import fs from "node:fs";
 import { CLEANUP_DAYS_ENV, SESSION_RETENTION_DAYS_ENV } from "../../../common/src/env.ts";
 import { stripBom } from "../../../common/src/text.ts";
@@ -20,9 +21,6 @@ const FIELDS = [
 
 const isDays = (value: unknown): value is number =>
 	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * What is wrong with a settings file's `retention` value, one sentence each (none when it is absent or valid). The
  * settings loader queues these as warnings; `resolveRetention` ignores a bad value and uses the default.

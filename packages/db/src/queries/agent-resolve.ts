@@ -143,7 +143,7 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 	const backlog = run?.backlog ?? mainItem(db, run, session);
 	return {
 		agentId,
-		live: live !== undefined,
+		live: live !== undefined && live.status !== "settled",
 		...(live ? { status: live.status === "working" ? ("working" as const) : ("idle" as const) } : {}),
 		role: text(live?.role) ?? run?.profile,
 		parentAgentId: text(live?.parent_id) ?? run?.parentAgentId,

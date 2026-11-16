@@ -1,4 +1,4 @@
-import type { ResponseOutputItem, ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponseOutputItem, ResponseStreamEvent } from "../ai-sdk/openai-wire-types.ts";
 import type { AssistantContent, AssistantMessage, MediaContent, TextContent } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { responseArtifact } from "./rich-content.ts";

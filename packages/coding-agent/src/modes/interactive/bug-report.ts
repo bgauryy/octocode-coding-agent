@@ -14,6 +14,7 @@ import {
 } from "../../core/bug-report.ts";
 import { bugReportUploadTarget, uploadBugReport } from "../../core/bug-report-upload.ts";
 import { clearCrashLog, readCrashLog } from "../../core/crash-log.ts";
+import { readProblems } from "../../core/diagnostics-log.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { serializeSessionBranch } from "../../core/session-export.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
@@ -172,7 +173,7 @@ function buildBundle(session: AgentSession, options: BugReportOptions, summary: 
 			globalSettings: session.settingsManager.getGlobalSettings(),
 			projectSettings: session.settingsManager.getProjectSettings(),
 		}),
-		diagnostics: collectBugReportDiagnostics(session.sessionManager, readCrashLog()),
+		diagnostics: collectBugReportDiagnostics(session.sessionManager, readCrashLog(), readProblems()),
 		summary,
 		sessionJsonl: options.includeSession
 			? serializeSessionBranch(session.sessionManager, (parentId, timestamp) =>

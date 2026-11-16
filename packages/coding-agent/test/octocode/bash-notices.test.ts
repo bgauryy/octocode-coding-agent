@@ -30,7 +30,8 @@ describe("native Bash host notices", () => {
 			undefined,
 			fakeCtx({ cwd: tmp() }),
 		);
-		expect(result.details.notices).toHaveLength(3);
+		// A clean exit's verification line would only repeat the header, so it is no notice.
+		expect(result.details.notices).toHaveLength(2);
 		expect(result.details.output).toBe("unique-command-output\n");
 		const modelText = result.content[0].text;
 		for (const expanded of [false, true]) {

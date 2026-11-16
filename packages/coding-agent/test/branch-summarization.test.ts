@@ -157,8 +157,8 @@ describe("branch summarization", () => {
 			streamFn,
 		});
 
-		expect(result.error).toBe(
-			"Branch summarization failed: generation hit the token cap and the summary is incomplete",
+		expect(result.error).toMatch(
+			/^Branch summarization failed: generation hit the token cap and the summary is incomplete \(output \d+ tokens\)$/,
 		);
 	});
 });

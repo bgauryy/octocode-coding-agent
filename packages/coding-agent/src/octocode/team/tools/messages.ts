@@ -126,7 +126,7 @@ export function registerSendMessageTool(
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: request an answer. Default: FYI",
+						description: "true: request an answer; wakes each recipient (all: whole tree). Default: FYI",
 					}),
 				),
 				wake: Type.Optional(

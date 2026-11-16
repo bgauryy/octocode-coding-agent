@@ -1,7 +1,8 @@
 import { activeRates, type ModelCost, type Usage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import type { ExtensionContext } from "../../core/features/index.ts";
-import { formatSize, truncateHead } from "../../core/tools/index.ts";
+import { truncateHead } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../../utils/output-budget.ts";
 import { cutText } from "../../../../common/src/text.ts";
@@ -18,7 +19,7 @@ export function textResult<T = undefined>(text: string, details?: T): TextResult
 
 /** `12 of 40 lines (3.0KB of 90KB)`: the counts both output notes state (`ELISION_MARKER` finds them). */
 export const trimmedCounts = (shownLines: number, totalLines: number, shownBytes: number, totalBytes: number): string =>
-	`${shownLines} of ${totalLines} lines (${formatSize(shownBytes)} of ${formatSize(totalBytes)})`;
+	`${shownLines} of ${totalLines} lines (${formatBytes(shownBytes, "compact")} of ${formatBytes(totalBytes, "compact")})`;
 
 /** Keep tool output inside Octocode's per-result budget and say when it was cut. */
 export function capOutput(text: string, maxBytes = RESULT_DEFAULT_BYTES, maxLines = RESULT_DEFAULT_LINES): string {
@@ -27,7 +28,7 @@ export function capOutput(text: string, maxBytes = RESULT_DEFAULT_BYTES, maxLine
 	if (cut.content === "" && text !== "") {
 		// Octocode keeps whole lines only, so a first line over the byte budget would leave nothing: keep its head instead.
 		const head = cutText(text, maxBytes);
-		return `${head}\n\n[Output trimmed: the first line alone is ${formatSize(Buffer.byteLength(firstLine(text)))}; kept its first ${formatSize(Buffer.byteLength(head))} (${formatSize(cut.totalBytes)} in all).]`;
+		return `${head}\n\n[Output trimmed: the first line alone is ${formatBytes(Buffer.byteLength(firstLine(text)), "compact")}; kept its first ${formatBytes(Buffer.byteLength(head), "compact")} (${formatBytes(cut.totalBytes, "compact")} in all).]`;
 	}
 	return `${cut.content}\n\n[Output trimmed: ${trimmedCounts(cut.outputLines, cut.totalLines, cut.outputBytes, cut.totalBytes)}.]`;
 }

@@ -1,10 +1,7 @@
 import { spawn } from "node:child_process";
+import { escapeRegExp } from "../utils/regexp.ts";
 import { hasControlCharacter } from "../utils/chars.ts";
 import { toDisplayPath } from "./path-prefix.ts";
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function buildFdPathQuery(query: string): string {
 	const normalized = toDisplayPath(query);
@@ -22,7 +19,7 @@ function buildFdPathQuery(query: string): string {
 	const segments = trimmed
 		.split("/")
 		.filter(Boolean)
-		.map((segment) => escapeRegex(segment));
+		.map((segment) => escapeRegExp(segment));
 	if (segments.length === 0) {
 		return normalized;
 	}

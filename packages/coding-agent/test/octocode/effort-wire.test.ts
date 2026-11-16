@@ -99,7 +99,7 @@ describe("the level a session picks reaches the provider's request field", () =>
 		"Google Gemini 3 (level model): %s is thinkingConfig.thinkingLevel",
 		async (level) => {
 			const payload = await payloadAt(model("google", "gemini-3.1-pro-preview"), level);
-			expect(payload.config?.thinkingConfig?.thinkingLevel?.toString().toLowerCase()).toBe(level);
+			expect(payload.generationConfig?.thinkingConfig?.thinkingLevel?.toString().toLowerCase()).toBe(level);
 		},
 	);
 
@@ -108,8 +108,8 @@ describe("the level a session picks reaches the provider's request field", () =>
 		const budgets: number[] = [];
 		for (const level of ["low", "medium", "high"] as const) {
 			const payload = await payloadAt(target, level);
-			expect(payload.config?.thinkingConfig?.includeThoughts).toBe(true);
-			budgets.push(payload.config.thinkingConfig.thinkingBudget);
+			expect(payload.generationConfig?.thinkingConfig?.includeThoughts).toBe(true);
+			budgets.push(payload.generationConfig.thinkingConfig.thinkingBudget);
 		}
 		expect(budgets).toEqual([...budgets].sort((a, b) => a - b));
 		expect(new Set(budgets).size).toBe(3);

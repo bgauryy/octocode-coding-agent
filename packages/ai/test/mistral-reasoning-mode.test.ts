@@ -4,9 +4,9 @@ import type { Context, Model, SimpleStreamOptions, ThinkingLevelMap } from "../s
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 interface MistralPayload {
-	promptMode?: "reasoning";
-	reasoningEffort?: string;
-	promptCacheKey?: string;
+	prompt_mode?: "reasoning";
+	reasoning_effort?: string;
+	prompt_cache_key?: string;
 }
 
 const NONE_HIGH_LEVELS: ThinkingLevelMap = {
@@ -74,15 +74,15 @@ describe("Mistral reasoning mode selection", () => {
 	it("uses prompt_mode for reasoning models without a thinking level map (Magistral)", async () => {
 		const payload = await capturePayload(makeModel("magistral-medium-latest", true), { reasoning: "medium" });
 
-		expect(payload.promptMode).toBe("reasoning");
-		expect(payload.reasoningEffort).toBeUndefined();
+		expect(payload.prompt_mode).toBe("reasoning");
+		expect(payload.reasoning_effort).toBeUndefined();
 	});
 
 	it("omits reasoning controls for Magistral when thinking is off", async () => {
 		const payload = await capturePayload(makeModel("magistral-medium-latest", true));
 
-		expect(payload.promptMode).toBeUndefined();
-		expect(payload.reasoningEffort).toBeUndefined();
+		expect(payload.prompt_mode).toBeUndefined();
+		expect(payload.reasoning_effort).toBeUndefined();
 	});
 
 	// Regression for #8700 and #9375: Medium and GLM-5.2 ignore Magistral's prompt_mode.
@@ -92,21 +92,21 @@ describe("Mistral reasoning mode selection", () => {
 		it("uses reasoning_effort when thinking is enabled", async () => {
 			const payload = await capturePayload(makeModel(modelId, true, map), { reasoning: "high" });
 
-			expect(payload.reasoningEffort).toBe("high");
-			expect(payload.promptMode).toBeUndefined();
+			expect(payload.reasoning_effort).toBe("high");
+			expect(payload.prompt_mode).toBeUndefined();
 		});
 
 		it("clamps unsupported levels to a supported effort", async () => {
 			const payload = await capturePayload(makeModel(modelId, true, map), { reasoning: "low" });
 
-			expect(payload.reasoningEffort).toBe("high");
+			expect(payload.reasoning_effort).toBe("high");
 		});
 
 		it("sends reasoning_effort none when thinking is off", async () => {
 			const payload = await capturePayload(makeModel(modelId, true, map));
 
-			expect(payload.reasoningEffort).toBe("none");
-			expect(payload.promptMode).toBeUndefined();
+			expect(payload.reasoning_effort).toBe("none");
+			expect(payload.prompt_mode).toBeUndefined();
 		});
 	});
 
@@ -114,21 +114,21 @@ describe("Mistral reasoning mode selection", () => {
 	it("sends max for GLM-5.2", async () => {
 		const payload = await capturePayload(makeModel("zai-glm-5-2", true, GLM_5_2_LEVELS), { reasoning: "max" });
 
-		expect(payload.reasoningEffort).toBe("max");
+		expect(payload.reasoning_effort).toBe("max");
 	});
 
 	describe("zai-glm-5-3", () => {
 		it.each(["low", "high", "max"] as const)("sends reasoning_effort %s", async (level) => {
 			const payload = await capturePayload(makeModel("zai-glm-5-3", true, GLM_5_3_LEVELS), { reasoning: level });
 
-			expect(payload.reasoningEffort).toBe(level);
-			expect(payload.promptMode).toBeUndefined();
+			expect(payload.reasoning_effort).toBe(level);
+			expect(payload.prompt_mode).toBeUndefined();
 		});
 
 		it("maps medium to high", async () => {
 			const payload = await capturePayload(makeModel("zai-glm-5-3", true, GLM_5_3_LEVELS), { reasoning: "medium" });
 
-			expect(payload.reasoningEffort).toBe("high");
+			expect(payload.reasoning_effort).toBe("high");
 		});
 	});
 
@@ -136,8 +136,8 @@ describe("Mistral reasoning mode selection", () => {
 	it("omits reasoning controls for non-reasoning models", async () => {
 		const payload = await capturePayload(makeModel("mistral-medium-2505", false), { reasoning: "medium" });
 
-		expect(payload.reasoningEffort).toBeUndefined();
-		expect(payload.promptMode).toBeUndefined();
+		expect(payload.reasoning_effort).toBeUndefined();
+		expect(payload.prompt_mode).toBeUndefined();
 	});
 
 	it("uses the session id as prompt cache key", async () => {
@@ -145,7 +145,7 @@ describe("Mistral reasoning mode selection", () => {
 			sessionId: "session-123",
 		});
 
-		expect(payload.promptCacheKey).toBe("session-123");
+		expect(payload.prompt_cache_key).toBe("session-123");
 	});
 
 	it("omits prompt cache key when cache retention is disabled", async () => {
@@ -154,6 +154,6 @@ describe("Mistral reasoning mode selection", () => {
 			cacheRetention: "none",
 		});
 
-		expect(payload.promptCacheKey).toBeUndefined();
+		expect(payload.prompt_cache_key).toBeUndefined();
 	});
 });

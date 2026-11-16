@@ -11,7 +11,7 @@ import {
 } from "../../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
 import { agentDbPath } from "../shared/home.ts";
-import { liveProcess, processAlive } from "../shared/process.ts";
+import { processAlive } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
 import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
@@ -25,6 +25,7 @@ import {
 	reapMember,
 	resumeMembers,
 	saveMember,
+	settleMember,
 	ownsMember,
 	retireOwned,
 	rowLive,
@@ -138,10 +139,7 @@ export class TeamStore {
 		}
 	}
 
-	/**
-	 * The prune when a store opens: housekeeping, so it never makes the open fail or wait. While another process holds
-	 * the write lock (many Octocode processes starting at once) it is skipped, and the next heartbeat's prune does it.
-	 */
+	/** The prune when a store opens: it never makes the open fail or wait; while the write lock is held elsewhere the next heartbeat's prune does it. */
 	private housekeep(): void {
 		try {
 			this.quick(() => this.prune());
@@ -182,10 +180,7 @@ export class TeamStore {
 		);
 	}
 
-	/**
-	 * Leave: the agent and its reservations go; the messages it never read become dead letters the sender can see. With
-	 * `owner` (a process leaving its own row) nothing is removed when the row now names another process.
-	 */
+	/** Leave: the agent and its reservations go; its unread messages become dead letters. With `owner`, nothing is removed when the row names another process. */
 	remove(id: string, now = Date.now(), owner?: ProcessIdentity, reason?: agentEvents.EndReason): boolean {
 		return this.agent.transaction(() => retireOwned(this.db, id, now, owner, reason));
 	}
@@ -336,10 +331,15 @@ export class TeamStore {
 		);
 	}
 
-	/** Retires a lease owner that is gone (no row, or its process died or was replaced; never a `ps` here); whether it was. */
+	/** A headless child's run ended while `parent` holds its leases: its row becomes `settled` under `parent`, keeping them (`settleMember`); whether it did. */
+	settle(id: string, owner: ProcessIdentity, parent: ProcessIdentity, reason?: agentEvents.EndReason): boolean {
+		return this.agent.transaction(() => settleMember(this.db, id, Date.now(), owner, parent, reason));
+	}
+
+	/** Retires a lease owner that is gone (no row, or `rowLive` says its process is: a fresh heartbeat vouches for a running pid); whether it was. */
 	private retireOwner(owner: string, now: number): boolean {
-		const judged = agents.processOf(this.db, owner);
-		if (judged && liveProcess(judged.pid, judged.started, now)) return false;
+		const judged = agents.seatOf(this.db, owner);
+		if (judged && rowLive(judged, now)) return false;
 		return this.reap(owner, judged, now);
 	}
 

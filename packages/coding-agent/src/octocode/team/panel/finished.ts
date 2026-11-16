@@ -21,11 +21,25 @@ export class FinishedTracker {
 
 	/** `members` is the whole team view; `live` the part of it that is this session's live subagents. */
 	update(self: string | undefined, members: Member[], live: Member[], now: number): void {
-		if (self !== this.self) this.clear(self);
+		// Rows restored before the session joined the team belong to it: only a switch to another self clears them.
+		if (self !== this.self) {
+			if (this.self === undefined) {
+				this.self = self;
+				this.lastLive.clear();
+			} else this.clear(self);
+		}
 		const present = new Set(members.map((member) => member.id));
 		for (const [id, member] of this.lastLive) if (!present.has(id)) this.gone.set(id, { member, at: now });
 		for (const [id, entry] of this.gone) if (now - entry.at > FINISHED_MS || present.has(id)) this.gone.delete(id);
 		this.lastLive = new Map(live.map((member) => [member.id, member]));
+	}
+
+	/**
+	 * Seeds rows for children that ended with the previous process of a resumed session (its team rows are gone), each
+	 * with how it ended. They stay like any finished row: for `FINISHED_MS`, or until the child joins again.
+	 */
+	restore(ended: readonly { member: Member; end: AgentEnd }[], now: number): void {
+		for (const { member, end } of ended) this.gone.set(member.id, { member, at: now, end });
 	}
 
 	clear(self?: string): void {
@@ -37,7 +51,8 @@ export class FinishedTracker {
 	get finished(): Finished[] {
 		return [...this.gone.entries()].map(([id, entry]) => {
 			const { outcome, headline } = entry.member;
-			const end = this.endOf?.(id) ?? (outcome ? { outcome, ...(headline ? { headline } : {}) } : undefined);
+			const end =
+				this.endOf?.(id) ?? entry.end ?? (outcome ? { outcome, ...(headline ? { headline } : {}) } : undefined);
 			return end ? { ...entry, end } : entry;
 		});
 	}

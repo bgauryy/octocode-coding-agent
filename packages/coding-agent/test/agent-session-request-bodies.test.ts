@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildParams } from "../../ai/src/api/anthropic-messages/params.ts";
+import { stream as streamAnthropic } from "../../ai/src/api/anthropic-messages.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { readsMessagesOnly } from "../src/core/features/runner/clone-messages.ts";
 import type { ExtensionFactory } from "../src/core/features/types.ts";
@@ -63,9 +63,17 @@ function recordingProvider(model: Model<"anthropic-messages">, bodies: string[])
 				timestamp: 1_000 + n,
 			};
 			void (async () => {
-				const { params } = buildParams(requested as Model<"anthropic-messages">, normalizeContext(context), options);
-				const sent = (await options?.onPayload?.(params, requested)) ?? params;
-				bodies.push(JSON.stringify(sent));
+				const captured = await streamAnthropic(requested as Model<"anthropic-messages">, normalizeContext(context), {
+					...options,
+					apiKey: "test-key",
+					onPayload: async (params) => {
+						const sent = (await options?.onPayload?.(params, requested)) ?? params;
+						bodies.push(JSON.stringify(sent));
+						throw new Error("request captured");
+					},
+				}).result();
+				if (captured.errorMessage !== "request captured")
+					throw new Error(captured.errorMessage ?? "Request not captured");
 				out.push({ type: "start", partial: message });
 				out.push({ type: "done", reason: "stop", message });
 			})();

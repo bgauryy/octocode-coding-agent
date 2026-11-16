@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { convertTools } from "../../../ai/src/api/anthropic-messages/tools.ts";
+import { anthropicToolSchema } from "../../../ai/src/api/ai-sdk/anthropic-map.ts";
 import type { Tool } from "../../../ai/src/types.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -87,7 +87,7 @@ function strictViolation(name: string, description: string, parameters: Node): s
 		constrainedSampling: { type: "json_schema", strict: "require" },
 	} as unknown as Tool;
 	try {
-		const [converted] = convertTools([tool], false, true);
+		const converted = anthropicToolSchema(tool, true);
 		return (converted as { strict?: boolean }).strict === true ? undefined : "converted without strict";
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);

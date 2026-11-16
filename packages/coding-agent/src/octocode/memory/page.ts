@@ -1,7 +1,6 @@
 /** `/memory` in the terminal: the shared list → detail → action pages (commands design §3). */
 
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
-import { keyText } from "../../theme/theme-tui-helpers.ts";
 import { type PageRow, type PageSection, showCommandPage } from "../shared/page.ts";
 import { memoryLabel } from "./query.ts";
 import { type Memory, memoryAge } from "./store.ts";
@@ -45,10 +44,6 @@ export async function memoryListPage(
 		title: `Memories — ${title}`,
 		sections,
 		initialId,
-		hints: [
-			[keyText("tui.select.confirm"), "open", 0],
-			[keyText("tui.select.cancel"), "close", 1],
-		],
 	});
 	return choice?.id;
 }
@@ -71,10 +66,7 @@ export async function memoryDetailPage(
 			},
 		],
 		sections: [{ heading: "Actions", rows: actions.map((name) => ({ id: name, name })) }],
-		hints: [
-			[keyText("tui.select.confirm"), "run", 0],
-			[keyText("tui.select.cancel"), "back", 1],
-		],
+		nested: true,
 	});
 	return choice?.id;
 }

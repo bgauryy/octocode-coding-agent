@@ -37,8 +37,8 @@ beforeAll(shellParserReady);
 const timerCall = (command: string): ToolCallEvent => ({
 	type: "tool_call",
 	toolCallId: "timer-1",
-	toolName: "timer",
-	input: { note: "wait", until: { command } },
+	toolName: "wait",
+	input: { op: "on", note: "wait", event: "check.result", filter: { command } },
 });
 
 const bashCall = (command: string): ToolCallEvent => ({
@@ -60,7 +60,7 @@ function repo(): string {
  * Layer: the invariants before the permission step (git-state, reservations). A `timer` with an until-command is
  * "decided as the bash call that command is" (tool-gates.ts `timerOperation`), and the command then runs on the bash
  * tool's foreground path every 15 s. Only the permission step sees the bash form; the git-state and reservation steps
- * see `toolName: "timer"` and let it through.
+ * see `toolName: "wait"` and let it through.
  */
 describe("a timer's until-command meets the invariants a bash call meets", () => {
 	it("is refused git state in a shared-tree subagent, as the same bash call is (full mode)", async () => {
@@ -135,7 +135,7 @@ describe("a timer's until-command meets the invariants a bash call meets", () =>
 	});
 
 	it("reaches a PreToolUse hook as the bash call it is, so a hook deny on bash refuses it", async () => {
-		// A Claude-style hook matched on the shell tool (`Bash`) never sees `toolName: "timer"`.
+		// A Claude-style hook matched on the shell tool (`Bash`) never sees `toolName: "wait"`.
 		const fire = mainSession({}, (event) => event.toolName === "bash" && /rm -rf/.test(String(event.input.command)));
 		expect(await fire(bashCall("rm -rf build"))).toMatchObject({ block: true });
 		expect(await fire(timerCall("rm -rf build"))).toMatchObject({ block: true });
@@ -153,9 +153,14 @@ describe("a timer's until-command meets the invariants a bash call meets", () =>
 		const timer = timerCall("echo original");
 		expect(await fire(timer)).toMatchObject({
 			block: true,
-			reason: expect.stringMatching(/rewrote its until-command/),
+			reason: expect.stringMatching(/rewrote its command/),
 		});
-		expect(timer.input).toEqual({ note: "wait", until: { command: "echo original" } });
+		expect(timer.input).toEqual({
+			op: "on",
+			note: "wait",
+			event: "check.result",
+			filter: { command: "echo original" },
+		});
 	});
 
 	it("refuses a timer whose until-command the reservation gate rewrote (Node confinement)", async () => {
@@ -358,13 +363,16 @@ describe("a timer with an until-command answers to timer and Bash rules", () => 
 				{ permissions: rules },
 				{ path: "/home/test/.claude/settings.json", anchor: "/home/test/.claude" },
 			),
-			{ toolName: "timer", input: { note: "wait", until: { command: "test -f done.txt" } } } as never,
+			{
+				toolName: "wait",
+				input: { note: "wait", event: "check.result", filter: { command: "test -f done.txt" } },
+			} as never,
 			cwd,
 		).decision;
 
 	it.each([
-		[{ deny: ["timer"] }, "deny"],
-		[{ ask: ["timer"] }, "ask"],
+		[{ deny: ["wait"] }, "deny"],
+		[{ ask: ["wait"] }, "ask"],
 		[{ deny: ["Bash(test:*)"] }, "deny"],
 		[{ ask: ["Bash"] }, "ask"],
 	])("applies %j to it", (rules, decision) => {
@@ -373,8 +381,8 @@ describe("a timer with an until-command answers to timer and Bash rules", () => 
 
 	it("allows it only when both timer and its command are allowed", () => {
 		expect(decide({ allow: ["Bash(test:*)"] })).toBe("none");
-		expect(decide({ allow: ["timer"] })).toBe("none");
-		expect(decide({ allow: ["timer", "Bash(test:*)"] })).toBe("allow");
+		expect(decide({ allow: ["wait"] })).toBe("none");
+		expect(decide({ allow: ["wait", "Bash(test:*)"] })).toBe("allow");
 	});
 
 	it("leaves a timer without an until-command a timer call (guard)", () => {
@@ -382,7 +390,7 @@ describe("a timer with an until-command answers to timer and Bash rules", () => 
 			{ permissions: { deny: ["Bash"] } },
 			{ path: "/home/test/.claude/settings.json", anchor: "/home/test/.claude" },
 		);
-		expect(evaluateSourcePolicy(policy, { toolName: "timer", input: { note: "wait" } } as never, cwd).decision).toBe(
+		expect(evaluateSourcePolicy(policy, { toolName: "wait", input: { note: "wait" } } as never, cwd).decision).toBe(
 			"none",
 		);
 	});

@@ -1,11 +1,6 @@
-import OpenAI from "openai";
-import type {
-	ChatCompletion,
-	ChatCompletionContentPart,
-	ChatCompletionContentPartImage,
-	ChatCompletionContentPartText,
-	ChatCompletionCreateParamsNonStreaming,
-} from "openai/resources/chat/completions.js";
+import { createStatusCodeErrorResponseHandler, postToApi } from "@ai-sdk/provider-utils";
+import { raceWithAbortSignal } from "../utils/abort.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type {
 	AssistantImages,
 	ImageApi,
@@ -14,31 +9,25 @@ import type {
 	ImagesContext,
 	ImagesFunction,
 	ImagesOptions,
-	ProviderHeaders,
 	TextContent,
 } from "../types.ts";
 import { calculateCost } from "../models/model-helpers.ts";
 import { createUsage } from "../utils/assistant-message.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
+import { openAIEnvironmentHeaders } from "./openai-environment-headers.ts";
 
 interface OpenRouterGeneratedImage {
 	image_url?: string | { url?: string };
 }
 
-type OpenRouterImageGenerationMessage = ChatCompletion["choices"][number]["message"] & {
-	images?: OpenRouterGeneratedImage[];
-};
-
-type OpenRouterImageGenerationChoice = ChatCompletion["choices"][number] & {
-	message: OpenRouterImageGenerationMessage;
-};
-
-type OpenRouterImageGenerationResponse = ChatCompletion & {
-	choices: OpenRouterImageGenerationChoice[];
-};
+interface OpenRouterImageGenerationResponse {
+	id: string;
+	choices: Array<{ message: { content?: string | null; images?: OpenRouterGeneratedImage[] } }>;
+	usage?: Parameters<typeof parseUsage>[0];
+}
 
 /** Image generation over OpenRouter's chat completions endpoint. */
 export const generateImages: ImagesFunction = async (
@@ -60,22 +49,59 @@ export const generateImages: ImagesFunction = async (
 		if (!apiKey) {
 			throw new Error(`No API key for provider: ${model.provider}`);
 		}
-		const client = createClient(model, apiKey, options?.headers, options?.fetch);
 		let params = buildParams(model, context);
 		const nextParams = await options?.onPayload?.(params, model);
 		if (nextParams !== undefined) {
 			params = nextParams as typeof params;
 		}
-		const requestOptions = {
-			...(options?.signal ? { signal: options.signal } : {}),
-			...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-			maxRetries: 0,
-		};
+		const headers = providerHeadersToRecord(
+			{ authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+			openAIEnvironmentHeaders(options?.env),
+			model.headers,
+			options?.headers,
+		);
 		const { data: response, response: rawResponse } = await retryProviderRequest(
-			() =>
-				client.chat.completions
-					.create(params as unknown as ChatCompletionCreateParamsNonStreaming, requestOptions)
-					.withResponse(),
+			async () => {
+				const timeout = options?.timeoutMs !== undefined ? AbortSignal.timeout(options.timeoutMs) : undefined;
+				const signal =
+					timeout && options?.signal ? AbortSignal.any([timeout, options.signal]) : (options?.signal ?? timeout);
+				signal?.throwIfAborted();
+				const requestFetch = options?.fetch ?? globalThis.fetch;
+				const url = new URL(model.baseUrl);
+				url.pathname = `${url.pathname.replace(/\/$/, "")}/chat/completions`;
+				const result = await raceWithAbortSignal(
+					postToApi({
+						url: url.href,
+						headers,
+						body: { content: JSON.stringify(params), values: params },
+						abortSignal: signal,
+						fetch: async (input, init) => {
+							const response = await requestFetch(input, init);
+							if (signal?.aborted) {
+								void response.body?.cancel().catch(() => {});
+								signal.throwIfAborted();
+							}
+							return signal && response.body
+								? new Response(response.body.pipeThrough(new TransformStream(), { signal }), response)
+								: response;
+						},
+						failedResponseHandler: createStatusCodeErrorResponseHandler(),
+						successfulResponseHandler: async ({ response }) => {
+							const value: unknown = await response.json();
+							if (!isRecord(value) || typeof value.id !== "string" || !Array.isArray(value.choices)) {
+								throw new Error("OpenRouter returned an invalid image response");
+							}
+							for (const choice of value.choices) {
+								if (!isRecord(choice) || !isRecord(choice.message))
+									throw new Error("OpenRouter returned an invalid image choice");
+							}
+							return { value: { data: value as unknown as OpenRouterImageGenerationResponse, response } };
+						},
+					}),
+					signal,
+				);
+				return result.value;
+			},
 			{
 				maxRetries: options?.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs,
@@ -84,7 +110,7 @@ export const generateImages: ImagesFunction = async (
 		);
 		await options?.onResponse?.({ status: rawResponse.status, headers: headersToRecord(rawResponse.headers) }, model);
 
-		const imageResponse = response as OpenRouterImageGenerationResponse;
+		const imageResponse = response;
 		output.responseId = imageResponse.id;
 		if (imageResponse.usage) {
 			output.usage = parseUsage(imageResponse.usage, model);
@@ -118,40 +144,28 @@ export const generateImages: ImagesFunction = async (
 	}
 };
 
-function createClient(
-	model: ImageModel<ImageApi>,
-	apiKey: string,
-	optionsHeaders?: ProviderHeaders,
-	fetch?: typeof globalThis.fetch,
-): OpenAI {
-	return new OpenAI({
-		apiKey,
-		baseURL: model.baseUrl,
-		dangerouslyAllowBrowser: true,
-		fetch,
-		// Preserve null overrides until the SDK merges its own default/auth headers.
-		defaultHeaders: { ...model.headers, ...optionsHeaders },
-	});
+type ImageInputPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+interface OpenRouterImagesCreateParams {
+	model: string;
+	messages: Array<{ role: "user"; content: ImageInputPart[] }>;
+	stream: false;
+	modalities: Array<"image" | "text">;
 }
 
-type OpenRouterImagesCreateParams = Omit<ChatCompletionCreateParamsNonStreaming, "modalities"> & {
-	modalities: Array<"image" | "text">;
-};
-
 function buildParams(model: ImageModel<ImageApi>, context: ImagesContext): OpenRouterImagesCreateParams {
-	const content: ChatCompletionContentPart[] = context.input.map((item): ChatCompletionContentPart => {
+	const content: ImageInputPart[] = context.input.map((item): ImageInputPart => {
 		if (item.type === "text") {
 			return {
 				type: "text",
 				text: sanitizeSurrogates(item.text),
-			} satisfies ChatCompletionContentPartText;
+			} satisfies ImageInputPart;
 		}
 		return {
 			type: "image_url",
 			image_url: {
 				url: `data:${item.mimeType};base64,${item.data}`,
 			},
-		} satisfies ChatCompletionContentPartImage;
+		} satisfies ImageInputPart;
 	});
 
 	return {

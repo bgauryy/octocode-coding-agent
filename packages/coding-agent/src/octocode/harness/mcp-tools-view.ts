@@ -7,7 +7,7 @@ import { formatAudit } from "../../../../common/src/tool-audit.ts";
 import { MCP_EXPOSURES } from "../../../../mcp/src/api.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { shortcutText } from "../shared/keys.ts";
-import { type RankedHint, renderHintLine } from "../../theme/theme-tui-helpers.ts";
+import { moveHint, type RankedHint, renderHintLine } from "../../theme/theme-tui-helpers.ts";
 import type { McpToolRow, McpServerView, McpToolsSource } from "./mcp-tools.ts";
 import type { McpWriteScope } from "../../configuration/adapters/mcp-pins.ts";
 
@@ -180,6 +180,7 @@ export class McpToolsView {
 					.map((line) => t.fg(this.flash!.level, ` ${line}`)),
 			);
 		const hints: RankedHint[] = [
+			moveHint(2),
 			["Space", selectedRow ? "hide/show" : "switch", 0],
 			...(selectedRow || this.selected === 1
 				? ([[shortcutText("tui.input.tab", this.keys), "direct/deferred/hidden", 1]] as RankedHint[])

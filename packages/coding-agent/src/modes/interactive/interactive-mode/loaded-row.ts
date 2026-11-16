@@ -4,21 +4,16 @@
  * indented to the same column. A row with a `source` follows it: a change repaints that row, nothing else is rebuilt.
  */
 
-import {
-	type Component,
-	fitRows,
-	type RowColumn,
-	type StateSource,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@octocodeai/octocode-tui";
+import { type Component, type StateSource, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import { keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { badge, type BadgeState } from "../../../theme/page-kit.ts";
 import type { Expandable } from "./types.ts";
 
 export interface LoadedRowSpec {
 	label: string;
+	state?: () => BadgeState;
 	/** Item count; a row whose count is 0 draws nothing unless `showZero` is set. */
 	count: () => number;
 	/** Draw the row at count 0 too, for a kind whose absence is worth seeing (`Hooks  0`). */
@@ -53,8 +48,6 @@ export interface LoadedColumns {
 }
 
 const GAP = "  ";
-/** The sources keep at least this many cells before the tail is dropped: a tail is never worth a cut source list. */
-const MIN_SOURCES = 30;
 /** Below this many cells after the columns, wrapped text starts at the left edge instead. */
 const MIN_TEXT_WIDTH = 16;
 
@@ -65,43 +58,12 @@ export function loadedColumns(specs: readonly LoadedRowSpec[]): LoadedColumns {
 		.filter((row) => row.count > 0 || row.spec.showZero);
 	const label = Math.max(0, ...shown.map((row) => row.label.length));
 	const count = Math.max(0, ...shown.map((row) => String(row.count).length));
-	const celled = shown.filter((row) => row.spec.cells);
-	let fitted: { width: number; lines: Map<LoadedRowSpec, string> } | undefined;
-	const fit = (spec: LoadedRowSpec, width: number): string | undefined => {
-		if (!spec.cells) return undefined;
-		if (fitted?.width !== width) {
-			const cells = celled.map((row) => row.spec.cells?.());
-			const { lines } = fitRows(
-				celled.map((row, index) => [
-					theme.bold(theme.fg("mdHeading", row.label.padEnd(label))),
-					theme.fg("accent", String(row.count).padStart(count)),
-					cells[index]?.sources ?? "",
-					cells[index]?.tail ?? "",
-				]),
-				FIT_COLUMNS,
-				width,
-				{ gap: GAP, minFlex: MIN_SOURCES },
-			);
-			fitted = { width, lines: new Map(celled.map((row, index) => [row.spec, lines[index] ?? ""])) };
-		}
-		return fitted.lines.get(spec);
-	};
-	return { label, count, fit };
+	return { label, count };
 }
-
-/** Label and count stay; the sources take what is left and are cut with an ellipsis; the tail goes first. */
-const FIT_COLUMNS: readonly RowColumn[] = [
-	{ priority: 3 },
-	{ priority: 3, align: "right", max: 4 },
-	{ priority: 2, flex: true },
-	{ priority: 1 },
-];
 
 /** `(ctrl+o to expand)`, as the collapsed bash output and other expandable views word it; nothing when unbound. */
 export const expandHint = (): string =>
-	keyText("app.tools.expand")
-		? `${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`
-		: "";
+	keyText("app.tools.expand") ? keyHint("app.tools.expand", "details") : "ctrl+o details";
 
 /** Wraps `text` into `width - indent` cells and indents every row after the first by `indent`. */
 function wrapAfter(text: string, width: number, indent: number): string[] {
@@ -151,20 +113,23 @@ export class LoadedRow implements Component, Expandable {
 			this.cached = { key, lines: [] };
 			return [];
 		}
+		const status = badge(spec.state?.() ?? "ready");
+		// The glyph sits beside the count; the legend line names each glyph's word.
 		const head =
 			theme.bold(theme.fg("mdHeading", spec.label.padEnd(columns.label))) +
 			GAP +
+			theme.fg(status.tone, status.glyph) +
+			" " +
 			theme.fg("accent", String(count).padStart(columns.count)) +
 			GAP;
 		const indent = visibleWidth(head);
 		const summary = this.expanded && spec.expandedSummary ? spec.expandedSummary() : spec.summary();
-		const fitted = columns.fit?.(spec, width);
 		const own =
 			spec.fitSummary && !(this.expanded && spec.expandedSummary) ? spec.fitSummary(width - indent) : undefined;
 		const [first = "", ...rest] =
-			own?.map((line, index) => (index === 0 ? line : " ".repeat(indent) + line)) ??
-			(fitted === undefined ? wrapAfter(summary, width, indent) : []);
-		const lines = fitted === undefined || own ? [head + first, ...rest] : [fitted];
+			own?.map((line, index) => (index === 0 ? line : " ".repeat(indent) + line)) ?? wrapAfter(summary, width, indent);
+		const lines =
+			width - indent < MIN_TEXT_WIDTH ? wrapTextWithAnsi(head + summary, Math.max(1, width)) : [head + first, ...rest];
 		if (this.expanded && spec.details) {
 			for (const line of spec.details().split("\n")) {
 				// Detail lines carry their own nesting; keep it, shifted under the summary column.

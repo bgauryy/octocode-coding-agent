@@ -19,6 +19,7 @@ import { GENERAL_PROFILE } from "./profiles.ts";
 import { archiveNote, compactionNote, sessionNote } from "./render.ts";
 import { type Shot, saveShot, shotsDir } from "./screenshots.ts";
 import type { ResultDetails, RunDetails } from "./run-types.ts";
+import { throttled } from "./update-throttle.ts";
 
 export type AgentUpdate = (update: {
 	content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
@@ -116,8 +117,12 @@ export function tracker(
 	const dir = shotsDir();
 	let shots = 0;
 	let latest: Shot | undefined;
-	return (onUpdate: AgentUpdate | undefined) =>
-		({
+	return (onUpdate: AgentUpdate | undefined) => {
+		const send = throttled<Parameters<AgentUpdate>[0]>(
+			(update) => onUpdate?.(update),
+			() => details.status === "running",
+		);
+		return ({
 			activity: line,
 			step,
 			thinking,
@@ -193,12 +198,23 @@ export function tracker(
 						: (line ?? details.activity.at(-1) ?? "working"),
 			};
 			// Partial results only reach the user's screen, so the latest screenshot is drawn there but never enters the model's context.
-			onUpdate?.({
-				content:
-					image && latest?.data ? [text, { type: "image", data: latest.data, mimeType: latest.mimeType }] : [text],
-				details: { ...details },
-			});
+			// Tool ends (screenshots, denials), replies, waiting, compaction and notices show at once; the rest at most every interval.
+			const urgent =
+				[image, denied, reply, ran, notices, compactions].some(Boolean) ||
+				waiting !== undefined ||
+				compacting !== undefined ||
+				editedAfterVerify !== undefined;
+			if (!onUpdate) return;
+			send(
+				{
+					content:
+						image && latest?.data ? [text, { type: "image", data: latest.data, mimeType: latest.mimeType }] : [text],
+					details: { ...details },
+				},
+				urgent,
+			);
 		};
+	};
 }
 
 /**

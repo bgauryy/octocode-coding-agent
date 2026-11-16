@@ -184,18 +184,12 @@ describe("generated configuration schemas", () => {
 
 	it("rejects settings values that runtime accessors reject", () => {
 		const validator = Compile(SettingsSchema);
-		for (const invalid of [
-			{ httpIdleTimeoutMs: -1 },
-			{ websocketConnectTimeoutMs: -1 },
-			{ httpIdleTimeoutMs: "bogus" },
-			{ websocketConnectTimeoutMs: "30000" },
-		]) {
+		for (const invalid of [{ httpIdleTimeoutMs: -1 }, { httpIdleTimeoutMs: "bogus" }, { httpIdleTimeoutMs: "30000" }]) {
 			expect(validator.Check(invalid)).toBe(false);
 		}
 		expect(
 			validator.Check({
 				httpIdleTimeoutMs: 0,
-				websocketConnectTimeoutMs: "disabled",
 			}),
 		).toBe(true);
 	});

@@ -37,6 +37,7 @@ import {
 	trackToolListChanges,
 	trackServerWarnings,
 } from "./runtime/client.ts";
+import { listTools, RefreshRetry } from "./runtime/refresh-retry.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpToolCaller } from "./tools.ts";
@@ -78,6 +79,7 @@ export class McpServerConnection implements McpToolCaller {
 	private readonly shutdown = new AbortController();
 	/** Pauses new attempts after repeated failures to connect. */
 	private readonly backoff = new ConnectBackoff();
+	private readonly refreshRetry = new RefreshRetry();
 	/** Stderr of the last stdio server that failed to connect. */
 	private stderrTail: string | undefined;
 	private readonly cwd: string;
@@ -165,10 +167,7 @@ export class McpServerConnection implements McpToolCaller {
 		getClient: () => this.getClient(),
 		retiring: this.retiring,
 		expireSession: (client) => {
-			if (this.client === client) {
-				this.client = undefined;
-				this.catalog.revision++;
-			}
+			if (this.client === client) this.detach();
 		},
 		requireSignIn: async (client, error) => {
 			if (!needsSignIn(error, this.authProvider)) return undefined;
@@ -245,11 +244,15 @@ export class McpServerConnection implements McpToolCaller {
 		this.onChange?.(this);
 	}
 
+	/** Forget the current client: its pending tool refresh retry no longer applies. */
+	private detach(): void {
+		this.client = undefined;
+		this.refreshRetry.cancel();
+		this.catalog.revision++;
+	}
+
 	private async dropClient(client: McpClient): Promise<void> {
-		if (this.client === client) {
-			this.client = undefined;
-			this.catalog.revision++;
-		}
+		if (this.client === client) this.detach();
 		await client.close().catch(() => undefined);
 	}
 
@@ -343,8 +346,7 @@ export class McpServerConnection implements McpToolCaller {
 	/** The transport dropped. The tools stay declared (the cached prompt prefix holds; `rejectWhileDown` fails calls); the status shows why. */
 	private handleClientClose(client: McpClient, stdio: StdioTransport | undefined): void {
 		if (this.client !== client || this.closed) return;
-		this.client = undefined;
-		this.catalog.revision++;
+		this.detach();
 		this.state = "disconnected";
 		const stderr = stderrTail(stdio);
 		this.error = stderr ? `Connection closed\n${stderr}` : "Connection closed";
@@ -360,18 +362,18 @@ export class McpServerConnection implements McpToolCaller {
 		if (this.catalog.withdraw()) this.onTools(this);
 	}
 
-	private async refreshTools(client: McpClient): Promise<void> {
+	private async refreshTools(client: McpClient, attempt = 0): Promise<void> {
+		this.refreshRetry.cancel();
 		const revision = ++this.catalog.revision;
-		try {
-			const tools = client.serverCapabilities?.tools ? await client.listTools() : [];
-			if (this.client !== client || this.closed || revision !== this.catalog.revision) return;
-			this.publishCatalog(client, tools);
+		const listed = await listTools(client);
+		if (this.client !== client || this.closed || revision !== this.catalog.revision) return;
+		if ("tools" in listed) {
+			this.publishCatalog(client, listed.tools);
 			this.error = undefined;
-		} catch (error) {
-			if (this.client !== client || this.closed || revision !== this.catalog.revision) return;
-			// Unlike a drop, the connection is up but its catalog is unverified, so its tools are withdrawn.
+		} else {
 			this.withdrawCatalog();
-			this.error = `Failed to refresh tools: ${errorMessage(error)}`;
+			this.error = `Failed to refresh tools: ${errorMessage(listed.error)}`;
+			this.refreshRetry.schedule(attempt, (next) => void this.refreshTools(client, next));
 		}
 		this.changed();
 	}
@@ -384,7 +386,7 @@ export class McpServerConnection implements McpToolCaller {
 		this.state = "closed";
 		this.changed();
 		const client = this.client;
-		this.client = undefined;
+		this.detach();
 		await Promise.all([
 			client?.close().catch(() => undefined),
 			this.opening?.catch(() => undefined),

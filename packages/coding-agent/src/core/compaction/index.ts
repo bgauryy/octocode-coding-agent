@@ -2,6 +2,7 @@
  * Compaction and summarization utilities.
  */
 
+export * from "./bounded-summary.ts";
 export * from "./branch-summarization.ts";
 export * from "./checkpoint.ts";
 export * from "./compaction.ts";

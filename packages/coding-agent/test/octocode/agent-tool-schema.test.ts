@@ -1,9 +1,9 @@
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
 import { describe, expect, it, vi } from "vitest";
-import { convertTools as anthropicTools } from "../../../ai/src/api/anthropic-messages/tools.ts";
-import { convertToolConfig } from "../../../ai/src/api/bedrock-converse-stream/convert.ts";
-import { convertTools as googleTools } from "../../../ai/src/api/google-shared/tools.ts";
+import { anthropicToolSchema } from "../../../ai/src/api/ai-sdk/anthropic-map.ts";
+import { capturePayload as bedrockPayload } from "../../../ai/test/bedrock-convert-fixture.ts";
+import { googleToolWire as googleTools } from "../../../ai/test/google-fetch-fixture.ts";
 import { getCompat } from "../../../ai/src/api/openai-completions/compat.ts";
 import { convertTools as completionTools } from "../../../ai/src/api/openai-completions/tools.ts";
 import { convertResponsesTools } from "../../../ai/src/api/openai-responses-shared/tools.ts";
@@ -156,17 +156,21 @@ describe("flat agent schema", () => {
 		expect(() => modes.register(fakeHost().api)).toThrow("agent field to is declared by task and message");
 	});
 
-	it("keeps the same flat object in every provider projection", () => {
+	it("keeps the same flat object in every provider projection", async () => {
 		const { tool } = unified();
 		const responses = convertResponsesTools([tool])[0];
 		const completions = completionTools([tool], compat)[0];
+		const bedrock = (await bedrockPayload({
+			messages: [{ role: "user", content: "go", timestamp: 0 }],
+			tools: [tool],
+		})) as { toolConfig: { tools: { toolSpec: { inputSchema: { json: unknown } } }[] } };
 		if (responses.type !== "function" || completions.type !== "function") throw new Error("not a function tool");
 		const schemas = [
 			responses.parameters,
 			completions.function.parameters,
-			googleTools([tool])![0].functionDeclarations[0].parametersJsonSchema,
-			anthropicTools([tool], false, false)[0].input_schema,
-			convertToolConfig([tool], "auto", false)!.tools![0].toolSpec!.inputSchema!.json,
+			(await googleTools([tool]))![0].functionDeclarations[0].parametersJsonSchema,
+			anthropicToolSchema(tool, false).schema,
+			bedrock.toolConfig.tools[0].toolSpec.inputSchema.json,
 		] as TSchema[];
 		for (const schema of schemas) {
 			for (const keyword of ["anyOf", "oneOf", "allOf"]) expect(schema).not.toHaveProperty(keyword);

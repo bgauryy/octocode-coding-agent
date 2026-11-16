@@ -1,17 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { stream } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockModel as model, bedrockContext as context, bedrockResponse } from "./bedrock-fixtures.ts";
 
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
-
-	class BedrockRuntimeClient {
-		middlewareStack = { add: () => undefined };
-
-		async send(): Promise<unknown> {
-			return {
-				$metadata: { httpStatusCode: 200 },
-				stream: (async function* () {
-					yield { messageStart: { role: "assistant" } };
-					yield {
+describe("Bedrock 1h cache write cost", () => {
+	it("prices the 1h cache details at 2x while preserving the total cache write", async () => {
+		const result = await stream(model, context, {
+			apiKey: "test",
+			env: {},
+			cacheRetention: "none",
+			fetch: async () =>
+				bedrockResponse([
+					{ messageStart: { role: "assistant" } },
+					{
 						metadata: {
 							usage: {
 								inputTokens: 100,
@@ -25,50 +25,10 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 								],
 							},
 						},
-					};
-					yield { messageStop: { stopReason: "end_turn" } };
-				})(),
-			};
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
-	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { FIVE_MINUTES: "5m", ONE_HOUR: "1h" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
-	};
-});
-
-import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
-import { normalizeContext } from "../src/compat.ts";
-import { getBuiltinModel } from "../src/providers/all.ts";
-
-const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: Date.now() }] });
-
-describe("Bedrock 1h cache write cost", () => {
-	it("prices the 1h cache details at 2x while preserving the total cache write", async () => {
-		const result = await streamBedrock(model, context, { cacheRetention: "none" }).result();
-
+					},
+					{ messageStop: { stopReason: "end_turn" } },
+				]),
+		}).result();
 		expect(result.usage.cacheWrite).toBe(1_000_000);
 		expect(result.usage.cacheWrite1h).toBe(400_000);
 		const expectedCacheWriteCost = (600_000 * model.cost.cacheWrite + 400_000 * model.cost.input * 2) / 1_000_000;

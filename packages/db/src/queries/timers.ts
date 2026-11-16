@@ -180,6 +180,11 @@ export function claimNow(db: DatabaseSync, id: number, sessionId: string, now: n
 	);
 }
 
+/** Stores a persistent `until` row's listening state (`armed` or `fired`, and its wakes) in `baseline`. */
+export function setBaseline(db: DatabaseSync, id: number, baseline: string): void {
+	db.prepare("UPDATE timers SET baseline = ? WHERE id = ? AND status = 'active'").run(baseline, id);
+}
+
 /** Moves an active timer's next check to `dueAt` (a watcher that failed falls back to a short poll). */
 export function reschedule(db: DatabaseSync, id: number, dueAt: number): void {
 	db.prepare("UPDATE timers SET due_at = ? WHERE id = ? AND status = 'active'").run(dueAt, id);

@@ -200,12 +200,9 @@ export class ModelRegistry {
 		return this.runtime.getAuth(provider);
 	}
 
+	/** The provider's API key; undefined only when none is configured. A credential that fails to resolve (a failing `!command`, a keychain error) rejects. */
 	async getApiKeyForProvider(provider: string): Promise<string | undefined> {
-		try {
-			return (await this.runtime.getAuth(provider))?.auth.apiKey;
-		} catch {
-			return undefined;
-		}
+		return (await this.runtime.getAuth(provider))?.auth.apiKey;
 	}
 
 	getCredentialKind(provider: string): Promise<CredentialKind> {

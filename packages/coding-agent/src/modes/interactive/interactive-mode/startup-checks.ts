@@ -12,7 +12,14 @@ import {
 	tmuxGlobalOption,
 	Text,
 } from "@octocodeai/octocode-tui";
-import { APP_NAME, getAgentDir, VERSION } from "../../../config.ts";
+import {
+	APP_NAME,
+	getAgentDir,
+	getSelfUpdateCommand,
+	getSelfUpdateUnavailableInstruction,
+	PACKAGE_NAME,
+	VERSION,
+} from "../../../config.ts";
 import { DefaultPackageManager } from "../../../core/package-manager.ts";
 import { isInstallTelemetryEnabled } from "../../../core/telemetry.ts";
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
@@ -158,9 +165,25 @@ export function showStartupNoticesIfNeeded(host: StartupChecksHost): void {
 	host.chatContainer.addChild(new DynamicBorder());
 }
 
+/** The update line of the new-version notice: the command to type, or how to update when `update` cannot run here. */
+export function formatNewVersionHint(
+	version: string,
+	options: { appName: string; canSelfUpdate: boolean; unavailable: string },
+): { message: string; command?: string } {
+	if (options.canSelfUpdate) {
+		return { message: `New version ${version} is available. Run `, command: `${options.appName} update` };
+	}
+	return { message: `New version ${version} is available. ${options.unavailable}` };
+}
+
 export function showNewVersionNotification(host: StartupChecksHost, release: LatestOctocodeRelease): void {
+	const hint = formatNewVersionHint(release.version, {
+		appName: APP_NAME,
+		canSelfUpdate: getSelfUpdateCommand(PACKAGE_NAME) !== undefined,
+		unavailable: getSelfUpdateUnavailableInstruction(PACKAGE_NAME),
+	});
 	const updateInstruction = () =>
-		theme.fg("muted", `New version ${release.version} is available. Run `) + theme.fg("accent", `${APP_NAME} update`);
+		theme.fg("muted", hint.message) + (hint.command ? theme.fg("accent", hint.command) : "");
 	const changelogUrl = "https://github.com/bgauryy/octocodecode/releases";
 	const changelogLine = () => {
 		const changelogLink = getCapabilities().hyperlinks

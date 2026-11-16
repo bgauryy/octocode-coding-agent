@@ -1,4 +1,3 @@
-import { formatBytes } from "../../utils/bytes.ts";
 import { FAILURE_WORDS } from "./output-trim.ts";
 
 /**
@@ -95,13 +94,6 @@ function splitLinesForCounting(content: string): string[] {
 		lines.pop();
 	}
 	return lines;
-}
-
-/**
- * Format bytes as human-readable size.
- */
-export function formatSize(bytes: number): string {
-	return formatBytes(bytes, "compact");
 }
 
 /** The limits and content size, or the whole content as the result when it fits both limits. */

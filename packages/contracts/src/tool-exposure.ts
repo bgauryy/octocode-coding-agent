@@ -19,7 +19,7 @@ export const NATIVE_PINNABLE_TOOLS = ["web", "archive", "models", "backlogPlan"]
  * Native tools deferred only under `mcpExposure: "usage"` or by a `nativeToolExposure` setting, never by `recent`. With
  * `NATIVE_PINNABLE_TOOLS` they are the one list of tools the coding agent can defer.
  */
-export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "timer"] as const;
+export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "wait"] as const;
 
 /**
  * What decided a tool's state: its own pin, a `toolExposure` pattern, its server's `exposure`, use in the last 24 hours

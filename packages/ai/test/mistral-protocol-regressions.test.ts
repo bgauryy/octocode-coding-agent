@@ -7,10 +7,31 @@ const model = getBuiltinModel("mistral", "mistral-large-latest");
 const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
 const completed = () =>
 	new Response(
-		`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 16 } } })}\n\ndata: [DONE]\n\n`,
+		`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 1, total_tokens: 21, prompt_tokens_details: { cached_tokens: 16 } } })}\n\ndata: [DONE]\n\n`,
 	);
 
 describe("Mistral protocol regressions", () => {
+	it("retains proxy path prefixes and base URL query parameters", async () => {
+		let url: string | undefined;
+		const result = await stream({ ...model, baseUrl: "https://proxy.example/prefix/?tenant=abc" }, context, {
+			apiKey: "test",
+			fetch: async (input) => {
+				url = String(input);
+				return completed();
+			},
+		}).result();
+		expect(url).toBe("https://proxy.example/prefix/v1/chat/completions?tenant=abc");
+		expect(result.stopReason).toBe("stop");
+	});
+	it("rejects a stream without a provider finish reason", async () => {
+		const result = await stream(model, context, {
+			apiKey: "test",
+			fetch: async () =>
+				new Response('data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}\n\ndata: [DONE]\n\n'),
+		}).result();
+		expect(result.stopReason).toBe("error");
+		expect(result.content).toEqual([{ type: "text", text: "partial" }]);
+	});
 	it("cancels a stalled HTTP error body when the request deadline expires", async () => {
 		let cancelled = false;
 		const result = await stream(model, context, {

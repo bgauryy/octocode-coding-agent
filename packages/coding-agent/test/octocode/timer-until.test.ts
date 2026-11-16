@@ -10,7 +10,7 @@ import { conditionChecker, conditionWatcher } from "../../src/octocode/timer/con
 import { parseUntil } from "../../src/octocode/timer/conditions/index.ts";
 import type { ConditionDeps, TimerCondition } from "../../src/octocode/timer/conditions/types.ts";
 import { CHECK_CAPS, Judge, type JudgeHost } from "../../src/octocode/timer/judge.ts";
-import { timerFields, timerLine, wakeDetails, wakeText } from "../../src/octocode/timer/model.ts";
+import { decideFire, timerFields, timerLine, wakeDetails, wakeText } from "../../src/octocode/timer/model.ts";
 import { registerTimers } from "../../src/octocode/timer/register.ts";
 import { TimerScheduler } from "../../src/octocode/timer/scheduler.ts";
 import { untilCommand } from "../../src/octocode/shared/until-command.ts";
@@ -73,12 +73,12 @@ describe("the closed list of until conditions", () => {
 
 	it("refuses the removed file and port conditions with the command that replaces each", () => {
 		expect(() => parseUntil({ file: { path: "out.txt", is: "exists" } })).toThrow(
-			"until.file was removed; set the timer with until.command instead: test -e out.txt",
+			"until.file was removed; set the wait with on check.result and this command instead: test -e out.txt",
 		);
 		expect(() => parseUntil({ file: { path: "my out.txt", is: "absent" } })).toThrow("test ! -e 'my out.txt'");
 		expect(() => parseUntil({ file: { path: "log.txt" } })).toThrow(/until\.file was removed.*test log\.txt -nt mark/);
 		expect(() => parseUntil({ port: { port: 5173 } })).toThrow(
-			"until.port was removed; set the timer with until.command instead: nc -z localhost 5173",
+			"until.port was removed; set the wait with on check.result and this command instead: nc -z localhost 5173",
 		);
 		expect(() => parseUntil({ port: { port: 80, host: "127.0.0.1" } })).toThrow("nc -z 127.0.0.1 80");
 		// Malformed values still name the replacement, as does a check whose trigger is a removed kind.
@@ -104,7 +104,7 @@ describe("the closed list of until conditions", () => {
 		const command = timerFields({ note: "n", until: { command: "test -e a.txt" } }, T0, owner);
 		expect(command.intervalMs).toBe(15_000);
 		expect(timerLine(timers.insert(agent.db, { ...command, workspaceId }), T0)).toContain(
-			"until `test -e a.txt` exits 0 · next check in 0s (polling every 15s)",
+			"until `test -e a.txt` exits 0 · polling every 15s",
 		);
 	});
 });
@@ -552,8 +552,22 @@ describe("the timer tool and check", () => {
 		};
 		return { host, ctx, agentDir, j };
 	};
-	const set = (host: ReturnType<typeof fakeHost>, ctx: unknown, until: unknown) =>
-		host.tools.get("timer").execute("c", { op: "set", note: "n", until }, undefined, undefined, ctx);
+	/** The `on` call that stands for an `until` condition. */
+	const onArgs = (until: Record<string, any>) => {
+		const { check, ...rest } = until;
+		const [kind, value] = Object.entries(rest)[0];
+		const base =
+			kind === "command"
+				? { event: "check.result", filter: { command: value } }
+				: kind === "unlocked"
+					? { event: "path.unlocked", filter: { path: value } }
+					: kind === "agent"
+						? { event: "agent.ended", filter: { agent: (value as { name: string }).name } }
+						: { event: "item.state", filter: value };
+		return { op: "on", note: "n", ...base, ...(check ? { check } : {}) };
+	};
+	const set = (host: ReturnType<typeof fakeHost>, ctx: unknown, until: Record<string, unknown>) =>
+		host.tools.get("wait").execute("c", onArgs(until), undefined, undefined, ctx);
 	const checkUntil = { check: "done?", command: "test -e x.txt" };
 
 	it("refuses a check while it is off and nobody can be asked", async () => {
@@ -592,9 +606,7 @@ describe("the timer tool and check", () => {
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		try {
 			await expect(
-				host.tools
-					.get("timer")
-					.execute("c", { op: "set", note: "n", until: checkUntil }, controller.signal, undefined, ctx),
+				host.tools.get("wait").execute("c", onArgs(checkUntil), controller.signal, undefined, ctx),
 			).rejects.toThrow("cancelled");
 			expect(timers.activeCount(agent.db, "s1")).toBe(0);
 		} finally {
@@ -671,35 +683,72 @@ describe("the timer tool and check", () => {
 		).toEqual(["until x.txt unlocked", "until `nc -z localhost 5173` exits 0"]);
 		const row = timers.forSession(agent.db, "s1")[0];
 		timers.recordResult(agent.db, row.id, { exit: null, output: "", spend: { calls: 1, usd: 0.003 } }, Date.now());
-		const list = await host.tools.get("timer").execute("l", { op: "list" }, undefined, undefined, ctx);
+		const list = await host.tools.get("wait").execute("l", { op: "list" }, undefined, undefined, ctx);
 		expect(list.content[0].text).toContain("watching");
 		expect(list.content[0].text).toContain("polling every 15s");
 		await host.fire("session_shutdown", {}, ctx);
 	});
 
-	it("declares no file or port condition, and refuses a call that sends one before the schema does", async () => {
-		const { host } = session();
-		const tool = host.tools.get("timer");
-		expect(Object.keys(tool.parameters.properties.until.properties).sort()).toEqual(
-			["agent", "check", "command", "item", "unlocked"].sort(),
+	it("declares a closed event list and refuses anything else with the choices", async () => {
+		const { host, ctx } = session();
+		const tool = host.tools.get("wait");
+		expect(Object.keys(tool.parameters.properties)).not.toContain("until");
+		expect([...tool.parameters.properties.event.enum].sort((a: string, b: string) => a.localeCompare(b))).toEqual([
+			"agent.ended",
+			"check.result",
+			"item.state",
+			"path.unlocked",
+		]);
+		const call = (args: object) => tool.execute("c", { op: "on", note: "n", ...args }, undefined, undefined, ctx);
+		await expect(call({ event: "file.changed" })).rejects.toThrow(
+			/No event "file\.changed": the choices are agent\.report/,
 		);
-		const call = (until: unknown) => () => tool.prepareArguments({ op: "set", note: "n", reason: "r", until });
-		expect(call({ file: { path: "build.done", is: "exists" } })).toThrow(
-			"until.file was removed; set the timer with until.command instead: test -e build.done",
+		await expect(call({ event: "agent.report" })).rejects.toThrow("already wakes you");
+		await expect(call({ event: "time.due" })).rejects.toThrow("use set with after or every");
+		await expect(call({ event: "path.unlocked" })).rejects.toThrow("path.unlocked needs filter.path");
+		await expect(call({ event: "path.unlocked", filter: { path: "a", ref: "B1" } })).rejects.toThrow(
+			"filters on path, not ref",
 		);
-		expect(call({ port: { port: 3000 } })).toThrow("nc -z localhost 3000");
-		const kept = { op: "set", note: "n", until: { command: "test -e build.done" } };
-		expect(tool.prepareArguments(kept)).toBe(kept);
-		expect(tool.prepareArguments({ op: "list" })).toEqual({ op: "list" });
+		await expect(
+			tool.execute("c", { op: "set", after: 5, note: "n", event: "item.state" }, undefined, undefined, ctx),
+		).rejects.toThrow("belong to on");
+	});
+
+	it("listens with on, answers one line, lists what wakes it unasked, and ends with off", async () => {
+		const { host, ctx } = session();
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const tool = host.tools.get("wait");
+		const run = (args: object) => tool.execute("c", args, undefined, undefined, ctx);
+		const on = await run({
+			op: "on",
+			note: "n",
+			event: "check.result",
+			filter: { command: "true" },
+			once: false,
+			maxRuns: 3,
+			deadline: 900,
+		});
+		const id = on.details.timer.id as number;
+		expect(on.content[0].text).toBe(`Listening ${id}: \`true\` exits 0 · up to 3 wakes · ≤15m`);
+		expect(timers.get(agent.db, id)).toMatchObject({ kind: "until", max_runs: 3, baseline: "armed:0" });
+		const list = await run({ op: "list" });
+		expect(list.content[0].text).toContain(`${id} · on \`true\` exits 0 0/3 wakes · polling every 15s · ≤`);
+		expect(list.content[0].text).not.toContain("next check in");
+		await expect(
+			run({ op: "on", note: "n", event: "check.result", filter: { command: "true" }, maxRuns: 2 }),
+		).rejects.toThrow("maxRuns counts wakes");
+		expect((await run({ op: "off", id })).content[0].text).toMatch(new RegExp(`^Cancelled ${id} · on `));
+		expect(timers.activeCount(agent.db, "s1")).toBe(0);
+		await host.fire("session_shutdown", {}, ctx);
 	});
 });
 
-describe("gates see a command wherever until carries it", () => {
-	it("reads the command of a plain until and of a check's trigger", () => {
-		expect(untilCommand({ until: { command: "test -f a" } })).toBe("test -f a");
-		expect(untilCommand({ until: { check: "q", command: "make -q" } })).toBe("make -q");
-		expect(untilCommand({ until: { unlocked: "a" } })).toBeUndefined();
-		expect(untilCommand({ until: { command: "  " } })).toBeUndefined();
+describe("gates see a command wherever a wait carries it", () => {
+	it("reads the command of an on check.result, a check question beside it included", () => {
+		expect(untilCommand({ filter: { command: "test -f a" } })).toBe("test -f a");
+		expect(untilCommand({ check: "q", filter: { command: "make -q" } })).toBe("make -q");
+		expect(untilCommand({ filter: { path: "a" } })).toBeUndefined();
+		expect(untilCommand({ filter: { command: "  " } })).toBeUndefined();
 		expect(untilCommand({})).toBeUndefined();
 	});
 });
@@ -760,13 +809,25 @@ describe("a timer stored with a removed condition", () => {
 		});
 		const woken = await run(T0 + 6000);
 		expect(woken.map((row) => [row.id, row.status, row.stop_reason])).toEqual([
-			[file.id, "failed", "until.file was removed; set the timer with until.command instead: test -e build.done"],
-			[port.id, "failed", "until.port was removed; set the timer with until.command instead: nc -z 127.0.0.1 5173"],
-			[judged.id, "failed", "until.port was removed; set the timer with until.command instead: nc -z localhost 8080"],
+			[
+				file.id,
+				"failed",
+				"until.file was removed; set the wait with on check.result and this command instead: test -e build.done",
+			],
+			[
+				port.id,
+				"failed",
+				"until.port was removed; set the wait with on check.result and this command instead: nc -z 127.0.0.1 5173",
+			],
+			[
+				judged.id,
+				"failed",
+				"until.port was removed; set the wait with on check.result and this command instead: nc -z localhost 8080",
+			],
 		]);
 		expect(wakeText(woken[0])).toBe(
 			[
-				`Timer ${file.id} fired: stopped: until.file was removed; set the timer with until.command instead: test -e build.done (timer failed).`,
+				`Wait ${file.id} fired: stopped: until.file was removed; set the wait with on check.result and this command instead: test -e build.done (wait failed).`,
 				"Note: open the app",
 			].join("\n"),
 		);
@@ -892,5 +953,51 @@ describe("timer check resource ownership", () => {
 			controller.abort(new Error("cancelled"));
 			await result.catch(() => {});
 		}
+	});
+});
+
+describe("a persistent listener wakes when its condition turns true, not while it stays true", () => {
+	const base = (baseline: string, maxRuns = 2) => ({
+		kind: "until",
+		max_runs: maxRuns,
+		baseline,
+		deadline_at: null,
+		last_fired_at: 0,
+		created_at: 0,
+	});
+	const row = (baseline: string, maxRuns = 2) => base(baseline, maxRuns) as never;
+	const met = { met: true, exit: null, output: "" };
+	const open = { met: false, exit: null, output: "" };
+
+	it("wakes at each rising edge, rearms when the condition drops, and ends after maxRuns", () => {
+		expect(decideFire(row("armed:0"), met)).toEqual({ wake: true, persist: "fired:1" });
+		expect(decideFire(row("fired:1"), met)).toEqual({ wake: false });
+		expect(decideFire(row("fired:1"), open)).toEqual({ wake: false, persist: "armed:1" });
+		expect(decideFire(row("armed:0"), open)).toEqual({ wake: false });
+		expect(decideFire(row("armed:1"), met)).toEqual({
+			wake: true,
+			end: { status: "done", reason: "maxRuns" },
+			persist: "fired:2",
+		});
+	});
+
+	it("says which wake it is, and the last", () => {
+		const woke = (baseline: string, status: "active" | "done", stop: string | null) =>
+			wakeText({
+				...(base(baseline, 2) as object),
+				id: 4,
+				note: "n",
+				status,
+				stop_reason: stop,
+				condition_kind: "command",
+				condition: JSON.stringify("true"),
+				last_output: null,
+				last_exit: null,
+				checks: 0,
+				spent_usd: 0,
+			} as never);
+		expect(woke("fired:1", "active", null)).toContain("wake 1 of 2)");
+		expect(woke("fired:1", "active", null)).toContain("off id 4 to stop it");
+		expect(woke("fired:2", "done", "maxRuns")).toContain("wake 2 of 2, the last)");
 	});
 });

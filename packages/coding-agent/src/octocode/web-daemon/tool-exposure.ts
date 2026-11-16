@@ -100,7 +100,7 @@ function nativeGroup(ctx: ConfigContext, setting: string, live: NativeToolsLive 
 	const usageFile = path.join(ctx.agentDir, USAGE_FILE_NAME);
 	const record = readUsageAudit(usageFile, "main");
 	const audited = usage || hasUsageData(record);
-	// `memory` and `timer` are deferred only by usage or a pin: they are listed in the same cases, with their audit.
+	// `memory` and `wait` are deferred only by usage or a pin: they are listed in the same cases, with their audit.
 	const auditedTools: string[] = [
 		...NATIVE_PINNABLE_TOOLS,
 		...NATIVE_USAGE_ONLY_TOOLS.filter(

@@ -49,6 +49,15 @@ describe("built-in slash commands", () => {
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
+	it("runs Claude Code aliases as their Octocode command", async () => {
+		const instance = mode();
+		const effects: string[] = [];
+		for (const method of ["shutdown", "handleProvidersCommand"]) instance[method] = () => effects.push(method);
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		for (const alias of ["/exit", "/login"]) await instance.defaultEditor.onSubmit(alias);
+		expect(effects).toEqual(["shutdown", "handleProvidersCommand"]);
+	});
+
 	it("does not dispatch removed command names and hints at the closest canonical command", async () => {
 		const instance = mode();
 		const effects: string[] = [];
@@ -63,17 +72,12 @@ describe("built-in slash commands", () => {
 			instance[method] = () => effects.push(method);
 		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
-		for (const removed of ["/models", "/thinking high", "/login", "/exit", "/config", "/stats"])
-			await instance.defaultEditor.onSubmit(removed);
+		for (const removed of ["/models", "/thinking high", "/stats"]) await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual(
 			[
 				"Unknown command /models. Did you mean /model?",
 				"Unknown command /thinking. Search commands with /help thinking.",
-				// /login became /providers in v20.0.1; the old name points there instead of a skill that mentions "login".
-				"Unknown command /login. Did you mean /providers?",
-				"Unknown command /exit. Search commands with /help exit.",
-				"Unknown command /config. Did you mean /configuration?",
 				"Unknown command /stats. Did you mean /status?",
 			].map((message) => message + HINT),
 		);

@@ -532,6 +532,7 @@ describe("archive wiring in the session", () => {
 			model: undefined,
 			getContextUsage: () => ({ tokens: 1, contextWindow: 1, percent: 1 }),
 			getSystemPrompt: () => "",
+			getSystemPromptOptions: () => ({ contextFiles: [] }),
 			sessionManager: {
 				getSessionId: () => "inky-kraken",
 				getBranch: () => [],

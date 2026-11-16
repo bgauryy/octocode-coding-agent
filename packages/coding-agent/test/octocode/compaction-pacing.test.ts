@@ -172,6 +172,7 @@ describe("pacing wired into the session", () => {
 			model: undefined,
 			getContextUsage: () => ({ tokens, contextWindow: 1, percent: 1 }),
 			getSystemPrompt: () => "",
+			getSystemPromptOptions: () => ({ contextFiles: [] }),
 			sessionManager: {
 				getSessionId: () => "s",
 				getBranch: () => [],

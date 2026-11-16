@@ -1,4 +1,5 @@
 import { GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { windowList } from "../../../../theme/page-kit.ts";
 import { theme } from "../../../../theme/theme.ts";
 import type { ModelItem } from "./model-items.ts";
 import { plainText } from "../styled-line.ts";
@@ -36,8 +37,7 @@ export function modelListLines(
 	maxVisible = 4,
 	width = 120,
 ): string[] {
-	const start = Math.max(0, Math.min(selectedIndex - Math.floor(maxVisible / 2), items.length - maxVisible));
-	const end = Math.min(start + maxVisible, items.length);
+	const { start, end } = windowList(items.length, selectedIndex, maxVisible);
 	const lines: string[] = [];
 	for (let i = start; i < end; i++) {
 		const item = items[i];

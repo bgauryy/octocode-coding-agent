@@ -63,7 +63,7 @@ const continuation = (prefix: string): string => prefix.replace(/├/g, "│").r
 /** Whether the line under an agent's row is worth keeping on a short terminal: an agent that waits for the user, or whose run ended badly or blocked. */
 export const hasPriority = (entry: PanelEntry, now: number): boolean => {
 	const { label } = panelState(entry, now);
-	return label === "needs you" || label === "blocked" || label === "failed";
+	return label === "needs you" || label === "asks parent" || label === "blocked" || label === "failed";
 };
 
 const clean = (text: string) => safe(text.replace(/^[\s#>*-]+/, ""));
@@ -83,19 +83,21 @@ function messageParts(entry: PanelEntry, message: Traffic | undefined, now: numb
 		if (headline) return { lead: "", extras: [], body: headline };
 		return message ? messageParts({ ...entry, doneAt: undefined }, message, now, theme) : undefined;
 	}
-	if (need?.kind === "ask" && need.message) {
+	if (need?.kind === "parent" && need.message) {
 		const ask = need.message;
 		const count = need.count > 1 ? ` ×${need.count}` : "";
 		return {
-			lead: `${theme.fg("dim", `#${ask.id} →`)} ${theme.fg("text", "you")}${SEPARATOR}${theme.fg("warning", `awaiting reply${count}`)}`,
-			extras: [
-				theme.fg("dim", formatAgo(now - ask.at)),
-				theme.fg("warning", `/agents tell ${safe(entry.member.id, 64)} #${ask.id} <reply>`),
-			],
+			lead: `${theme.fg("dim", `#${ask.id} →`)} ${theme.fg("text", "parent")}${SEPARATOR}${theme.fg("warning", `awaiting parent${count}`)}`,
+			extras: [theme.fg("dim", formatAgo(now - ask.at))],
 			body: safe(ask.text),
 		};
 	}
-	if (need) return { lead: theme.fg("warning", "waiting for your approval"), extras: [], body: "" };
+	if (need)
+		return {
+			lead: theme.fg("warning", need.kind === "approval" ? "waiting for your approval" : "waiting for your answer"),
+			extras: [],
+			body: "",
+		};
 	if (!message) return undefined;
 	const target =
 		message.to.length > 2
@@ -110,8 +112,8 @@ function messageParts(entry: PanelEntry, message: Traffic | undefined, now: numb
 
 /**
  * The muted line under an agent's row: what it last said (`↳ → calm-heron · awaiting reply · 12s · "review the diff…"`),
- * the question it waits on you to answer with its ready `/agents tell` command, or a finished run's headline. When the
- * row is narrow the body shrinks first, then the extras (age, the command) leave from the last; the lead stays.
+ * the message awaiting its parent, a pending user dialog, or a finished run's headline. When the row is narrow the body
+ * shrinks first, then the age leaves; the lead stays.
  */
 export function noteLine(
 	entry: PanelEntry,
@@ -127,7 +129,7 @@ export function noteLine(
 	const join = (items: string[]) => items.filter(Boolean).join(theme.fg("dim", SEPARATOR));
 	const extras = [...parts.extras];
 	const fixed = () => start + join([parts.lead, ...extras]);
-	// The ready command outranks the age: drop the age first, then the command.
+	// Drop optional extras before truncating the lead.
 	while (extras.length > 0 && visibleWidth(fixed()) > width) extras.shift();
 	const room = width - visibleWidth(fixed()) - SEPARATOR.length - 2;
 	const body = parts.body && room >= BODY_MIN ? `"${fitName(parts.body, room)}"` : "";

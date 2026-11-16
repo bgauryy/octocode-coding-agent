@@ -7,7 +7,8 @@ export interface Member {
 	pid: number;
 	/** When the process `pid` names started (`processStartTime`), absent where unknown: with the pid it names one process, which a later one that got the pid is not. */
 	started?: string;
-	status: "idle" | "working";
+	/** `settled`: a headless child whose run ended while its parent still holds its reservations; never listed as a live teammate and unreachable by mail. */
+	status: "idle" | "working" | "settled";
 	/** Explicit cooperative runner mailbox; absent for legacy/native push delivery. */
 	mailbox?: "pull";
 	/** What it works on, any length (`checkGoal` in `identity.ts` refuses only a missing one). Stored in the `task` column. */

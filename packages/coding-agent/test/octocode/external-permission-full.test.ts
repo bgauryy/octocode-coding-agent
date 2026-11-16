@@ -40,13 +40,22 @@ describe("an outbound external ACP agent's permission request", () => {
 			{ ...request, options: request.options.filter((option) => option.kind !== "allow_once") },
 			new AbortController().signal,
 		);
-		expect(decision).toEqual({ outcome: { outcome: "cancelled" } });
+		expect(decision).toEqual({ outcome: { outcome: "selected", optionId: "no" } });
 		expect(fake.entries).toEqual([]);
 	});
 
-	it("still goes to the person outside full mode, and is cancelled when none can be asked", async () => {
+	it("answers like full in bypass", async () => {
+		const { decide } = setup("bypass", false);
+		await expect(decide(request, new AbortController().signal)).resolves.toEqual({
+			outcome: { outcome: "selected", optionId: "one" },
+		});
+	});
+
+	it("still goes to the person outside full mode, and is refused when none can be asked", async () => {
 		const { decide, fake } = setup("workspace", false);
-		await expect(decide(request, new AbortController().signal)).resolves.toEqual({ outcome: { outcome: "cancelled" } });
+		await expect(decide(request, new AbortController().signal)).resolves.toEqual({
+			outcome: { outcome: "selected", optionId: "no" },
+		});
 		expect(fake.entries).toEqual([]);
 	});
 });

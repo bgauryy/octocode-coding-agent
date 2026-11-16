@@ -101,7 +101,7 @@ async function loginOpenAICodex(
 
 	try {
 		const result = await waitForCallbackOrManualInput(interaction, callback, {
-			message: "Complete login in your browser, or paste the authorization code / redirect URL here:",
+			message: "Complete login in your browser, or paste the full redirect URL from its address bar here:",
 			placeholder: REDIRECT_URI,
 		});
 		let code: string | undefined;
@@ -109,7 +109,10 @@ async function loginOpenAICodex(
 			code = result.value;
 		} else {
 			const parsed = parseAuthorizationInput(result.input);
-			if (parsed.state && parsed.state !== state) throw new Error("State mismatch");
+			// A pasted code is only bound to this login by its `state`: a bare code could belong to someone else's login.
+			if (!parsed.state)
+				throw new Error("The pasted text has no state. Paste the full redirect URL, not only the code.");
+			if (parsed.state !== state) throw new Error("State mismatch");
 			code = parsed.code;
 		}
 

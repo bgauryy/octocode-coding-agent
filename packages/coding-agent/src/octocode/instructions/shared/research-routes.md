@@ -1,0 +1,1 @@
+- Research, code, ideas, plans and designs start from evidence the research server fetches; its `<mcps>` routes each question. Search with {{research.search}}{{#if localReader}}, read with {{research.reader}}{{/if}}; beyond them, its GitHub reads (match string at a commit), history and PRs, packages, security and classify beat memory.

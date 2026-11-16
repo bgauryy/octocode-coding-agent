@@ -136,7 +136,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		};
 		const reason = (outcome: RunOutcome): string =>
 			outcome.status === "truncated"
-				? "Response was truncated: the model reached its output token limit."
+				? outcome.errorMessage || "Response was truncated: the model reached its output token limit."
 				: outcome.errorMessage || `Request ${outcome.stopReason ?? outcome.status}`;
 		const reported = new WeakSet<RunOutcome>();
 		const report = (outcome: RunOutcome | undefined, show: boolean): void => {

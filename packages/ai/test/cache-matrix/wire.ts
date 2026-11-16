@@ -131,8 +131,8 @@ export const WIRE_CASES: WireCase[] = [
 		model: () => getBuiltinModel("google", "gemini-2.5-pro"),
 		apiKey: "test-key",
 		implicit: true,
-		tools: (payload) => payload.config?.tools,
-		instructions: (payload) => payload.config?.systemInstruction,
+		tools: (payload) => payload.tools,
+		instructions: (payload) => payload.systemInstruction,
 		history: (payload) => payload.contents ?? [],
 	},
 	{
@@ -142,8 +142,8 @@ export const WIRE_CASES: WireCase[] = [
 		model: () => getBuiltinModel("google-vertex", "gemini-2.5-pro"),
 		apiKey: "test-key",
 		implicit: true,
-		tools: (payload) => payload.config?.tools,
-		instructions: (payload) => payload.config?.systemInstruction,
+		tools: (payload) => payload.tools,
+		instructions: (payload) => payload.systemInstruction,
 		history: (payload) => payload.contents ?? [],
 	},
 	{

@@ -12,7 +12,7 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import { runMcpHook } from "./mcp.ts";
 import type { BoundMcpHookCaller } from "../../../../mcp/src/api.ts";
 import { runHttpHook } from "./http.ts";
-import { formatSize } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { visibleControls } from "../../../../common/src/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { firstLine, parseJson } from "../shared/util.ts";
@@ -138,7 +138,7 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 	// Output past the kept bytes is counted, never dropped silently.
 	const notKept = (bytes = 0) =>
 		bytes > 0
-			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(HOOK_COMMAND_OUTPUT_MAX_BYTES)}]`
+			? `\n[… ${formatBytes(bytes, "compact")} more output not kept: a hook's output is read up to ${formatBytes(HOOK_COMMAND_OUTPUT_MAX_BYTES, "compact")}]`
 			: "";
 	// Claude: exit 2 of SessionStart/SubagentStart "shows stderr to user only"; it neither blocks nor reaches the model.
 	if (run.code === 2 && protocol === "claude" && (event === "SessionStart" || event === "SubagentStart"))

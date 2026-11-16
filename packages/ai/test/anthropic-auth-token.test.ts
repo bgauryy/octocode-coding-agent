@@ -1,5 +1,5 @@
 import { arch, platform, release } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL } from "../src/api/anthropic-messages/token.ts";
 import { ANTHROPIC_API_KEY_ENV, ANTHROPIC_AUTH_TOKEN_ENV, ANTHROPIC_OAUTH_TOKEN_ENV } from "../src/env-api-keys.ts";
@@ -8,12 +8,9 @@ import { anthropicProvider } from "../src/providers/anthropic.ts";
 import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
-const mockState = vi.hoisted(() => ({
-	constructorOpts: undefined as Record<string, unknown> | undefined,
-	createParams: undefined as Record<string, unknown> | undefined,
-}));
+const mockState = { headers: undefined as Headers | undefined, body: undefined as Record<string, unknown> | undefined };
 
-vi.mock("@anthropic-ai/sdk", () => {
+beforeEach(() => {
 	function createSseResponse(): Response {
 		const body = [
 			`event: message_start\ndata: ${JSON.stringify({
@@ -37,23 +34,11 @@ vi.mock("@anthropic-ai/sdk", () => {
 		});
 	}
 
-	class FakeAnthropic {
-		constructor(opts: Record<string, unknown>) {
-			mockState.constructorOpts = opts;
-		}
-		beta = {
-			messages: {
-				create: (params: Record<string, unknown>) => {
-					mockState.createParams = params;
-					return {
-						asResponse: async () => createSseResponse(),
-					};
-				},
-			},
-		};
-	}
-
-	return { default: FakeAnthropic };
+	vi.stubGlobal("fetch", async (_input: unknown, init?: RequestInit) => {
+		mockState.headers = new Headers(init?.headers);
+		mockState.body = JSON.parse(init?.body as string);
+		return createSseResponse();
+	});
 });
 
 const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
@@ -86,8 +71,8 @@ const kimiCodingModel: Model<"anthropic-messages"> = {
 };
 
 afterEach(() => {
-	mockState.constructorOpts = undefined;
-	mockState.createParams = undefined;
+	mockState.headers = undefined;
+	mockState.body = undefined;
 });
 
 describe("Anthropic auth token env", () => {
@@ -147,12 +132,11 @@ describe("Anthropic auth token env", () => {
 		});
 		await stream.result();
 
-		expect(mockState.constructorOpts?.apiKey).toBeNull();
-		expect(mockState.constructorOpts?.authToken).toBeNull();
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string | null>;
-		expect(headers.Authorization).toBe("Bearer gateway-token");
-		expect(mockState.createParams?.betas ?? []).not.toContain("oauth-2025-04-20");
-		expect(mockState.createParams?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
+		expect(mockState.headers?.has("x-api-key")).toBe(false);
+		const headers = mockState.headers!;
+		expect(headers.get("authorization")).toBe("Bearer gateway-token");
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("oauth-2025-04-20");
+		expect(mockState.body?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
 	});
 
 	it("threads authContext ANTHROPIC_AUTH_TOKEN through request headers", async () => {
@@ -166,12 +150,11 @@ describe("Anthropic auth token env", () => {
 
 		await models.streamSimple(anthropicModel, context).result();
 
-		expect(mockState.constructorOpts?.apiKey).toBeNull();
-		expect(mockState.constructorOpts?.authToken).toBeNull();
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string>;
-		expect(headers.Authorization).toBe("Bearer ctx-token");
-		expect(mockState.createParams?.betas ?? []).not.toContain("oauth-2025-04-20");
-		expect(mockState.createParams?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
+		expect(mockState.headers?.has("x-api-key")).toBe(false);
+		const headers = mockState.headers!;
+		expect(headers.get("authorization")).toBe("Bearer ctx-token");
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("oauth-2025-04-20");
+		expect(mockState.body?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
 	});
 
 	it("refuses a subscription token from ANTHROPIC_OAUTH_TOKEN before any request is built", async () => {
@@ -187,8 +170,8 @@ describe("Anthropic auth token env", () => {
 
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toBe(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
-		expect(mockState.constructorOpts).toBeUndefined();
-		expect(mockState.createParams).toBeUndefined();
+		expect(mockState.headers).toBeUndefined();
+		expect(mockState.body).toBeUndefined();
 	});
 
 	it("lets explicit request headers override ANTHROPIC_AUTH_TOKEN", async () => {
@@ -204,8 +187,8 @@ describe("Anthropic auth token env", () => {
 			.streamSimple(anthropicModel, context, { headers: { Authorization: "Bearer explicit-token" } })
 			.result();
 
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string>;
-		expect(headers.Authorization).toBe("Bearer explicit-token");
+		const headers = mockState.headers!;
+		expect(headers.get("authorization")).toBe("Bearer explicit-token");
 	});
 });
 
@@ -213,8 +196,8 @@ describe("Anthropic-compatible user agents", () => {
 	it("uses the default User-Agent for Anthropic Messages requests", async () => {
 		await streamAnthropic(anthropicModel, context, { apiKey: "anthropic-key" }).result();
 
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string>;
-		expect(headers["User-Agent"]).toBe(OCTOCODE_USER_AGENT);
+		const headers = mockState.headers!;
+		expect(headers.get("user-agent")).toBe(OCTOCODE_USER_AGENT);
 	});
 
 	it("lets explicit headers override the default Anthropic Messages User-Agent", async () => {
@@ -223,8 +206,8 @@ describe("Anthropic-compatible user agents", () => {
 			headers: { "User-Agent": "custom-client" },
 		}).result();
 
-		const headers = mockState.constructorOpts?.defaultHeaders as Record<string, string>;
-		expect(headers["User-Agent"]).toBe("custom-client");
+		const headers = mockState.headers!;
+		expect(headers.get("user-agent")).toBe("custom-client");
 	});
 
 	it("sends a configured beta header when Octocode needs no betas of its own", async () => {
@@ -233,7 +216,7 @@ describe("Anthropic-compatible user agents", () => {
 			headers: { "anthropic-beta": "custom-beta" },
 		}).result();
 
-		expect(mockState.createParams?.betas).toEqual(["custom-beta"]);
+		expect(mockState.headers?.get("anthropic-beta")?.split(",")).toEqual(["custom-beta"]);
 	});
 
 	it("preserves explicit Anthropic beta header suppression", async () => {
@@ -242,7 +225,7 @@ describe("Anthropic-compatible user agents", () => {
 			headers: { "anthropic-beta": null },
 		}).result();
 
-		expect(mockState.createParams?.betas).toBeUndefined();
+		expect(mockState.headers?.get("anthropic-beta")?.split(",")).toBeUndefined();
 	});
 });
 
@@ -263,16 +246,14 @@ describe("no Claude Code identity on any Anthropic path", () => {
 		await streamAnthropic(model, context, options).result();
 
 		const headers = Object.fromEntries(
-			Object.entries((mockState.constructorOpts?.defaultHeaders ?? {}) as Record<string, string | null>).map(
-				([name, value]) => [name.toLowerCase(), value],
-			),
+			[...(mockState.headers?.entries() ?? [])].map(([name, value]) => [name.toLowerCase(), value]),
 		);
-		expect(String(headers["user-agent"])).not.toMatch(/claude-cli/);
+		expect(headers["user-agent"]).not.toMatch(/claude-cli/);
 		expect(headers["x-app"]).toBeUndefined();
-		expect(mockState.createParams?.betas ?? []).not.toContain("claude-code-20250219");
-		expect(mockState.createParams?.betas ?? []).not.toContain("oauth-2025-04-20");
-		expect(JSON.stringify(mockState.createParams?.system)).not.toContain("You are Claude Code");
-		expect(mockState.createParams?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("claude-code-20250219");
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("oauth-2025-04-20");
+		expect(JSON.stringify(mockState.body?.system)).not.toContain("You are Claude Code");
+		expect(mockState.body?.system).toEqual([expect.objectContaining({ text: "System prompt." })]);
 	});
 
 	it.each([
@@ -285,7 +266,7 @@ describe("no Claude Code identity on any Anthropic path", () => {
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toBe(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
 		expect(result.errorMessage).toContain("external agent");
-		expect(mockState.constructorOpts).toBeUndefined();
-		expect(mockState.createParams).toBeUndefined();
+		expect(mockState.headers).toBeUndefined();
+		expect(mockState.body).toBeUndefined();
 	});
 });

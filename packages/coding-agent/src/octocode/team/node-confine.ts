@@ -101,13 +101,29 @@ export async function confineNode(
 
 const CONFINED_NOTE = `[Another agent holds a reservation, so node ran with \`${CONFINE_FLAGS}\` added: it may read files, and a file write or child process fails with ERR_ACCESS_DENIED. Use the file tool for edits.]`;
 
-/** Adds the gate's note to the result of each call it marked (by default the node note); returns how the gate marks one. */
-export function registerConfinedNote(api: ExtensionAPI): (toolCallId: string | undefined, note?: string) => void {
-	const rewritten = new Map<string, string>();
+const CONFINED_REPEAT =
+	"[A reservation is held: node ran confined again, so a file write fails. Use the file tool for edits.]";
+
+/**
+ * Adds the gate's note to the result of each call it marked (by default the node note); returns how the gate marks one.
+ * A note already shown comes back as its `repeat` form: the full text is paid for once, not per command. Compaction
+ * summarizes the notes away, so it starts the full text over.
+ */
+export function registerConfinedNote(
+	api: ExtensionAPI,
+): (toolCallId: string | undefined, note?: string, repeat?: string) => void {
+	const rewritten = new Map<string, { note: string; repeat: string }>();
+	const shown = new Set<string>();
+	api.on("session_compact", async () => {
+		shown.clear();
+		return undefined;
+	});
 	api.on("tool_result", async (event) => {
-		const note = rewritten.get(event.toolCallId);
-		if (note === undefined) return undefined;
+		const marked = rewritten.get(event.toolCallId);
+		if (marked === undefined) return undefined;
 		rewritten.delete(event.toolCallId);
+		const note = shown.has(marked.note) ? marked.repeat : marked.note;
+		shown.add(marked.note);
 		return {
 			content: [...event.content, { type: "text", text: note }],
 			...(event.structuredContent === undefined ? {} : { structuredContent: event.structuredContent }),
@@ -117,7 +133,7 @@ export function registerConfinedNote(api: ExtensionAPI): (toolCallId: string | u
 	api.on("message_end", async (event) => {
 		if (event.message.role === "toolResult") rewritten.delete(event.message.toolCallId);
 	});
-	return (toolCallId, note = CONFINED_NOTE) => {
-		if (toolCallId) rewritten.set(toolCallId, note);
+	return (toolCallId, note = CONFINED_NOTE, repeat = CONFINED_REPEAT) => {
+		if (toolCallId) rewritten.set(toolCallId, { note, repeat });
 	};
 }

@@ -73,6 +73,8 @@ export interface SnapshotItem {
 	assignee?: string;
 	/** Whether the assignee is a running session at snapshot time (the writer's own session counts). */
 	assigneeLive?: boolean;
+	/** Subagents the assignee started that work on this item now (their agent ids). */
+	workers?: string[];
 	createdBy: string;
 	sourceSession?: string;
 	createdAt: number;

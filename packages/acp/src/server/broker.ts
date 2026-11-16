@@ -245,9 +245,11 @@ export class AcpBroker {
 			if (session) {
 				if (this.sessions.get(session.id) === session) this.sessions.delete(session.id);
 				this.startups.delete(session);
-				await session.close();
 			}
+			// The slot returns before the close, which can reject: a failed close must not leak capacity.
 			if (counted) this.creating--;
+			if (session)
+				await session.close().catch((closeError: unknown) => reportToStderr("ACP session close failed", closeError));
 			if (error instanceof RequestError) throw error;
 			// The worker's own words say what to do: another process has this session open, a settings file is broken.
 			const reason = error instanceof Error ? `: ${redactSecrets(error.message)}` : ". See agent stderr.";

@@ -112,16 +112,16 @@ try {
 	}
 
 	const aiSdkPackages = [
-		"@anthropic-ai/sdk",
+		"@ai-sdk/anthropic",
 		"@aws-sdk/client-bedrock-runtime",
 		"@google/genai",
 		"@mistralai/mistralai",
 		"openai",
 	];
 	const includedAiSdkPackages = aiSdkPackages.filter((packageName) => includesNodePackage(inputs, packageName));
-	if (includedAiSdkPackages.length !== 1 || includedAiSdkPackages[0] !== "@anthropic-ai/sdk") {
+	if (includedAiSdkPackages.length !== 1 || includedAiSdkPackages[0] !== "@ai-sdk/anthropic") {
 		throw new Error(
-			`Agent selective-provider bundle SDKs: expected only @anthropic-ai/sdk, found ${includedAiSdkPackages.join(", ") || "none"}`,
+			`Agent selective-provider bundle SDKs: expected only @ai-sdk/anthropic, found ${includedAiSdkPackages.join(", ") || "none"}`,
 		);
 	}
 

@@ -120,7 +120,7 @@ describe("team delivery efficiency", () => {
 			const mark = vi.spyOn(store, "markNotified").mockImplementationOnce(() => {
 				throw new Error("busy");
 			});
-			expect(() => mail.reportDeadLetters(store, "sender")).toThrow("busy");
+			expect(() => mail.reportDeadLetters(store, "sender")).not.toThrow();
 			expect(sent).toHaveLength(1);
 			mail.reportDeadLetters(store, "sender");
 			mail.reportDeadLetters(store, "sender");
@@ -172,7 +172,7 @@ describe("team delivery efficiency", () => {
 			vi.spyOn(oldStore, "markNotified").mockImplementationOnce(() => {
 				throw new Error("busy");
 			});
-			expect(() => mail.reportDeadLetters(oldStore, "sender")).toThrow("busy");
+			expect(() => mail.reportDeadLetters(oldStore, "sender")).not.toThrow();
 			mail.reset();
 			mail.reportDeadLetters(newStore, "sender");
 			expect(sent).toHaveLength(2);

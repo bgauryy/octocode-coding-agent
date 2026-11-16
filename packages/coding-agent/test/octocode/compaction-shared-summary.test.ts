@@ -354,7 +354,16 @@ describe("cache-sharing compaction summary", () => {
 		expect(prompt).not.toMatch(/\p{Surrogate}/u);
 	});
 
-	it("adds the computed size target only when updating a previous summary", async () => {
+	it("goes straight to the standalone request when the window leaves less output than the cap", async () => {
+		const { calls, api, ctx, event } = setup();
+		const full = { ...model, contextWindow: 12_345 + 4_096 + 100 };
+		const reasons: string[] = [];
+		expect(await sharedSummary(api, event, ctx, full as never, "x", (why) => reasons.push(why))).toBeUndefined();
+		expect(calls).toHaveLength(0);
+		expect(reasons).toEqual([expect.stringMatching(/window leaves 100 output tokens/)]);
+	});
+
+	it("asks every summary, the first one too, to stay under the computed size target", async () => {
 		const first = setup();
 		await sharedSummary(first.api, first.event, first.ctx, model as never, "x");
 		const next = setup({ previousSummary: "## Goal\nold" });
@@ -362,7 +371,7 @@ describe("cache-sharing compaction summary", () => {
 		const target = summarySizeTarget(summaryTargetTokens(next.calls[0].options.maxTokens!));
 		expect(target).not.toBe("");
 		expect(finalPrompt(next.calls[0])).toContain(target);
-		expect(finalPrompt(first.calls[0])).not.toContain(target);
+		expect(finalPrompt(first.calls[0])).toContain(target);
 	});
 
 	it("gives the complete text of an earlier checkpoint that was saved to a file, keeping the cached messages as they are", async () => {
@@ -428,7 +437,11 @@ describe("cache-sharing compaction summary", () => {
 	});
 
 	it.each([
-		["a stop other than stop", () => reply([text("## Goal\ncut")], "length"), "the reply stopped with length"],
+		[
+			"a stop other than stop",
+			() => reply([text("## Goal\ncut")], "length"),
+			"the reply stopped with length (output 50 tokens, cap 8000)",
+		],
 		[
 			"a tool call",
 			() => reply([{ type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse"),

@@ -22,6 +22,7 @@ import {
 	SKILLS_IN_TASK_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
+	AGENT_RUN_ID_ENV,
 	PARENT_TRANSCRIPT_ENV,
 	PERMISSION_ENV,
 	PERMISSION_GRANTS_ENV,
@@ -42,6 +43,7 @@ import {
 	AGENT_ROLE_ENV,
 	PARENT_ID_ENV,
 	PARENT_PID_ENV,
+	PARENT_HOLDS_LEASES_ENV,
 	PARENT_WAITS_ENV,
 } from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
@@ -148,6 +150,8 @@ export interface Identity {
 	scratch?: string;
 	/** The parent's Octocode session id: the backlog claims the child may update. */
 	parentSession?: string;
+	/** This run's id (`RunDetails.runId`): names the stop report the child or its parent saves for it (`parentGoneReportId`). */
+	runId?: string;
 	/** The backlog item the parent started the child for (`B12`): the only one it may update; its report is noted on it. */
 	item?: string;
 	parentTranscript?: string;
@@ -162,6 +166,8 @@ export interface Identity {
 	relay?: boolean;
 	/** Paths the parent reserved for it (a task's `paths`), as given: its assignment names them, and a follow-up takes them again. */
 	reservedPaths?: readonly string[];
+	/** Running agents under the same coordinator when it started, one bounded line each (`siblings.ts`); absent when none. */
+	siblings?: string;
 	/** The identity text the parent appended to the child's latest task (`identityBlock`); the child re-reads it after a compaction (`identity-reminder.ts`). */
 	assignment?: string;
 }
@@ -209,8 +215,10 @@ export function subagentProcessEnv(
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
 		...(mcpServersFile ? { [MCP_SESSION_SERVERS_FILE_ENV]: mcpServersFile } : {}),
 		...(identity ? { [AGENT_ID_ENV]: identity.id } : {}),
+		...(identity?.runId ? { [AGENT_RUN_ID_ENV]: identity.runId } : {}),
 		...(identity?.parentId ? { [PARENT_ID_ENV]: identity.parentId } : {}),
 		...(identity?.parentWaits ? { [PARENT_WAITS_ENV]: "1" } : {}),
+		...(identity?.reservedPaths?.length ? { [PARENT_HOLDS_LEASES_ENV]: "1" } : {}),
 		...(identity?.role ? { [AGENT_ROLE_ENV]: identity.role } : {}),
 		...(identity?.goal ? { [AGENT_GOAL_ENV]: identity.goal } : {}),
 		...(identity?.isolation

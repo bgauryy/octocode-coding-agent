@@ -40,10 +40,12 @@ describe("the standalone summary request's size target", () => {
 		expect(await promptFor("## Goal\nold", 16_384)).toContain(summarySizeTarget(target));
 	});
 
-	it("is not asked of a first summary, or without a reserve to size it by", async () => {
+	it("is asked of a first summary too, and without a reserve is sized by the output cap instead", async () => {
 		const target = summarySizeTarget(summaryTargetTokens(inlineSummaryTokens(16_384)));
 		expect(target).not.toBe("");
-		expect(await promptFor(undefined, 16_384)).not.toContain(target);
-		expect(await promptFor("## Goal\nold", undefined)).not.toContain(target);
+		expect(await promptFor(undefined, 16_384)).toContain(target);
+		const withoutReserve = await promptFor("## Goal\nold", undefined);
+		expect(withoutReserve).not.toContain(target);
+		expect(withoutReserve).toMatch(/under about \d+ tokens/);
 	});
 });

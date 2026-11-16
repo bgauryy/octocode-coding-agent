@@ -1,15 +1,10 @@
-import type {
-	AssistantContent,
-	ThinkingBudgetReduction,
-	ThinkingBudgets,
-	ThinkingLevel,
-	StreamOptions,
-} from "../../types.ts";
+import type { ThinkingBudgetReduction, ThinkingBudgets, ThinkingLevel, StreamOptions } from "../../types.ts";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
 export interface BedrockOptions extends StreamOptions {
 	region?: string;
+	credentialProvider?: () => PromiseLike<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string }>;
 	profile?: string;
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 	/* See https://docs.aws.amazon.com/bedrock/latest/userguide/inference-reasoning.html for supported models. */
@@ -43,17 +38,6 @@ export interface BedrockOptions extends StreamOptions {
 	 * @see https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html */
 	bearerToken?: string;
 }
-
-export type Block = AssistantContent & {
-	index?: number;
-	partialJson?: string;
-	/** Scratch buffer for encrypted reasoning deltas, joined into `thinkingSignature`. */
-	redactedChunks?: Uint8Array[];
-	/** Incremental image bytes, removed before persistence. */
-	imageChunks?: Uint8Array[];
-};
-
-export const EMPTY_TEXT_PLACEHOLDER = "<empty>";
 
 export const THINKING_BINDING_CONTROLS_BETA = "thinking-binding-controls-2026-08-01";
 

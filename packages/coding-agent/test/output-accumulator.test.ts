@@ -1,5 +1,6 @@
 import { readFileSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
+import { registerSecretValue } from "../../common/src/sanitize.ts";
 import { OutputAccumulator } from "../src/core/tools/output-accumulator.ts";
 
 const paths: string[] = [];
@@ -206,6 +207,25 @@ describe("OutputAccumulator carriage returns", () => {
 		expect(snapshot.content).not.toContain("50%");
 		expect(readFileSync(output.snapshot().fullOutputPath!, "utf-8")).toBe(raw);
 		expect((await output.readFullOutput(10 * 1024 * 1024)).content).toBe(raw);
+	});
+});
+
+describe("OutputAccumulator secret redaction", () => {
+	it("redacts a registered secret in the spill file, also when chunks split it", async () => {
+		const secret = "zq-sly-tide-secret-value-91827364";
+		expect(registerSecretValue(secret)).toBe(true);
+		const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join("\n");
+		const { output, snapshot } = accumulate([
+			`${lines}\nkey=${secret.slice(0, 10)}`,
+			`${secret.slice(10)}\ntail=${secret}`,
+		]);
+		await output.closeTempFile();
+		const saved = readFileSync(snapshot.fullOutputPath!, "utf-8");
+		expect(saved).not.toContain(secret);
+		expect(saved).not.toContain(secret.slice(0, 10));
+		expect(saved.startsWith("line 0\n")).toBe(true);
+		expect(saved).toContain("line 2999\n");
+		expect(saved.endsWith("tail=" + saved.slice(saved.lastIndexOf("tail=") + 5))).toBe(true);
 	});
 });
 

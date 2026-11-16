@@ -16,7 +16,8 @@ import {
 } from "../../../../mcp/src/api.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
-import { readJsonBody, type TokenAccess, type Reply } from "./http-util.ts";
+import { readJsonBody } from "../shared/json-body.ts";
+import type { TokenAccess, Reply } from "./http-util.ts";
 import type { RepoCatalog } from "./repos.ts";
 import { ConfigWriteError } from "./config-write.ts";
 

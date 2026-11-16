@@ -21,7 +21,7 @@ describe("settings entries", () => {
 		});
 		expect(entries.find((candidate) => candidate.id === "transport")?.valueType).toEqual({
 			type: "enum",
-			values: ["auto", "sse", "websocket", "websocket-cached"],
+			values: ["auto", "sse"],
 		});
 		expect(entries.some((candidate) => ["toggles", "defaultTools", "skills"].includes(candidate.id))).toBe(false);
 	});

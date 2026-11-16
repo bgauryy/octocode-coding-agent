@@ -1,6 +1,6 @@
 import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { keyHint, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
+import { keyHint, keyText, moveHint, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import { plainText } from "../styled-line.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
 import type { SessionScope } from "./types.ts";
@@ -148,6 +148,7 @@ export class SessionSelectorHeader implements Component {
 		return [
 			renderHintLine(
 				[
+					moveHint(11),
 					[keyText("tui.select.confirm"), "resume", 0],
 					["space", this.previewOpen ? "close preview" : "preview", 6],
 					[keyText("tui.input.tab"), "scope", 3],

@@ -49,16 +49,17 @@ Every flag has one long name; the only short forms are `-p -c -r -n -t -h -v`. A
 
 ### Model
 
-| Flag                            | Does                                                                                                                               |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `--model <pattern>`             | Model pattern or id: `provider/id`, optional `:<thinking>` suffix (`sonnet:high`)                                                  |
-| `--provider <name>`             | Provider for a bare `--model` id and the `auth` commands                                                                           |
-| `--models <patterns>`           | Comma-separated patterns for Ctrl+P cycling; globs (`anthropic/*`) and fuzzy match; `sonnet:high,haiku:low` fixes levels           |
-| `--thinking <level>`            | Thinking level (the accepted levels print in an error for a bad value)                                                             |
-| `--list-models [search]`        | List available models and exit                                                                                                     |
-| `--api-key <key>`               | API key for this run; prefer environment variables or `auth.json`, since a key on the command line shows in `ps` and shell history |
-| `--system-prompt <text>`        | Replace the system prompt                                                                                                          |
-| `--append-system-prompt <text>` | Append text or file contents to it (repeatable)                                                                                    |
+| Flag                            | Does                                                                                                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--model <pattern>`             | Model pattern or id: `provider/id`, optional `:<thinking>` suffix (`sonnet:high`)                                                                                                                                      |
+| `--provider <name>`             | Provider for a bare `--model` id and the `auth` commands                                                                                                                                                               |
+| `--models <patterns>`           | Comma-separated patterns for Ctrl+P cycling; globs (`anthropic/*`) and fuzzy match; `sonnet:high,haiku:low` fixes levels                                                                                               |
+| `--thinking <level>`            | Thinking level (the accepted levels print in an error for a bad value)                                                                                                                                                 |
+| `--list-models [search]`        | List available models and exit                                                                                                                                                                                         |
+| `--api-key <key>`               | API key for this run; a key on the command line shows in `ps` and shell history, so prefer `--api-key-env` or `auth.json`                                                                                              |
+| `--api-key-env <name>`          | API key for this run, read from the environment variable `<name>` so the key stays out of the command line, `ps` and shell history; an unset or empty variable is an error, and it cannot be combined with `--api-key` |
+| `--system-prompt <text>`        | Replace the system prompt                                                                                                                                                                                              |
+| `--append-system-prompt <text>` | Append text or file contents to it (repeatable)                                                                                                                                                                        |
 
 ### Sessions
 

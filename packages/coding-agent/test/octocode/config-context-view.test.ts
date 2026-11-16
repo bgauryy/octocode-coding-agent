@@ -77,24 +77,20 @@ describe("startup context rows", () => {
 
 	it("lists each kind with its count and sources at 100 columns, with the problems in the tail", () => {
 		const lines = plain(render(false, 100, false));
-		expect(lines.find((line) => /^Context\s+1\s+octocode global AGENTS\.md/.test(line))).toBeDefined();
-		expect(lines.find((line) => /^Skills\s+3\s+octocode global 2 \u00b7 pi global 1/.test(line))).toMatch(
-			/1 shadowed.*1 not trusted/,
+		expect(lines.find((line) => /^Context\s+⚠ 1\s+octocode global AGENTS\.md/.test(line))).toBeDefined();
+		expect(lines.find((line) => /^Skills\s+⚠ 3\s+octocode global 2 \u00b7 pi global 1/.test(line))).toMatch(
+			/1 duplicate.*1 not trusted/,
 		);
-		expect(lines.find((line) => /^Prompts\s+1\s+octocode global review/.test(line))).toBeDefined();
-		expect(
-			lines.find((line) =>
-				/^Not loaded\s+1\s+legacy\.ts \(pi global\) \u00b7 convert to hooks\.json or a plugin/.test(line),
-			),
-		).toBeDefined();
+		expect(lines.find((line) => /^Prompts\s+✓ 1\s+octocode global review/.test(line))).toBeDefined();
+		expect(lines.find((line) => /^Not loaded\s+✓ 1\s+legacy\.ts/.test(line))).toBeDefined();
 		// The problems are startup warning lines of their own, not a Warnings row.
 		expect(lines.some((line) => line.startsWith("Warnings"))).toBe(false);
 	});
 
-	it("drops the tail first at 60 columns; the problems stay in the startup warning lines", () => {
+	it("wraps the summary at 60 columns and keeps the separate duplicate warning", () => {
 		const lines = plain(render(false, 60, false));
-		const skills = lines.find((line) => line.startsWith("Skills")) ?? "";
-		expect(skills).toMatch(/^Skills\s+3\s+octocode global 2/);
+		const skills = lines.find((line) => line.includes("Skills")) ?? "";
+		expect(skills).toMatch(/Skills\s+⚠ 3\s+octocode global 2/);
 		expect(skills).not.toContain("shadowed");
 		expect(warningTexts(false).join("\n")).toMatch(/duplicate skill skipped/);
 	});
@@ -102,9 +98,9 @@ describe("startup context rows", () => {
 	it("expanded, names every item with its source and why a copy does not apply", () => {
 		const text = plain(render(false, 100, true)).join("\n");
 		expect(text).toMatch(/octocode global\n\s+alpha\s+.*skills\/alpha\/SKILL\.md/);
-		expect(text).toContain("shadowed by octocode global");
+		expect(text).toContain("duplicate of octocode global");
 		expect(text).toContain("AGENTS.md");
-		expect(text).toMatch(/legacy\.ts\s+.*\(Pi extension, not loaded\)/);
+		expect(text).toMatch(/legacy\.ts\s+.*\(Pi extension, not\s+loaded\)/);
 		expect(text).toMatch(/project-skill[\s\S]*?\(folder not\s+trusted\)/);
 		expect(warningTexts(false)).toContain("1 project item not loaded: folder not trusted; run /trust");
 	});
@@ -163,8 +159,8 @@ describe("/harness config", () => {
 		const text = written.join("");
 		expect(text).toContain("Loaded context and where each item came from");
 		expect(text).toMatch(/octocode global: AGENTS\.md\n {4}~\/\.octocode\/octocodecode\/AGENTS\.md/);
-		expect(text).toMatch(/pi global: AGENTS\.md \(shadowed by octocode global\)\n {4}~\/\.pi\/agent\/AGENTS\.md/);
-		expect(text).toMatch(/pi global: shared \(shadowed by octocode global\)/);
+		expect(text).toMatch(/pi global: AGENTS\.md \(duplicate of octocode global\)\n {4}~\/\.pi\/agent\/AGENTS\.md/);
+		expect(text).toMatch(/pi global: shared \(duplicate of octocode global\)/);
 		expect(text).toMatch(/pi global: pi-only/);
 		expect(text).toMatch(
 			/pi global: legacy\.ts \(Pi extension, not loaded\)\n\s+~\/\.pi\/agent\/extensions\/legacy\.ts/,
@@ -215,12 +211,8 @@ describe("startup warning lines", () => {
 	it("are one line per problem, saying what to do, and the rows hold no Warnings row", () => {
 		const texts = warningTexts(false);
 		expect(texts).toEqual([
-			expect.stringMatching(
-				/^1 duplicate context file skipped: a copy with the same name loads instead \(ctrl\+o lists them\)$/,
-			),
-			expect.stringMatching(
-				/^1 duplicate skill skipped: a skill with the same name loads from .+ \(ctrl\+o lists them\)$/,
-			),
+			expect.stringMatching(/^1 duplicate context file skipped \(ctrl\+o lists\)$/),
+			expect.stringMatching(/^1 duplicate skill skipped, kept .+ \(ctrl\+o lists\)$/),
 			"1 project item not loaded: folder not trusted; run /trust",
 		]);
 		for (const text of texts) expect(text).not.toContain("\n");
@@ -276,10 +268,10 @@ describe("source labels", () => {
 		const specs = viewRows(found, (file) => file).map((row) => row.spec);
 		const columns = () => loadedColumns(specs);
 		const lines = plain(specs.flatMap((spec) => new LoadedRow(spec, columns, false).render(120)));
-		const row = lines.find((line) => line.startsWith("Settings")) ?? "";
+		const row = lines.find((line) => line.includes("Settings")) ?? "";
 		expect(row).toMatch(/octocode global settings\.json/);
-		expect(row).toMatch(/pi global settings\.json/);
-		expect(row).toMatch(/octocode project settings\.json/);
+		expect(lines.join(" ")).toMatch(/pi global settings\.json/);
+		expect(lines.join(" ")).toMatch(/octocode project settings\.json/);
 		expect(lines.join("\n")).not.toContain("shadowed");
 	});
 

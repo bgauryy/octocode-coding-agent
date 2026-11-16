@@ -102,6 +102,9 @@ describe("agent with flat fields in a main session", () => {
 			),
 		).rejects.toThrow('No subagent "general-nobody" in this session');
 		await expect(
+			agent.execute("c8", { type: "task", resume: "general-nobody", reason: "r" }, undefined, undefined, ctx),
+		).rejects.toThrow(/Invalid agent task call[\s\S]*task/);
+		await expect(
 			agent.execute("c7", { type: "task", task: "new work", reason: "r" }, undefined, undefined, ctx),
 		).rejects.toThrow("A goal is required");
 		await expect(

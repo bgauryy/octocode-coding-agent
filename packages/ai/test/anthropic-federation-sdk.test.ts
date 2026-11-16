@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
+import { federationToken, getAnthropicFederation } from "../src/api/anthropic-messages/federation.ts";
 import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -83,6 +84,7 @@ afterAll(() => {
 
 afterEach(() => {
 	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
 });
 
 describe("Anthropic workload identity federation with the SDK", () => {
@@ -103,6 +105,41 @@ describe("Anthropic workload identity federation with the SDK", () => {
 		}
 	});
 
+	it("coalesces concurrent initial and mandatory refresh requests", async () => {
+		let now = 1_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		let calls = 0;
+		const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+			Response.json({ access_token: `token-${++calls}`, expires_in: 3600, token_type: "Bearer" }),
+		);
+		const config = getAnthropicFederation(anthropicModel, undefined, undefined, federationEnv)!;
+		const token = federationToken(anthropicModel, config, fetch);
+		expect(await Promise.all([token(), token(), token()])).toEqual(["token-1", "token-1", "token-1"]);
+		expect(fetch).toHaveBeenCalledTimes(1);
+		now += 3_580_000;
+		expect(await Promise.all([token(), token()])).toEqual(["token-2", "token-2"]);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+	it("rejects an oversized identity file before any token exchange", async () => {
+		const path = join(tempDir, "oversized.jwt");
+		writeFileSync(path, "x".repeat(16 * 1024 + 1));
+		const config = getAnthropicFederation(anthropicModel, undefined, undefined, {
+			...federationEnv,
+			ANTHROPIC_IDENTITY_TOKEN_FILE: path,
+		})!;
+		const fetch = vi.fn<typeof globalThis.fetch>();
+		await expect(federationToken(anthropicModel, config, fetch)()).rejects.toThrow("16 KiB assertion limit");
+		expect(fetch).not.toHaveBeenCalled();
+	});
+	it("rejects unsupported token types and oversized token responses", async () => {
+		const config = getAnthropicFederation(anthropicModel, undefined, undefined, federationEnv)!;
+		const invalid = federationToken(anthropicModel, config, async () =>
+			Response.json({ access_token: "secret", expires_in: 3600, token_type: "Basic" }),
+		);
+		await expect(invalid()).rejects.toThrow("unsupported token type");
+		const oversized = federationToken(anthropicModel, config, async () => new Response("x".repeat(1024 * 1024 + 1)));
+		await expect(oversized()).rejects.toThrow("exceeds 1 MiB");
+	});
 	it("does not run the SDK credential chain for header-owned auth", async () => {
 		for (const [name, value] of Object.entries(federationEnv)) vi.stubEnv(name, value);
 		const requests: RecordedRequest[] = [];

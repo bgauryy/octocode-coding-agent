@@ -14,6 +14,8 @@ import { describeChild } from "./children.ts";
 import { agentStats, renderStats } from "./stats.ts";
 import { discardChild, landChild } from "./merge-child.ts";
 import { pendingRefs } from "./worktree.ts";
+import { findMember } from "./detail/lookup.ts";
+import { openAgent, pickAgent } from "./detail/page.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
 export interface BackgroundRun {
@@ -238,9 +240,14 @@ export function agentsCommand(
 			}
 			if (sub) {
 				// Any other word names an agent, live or past: its name, session, registration, process, pid or backlog item.
+				// A live agent by name or unique prefix opens its page; otherwise the audit finds past agents by any reference.
+				const live = findMember(team.members(), line);
+				if ("member" in live) return openAgent(team, live.member.id, ctx);
 				const found = team.audit.resolve(line);
-				return found ? say(ctx, agentDetailText(found)) : say(ctx, AGENTS_USAGE, "warning");
+				return found ? say(ctx, agentDetailText(found)) : say(ctx, `${live.error}\n${AGENTS_USAGE}`, "warning");
 			}
+			// The picker lists this session's own subagents; without any, the listing (this session, recent runs) says more.
+			if (ctx.hasUI && team.members().some((member) => member.parentId === team.id)) return pickAgent(team, ctx);
 			const { members, error } = team.snapshot();
 			// The same inputs as `coordinate list`: one renderer, so both views show the item, why and log lines.
 			const listing = describeMembers(

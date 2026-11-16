@@ -176,6 +176,6 @@ ADC also needs `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) and `GOOGLE_CLOUD_LO
 
 ### Provider notes
 
-- **OpenAI Codex (legacy):** superseded by Sign in with ChatGPT. With `sessionId` it caches prompts unless `cacheRetention` is `"none"`. `transport` is `"sse"`, `"websocket"` or `"auto"`; WebSocket connections are reused per session (5 minutes idle). Call `cleanupSessionResources(sessionId)` when done so the pooled connection does not keep the process alive.
+- **OpenAI Codex (legacy):** superseded by Sign in with ChatGPT. With `sessionId` it caches prompts unless `cacheRetention` is `"none"`. Requests stream over HTTP (SSE).
 - **Azure OpenAI:** `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_AD_TOKEN` (externally renewed Entra token); the Responses adapter also takes `azureADTokenProvider`. Set `AZURE_OPENAI_BASE_URL` (`*.openai.azure.com`, `*.cognitiveservices.azure.com`, `*.ai.azure.com`; roots normalize to `/openai/v1`) or `AZURE_OPENAI_RESOURCE_NAME`. `AZURE_OPENAI_API_VERSION` defaults to `v1`. Deployment names equal model ids unless `azureDeploymentName` or `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` (`model-id=deployment,...`) overrides; legacy deployment URLs are unsupported.
 - **GitHub Copilot:** on "The requested model is not supported", enable the model in VS Code (Copilot Chat, model selector, Enable).

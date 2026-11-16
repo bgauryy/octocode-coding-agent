@@ -14,8 +14,10 @@ function snapshotItem(
 	item: Item,
 	self: string | undefined,
 	tasks: readonly BacklogTask[],
+	workers: readonly string[] | undefined,
 ): SnapshotItem {
 	return {
+		...(workers?.length ? { workers: [...workers] } : {}),
 		tasks: [...tasks],
 		...(item.type === "epic" ? { epicState: store.epicState(item) } : {}),
 		ref: item.ref,
@@ -90,12 +92,16 @@ export function backlogSnapshot(store: BacklogStore, repo: string, now: number, 
 			.sort((a, b) => b.updatedAt - a.updatedAt)
 			.slice(0, CLOSED_SESSION_TASKS_SHOWN),
 	);
+	const items = store.list().items;
+	const marks = store.marks(items, self);
 	const snapshot: Snapshot = {
 		repo,
 		generatedAt: now,
 		states: STATES,
 		idleMs: IDLE_MS,
-		items: store.list().items.map((item) => snapshotItem(store, item, self, byItem.get(item.ref) ?? [])),
+		items: items.map((item) =>
+			snapshotItem(store, item, self, byItem.get(item.ref) ?? [], marks.get(item.ref)?.workers),
+		),
 		sessionTasks: session.filter((task) => isOpenTask(task.state) || recentClosed.has(task)),
 	};
 	const byRef = new Map(snapshot.items.map((item) => [item.ref, item]));

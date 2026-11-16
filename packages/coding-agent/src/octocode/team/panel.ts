@@ -10,6 +10,7 @@ import { needsYou } from "./panel/attention.ts";
 import { FINISHED_MS, safe } from "./panel/compact.ts";
 import { FinishedTracker } from "./panel/finished.ts";
 import { widgetLines } from "./panel/layout.ts";
+import { teamTotalsText } from "./panel/rows.ts";
 import { type Moving, PanelMotion } from "./panel/motion.ts";
 import { nextMinuteDelay } from "./panel/work.ts";
 import { TeamOutage } from "./panel/outage.ts";
@@ -68,6 +69,7 @@ export class AgentsView {
 	private liveIds = new Set<string>();
 	/** The footer's typed counts last sent. */
 	private runningStatus: string | undefined;
+	private totalsStatus: string | undefined;
 	private unwork: (() => void) | undefined;
 	private ctx: ExtensionContext | undefined;
 
@@ -101,6 +103,11 @@ export class AgentsView {
 	}
 
 	/** The children queued behind prerequisites: they show as `queued` and `held` rows and count as `N queued`. */
+	/** Rows for children that ended with the previous process of a resumed session (`FinishedTracker.restore`). */
+	restoreFinished(ended: Parameters<FinishedTracker["restore"]>[0]): void {
+		this.finished.restore(ended, Date.now());
+	}
+
 	setQueued(rows: readonly QueuedWork[]): void {
 		this.work.setQueued(rows);
 	}
@@ -128,11 +135,12 @@ export class AgentsView {
 	}
 
 	/** The footer's typed counts: live subagents (and unlisted background ones), bash jobs, timers. */
-	private showRunning(ctx: ExtensionContext): void {
+	private showRunning(ctx: ExtensionContext, teamShown = false): void {
 		const agents = this.liveIds.size + this.unlisted().filter((row) => !row.mark).length;
 		// The tab title counts the same agents.
 		this.work.setAgents(agents);
-		const text = workCounts(agents, this.work.all(), this.work.queued().length) || undefined;
+		// The panel's root row already counts the agents it lists.
+		const text = workCounts(teamShown ? 0 : agents, this.work.all(), this.work.queued().length) || undefined;
 		if (text === this.runningStatus) return;
 		this.runningStatus = text;
 		try {
@@ -167,6 +175,18 @@ export class AgentsView {
 		this.outage.reset();
 	}
 
+	/** `Σ team 17.7M tok · 97% cached · ≈$22.36`: this session and its agents together, for the footer's last line. */
+	private showTotals(ctx: ExtensionContext, members: Member[]): void {
+		const text = members.length > 1 ? teamTotalsText(members) : undefined;
+		if (text === this.totalsStatus) return;
+		this.totalsStatus = text;
+		try {
+			ctx.ui.setStatus(STATUS.teamTotals, text, "muted");
+		} catch {
+			// The session was replaced.
+		}
+	}
+
 	private setStatus(ctx: ExtensionContext, text: string | undefined, tone?: StatusTone): void {
 		const shown = text === undefined ? undefined : `${tone ?? ""}\0${text}`;
 		if (shown === this.status) return;
@@ -181,6 +201,8 @@ export class AgentsView {
 		try {
 			ctx.ui.setWidget(WIDGET_KEY, undefined);
 			ctx.ui.setStatus(STATUS.team, undefined);
+			if (this.totalsStatus !== undefined) ctx.ui.setStatus(STATUS.teamTotals, undefined);
+			this.totalsStatus = undefined;
 		} catch {
 			// The session was replaced.
 		}
@@ -232,7 +254,8 @@ export class AgentsView {
 			if (!error) this.finished.update(self, this.members, live, now);
 			const teamVisible = live.length > 0 || this.finished.finished.some((entry) => now - entry.at <= FINISHED_MS);
 			const hasWork = this.workItems().length > 0;
-			this.showRunning(ctx);
+			this.showRunning(ctx, teamVisible);
+			this.showTotals(ctx, teamVisible ? [...live, ...this.members.filter((member) => member.id === self)] : []);
 			if (error) {
 				// A foreign database turns the team off for this session; a locked one is retried on the next tick.
 				// Either way the widget keeps its state, and mounts once a read succeeds. The footer shows the state; the
@@ -247,7 +270,8 @@ export class AgentsView {
 				this.setStatus(ctx, named, "muted");
 				return;
 			}
-			this.setStatus(ctx, named, "muted");
+			// The panel's root row names this session; the footer would repeat it.
+			this.setStatus(ctx, undefined);
 			const mounted = this.mount(ctx);
 			// The team's rows repaint with its one-second read; work-only rows repaint when their owner says so.
 			this.motion.sync();

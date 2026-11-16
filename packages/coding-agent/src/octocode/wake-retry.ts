@@ -12,6 +12,7 @@ import {
 	TIMER_TYPE,
 } from "./shared/messages.ts";
 import { STATUS } from "./shared/status.ts";
+import { sendWakeRetry } from "./wake/senders.ts";
 
 /** The custom message that starts another attempt; the model reads it beside the report it never acted on. */
 const WAKE_RETRY_TYPE = "octocode-wake-retry";
@@ -81,10 +82,7 @@ export function registerWakeRetry(api: ExtensionAPI, isSubagent: boolean): void 
 			timer = undefined;
 			showStatus(shown, undefined);
 			void Promise.resolve(
-				api.sendMessage(
-					{ customType: WAKE_RETRY_TYPE, content: renderInstruction("notices/wake-retry.md"), display: false },
-					{ triggerTurn: true, deliverAs: "followUp" },
-				),
+				sendWakeRetry(api, WAKE_RETRY_TYPE, renderInstruction("notices/wake-retry.md"), attempts, error),
 			).catch(() => schedule(ctx, error));
 		}, delayMs);
 		timer.unref?.();

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getCompat as getCompletionsCompat } from "../src/api/openai-completions/compat.ts";
-import { convertMessages } from "../src/api/openai-completions/messages.ts";
-import { getCompat as getResponsesCompat } from "../src/api/openai-responses/compat.ts";
-import { buildParams } from "../src/api/openai-responses/request.ts";
+import { captureCompletionsMessages } from "./capture-completions-payload.ts";
+import { captureResponsesPayload } from "./capture-responses-payload.ts";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
 import { normalizeContext } from "../src/compat.ts";
 import type { Model, OpenAICompletionsCompat, OpenAIResponsesCompat } from "../src/types.ts";
@@ -32,12 +31,12 @@ function completionsModel(
 	};
 }
 
-function leadingCompletionsRole(model: Model<"openai-completions">): string | undefined {
-	return convertMessages(model, context, getCompletionsCompat(model))[0]?.role;
+async function leadingCompletionsRole(model: Model<"openai-completions">): Promise<string | undefined> {
+	return (await captureCompletionsMessages(model, context, getCompletionsCompat(model)))[0]?.role;
 }
 
 describe("developer role on OpenAI-compatible completions hosts", () => {
-	it("sends instructions under the system role to an unlisted host", () => {
+	it("sends instructions under the system role to an unlisted host", async () => {
 		for (const [provider, baseUrl] of [
 			["my-proxy", "https://llm.example.com/v1"],
 			["ollama", "http://localhost:11434/v1"],
@@ -47,11 +46,11 @@ describe("developer role on OpenAI-compatible completions hosts", () => {
 		] as const) {
 			const model = completionsModel(provider, baseUrl);
 			expect(getCompletionsCompat(model).supportsDeveloperRole, baseUrl).toBe(false);
-			expect(leadingCompletionsRole(model), baseUrl).toBe("system");
+			expect(await leadingCompletionsRole(model), baseUrl).toBe("system");
 		}
 	});
 
-	it("keeps the developer role on the hosts that are known to accept it", () => {
+	it("keeps the developer role on the hosts that are known to accept it", async () => {
 		for (const [provider, baseUrl, id] of [
 			["openai", "https://api.openai.com/v1", "gpt-5.5"],
 			["custom", "https://api.openai.com/v1", "gpt-5.5"],
@@ -64,7 +63,7 @@ describe("developer role on OpenAI-compatible completions hosts", () => {
 		] as const) {
 			const model = completionsModel(provider, baseUrl, { id });
 			expect(getCompletionsCompat(model).supportsDeveloperRole, `${provider} ${baseUrl}`).toBe(true);
-			expect(leadingCompletionsRole(model), `${provider} ${baseUrl}`).toBe("developer");
+			expect(await leadingCompletionsRole(model), `${provider} ${baseUrl}`).toBe("developer");
 		}
 	});
 
@@ -78,22 +77,22 @@ describe("developer role on OpenAI-compatible completions hosts", () => {
 		}
 	});
 
-	it("lets a model's compat flag decide on any host", () => {
+	it("lets a model's compat flag decide on any host", async () => {
 		const optedIn = completionsModel("my-proxy", "https://llm.example.com/v1", {
 			compat: { supportsDeveloperRole: true },
 		});
-		expect(leadingCompletionsRole(optedIn)).toBe("developer");
+		expect(await leadingCompletionsRole(optedIn)).toBe("developer");
 
 		const optedOut = completionsModel("openai", "https://api.openai.com/v1", {
 			compat: { supportsDeveloperRole: false },
 		});
-		expect(leadingCompletionsRole(optedOut)).toBe("system");
+		expect(await leadingCompletionsRole(optedOut)).toBe("system");
 	});
 
-	it("uses the system role for a model without reasoning whatever the host", () => {
-		expect(leadingCompletionsRole(completionsModel("openai", "https://api.openai.com/v1", { reasoning: false }))).toBe(
-			"system",
-		);
+	it("uses the system role for a model without reasoning whatever the host", async () => {
+		expect(
+			await leadingCompletionsRole(completionsModel("openai", "https://api.openai.com/v1", { reasoning: false })),
+		).toBe("system");
 	});
 });
 
@@ -141,12 +140,11 @@ describe("developer role in the Responses converter", () => {
 		).toBe("system");
 	});
 
-	it("passes the adapter's resolved compat to the converter", () => {
-		const build = (model: Model<"openai-responses">) =>
-			buildParams(model, context, { apiKey: "sk-test" }, getResponsesCompat(model), new Map(), undefined).input;
-
-		expect(leadingResponsesRole(build(responsesModel({ supportsDeveloperRole: false })) as unknown[])).toBe("system");
-		expect(leadingResponsesRole(build(responsesModel({ supportsDeveloperRole: true })) as unknown[])).toBe("developer");
-		expect(leadingResponsesRole(build(responsesModel()) as unknown[])).toBe("developer");
+	it("passes the adapter's resolved compat to the converter", async () => {
+		const build = async (model: Model<"openai-responses">) =>
+			(await captureResponsesPayload<{ input: unknown[] }>(model, context, { apiKey: "sk-test" })).input;
+		expect(leadingResponsesRole(await build(responsesModel({ supportsDeveloperRole: false })))).toBe("system");
+		expect(leadingResponsesRole(await build(responsesModel({ supportsDeveloperRole: true })))).toBe("developer");
+		expect(leadingResponsesRole(await build(responsesModel()))).toBe("developer");
 	});
 });

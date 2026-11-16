@@ -92,6 +92,27 @@ describe("a worktree merge is ready before anyone is asked", () => {
 		expect(approve).not.toHaveBeenCalled();
 	});
 
+	it("refuses when a lease on a changed file is taken while the dialog waits", async () => {
+		const { main, worktree } = repository();
+		let leased = false;
+		const reservation = (_absolute: string, display: string) =>
+			leased && display === "b.txt" ? "held by beta-two" : undefined;
+		const approve = vi.fn(async () => {
+			leased = true;
+			return undefined;
+		});
+		const result = await mergeWorktreeBranch(main, "feature", {
+			reservation,
+			approve,
+			occupants: () => [member(worktree, "idle")],
+		});
+		expect(approve).toHaveBeenCalledTimes(1);
+		expect(result.ok).toBe(false);
+		expect(result.text).toMatch(/changes files another agent holds/);
+		expect(result.text).toMatch(/held by beta-two/);
+		expect(run(main, "git log --oneline").split("\n")).toHaveLength(1);
+	});
+
 	it("refuses uncommitted work and a predicted conflict before the dialog", async () => {
 		const dirty = repository();
 		fs.writeFileSync(path.join(dirty.worktree, "c.txt"), "loose\n");

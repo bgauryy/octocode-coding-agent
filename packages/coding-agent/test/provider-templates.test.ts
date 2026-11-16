@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Provider } from "@octocodeai/octocode-ai";
 import { getBuiltinModels, getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
@@ -279,6 +279,7 @@ describe("/providers → Add from a template", () => {
 					getBuiltinProvider: () => undefined,
 					getProviders: () => [{ id: "hyperbolic" }],
 					getProvider: (id: string) => (id === "hyperbolic-2" ? { id, name: "Hyperbolic" } : undefined),
+					getProviderAuthStatus: () => ({ configured: false }),
 					getConfigurationDirectory: () => sandbox.agentDir,
 					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 				},
@@ -303,6 +304,24 @@ describe("/providers → Add from a template", () => {
 		expect(saved.providers["hyperbolic-2"].apiKey).toBeUndefined();
 		expect(host.session.modelRuntime.refresh).toHaveBeenCalledWith({ allowNetwork: false });
 		expect(host.showApiKeyLoginDialog).toHaveBeenCalledWith("hyperbolic-2", "Hyperbolic", expect.any(Function));
+		// The key dialog saved nothing: say what was written and where the provider now shows.
+		expect(host.showStatus).toHaveBeenCalledWith(
+			expect.stringMatching(/added to .*models\.json without a key.*Needs attention/),
+		);
+	});
+
+	test("cancelling before the file is written says nothing was written", async () => {
+		const host = {
+			session: {
+				modelRuntime: { getBuiltinProvider: () => undefined, getConfigurationDirectory: () => sandbox.agentDir },
+			},
+			showExtensionSelector: vi.fn(async () => undefined),
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+		};
+		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [])).toBe(false);
+		expect(host.showStatus).toHaveBeenCalledWith("Cancelled; nothing was written to models.json.");
+		expect(existsSync(join(sandbox.agentDir, "models.json"))).toBe(false);
 	});
 
 	test("a gateway takes the host the user gives and a key variable the user names", async () => {

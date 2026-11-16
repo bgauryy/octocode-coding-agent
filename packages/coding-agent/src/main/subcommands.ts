@@ -6,6 +6,7 @@
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
 import { handleConfigCommand, handlePackageCommand } from "../package-manager-cli.ts";
 import { prepareAgentDb } from "../storage/database.ts";
+import { drainStdio } from "./drain-stdio.ts";
 
 interface SubcommandContext {
 	cwd: string;
@@ -40,10 +41,12 @@ export async function runSubcommand(args: string[], context: SubcommandContext):
 		// On Windows, Node can assert after fetch() when process.exit(0) runs during teardown
 		// (https://github.com/nodejs/node/issues/56645): a successful `octocode update` drains naturally instead.
 		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") return true;
+		await drainStdio();
 		process.exit(exitCode);
 		return true;
 	}
 	if (await handleConfigCommand(args)) {
+		await drainStdio();
 		process.exit(process.exitCode ?? 0);
 		return true;
 	}

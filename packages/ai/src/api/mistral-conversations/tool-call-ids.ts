@@ -24,7 +24,7 @@ export function createMistralToolCallIdNormalizer(): (id: string) => string {
 	};
 }
 
-export function deriveMistralToolCallId(id: string, attempt: number): string {
+function deriveMistralToolCallId(id: string, attempt: number): string {
 	const normalized = id.replace(/[^a-zA-Z0-9]/g, "");
 	if (attempt === 0 && normalized.length === MISTRAL_TOOL_CALL_ID_LENGTH) return normalized;
 	const seedBase = normalized || id;

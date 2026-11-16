@@ -3,33 +3,10 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { getAgentDir } from "../../config.ts";
 import { FileSettingsStorage } from "../../core/settings-manager/storage.ts";
+import { readJsonBody } from "../shared/json-body.ts";
 
 type Reply = (status: number, body: unknown) => void;
 const MAX_BODY_BYTES = 1024;
-
-/** The JSON body of a small request, or undefined after answering 400 or 413. */
-async function readJsonBody(req: http.IncomingMessage, reply: Reply): Promise<unknown> {
-	if (req.headers["content-type"] !== "application/json") {
-		reply(400, { error: "Use JSON" });
-		return undefined;
-	}
-	const chunks: Buffer[] = [];
-	let bytes = 0;
-	for await (const chunk of req) {
-		bytes += (chunk as Buffer).length;
-		if (bytes > MAX_BODY_BYTES) {
-			reply(413, { error: "Request too large" });
-			return undefined;
-		}
-		chunks.push(chunk as Buffer);
-	}
-	try {
-		return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-	} catch {
-		reply(400, { error: "Invalid JSON" });
-		return undefined;
-	}
-}
 
 /**
  * Routes both web page servers (the user-level daemon and a session's own) answer the same way: the service worker
@@ -164,7 +141,7 @@ export async function handleWebPrefsRequest(
 			reply(200, store.read());
 			return true;
 		}
-		const body = await readJsonBody(req, reply);
+		const body = await readJsonBody(req, reply, MAX_BODY_BYTES);
 		if (body === undefined) return true;
 		if (!Value.Check(WebPrefsSchema, body)) {
 			reply(400, { error: "Invalid preferences" });

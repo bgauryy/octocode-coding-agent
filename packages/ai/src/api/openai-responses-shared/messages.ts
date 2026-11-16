@@ -10,7 +10,7 @@ import type {
 	ResponseOutputMessage,
 	ResponseReasoningItem,
 	ResponseToolSearchOutputItemParam,
-} from "openai/resources/responses/responses.js";
+} from "../ai-sdk/openai-wire-types.ts";
 import type {
 	Api,
 	AssistantMessage,
@@ -190,7 +190,7 @@ export function convertResponsesMessages<TApi extends Api>(
 	const pushConfigurationUpdate = (effort: string): void => {
 		messages.push({
 			type: "configuration_update",
-			reasoning: { effort: effort as NonNullable<ResponseConfigurationUpdateItemParam.Reasoning["effort"]> },
+			reasoning: { effort: effort },
 		} satisfies ResponseConfigurationUpdateItemParam);
 	};
 	const instructionRole = model.reasoning && (options?.supportsDeveloperRole ?? true) ? "developer" : "system";

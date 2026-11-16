@@ -123,7 +123,7 @@ export function toMember(row: Row): Member {
 		...(parentId ? { parentId } : {}),
 		pid: num(row.pid),
 		...(started ? { started } : {}),
-		status: row.status === "working" ? "working" : "idle",
+		status: row.status === "working" || row.status === "settled" ? row.status : "idle",
 		...(goal ? { goal } : {}),
 		...(activity ? { activity } : {}),
 		...(model ? { model } : {}),

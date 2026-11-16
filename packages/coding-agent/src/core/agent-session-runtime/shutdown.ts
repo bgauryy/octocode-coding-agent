@@ -4,6 +4,25 @@ import type { SessionShutdownEvent } from "../features/index.ts";
 import { emitSessionShutdownEvent } from "../features/runner.ts";
 import { sessionMirrorSettled } from "../session-manager/mirror.ts";
 
+/** Longest shutdown waits for an aborted run to settle; a tool or hook that ignores abort must not block exit. */
+const SHUTDOWN_ABORT_TIMEOUT_MS = 5_000;
+
+/** Resolves when `work` settles or after `ms`; the timer is cleared either way. A late rejection is swallowed. */
+async function settleWithin(work: Promise<void>, ms: number): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			work,
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, ms);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+		work.catch(() => {});
+	}
+}
+
 /** Complete every release phase before reporting errors. Shared writers remain owned by the process. */
 export async function shutdownSession(
 	session: AgentSession,
@@ -14,7 +33,7 @@ export async function shutdownSession(
 	const errors: unknown[] = [];
 	try {
 		// Persist the aborted turn, including tool results, before invalidating its session.
-		await session.abort(event.reason === "quit" ? "shutdown" : "replacement");
+		await settleWithin(session.abort(event.reason === "quit" ? "shutdown" : "replacement"), SHUTDOWN_ABORT_TIMEOUT_MS);
 	} catch (error) {
 		errors.push(error);
 	}

@@ -34,9 +34,8 @@ describe("skill listing budget", () => {
 		const listing = formatSkillsForPrompt(skills, "skill").trim();
 		const warning = skillListingBudgetWarning({ skills, listing, contextWindow: 200_000 });
 		expect(warning?.type).toBe("warning");
-		expect(warning?.message).toContain(`12 skills, ${listing.length} chars > 8000 budget`);
+		expect(warning?.message).toContain(`${listing.length} chars, budget 8000`);
 		expect(warning?.message).toContain("octocode context check");
-		expect(warning?.message).toContain("octocode context apply");
 		expect(warning?.message).toContain("/harness");
 	});
 
@@ -44,7 +43,7 @@ describe("skill listing budget", () => {
 		const skills = Array.from({ length: 12 }, (_, i) => long(i));
 		const listing = formatSkillsForPrompt(skills, "skill").trim();
 		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 1_000_000 })).toBeUndefined();
-		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 100_000 })?.message).toContain("> 4000 budget");
+		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 100_000 })?.message).toContain("budget 4000");
 	});
 
 	it("is silent under budget", () => {

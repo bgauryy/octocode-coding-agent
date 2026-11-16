@@ -48,6 +48,7 @@ export const SDK_REACH_BASELINE = [
 	"coding-agent/src/octocode/ui/notify.ts -> tui",
 	"coding-agent/src/octocode/ui/terminal-title.ts -> tui",
 	"coding-agent/src/octocode/ui/turn-line.ts -> tui",
+	"coding-agent/src/octocode/ui/wake-row.ts -> tui",
 	"coding-agent/src/octocode/web-daemon/build.ts -> webview",
 	"coding-agent/src/octocode/workspace/docs.ts -> webview",
 	"coding-agent/src/octocode/workspace/server.ts -> webview",

@@ -35,7 +35,7 @@ it("shares complete native and research-tool declarations before role-specific t
 		"file",
 		"web",
 		"mcp",
-		"timer",
+		"wait",
 		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
 	];
 	expect(shared.length).toBeGreaterThan(4);
@@ -175,7 +175,9 @@ describe("the real assembled prefix of a main session", () => {
 	// write. They are now reported with the server text, not capped (6,452 at this reading); Octocode's own text is
 	// unchanged. Slack stays 86.
 	// Shared policy, tool guidance and native skill descriptions now leave less headroom for regrowth.
-	const OWN_PREFIX_CEILING = 47_625;
+	// 48_203 (measured 48,117: system 20,077, native tools 19,785, AGENTS.md 8,255): user-requested delegation, tmux
+	// and backlog-grooming rules, compressed to +547 bytes. Slack stays 86.
+	const OWN_PREFIX_CEILING = 48_203;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

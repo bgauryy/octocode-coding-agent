@@ -9,6 +9,7 @@ import { envInt } from "../../../../common/src/env.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { deriveAgentRoute, type AgentRoute } from "@octocodeai/octocode-contracts/config";
 import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
 import { type CacheChoice, childCachePreferences, defaultTaskCache, type Identity } from "./process/env.ts";
 import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
@@ -198,6 +199,8 @@ export interface Run {
 	profile: AgentProfile | undefined;
 	/** The model it runs on (the parent's when nothing else routes); `fallback` is the profile's unavailable preference. */
 	route: RunRoute;
+	/** How the model's provider is billed (`deriveAgentRoute`); absent when the registry could not say. */
+	agentRoute?: AgentRoute;
 	/** Why the run starts without the team (its database is unusable), for the result. */
 	teamNote: string;
 	release: () => void;
@@ -379,5 +382,9 @@ export function claimRun(
 			`its report (or failure) reached you or arrives when your turn ends${kept ? ` (files it handed back, and its full report when cut, are in ${shortPath(scratch)})` : ""}.`,
 		);
 	};
-	return { identity, profile, route, teamNote, release };
+	const agentRoute =
+		childModel && ctx.modelRegistry?.billedBySubscription
+			? deriveAgentRoute({ subscription: ctx.modelRegistry.billedBySubscription(childModel.provider) })
+			: undefined;
+	return { identity, profile, route, ...(agentRoute ? { agentRoute } : {}), teamNote, release };
 }

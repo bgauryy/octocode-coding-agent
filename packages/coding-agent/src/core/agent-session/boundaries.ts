@@ -7,10 +7,17 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import type { AgentActivityOutcome, BoundaryContextPreview, SessionBoundaryDraft } from "../features/index.ts";
+import { sameMessages } from "../features/runner/event-handlers.ts";
 import { convertToLlm, type CustomMessage } from "../messages.ts";
 import { type SessionEntry, SessionManager, type SessionProjection } from "../session-manager.ts";
 import type { DraftAppender } from "../session-manager/projection-memo.ts";
 import type { SessionInternals } from "./host.ts";
+import {
+	lengthContinuationMessage,
+	MAX_TRUNCATED_TOOL_TURNS,
+	nextTruncatedToolTurns,
+	TRUNCATED_TOOL_TURNS_MESSAGE,
+} from "./length-continuation.ts";
 
 export interface BoundariesHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	pendingCustomMessages(): readonly CustomMessage[];
@@ -184,8 +191,22 @@ export class SessionBoundaries {
 			const previousDecision = await previousFinishTurn?.(turn, signal);
 			if (run.extensionRunAbortRequested) return { action: "end" };
 			if (previousDecision?.action === "end") return previousDecision;
-			if (extensionContinue || previousDecision?.action === "continue") return { action: "continue" };
-			return undefined;
+			if (previousDecision?.action === "continue") return previousDecision;
+			if (extensionContinue) return { action: "continue" };
+			if (signal?.aborted || run.agentRunAbortRequested) return undefined;
+			run.truncatedToolTurns = nextTruncatedToolTurns(turn.message, run.truncatedToolTurns);
+			if (run.truncatedToolTurns >= MAX_TRUNCATED_TOOL_TURNS) {
+				run.outcome.errorMessage = TRUNCATED_TOOL_TURNS_MESSAGE;
+				return { action: "end" };
+			}
+			const continuation = lengthContinuationMessage(
+				turn.message,
+				run.lengthContinuations,
+				session.agent.state.model?.maxTokens ?? 0,
+			);
+			if (!continuation) return undefined;
+			run.lengthContinuations++;
+			return { action: "continue", messages: [continuation] };
 		};
 	}
 
@@ -322,9 +343,4 @@ export class SessionBoundaries {
 			this._boundaryProjection = undefined;
 		}
 	}
-}
-
-/** The same message objects in the same order. */
-function sameMessages(a: readonly AgentMessage[], b: readonly AgentMessage[]): boolean {
-	return a.length === b.length && a.every((message, index) => message === b[index]);
 }

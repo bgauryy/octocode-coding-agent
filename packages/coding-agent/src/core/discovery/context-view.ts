@@ -161,7 +161,7 @@ function notLoadedNote(item: ConfigItem): string {
 	if (switchedOff(item.provenance)) return SWITCHED_OFF_NOTE;
 	if (notLoaded === "ignored-code")
 		return `${product === "pi" ? "Pi " : ""}${item.kind === "hook" ? "hook" : "extension"}, not loaded`;
-	return item.provenance.shadowedBy ? `shadowed by ${sourceLabel(item.provenance.shadowedBy)}` : "";
+	return item.provenance.shadowedBy ? `duplicate of ${sourceLabel(item.provenance.shadowedBy)}` : "";
 }
 
 function fromItem(item: ConfigItem): ContextEntry {
@@ -327,11 +327,8 @@ function contextWarnings(groups: readonly ContextGroup[]): ContextWarning[] {
 		if (shadowed.length === 0) continue;
 		const noun = group.noun[shadowed.length === 1 ? 0 : 1];
 		const winner = mostCommon(shadowed.flatMap(({ entry }) => (entry.winner ? [entry.winner] : [])));
-		const where =
-			group.id === "skill" && winner
-				? `a skill with the same name loads from ${skillFolder(winner)}`
-				: "a copy with the same name loads instead";
-		add(shadowed, `${shadowed.length} duplicate ${noun} skipped: ${where} (ctrl+o lists them)`);
+		const kept = group.id === "skill" && winner ? `, kept ${skillFolder(winner)}` : "";
+		add(shadowed, `${shadowed.length} duplicate ${noun} skipped${kept} (ctrl+o lists)`);
 	}
 	const untrusted = all.filter(({ entry }) => entry.state === "untrusted");
 	add(
@@ -377,9 +374,9 @@ export function sourceSummary(group: ContextGroup, options: { counted?: boolean 
 export function problemSummary(group: ContextGroup): string {
 	const count = (state: EntryState) => group.entries.filter((entry) => entry.state === state).length;
 	return [
-		count("shadowed") > 0 ? `${count("shadowed")} shadowed` : "",
+		count("shadowed") > 0 ? `${count("shadowed")} duplicate` : "",
 		count("untrusted") > 0 ? `${count("untrusted")} not trusted` : "",
-		count("off") > 0 ? `${count("off")} ${group.id === "mcp" ? "disabled" : "off"}` : "",
+		count("off") > 0 ? `${count("off")} off` : "",
 	]
 		.filter(Boolean)
 		.join(" · ");

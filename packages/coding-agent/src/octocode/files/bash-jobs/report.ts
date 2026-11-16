@@ -6,7 +6,7 @@ import { shortPath } from "../../../utils/display-path.ts";
 import { visibleControls, withoutColors } from "../../../../../common/src/sanitize.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { BashJob, JobExit } from "./types.ts";
-import { verificationLine } from "../bash/verification.ts";
+import { verificationText } from "../bash/verification.ts";
 import { cutText } from "../../../../../common/src/text.ts";
 import { logTail } from "./tail.ts";
 import { JOB_WHY_PREFIX, jobWhy } from "./message.ts";
@@ -82,7 +82,7 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 		jobHeader(job, exit, lines),
 		`Background bash ${job.id} ${how} after ${formatDuration(exit.seconds * 1000)}: ${cutText(firstLine(job.command), 120, { chars: true })}`,
 		jobWhy(job) ? `${JOB_WHY_PREFIX}${jobWhy(job)}` : "",
-		job.verification ? verificationLine(job.verification) : "",
+		job.verification ? verificationText(job.verification) : "",
 		!available ? "Log unavailable; output could not be inspected" : "",
 		rotated,
 		stopped,

@@ -1,4 +1,4 @@
-import { emptyState, HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { emptyState, HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
 import {
 	type Component,
 	Container,
@@ -143,6 +143,7 @@ export class UserMessageSelectorComponent extends Container {
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new HintBar([
+				moveHint(2),
 				[keyText("tui.select.confirm"), "fork", 1],
 				[keyText("tui.select.cancel"), "cancel", 0],
 			]),

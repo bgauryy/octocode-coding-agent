@@ -26,6 +26,8 @@ export interface WorkRow {
 	dueAt?: number;
 	/** A subagent that waits for prerequisites (`queued`) or is held; it has no clock and the panel draws its own mark. */
 	mark?: "queued" | "held";
+	/** The backlog item (`B12`) a bash job serves, from the call's `item`. */
+	item?: string;
 }
 
 /** One child queued behind prerequisites, as the panel shows it. */
@@ -43,7 +45,8 @@ const sameRow = (a: WorkRow, b: WorkRow) =>
 	a.detail === b.detail &&
 	a.startedAt === b.startedAt &&
 	a.dueAt === b.dueAt &&
-	a.mark === b.mark;
+	a.mark === b.mark &&
+	a.item === b.item;
 
 interface WorkState {
 	byKind: Readonly<Partial<Record<WorkKind, readonly WorkRow[]>>>;
@@ -144,17 +147,17 @@ export function runningWorkOf(owner: object): RunningWork {
 }
 
 /**
- * The footer's typed counts, `2 agents · 1 bash · 1 timer`; empty when nothing runs. `agents` is the team's live
+ * The footer's typed counts, `2 agents · 1 bash · 1 wait`; empty when nothing runs. `agents` is the team's live
  * subagents of this session plus background ones it does not list yet.
  */
 export function workCounts(agents: number, rows: readonly WorkRow[], queued = 0): string {
 	const count = (kind: WorkKind) => rows.filter((row) => row.kind === kind).length;
-	const [bash, timers, external] = [count("bash"), count("timer"), count("external")];
+	const [bash, waits, external] = [count("bash"), count("timer"), count("external")];
 	return [
 		...(agents > 0 ? [`${ENTITY.subagent} ${plural(agents, "agent")}`] : []),
 		...(queued > 0 ? [`${queued} queued`] : []),
 		...(bash > 0 ? [`${bash} bash`] : []),
-		...(timers > 0 ? [plural(timers, "timer")] : []),
+		...(waits > 0 ? [plural(waits, "wait")] : []),
 		...(external > 0 ? [`${external} external`] : []),
 	].join(" · ");
 }

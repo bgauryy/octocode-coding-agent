@@ -56,6 +56,11 @@ export const bashParameters = Type.Object({
 				"Record verification for current edits; later edits make it stale. Zero exit proves only command success.",
 		}),
 	),
+	item: Type.Optional(
+		Type.String({
+			description: "Background: your ongoing backlog item (B<n>) this job serves; it is not idle meanwhile.",
+		}),
+	),
 	// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.
 	reason: reasonSchema(),
 });

@@ -83,11 +83,11 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 		oauth ? (oauth.isSubscription ? "Subscription sign-in" : "Account sign-in") : undefined,
 		apiKey?.name,
 	].filter((name): name is string => !!name);
-	if (names.length === 0 && !plan) return null;
+	if (names.length === 0 && !plan && !row.route) return null;
 	const keyPage = apiKey?.keyPage ? safeWebLink(apiKey.keyPage) : null;
 	return (
 		<div className="config-methods muted">
-			{names.length ? `Sign in with: ${names.join(" · ")}` : "Plan access"}
+			{names.length ? `Sign in with: ${names.join(" · ")}` : plan ? "Plan access" : null}
 			{keyPage && (
 				<>
 					{" "}
@@ -101,6 +101,7 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 					</a>
 				</>
 			)}
+			{row.route && <p>Route: {row.route}</p>}
 			{plan && (
 				<p>
 					{plan.billing === "plan" ? "Billed by plan" : "Billed per token"}.{" "}

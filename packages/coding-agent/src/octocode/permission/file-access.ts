@@ -32,6 +32,10 @@ const RUNS_LATER_ANYWHERE = [
 	".github/workflows",
 	".vscode/tasks.json",
 	".envrc",
+	".pre-commit-config.yaml",
+	"lefthook.yml",
+	".lefthook.yml",
+	"lefthook.yaml",
 ];
 
 /** Whether `relative` (lower-cased, `/`-separated) is the `OCTOCODE_DIR` folder itself or an entry of it that a later session loads. */
@@ -68,8 +72,9 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 	try {
 		const stat = fs.statSync(file);
 		return stat.isDirectory() || stat.nlink <= 1;
-	} catch {
-		return true;
+	} catch (error) {
+		// Only a file that does not exist yet is new; one the check cannot read may be a link to anywhere.
+		return (error as NodeJS.ErrnoException).code === "ENOENT";
 	}
 }
 

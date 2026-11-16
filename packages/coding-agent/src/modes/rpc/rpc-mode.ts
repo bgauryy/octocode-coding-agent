@@ -90,7 +90,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		session = runtimeHost.session;
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
-		const withDisplay = createToolDisplayAttacher((name) => session.getToolRenderers(name));
+		// Lean events feed a native parent, which renders a child's tools itself: building display blocks there is waste.
+		const withDisplay = options.leanEvents
+			? (event: AgentSessionEvent) => event
+			: createToolDisplayAttacher((name) => session.getToolRenderers(name));
 		unsubscribe = session.subscribe((event) => {
 			outputEvent(withDisplay(event));
 			if (event.type === "agent_settled") {

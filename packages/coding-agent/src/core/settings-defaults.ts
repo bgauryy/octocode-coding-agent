@@ -54,6 +54,8 @@ export const SETTINGS_DEFAULTS = {
 	},
 	subagents: {
 		checkInSeconds: 300,
+		silenceMinutes: 10,
+		wakeHoldSeconds: 0,
 	},
 	externalAgents: false,
 	sessionApi: true,

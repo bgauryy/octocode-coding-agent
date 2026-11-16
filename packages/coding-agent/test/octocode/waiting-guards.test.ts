@@ -78,20 +78,21 @@ describe("an until timer on an agent that already ended", () => {
 			agent: () => "me",
 			now: () => Date.UTC(2026, 10, 6, 12),
 			deps: { agentEnd, item } as ConditionDeps,
+			implicit: () => "",
 			checkRefusal: async () => undefined,
 			changed: () => undefined,
 		});
 		const ctx = { cwd: root, sessionManager: { getSessionId: () => "s1" } } as never;
-		const setUntil = (until: unknown) =>
-			tool.execute("c", { op: "set", note: "n", until } as never, undefined, undefined, ctx);
-		const set = (name: string) => setUntil({ agent: { name } });
+		const setUntil = (args: object) =>
+			tool.execute("c", { op: "on", note: "n", ...args } as never, undefined, undefined, ctx);
+		const set = (name: string) => setUntil({ event: "agent.ended", filter: { agent: name } });
 		return { agent, set, setUntil, root };
 	};
 
 	it("is refused with a message and sets nothing", async () => {
 		const { agent, set, root } = setup((name) => (name === "done-1" ? { reason: "completed" } : undefined));
 		try {
-			await expect(set("done-1")).rejects.toThrow(/done-1 already ended \(completed\).*No timer was set/);
+			await expect(set("done-1")).rejects.toThrow(/done-1 already ended \(completed\).*Nothing was set/);
 			expect(timers.activeCount(agent.db, "s1")).toBe(0);
 			await set("live-1");
 			expect(timers.activeCount(agent.db, "s1")).toBe(1);
@@ -107,11 +108,11 @@ describe("an until timer on an agent that already ended", () => {
 			(ref) => (ref === "B1" ? "ongoing" : undefined),
 		);
 		try {
-			await expect(setUntil({ item: { ref: "B1, B99999", state: "done" } })).rejects.toThrow(
-				/No backlog item B99999 in this workspace\. No timer was set/,
+			await expect(setUntil({ event: "item.state", filter: { ref: "B1, B99999", state: "done" } })).rejects.toThrow(
+				/No backlog item B99999 in this workspace\. Nothing was set/,
 			);
 			expect(timers.activeCount(agent.db, "s1")).toBe(0);
-			await setUntil({ item: { ref: "B1", state: "done" } });
+			await setUntil({ event: "item.state", filter: { ref: "B1", state: "done" } });
 			expect(timers.activeCount(agent.db, "s1")).toBe(1);
 		} finally {
 			agent.close();
@@ -158,7 +159,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const { report, state } = run([
 			userTurn,
 			reply("Done: findings below."),
-			start("timer", { op: "set", after: 60 }),
+			start("wait", { op: "set", after: 60 }),
 			userTurn,
 			reply("waiting for the timer"),
 		]);
@@ -194,7 +195,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const more = run([
 			userTurn,
 			reply("Done: one."),
-			start("timer", { op: "set", after: 5 }),
+			start("wait", { op: "set", after: 5 }),
 			userTurn,
 			reply("Waiting on the timer.\nFound a defect in x.ts, fix below."),
 		]);
@@ -203,10 +204,10 @@ describe("a waiting-only final text of a child with pending work", () => {
 
 	it("counts a wake message as the end of one wait and a failed call as none", () => {
 		const { state } = run([
-			start("timer", { op: "set", after: 5 }),
-			{ type: "tool_execution_end", toolName: "timer", args: { op: "set" }, isError: true },
-			start("timer", { op: "set", after: 5 }),
-			{ type: "tool_execution_end", toolName: "timer", args: { op: "set" }, result: { details: { timer: { id: 1 } } } },
+			start("wait", { op: "set", after: 5 }),
+			{ type: "tool_execution_end", toolName: "wait", args: { op: "set" }, isError: true },
+			start("wait", { op: "set", after: 5 }),
+			{ type: "tool_execution_end", toolName: "wait", args: { op: "set" }, result: { details: { timer: { id: 1 } } } },
 			{
 				type: "message_end",
 				message: {
@@ -325,7 +326,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const { report } = run([
 			userTurn,
 			reply("Done: all green."),
-			start("timer", { op: "set", after: 60 }),
+			start("wait", { op: "set", after: 60 }),
 			userTurn,
 			reply("Waiting for the timer.\n- Still waiting on the build job\nStatus: idle until it fires"),
 			userTurn,

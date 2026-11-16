@@ -166,6 +166,7 @@ describe("credential sources", () => {
 			configured: true,
 			origins: [{ product: "octocode", file: "auth-json" }],
 			sources: [{ kind: "auth-json" }],
+			route: "config",
 		});
 	});
 

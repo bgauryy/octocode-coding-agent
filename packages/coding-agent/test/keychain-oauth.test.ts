@@ -2,7 +2,9 @@ import type { Credential, OAuthCredential } from "@octocodeai/octocode-ai";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ENV_AGENT_DIR } from "../src/config.ts";
+import { readProblems } from "../src/core/diagnostics-log.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
 import { KeychainWrite } from "../src/core/auth-storage/keychain-login.ts";
@@ -119,9 +121,35 @@ describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain
 		const storage = AuthStorage.create(authPath, { keychain });
 		await loginToKeychain(storage, keychain, signedIn("1", 1_000));
 		const locked = AuthStorage.create(authPath, { keychain: { ...fileKeychain(home, { failStore: true }) } });
-		await locked.modify("openai-codex", async () => signedIn("2", 2_000));
+		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		try {
+			await locked.modify("openai-codex", async () => signedIn("2", 2_000));
+		} finally {
+			stderr.mockRestore();
+		}
 		expect(fileEntry("openai-codex")).toEqual(signedIn("2", 2_000));
 		expect(await locked.read("openai-codex")).toEqual(signedIn("2", 2_000));
+	});
+
+	test("a keychain write that fails during a refresh is recorded and named on stderr, never thrown", async () => {
+		const keychain = fileKeychain(home);
+		await loginToKeychain(AuthStorage.create(authPath, { keychain }), keychain, signedIn("1", 1_000));
+		process.env[ENV_AGENT_DIR] = home;
+		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		try {
+			const locked = AuthStorage.create(authPath, { keychain: fileKeychain(home, { failStore: true }) });
+			await expect(locked.modify("openai-codex", async () => signedIn("2", 2_000))).resolves.toBeDefined();
+
+			const [problem] = readProblems(join(home, "problems.json"));
+			expect(problem).toMatchObject({ source: "auth" });
+			expect(problem.message).toContain("openai-codex");
+			expect(problem.message).toContain("keychain locked");
+			expect(problem.message).toContain("auth.json");
+			expect(problem.message).not.toContain("synthetic-");
+			expect(stderr).toHaveBeenCalledWith(expect.stringContaining("saved in auth.json instead"));
+		} finally {
+			stderr.mockRestore();
+		}
 	});
 
 	test("a plaintext OAuth credential stays in auth.json on refresh", async () => {

@@ -1,6 +1,8 @@
 import type { Api, Model, ProviderHeaders } from "@octocodeai/octocode-ai";
+import { getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { isOpenRouterModel, matchesHost } from "@octocodeai/octocode-ai/utils/provider-host";
 import { VERSION } from "../config.ts";
+import { AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "../../../common/src/env.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
@@ -65,6 +67,26 @@ function getSessionHeaders(model: Model<Api>, sessionId: string | undefined): Re
 	};
 }
 
+/** Opt-in: label each request of a custom provider with the agent that sent it (`docs/configuration.md`). */
+const REQUEST_AGENT_HEADERS_ENV = "OCTOCODE_REQUEST_AGENT_HEADERS";
+
+/**
+ * `x-octocode-agent` (the subagent id, `main` for the session itself), `x-octocode-role` and `x-octocode-parent` for a
+ * provider that is not built in (a `models.json` or extension provider), so a gateway or test server can tell a child's
+ * requests from its parent's. Built-in vendors never receive them.
+ */
+function getAgentHeaders(model: Model<Api>, env: NodeJS.ProcessEnv): Record<string, string> | undefined {
+	if (env[REQUEST_AGENT_HEADERS_ENV] !== "1") return undefined;
+	if ((getBuiltinProviders() as string[]).includes(model.provider)) return undefined;
+	const role = env[AGENT_ROLE_ENV];
+	const parent = env[PARENT_ID_ENV];
+	return {
+		"x-octocode-agent": env[AGENT_ID_ENV] || "main",
+		...(role ? { "x-octocode-role": role } : {}),
+		...(parent ? { "x-octocode-parent": parent } : {}),
+	};
+}
+
 export function mergeProviderAttributionHeaders(
 	model: Model<Api>,
 	settingsManager: SettingsManager,
@@ -72,6 +94,7 @@ export function mergeProviderAttributionHeaders(
 	...headerSources: Array<ProviderHeaders | undefined>
 ): ProviderHeaders | undefined {
 	const merged: ProviderHeaders = {
+		...getAgentHeaders(model, process.env),
 		...getSessionHeaders(model, sessionId),
 		...getDefaultAttributionHeaders(model, settingsManager),
 	};

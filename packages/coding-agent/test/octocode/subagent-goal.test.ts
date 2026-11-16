@@ -113,7 +113,7 @@ describe("the agent tool's goal", () => {
 		expect(new Set(ids).size).toBe(3);
 	});
 
-	it("shows name and goal in the background start, its report and the renderers", async () => {
+	it("shows name in the background start, name and goal in its report and the renderers", async () => {
 		const s = setup();
 		const started = await s.run({
 			task: "report from the background",
@@ -122,7 +122,7 @@ describe("the agent tool's goal", () => {
 			background: true,
 		});
 		const id = started.details.id as string;
-		expect(started.content[0].text).toContain(`Started ${id} (reviewer: ${GOAL}) in the background`);
+		expect(started.content[0].text).toContain(`Started ${id} (reviewer) in the background`);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
 		expect(s.sent[0].message.content).toMatch(
 			new RegExp(`^Background subagent ${id} \\(reviewer: ${GOAL}\\) finished \\(`),

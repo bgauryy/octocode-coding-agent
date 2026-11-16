@@ -24,12 +24,12 @@ export function requiredNumber(label: string, value: unknown, field: string): nu
 
 function requestHeaders(
 	model: ClassifierModel<ClassifierApi>,
-	apiKey: string,
+	apiKey: string | undefined,
 	optionsHeaders?: ProviderHeaders,
 ): Record<string, string> {
 	return (
 		providerHeadersToRecord(
-			{ authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+			{ ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}), "content-type": "application/json" },
 			model.headers,
 			optionsHeaders,
 		) ?? {}
@@ -46,13 +46,16 @@ export async function postClassifierRequest(
 	url: URL,
 	model: ClassifierModel<ClassifierApi>,
 	body: unknown,
-	options: ClassifierOptions | undefined,
+	requestOptions: ClassifierOptions | undefined,
 	noRetryStatuses?: readonly number[],
+	transport?: { optionalAuth?: boolean; observe?: boolean },
 ): Promise<unknown> {
-	if (!options?.apiKey) throw new Error(`No API key for provider: ${model.provider}`);
+	const options = requestOptions ?? {};
+	if (!options.apiKey && !transport?.optionalAuth) throw new Error(`No API key for provider: ${model.provider}`);
 	const apiKey = options.apiKey;
+	const observe = transport?.observe !== false;
 	let payload = body;
-	const transformed = await options.onPayload?.(payload, model);
+	const transformed = observe ? await options.onPayload?.(payload, model) : undefined;
 	if (transformed !== undefined) payload = transformed;
 	const requestFetch = options.fetch ?? globalThis.fetch;
 	const headers = requestHeaders(model, apiKey, options.headers);
@@ -105,7 +108,8 @@ export async function postClassifierRequest(
 			noRetryStatuses,
 		},
 	);
-	await options.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+	if (observe)
+		await options.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 	return json;
 }
 

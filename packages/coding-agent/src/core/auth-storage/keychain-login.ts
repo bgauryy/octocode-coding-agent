@@ -12,6 +12,12 @@ import { oauthAccount, oauthBlob, oauthReference, oauthStub } from "./keychain-o
 
 export type KeychainChoice = "keychain" | "file";
 
+/** The warning shown where a credential is about to be saved with no system keychain to hold it. */
+export function plaintextStorageNotice(kind: "api_key" | "oauth", authPath: string): string {
+	const what = kind === "oauth" ? "Sign-in tokens" : "API keys";
+	return `No system keychain is available. ${what} are stored as plain text in ${authPath}, created with owner-only permissions.`;
+}
+
 /** The keychain refused the key. The text is fixed: it never carries the key or the tool's output. */
 export class KeychainSaveError extends Error {
 	constructor() {

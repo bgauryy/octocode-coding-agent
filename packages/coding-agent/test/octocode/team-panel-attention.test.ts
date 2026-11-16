@@ -42,30 +42,52 @@ const lines = (members: Member[], traffic: Traffic[] = [], width = 120, rows?: n
 		line.replace(/\x1b\[[0-9;]*m/g, ""),
 	);
 
+/** An agent's name line and the stats line under it: the state word sits on the second line from 60 columns. */
+const groupOf = (out: string[], id: string) => {
+	const at = out.findIndex((line) => line.includes(id));
+	return `${out[at]}\n${out[at + 1]}`;
+};
+const messageRow = (out: string[]) => out.find((line) => line.includes("↳"))!;
+
 describe("agents panel: the agent that needs you", () => {
 	it("marks an agent with an unanswered question to this session, sorts it first and leads the header with the count", () => {
 		const out = lines(
 			[member("busy-0001"), member("quiet-0002", { status: "idle" }), member("plucky-otter")],
 			[ask("plucky-otter")],
 		);
-		expect(out[0]).toContain("◇ 1 needs you");
+		expect(out[0]).toContain("1 asks parent");
+		expect(out.join("\n")).not.toContain("needs you");
+		expect(out.join("\n")).not.toContain("→ you");
 		expect(out[0]).toContain("1 working");
 		expect(out[0]).toContain("1 idle");
-		expect(out[0].indexOf("needs you")).toBeLessThan(out[0].indexOf("working"));
-		expect(out[1]).toMatch(/^ [├└] ◇ 🐙 plucky-otter .*needs you/);
-		// The ready command (the one `/agents tell` accepts) answers that very question.
-		expect(out[2]).toContain("↳");
-		expect(out[2]).toContain("/agents tell plucky-otter #11 <reply>");
-		expect(out[2]).toContain("awaiting reply");
-		expect(out[2]).toContain('"Should I delete');
+		expect(out[0].indexOf("asks parent")).toBeLessThan(out[0].indexOf("working"));
+		expect(out[1]).toMatch(/^ [├└] ◇ 🐙 plucky-otter/);
+		expect(groupOf(out, "plucky-otter")).toMatch(/^ [├└] ◇ 🐙 plucky-otter[^\n]*\n[^\n]*asks parent/);
+		// The parent agent owns this answer, not the user; the message follows the agent's two lines.
+		expect(out[3]).toContain("↳");
+		expect(out[3]).toContain("#11 → parent");
+		expect(out[3]).not.toContain("/agents tell");
+		expect(out[3]).toContain("awaiting parent");
+		expect(out[3]).toContain('"Should I delete');
 	});
 
 	it("treats a member waiting for an approval as needing the user", () => {
 		const out = lines([member("calm-heron", { waiting: "approval" }), member("swift-lynx")]);
 		expect(out[0]).toContain("◇ 1 needs you");
 		expect(out[1]).toContain("◇ 🐙 calm-heron");
-		expect(out[1]).toContain("needs you");
-		expect(out[2]).toContain("waiting for your approval");
+		expect(out[2]).toContain("needs you");
+		expect(out[3]).toContain("waiting for your approval");
+	});
+
+	it("keeps user question dialogs distinct from messages awaiting the parent", () => {
+		const out = lines(
+			[member("calm-heron", { waiting: "reply" }), member("plucky-otter")],
+			[ask("calm-heron"), ask("plucky-otter")],
+		);
+		expect(out[0]).toContain("◇ 1 needs you");
+		expect(out[0]).toContain("1 asks parent");
+		expect(out.join("\n")).toContain("waiting for your answer");
+		expect(out.join("\n")).toContain("awaiting parent");
 	});
 
 	it("reports approval, with the question's message and count, when a member waits for both", () => {
@@ -102,17 +124,20 @@ describe("agents panel: the agent that needs you", () => {
 		for (const width of [40, 48, 60, 80, 140]) {
 			for (const rows of [undefined, 40, 24]) {
 				const out = lines(agents, [ask("researcher-ffff")], width, rows);
-				const row = out.find(
+				const at = out.findIndex(
 					(line) =>
 						line.includes("researcher-f") ||
 						line.includes("research…") ||
-						(/◇ .*needs you/.test(line) && !line.includes("🦑")),
+						(/◇ .*asks parent/.test(line) && !line.includes("🦑")),
 				);
-				expect(row, `${width}x${rows}`).toBeDefined();
+				expect(at, `${width}x${rows}`).toBeGreaterThan(0);
+				// From 60 columns the label is the state word on the second line; narrower it shares the head row.
+				const row =
+					width >= 60 && out[at + 1] && !out[at].includes("asks parent") ? `${out[at]}\n${out[at + 1]}` : out[at];
 				expect(row).toContain("◇");
-				expect(row).toContain("needs you");
+				expect(row).toContain("asks parent");
 				expect(row).toContain("✉ 2");
-				expect(out[0]).toContain("◇ 1 needs you");
+				expect(out[0]).toContain("1 asks parent");
 				for (const line of out) expect(visibleWidth(line), `${width}x${rows}: ${line}`).toBeLessThanOrEqual(width);
 			}
 		}
@@ -123,18 +148,18 @@ describe("agents panel: the agent that needs you", () => {
 		const out = lines([...agents, member("plucky-otter", { joinedAt: NOW - 5_000 })], [ask("plucky-otter")], 80, 24);
 		expect(out.length).toBeLessThanOrEqual(8);
 		expect(out.join("\n")).toContain("plucky-otter");
-		expect(out.join("\n")).toContain("needs you");
+		expect(out.join("\n")).toContain("asks parent");
 	});
 
-	it("drops the body, then the age, before the command or the lead on a narrow line", () => {
-		const wide = lines([member("plucky-otter")], [ask("plucky-otter")], 140)[2];
-		const mid = lines([member("plucky-otter")], [ask("plucky-otter")], 92)[2];
-		const slim = lines([member("plucky-otter")], [ask("plucky-otter")], 56)[2];
+	it("keeps the parent as reply owner on narrow lines", () => {
+		const wide = messageRow(lines([member("plucky-otter")], [ask("plucky-otter")], 140));
+		const mid = messageRow(lines([member("plucky-otter")], [ask("plucky-otter")], 92));
+		const slim = messageRow(lines([member("plucky-otter")], [ask("plucky-otter")], 56));
 		expect(wide).toContain('"Should I delete the legacy timeout path?"');
-		expect(mid).not.toContain('"Should');
-		expect(mid).toContain("/agents tell plucky-otter #11");
-		expect(slim).toContain("awaiting reply");
-		expect(slim).not.toContain("30s");
+		expect(mid).not.toContain("/agents tell");
+		expect(mid).toContain('"Should');
+		expect(slim).toContain("awaiting parent");
+		expect(slim).not.toContain("→ you");
 	});
 });
 
@@ -158,7 +183,8 @@ describe("agents panel: messages under their sender", () => {
 			],
 		);
 		const at = out.findIndex((line) => line.includes("inky-kraken"));
-		expect(out[at + 1]).toContain('↳ #14 → calm-heron · awaiting reply · 12s ago · "review the diff please"');
+		// The message follows the sender's two lines.
+		expect(out[at + 2]).toContain('↳ #14 → calm-heron · awaiting reply · 12s ago · "review the diff please"');
 		const text = out.join("\n");
 		for (const hidden of ["older message", "foreign", "from me", "already in my transcript"])
 			expect(text).not.toContain(hidden);
@@ -189,18 +215,25 @@ describe("agents panel: finished rows", () => {
 
 	it("shows the outcome, a headline and the tally; unknown outcomes stay neutral", () => {
 		const done = lines([], [], 120, undefined, finished("done", "## 3 gaps found; fix plan in report") as never);
-		expect(done[1]).toMatch(/✓ 🐙 old-gecko.* done +1m39s/);
-		expect(done[2]).toContain('↳ "3 gaps found; fix plan in report"');
+		expect(done[1]).toMatch(/✓ 🐙 old-gecko/);
+		expect(done[2]).toMatch(/done +1m39s/);
+		expect(done[3]).toContain('↳ "3 gaps found; fix plan in report"');
 		expect(done[0]).toContain("✓ 1 done");
 		const failed = lines([], [], 120, undefined, finished("failed", "vitest: 4 failures") as never);
-		expect(failed[1]).toMatch(/✗ 🐙 old-gecko.* failed/);
+		expect(failed[1]).toMatch(/✗ 🐙 old-gecko/);
+		expect(failed[2]).toMatch(/failed/);
 		expect(failed[0]).toContain("✗ 1 failed");
-		expect(lines([], [], 120, undefined, finished("stopped") as never)[1]).toMatch(/◼ 🐙 old-gecko.* stopped/);
+		const stopped = lines([], [], 120, undefined, finished("stopped") as never);
+		expect(stopped[1]).toMatch(/◼ 🐙 old-gecko/);
+		expect(stopped[2]).toMatch(/stopped/);
 		const blocked = lines([], [], 120, undefined, finished("blocked", "needs a decision") as never);
-		expect(blocked[0]).toContain("◇ 1 needs you");
-		expect(blocked[1]).toMatch(/◇ 🐙 old-gecko.* blocked/);
+		expect(blocked[0]).toContain("1 blocked");
+		expect(blocked[0]).not.toContain("needs you");
+		expect(blocked[1]).toMatch(/◇ 🐙 old-gecko/);
+		expect(blocked[2]).toMatch(/blocked/);
 		const unknown = lines([], [], 120, undefined, [{ member: gone, at: NOW - 1_000 }] as never);
-		expect(unknown[1]).toMatch(/○ 🐙 old-gecko.* left/);
+		expect(unknown[1]).toMatch(/○ 🐙 old-gecko/);
+		expect(unknown[2]).toMatch(/left/);
 	});
 
 	it("keeps the outcome the host reports after the row left, for FINISHED_MS", () => {

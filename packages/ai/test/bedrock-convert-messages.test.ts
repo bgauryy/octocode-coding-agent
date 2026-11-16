@@ -1,101 +1,9 @@
 import { Type } from "typebox";
-import { describe, expect, it, vi } from "vitest";
-
-const bedrockMock = vi.hoisted(() => ({
-	constructorCalls: [] as Array<Record<string, unknown>>,
-	streamEvents: undefined as unknown[] | undefined,
-}));
-
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
-
-	class BedrockRuntimeClient {
-		constructor(config: Record<string, unknown>) {
-			bedrockMock.constructorCalls.push(config);
-		}
-
-		send(): Promise<unknown> {
-			if (bedrockMock.streamEvents) {
-				const events = bedrockMock.streamEvents;
-				return Promise.resolve({
-					$metadata: { httpStatusCode: 200 },
-					stream: (async function* () {
-						yield* events;
-					})(),
-				});
-			}
-			return Promise.reject(new Error("mock send"));
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
-	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
-	};
-});
-
-import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
-import type { Context, Message, Model } from "../src/types.ts";
+import { describe, expect, it } from "vitest";
+import { baseModel, novaModel, capturePayload, streamBedrock, bedrockMock } from "./bedrock-convert-fixture.ts";
+import type { Context, Message } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
-
-const baseModel: Model<"bedrock-converse-stream"> = {
-	id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-	name: "Claude Sonnet 4.5 (US)",
-	api: "bedrock-converse-stream",
-	provider: "amazon-bedrock",
-	baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
-	reasoning: true,
-	input: ["text", "image"],
-	cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-	contextWindow: 200000,
-	maxTokens: 64000,
-	compat: { supportsStrictMode: true },
-};
-
-const novaModel: Model<"bedrock-converse-stream"> = {
-	...baseModel,
-	id: "amazon.nova-lite-v1:0",
-	name: "Nova Lite",
-	reasoning: false,
-	compat: undefined,
-};
-
-async function capturePayload(context: Context, model = baseModel): Promise<unknown> {
-	let capturedPayload: unknown;
-	const s = streamBedrock(model, normalizeContext(context), {
-		cacheRetention: "none",
-		signal: AbortSignal.abort(),
-		onPayload: (payload) => {
-			capturedPayload = payload;
-			return payload;
-		},
-	});
-	for await (const event of s) {
-		if (event.type === "error") break;
-	}
-	return capturedPayload;
-}
+import { createEmptyUsage } from "../src/utils/assistant-message.ts";
 
 describe("Bedrock constrained sampling", () => {
 	it("gates native strict tool use by model capability", async () => {
@@ -183,7 +91,7 @@ describe("bedrock convertMessages skips unknown content types", () => {
 				content: [
 					{ type: "text", text: "hello" },
 					{ type: "unknown", data: "foo" },
-				] as any,
+				] as never,
 				timestamp: Date.now(),
 			},
 		];
@@ -202,18 +110,11 @@ describe("bedrock convertMessages skips unknown content types", () => {
 				content: [
 					{ type: "text", text: "hello" },
 					{ type: "unknown", data: "foo" },
-				] as any,
+				] as never,
 				api: "bedrock-converse-stream",
 				provider: "amazon-bedrock",
 				model: baseModel.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: createEmptyUsage(),
 				stopReason: "stop",
 				timestamp: Date.now(),
 			},
@@ -230,7 +131,7 @@ describe("bedrock convertMessages skips unknown content types", () => {
 		const messages: Message[] = [
 			{
 				role: "user",
-				content: [{ type: "unknown", data: "foo" }] as any,
+				content: [{ type: "unknown", data: "foo" }] as never,
 				timestamp: Date.now(),
 			},
 		];
@@ -288,14 +189,7 @@ describe("bedrock convertMessages skips unknown content types", () => {
 				api: "bedrock-converse-stream",
 				provider: "amazon-bedrock",
 				model: baseModel.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: createEmptyUsage(),
 				stopReason: "stop",
 				timestamp: Date.now(),
 			},
@@ -338,14 +232,7 @@ describe("bedrock convertMessages skips unknown content types", () => {
 				api: "bedrock-converse-stream",
 				provider: "amazon-bedrock",
 				model: baseModel.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: createEmptyUsage(),
 				stopReason: "toolUse",
 				timestamp: Date.now(),
 			},
@@ -371,7 +258,14 @@ describe("bedrock convertMessages skips unknown content types", () => {
 			},
 		];
 		const payload = (await capturePayload({ messages })) as {
-			messages: Array<{ role: string; content: Array<Record<string, any>> }>;
+			messages: Array<{
+				role: string;
+				content: Array<{
+					toolResult: { status: string; content?: unknown };
+					image: { source: { bytes: Uint8Array } };
+					text: string;
+				}>;
+			}>;
 		};
 		const content = payload.messages[1].content;
 		expect(content).toHaveLength(4);
@@ -405,7 +299,10 @@ describe("bedrock convertMessages skips unknown content types", () => {
 			},
 		];
 		const payload = (await capturePayload({ messages }, novaModel)) as {
-			messages: Array<{ role: string; content: Array<Record<string, any>> }>;
+			messages: Array<{
+				role: string;
+				content: Array<{ toolResult: { status: string }; image: { source: { bytes: Uint8Array } }; text: string }>;
+			}>;
 		};
 		expect(payload.messages[0].content).toEqual([
 			{
@@ -422,18 +319,11 @@ describe("bedrock convertMessages skips unknown content types", () => {
 		const messages: Message[] = [
 			{
 				role: "assistant",
-				content: [{ type: "unknown", data: "foo" }] as any,
+				content: [{ type: "unknown", data: "foo" }] as never,
 				api: "bedrock-converse-stream",
 				provider: "amazon-bedrock",
 				model: baseModel.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: createEmptyUsage(),
 				stopReason: "stop",
 				timestamp: Date.now(),
 			},
@@ -466,14 +356,7 @@ describe("bedrock convertMessages skips unknown content types", () => {
 				api: "bedrock-converse-stream",
 				provider: "amazon-bedrock",
 				model: baseModel.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: createEmptyUsage(),
 				stopReason: "toolUse",
 				timestamp: Date.now(),
 			},

@@ -59,3 +59,14 @@ it("rejects a changed final identity without leaking startup output", async () =
 		data: { sessionId: "wrong-identity" },
 	});
 });
+
+it("returns the startup slot and a RequestError when closing the failed session rejects", async () => {
+	const worker = new FakeWorker();
+	worker.start.mockRejectedValueOnce(new Error("startup failed"));
+	worker.stop.mockRejectedValueOnce(new Error("stop failed"));
+	let index = 0;
+	const h = harness({ maxSessions: 1, createWorker: async () => [worker, new FakeWorker()][index++] });
+	await h.initialize();
+	await expect(h.newSession()).rejects.toThrow("Could not start");
+	await expect(h.newSession()).resolves.toHaveProperty("sessionId");
+});

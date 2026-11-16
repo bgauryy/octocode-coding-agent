@@ -1,4 +1,4 @@
-import type { ResponseOutputItem } from "openai/resources/responses/responses.js";
+import type { ResponseOutputItem } from "../ai-sdk/openai-wire-types.ts";
 import type { TextContent } from "../../types.ts";
 import { outputFields, providerOutputText } from "../provider-output.ts";
 

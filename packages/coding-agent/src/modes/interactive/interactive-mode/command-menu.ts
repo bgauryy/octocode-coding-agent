@@ -3,7 +3,7 @@
  */
 
 import { Markdown, type SlashCommand, Spacer } from "@octocodeai/octocode-tui";
-import { BUILTIN_SLASH_COMMANDS, SLASH_MENU_ORDER } from "../../../core/slash-commands.ts";
+import { BUILTIN_SLASH_COMMANDS, COMMAND_ALIASES, SLASH_MENU_ORDER } from "../../../core/slash-commands.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -11,7 +11,15 @@ const HIDDEN = new Set(BUILTIN_SLASH_COMMANDS.filter((command) => command.menuHi
 /** Argument values /help lists for one command; more are reachable through completion. */
 const USAGE_VALUES = 20;
 
-/** `commands` as the menu lists them: aliases left out, in `SLASH_MENU_ORDER`, others after them, skills last. */
+/** `command` carrying the Claude Code names that run it: they match in the menu and its row says "also /name". */
+function withAliases(command: SlashCommand): SlashCommand {
+	const aliases = [...COMMAND_ALIASES].filter(([, target]) => target === command.name).map(([alias]) => alias);
+	if (aliases.length === 0) return command;
+	const also = `also ${aliases.map((alias) => `/${alias}`).join(" ")}`;
+	return { ...command, aliases, description: command.description ? `${command.description} · ${also}` : also };
+}
+
+/** `commands` as the menu lists them: aliases are no rows but match their target, in `SLASH_MENU_ORDER`, others after them, skills last. */
 export function menuCommands(commands: readonly SlashCommand[]): SlashCommand[] {
 	const rank = (command: SlashCommand): number => {
 		if (command.skill) return SLASH_MENU_ORDER.length + 1;
@@ -19,7 +27,10 @@ export function menuCommands(commands: readonly SlashCommand[]): SlashCommand[] 
 		return at >= 0 ? at : SLASH_MENU_ORDER.length;
 	};
 	// Array.prototype.sort is stable, so equal ranks keep registration order.
-	return commands.filter((command) => !HIDDEN.has(command.name)).sort((a, b) => rank(a) - rank(b));
+	return commands
+		.filter((command) => !HIDDEN.has(command.name))
+		.map((command) => (command.skill ? command : withAliases(command)))
+		.sort((a, b) => rank(a) - rank(b));
 }
 
 /** The command `query` names exactly (with or without its slash), if any. */

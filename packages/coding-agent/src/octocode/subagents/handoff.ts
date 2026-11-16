@@ -4,16 +4,18 @@ import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/features/index.ts";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
-import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { rewriteClaim } from "./handoff/claim-file.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
 import { type ReceiptSession, ReportReceipts } from "./handoff/receipts.ts";
 import { shortPath } from "../../utils/display-path.ts";
+import { sendAgentReport } from "./handoff/wake.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
  * of its background report to the parent.
  */
+
+type Hold = (queued: readonly string[]) => ReadonlySet<string>;
 
 /** Custom message type of the short mid-turn notice that a background report is on its way (never the report). */
 export const NOTICE_TYPE = "octocode-agent-notice";
@@ -59,14 +61,17 @@ export class ReportQueue {
 	pendingDir: string | undefined;
 
 	private readonly api: ExtensionAPI;
-	private readonly hold: ((queued: readonly string[]) => ReadonlySet<string>) | undefined;
+	private readonly hold: Hold | undefined;
+	/** The backlog item of each child by id: what a report wakes the parent about. */
+	private readonly items: ReadonlyMap<string, string> | undefined;
 	/**
 	 * `hold`: the children (of the queued reports' child ids) whose reports wait for a sibling's report
 	 * (`report-groups.ts`). Without it, or when it throws, every report goes out at the end of its tick.
 	 */
-	constructor(api: ExtensionAPI, hold?: (queued: readonly string[]) => ReadonlySet<string>) {
+	constructor(api: ExtensionAPI, hold?: Hold, items?: ReadonlyMap<string, string>) {
 		this.api = api;
 		this.hold = hold;
+		this.items = items;
 	}
 
 	/** The queued reports that go now: those whose sibling's report is not about to join them (`hold`). Unknown state holds none. */
@@ -201,11 +206,14 @@ export class ReportQueue {
 				// followUp: read once the current turn ends, with every other report waiting then; triggerTurn wakes an idle parent, once per batch.
 				const details = { ...report.details, reportId: report.reportId };
 				this.sent.set(report, details);
-				const sending = this.api.sendMessage(
-					{ customType: AGENT_RESULT_TYPE, content: report.content, display: true, details },
+				const sending = sendAgentReport(
+					this.api,
+					report,
+					details,
+					this.items?.get(report.details.id),
 					// A busy parent (a turn, or a run deciding whether to go on) reads every send of a waking batch as one
 					// follow-up drained together; an idle one gets the batch written and one turn from the last send.
-					{ triggerTurn: wake && (busy || index === batch.length - 1), deliverAs: "followUp", together: true },
+					wake && (busy || index === batch.length - 1),
 				);
 				if (sending && typeof sending.then === "function")
 					void Promise.resolve(sending).catch(() => this.retry(report));

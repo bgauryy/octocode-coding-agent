@@ -145,6 +145,10 @@ export function createExtensionContext(host: RunnerHost): ExtensionContext {
 			host.assertActive();
 			return host.bindings.getSystemPromptFn();
 		},
+		getSystemPromptOptions: () => {
+			host.assertActive();
+			return host.bindings.getSystemPromptOptionsFn();
+		},
 	};
 }
 
@@ -192,10 +196,6 @@ export function createExtensionCommandContext(host: RunnerHost): ExtensionComman
 		{},
 		Object.getOwnPropertyDescriptors(host.createContext()),
 	) as ExtensionCommandContext;
-	context.getSystemPromptOptions = () => {
-		host.assertActive();
-		return host.bindings.getSystemPromptOptionsFn();
-	};
 	context.waitForIdle = () => {
 		host.assertActive();
 		return host.bindings.waitForIdleFn();

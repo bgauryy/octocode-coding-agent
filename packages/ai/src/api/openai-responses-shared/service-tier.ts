@@ -1,8 +1,7 @@
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { Usage } from "../../types.ts";
 
 // The API can return newer tier names before the installed SDK adds them.
-type ServiceTier = ResponseCreateParamsStreaming["service_tier"] | "ultrafast" | undefined;
+type ServiceTier = "auto" | "default" | "fast" | "flex" | "priority" | "scale" | "ultrafast" | null | undefined;
 
 /** OpenAI bills every token class at the tier rate. GPT-6 models report Fast mode as "fast". */
 function getServiceTierCostMultiplier(model: { id: string }, serviceTier: ServiceTier): number {

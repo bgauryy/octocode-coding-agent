@@ -1,8 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { convertMessages, getGeminiMajorVersion, requiresToolCallId } from "../src/api/google-shared/messages.ts";
-import { supportsGoogleStrictToolSampling } from "../src/api/google-shared/tools.ts";
-import type { Context, Model } from "../src/types.ts";
+import {
+	getGeminiMajorVersion,
+	requiresToolCallId,
+	supportsGoogleStrictToolSampling,
+} from "../src/api/ai-sdk/google-capabilities.ts";
+import { stream } from "../src/api/google-generative-ai.ts";
+import type { Context, Model, TranscriptContext } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
+
+interface WirePart {
+	text?: string;
+	inlineData?: { data?: string };
+	functionCall?: { id?: string };
+	functionResponse?: { id?: string; name?: string; parts?: WirePart[]; response?: { content?: string } };
+}
+interface WireContent {
+	role: string;
+	parts?: WirePart[];
+}
+async function convertMessages(
+	model: Model<"google-generative-ai">,
+	context: TranscriptContext,
+): Promise<WireContent[]> {
+	let contents: WireContent[] | undefined;
+	const result = await stream(model, context, {
+		apiKey: "test-key",
+		onPayload: (payload) => {
+			contents = (payload as { contents: WireContent[] }).contents;
+			throw new Error("request captured");
+		},
+	}).result();
+	expect(result.errorMessage).toBe("request captured");
+	if (!contents) throw new Error("No request captured");
+	return contents;
+}
 
 function makeModel<TApi extends "google-generative-ai">(
 	api: TApi,
@@ -78,9 +109,9 @@ function makeContext(model: { api: string; provider: string; id: string }): Cont
 }
 
 describe("google-shared image tool result routing", () => {
-	it("sends Gemini 2.x tool-result images in one turn after every function response of the model turn", () => {
+	it("sends Gemini 2.x tool-result images in one turn after every function response of the model turn", async () => {
 		const model = makeModel("google-generative-ai", "google", "gemini-2.5-flash");
-		const contents = convertMessages(model, normalizeContext(makeContext(model)));
+		const contents = await convertMessages(model, normalizeContext(makeContext(model)));
 
 		// One user turn answers all three calls; an image turn between them would split the function responses.
 		expect(contents).toHaveLength(4);
@@ -92,7 +123,7 @@ describe("google-shared image tool result routing", () => {
 		expect(contents[3].parts?.[1]?.inlineData).toBeTruthy();
 	});
 
-	it("collects images of several Gemini 2.x tool results into one turn before the next user message", () => {
+	it("collects images of several Gemini 2.x tool results into one turn before the next user message", async () => {
 		const model = makeModel("google-generative-ai", "google", "gemini-2.5-flash");
 		const context = makeContext(model);
 		for (const message of context.messages) {
@@ -101,7 +132,7 @@ describe("google-shared image tool result routing", () => {
 			}
 		}
 		context.messages.push({ role: "user", content: "what do they show?", timestamp: Date.now() });
-		const contents = convertMessages(model, normalizeContext(context));
+		const contents = await convertMessages(model, normalizeContext(context));
 
 		expect(contents).toHaveLength(5);
 		expect(contents[2].parts?.map((part) => part.functionResponse?.name)).toEqual(["read", "read", "read"]);
@@ -115,13 +146,13 @@ describe("google-shared image tool result routing", () => {
 
 	it.each(["gemini-pro-latest", "gemini-flash-latest", "gemini-flash-lite-latest", "Gemini-Flash-Latest"])(
 		"treats the %s alias as Gemini 3: nested images, tool call ids and strict tool sampling",
-		(id) => {
+		async (id) => {
 			expect(getGeminiMajorVersion(id)).toBe(3);
 			expect(requiresToolCallId(id)).toBe(true);
 			expect(supportsGoogleStrictToolSampling(id)).toBe(true);
 
 			const model = makeModel("google-generative-ai", "google", id);
-			const contents = convertMessages(model, normalizeContext(makeContext(model)));
+			const contents = await convertMessages(model, normalizeContext(makeContext(model)));
 
 			expect(contents).toHaveLength(3);
 			expect(contents[1].parts?.map((part) => part.functionCall?.id)).toEqual(["call_a", "call_img", "call_b"]);
@@ -136,9 +167,9 @@ describe("google-shared image tool result routing", () => {
 		expect(requiresToolCallId("gemini-2.5-flash")).toBe(false);
 	});
 
-	it("nests image tool results for Gemini 3 Google API models", () => {
+	it("nests image tool results for Gemini 3 Google API models", async () => {
 		const model = makeModel("google-generative-ai", "google", "gemini-3-pro-preview");
-		const contents = convertMessages(model, normalizeContext(makeContext(model)));
+		const contents = await convertMessages(model, normalizeContext(makeContext(model)));
 
 		expect(contents).toHaveLength(3);
 		const toolResultTurn = contents[2];
@@ -149,7 +180,7 @@ describe("google-shared image tool result routing", () => {
 		expect(imageResponse?.parts?.[0]?.inlineData).toBeTruthy();
 	});
 
-	it("treats whitespace-only tool result text as no text", () => {
+	it("treats whitespace-only tool result text as no text", async () => {
 		const model = makeModel("google-generative-ai", "google", "gemini-3-pro-preview");
 		const context = makeContext(model);
 		for (const message of context.messages) {
@@ -157,11 +188,11 @@ describe("google-shared image tool result routing", () => {
 			if (message.toolCallId === "call_a") message.content = [{ type: "text", text: "\r\n" }];
 			if (message.toolCallId === "call_img") message.content.unshift({ type: "text", text: " \n" });
 		}
-		const contents = convertMessages(model, normalizeContext(context));
+		const contents = await convertMessages(model, normalizeContext(context));
 
 		const responses = contents[2].parts?.map((part) => part.functionResponse?.response);
-		expect(responses?.[0]).toEqual({ output: "" });
-		expect(responses?.[1]).toEqual({ output: "(see attached image)" });
-		expect(responses?.[2]).toEqual({ output: "beta text" });
+		expect(responses?.[0]?.content).toEqual("");
+		expect(responses?.[1]?.content).toEqual("(see attached image)");
+		expect(responses?.[2]?.content).toEqual("beta text");
 	});
 });

@@ -1,1 +1,1 @@
-- Parallelize independent calls.{{#if shell}} Script repeated mechanical work.{{/if}} Spend context, tokens and machine time on the next decision: outlines and line ranges before whole files or logs; reuse results instead of rereading or rerunning.
+- Parallelize independent calls.{{#if shell}} Script repeated mechanical work and checks.{{/if}} Spend context, tokens and machine time on the next decision: filter output at its source (counts, `-l` lists), outlines and line ranges before whole files or logs; reuse results instead of rereading or rerunning.

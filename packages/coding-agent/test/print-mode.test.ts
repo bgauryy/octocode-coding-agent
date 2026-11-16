@@ -300,4 +300,20 @@ describe("runPrintMode", () => {
 		expect(exitCode).toBe(1);
 		expect(errorSpy).toHaveBeenCalledWith(failure.errorMessage);
 	});
+
+	it("reports why a truncated run stopped when the outcome names a reason", async () => {
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "unused" }));
+		const truncated = createRunOutcome();
+		truncated.status = "truncated";
+		truncated.stopReason = "length";
+		truncated.errorMessage = "Run stopped: replies were cut off in the middle of tool calls.";
+		Object.defineProperty(runtimeHost.session, "lastRunOutcome", { value: truncated });
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+			messages: ["hello"],
+		});
+		expect(exitCode).toBe(1);
+		expect(errorSpy).toHaveBeenCalledWith(truncated.errorMessage);
+	});
 });

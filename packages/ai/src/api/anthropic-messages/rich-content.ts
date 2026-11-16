@@ -1,4 +1,4 @@
-import type { BetaContentBlock, BetaTextCitation } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
+import type { ContentBlock as BetaContentBlock, TextCitation as BetaTextCitation } from "./shapes.ts";
 import type { ContentAnnotation, TextContent } from "../../types.ts";
 import { outputFields, providerOutputText } from "../provider-output.ts";
 

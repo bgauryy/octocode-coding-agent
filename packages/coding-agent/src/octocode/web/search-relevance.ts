@@ -10,13 +10,19 @@ const COMMON = new Set(
 	),
 );
 
-/** The query's significant words, lower case and cut to a stem: operators, short and common words left out. */
+/**
+ * The query's significant words, lower case and cut to a stem: operators, short and common words left out. A query of
+ * only common words is one phrase term, unstemmed; an operator-only or short-word query has no terms.
+ */
 export function queryTerms(query: string): string[] {
 	const words = query
 		.split(/\s+/)
 		.filter((word) => !/^-|^[a-z]+:/i.test(word))
 		.flatMap((word) => word.toLowerCase().split(/[^\p{L}\p{N}]+/u));
 	const terms = words.filter((word) => !COMMON.has(word) && (word.length >= 3 || /[^\x00-\x7f]/.test(word)));
+	// Only common words (`what is the`) still say something as a phrase: no term would let every hit through.
+	const spoken = words.filter(Boolean);
+	if (terms.length === 0 && spoken.length > 0 && spoken.every((word) => COMMON.has(word))) return [spoken.join(" ")];
 	return [...new Set(terms.map((word) => (word.length > 5 ? word.slice(0, -2) : word)))];
 }
 

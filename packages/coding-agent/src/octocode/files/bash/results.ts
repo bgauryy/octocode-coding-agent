@@ -8,7 +8,7 @@ import type { OrphanJob } from "../bash-jobs/records.ts";
 import { moveFile } from "../../shared/sweep.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { BashDetails } from "../outcome.ts";
-import { verificationJson, verificationLine } from "./verification.ts";
+import { verificationJson, verificationLine, verificationText } from "./verification.ts";
 import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { RERUN_HINT } from "../outcome.ts";
@@ -96,7 +96,7 @@ function movedResult(
 	const text = [
 		output.trimEnd(),
 		moved,
-		verification ? verificationLine(verification) : "",
+		verification ? verificationText(verification) : "",
 		threshold,
 		clamped ? `(${CLAMP_NOTE})` : "",
 	]

@@ -89,6 +89,8 @@ export interface ExtensionContext {
 	compact(options?: CompactOptions): void;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
+	/** Get the current base system-prompt construction options (read-only: context files, skills). */
+	getSystemPromptOptions?(): BuildSystemPromptOptions;
 }
 
 /** Options for {@link ExtensionToolContext.executeTool}. */

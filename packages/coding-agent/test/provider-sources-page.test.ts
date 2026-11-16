@@ -89,7 +89,7 @@ describe("/providers source toggle", () => {
 
 		const run = showProviderManager(host, "", { sourceEnvironment: environment });
 		const list = await open(0);
-		expect(text(list)).toMatch(/Cerebras .*configured/);
+		expect(text(list)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
 		choose(list, "Sources and custom models");
 		choose(await open(1), "Pi ");
 		choose(await open(2), "Turn off");
@@ -107,7 +107,7 @@ describe("/providers source toggle", () => {
 		const on = await open(8);
 		expect(settingsManager.getProviderSources()).toEqual({});
 		expect(availableProviders()).toContain("cerebras");
-		expect(text(on)).toMatch(/Cerebras .*configured/);
+		expect(text(on)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
 		on.handleInput("\x1b");
 		await run;
 	});

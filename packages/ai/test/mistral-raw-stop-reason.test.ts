@@ -34,6 +34,14 @@ function createFetch(finishReason: string): FetchFunction {
 }
 
 describe("Mistral raw stop reasons", () => {
+	it("preserves model_length while mapping it to the shared length stop", async () => {
+		const message = await streamMistral(model, context, {
+			apiKey: "test",
+			fetch: createFetch("model_length"),
+		}).result();
+		expect(message.stopReason).toBe("length");
+		expect(message.rawStopReason).toBe("model_length");
+	});
 	it("preserves raw Mistral finish reasons for successful stops", async () => {
 		const message = await streamMistral(model, context, {
 			apiKey: "test",

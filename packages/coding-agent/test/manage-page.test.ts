@@ -57,4 +57,56 @@ describe("ManagePageComponent", () => {
 		expect(onSelect).toHaveBeenCalledWith("b");
 		expect(onKey).toHaveBeenCalledWith("e", "b");
 	});
+
+	describe("row keys", () => {
+		const keyed = (onKey = vi.fn()) =>
+			new ManagePageComponent({
+				title: "Servers",
+				sections: [
+					{
+						heading: "Servers",
+						rows: [
+							{ id: "srv", name: "docs", keys: { e: "edit" } },
+							{ id: "add", name: "+ Add" },
+						],
+					},
+				],
+				onSelect: vi.fn(),
+				onKey,
+				onCancel: vi.fn(),
+			});
+
+		it("shows the selected row's keys in the footer and no others", () => {
+			const page = keyed();
+			expect(stripAnsi(page.render(80).join("\n"))).toMatch(/enter open · e edit · esc\S* close/);
+			page.handleInput("\x1b[B");
+			const footer = stripAnsi(page.render(80).join("\n"));
+			expect(footer).toMatch(/enter open · esc\S* close/);
+			expect(footer).not.toContain("e edit");
+		});
+
+		it("ignores a key the selected row does not declare", () => {
+			const onKey = vi.fn();
+			const page = keyed(onKey);
+			page.handleInput("e");
+			expect(onKey).toHaveBeenCalledWith("e", "srv");
+			onKey.mockClear();
+			page.handleInput("\x1b[B");
+			page.handleInput("e");
+			expect(onKey).not.toHaveBeenCalled();
+		});
+
+		it("says back when nested and drops enter on an empty page", () => {
+			const empty = new ManagePageComponent({
+				title: "T",
+				nested: true,
+				sections: [{ heading: "S", rows: [], empty: "none" }],
+				onSelect: vi.fn(),
+				onCancel: vi.fn(),
+			});
+			const footer = stripAnsi(empty.render(80).join("\n"));
+			expect(footer).toMatch(/esc\S* back/);
+			expect(footer).not.toContain("enter");
+		});
+	});
 });

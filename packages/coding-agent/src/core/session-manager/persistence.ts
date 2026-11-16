@@ -15,6 +15,7 @@ import { encodeSessionLines, SessionCodec } from "./codec.ts";
 import type { LoadedSessionFile } from "./file-reader.ts";
 import { mirrorOpened, mirrorReplaced, recordFork } from "./mirror.ts";
 import { repairSessionFile, type SessionRepair } from "./repair.ts";
+import { notifyDroppedRecords } from "./dropped-records.ts";
 import { cancelHeldRetry, retryHeldEntries } from "./held-retry.ts";
 import {
 	HELD_LOCK_WAIT_MS,
@@ -105,7 +106,8 @@ function observedCodec(entries: readonly FileEntry[]): SessionCodec {
 }
 
 /** Forget what a failed or held write left: the session's file or transcript was just replaced. */
-function clearWriteState(state: SessionState): void {
+function clearWriteState(state: SessionState, replacing = true): void {
+	if (replacing) notifyDroppedRecords(state.unwritten.length, state.sessionFile);
 	cancelHeldRetry(state);
 	state.persistenceFailure = undefined;
 	state.failedWrite = undefined;
@@ -123,7 +125,7 @@ export function recoverSession(state: SessionState): SessionRepair | undefined {
 	if (!existsSync(state.sessionFile)) {
 		state.flushed = false;
 		state.fileSize = undefined;
-		clearWriteState(state);
+		clearWriteState(state, false);
 		return undefined;
 	}
 	const repair = repairSessionFile(state.sessionFile);
@@ -378,11 +380,11 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 
 		// Use the same rule as persistEntry(): write now if the branched path already
 		// has a conversation, otherwise let persistEntry() create the file later.
+		// Not flushed until the file exists: a failed rewrite leaves the next write to create it whole, not append to nothing.
+		state.flushed = false;
 		if (hasConversation(state)) {
 			rewriteSessionFile(state);
 			state.flushed = true;
-		} else {
-			state.flushed = false;
 		}
 
 		if (previousSessionFile)

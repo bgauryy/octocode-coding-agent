@@ -1,30 +1,14 @@
-import { createAbortError } from "../utils/abort.ts";
-import { stripStreamScratch } from "./stream-finalize.ts";
-import { assertImageRequestPayload } from "../utils/image-input.ts";
-import { retryAfterMsFromError } from "../utils/provider-retry.ts";
-import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
-import type OpenAI from "openai";
-import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, ThinkingContent } from "../types.ts";
-import { formatProviderError, normalizeProviderError, redactProviderText } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-import { failStreamTask } from "./lazy.ts";
+import { streamSdk } from "./ai-sdk/stream.ts";
+import { completionsMapping } from "./ai-sdk/completions-map.ts";
+import { completionsFetch } from "./ai-sdk/completions-fetch.ts";
+import type { Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { getClientApiKey } from "../utils/headers.ts";
-import { resolveCacheAffinityId, resolveCacheRetention } from "../utils/cache-policy.ts";
-import { getDeclaredTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
-import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { createClient } from "./openai-completions/client.ts";
-import { requestCompletionsStream } from "./openai-completions/request.ts";
+import { resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 import { getCompat } from "./openai-completions/compat.ts";
-import { buildParams } from "./openai-completions/params.ts";
-import {
-	applyStreamedReasoningDetails as applyReasoningDetails,
-	type StreamedReasoningDetails,
-} from "./openai-completions/reasoning-details.ts";
-import { createCompletionsChunkProcessor } from "./openai-completions/stream-events.ts";
 import type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
 import { buildBaseOptions, requestedReasoningEffort } from "./simple-options.ts";
 
-export { convertMessages } from "./openai-completions/messages.ts";
 export type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
 
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
@@ -32,118 +16,14 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 	context: TranscriptContext,
 	options?: OpenAICompletionsOptions,
 ): AssistantMessageEventStream => {
-	const stream = new AssistantMessageEventStream();
-	const normalizedContext = resolveTranscript(context, getCompat(model).supportsMidConvoSystemMessages);
-
-	(async () => {
-		const output: AssistantMessage = createPendingAssistantMessage(model);
-
-		// `reasoning_details` are replay metadata, not user-visible stream deltas.
-		// Keep them in memory during streaming and serialize once when the block is finalized.
-		const streamedReasoningDetails: StreamedReasoningDetails = {};
-		const applyStreamedReasoningDetails = (block: ThinkingContent): void => {
-			applyReasoningDetails(block, streamedReasoningDetails);
-		};
-
-		try {
-			const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
-			const compat = getCompat(model);
-			const grammarToolInputProperties = createGrammarToolInputProperties(
-				getDeclaredTools(normalizedContext.messages),
-				compat.supportsOpenAIGrammarTools,
-			);
-			const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-			const cacheSessionId = resolveCacheAffinityId(options);
-			const client = createClient(
-				model,
-				normalizedContext,
-				apiKey,
-				options?.headers,
-				options?.fetch,
-				cacheSessionId,
-				compat,
-				options?.env,
-			);
-			let params = buildParams(
-				model,
-				normalizedContext,
-				options,
-				compat,
-				cacheRetention,
-				grammarToolInputProperties,
-				(reduction) => {
-					output.thinkingBudget = reduction;
-				},
-			);
-			const nextParams = await options?.onPayload?.(params, model);
-			if (nextParams !== undefined) {
-				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
-			}
-			assertImageRequestPayload(model, params);
-			const openaiStream = await requestCompletionsStream(model, client, params, options);
-			stream.push({ type: "start", partial: output });
-
-			const processor = createCompletionsChunkProcessor(
-				model,
-				output,
-				stream,
-				grammarToolInputProperties,
-				streamedReasoningDetails,
-			);
-			for await (const chunk of openaiStream) {
-				await options?.onProviderStreamEvent?.(chunk, model);
-				if (!chunk || typeof chunk !== "object") continue;
-				processor.processChunk(chunk);
-			}
-
-			processor.finishBlocks();
-			if (options?.signal?.aborted) {
-				throw createAbortError();
-			}
-
-			if (output.stopReason === "aborted") {
-				throw createAbortError();
-			}
-			if (!processor.hasFinishReason() && !compat.supportsFinishReason) {
-				output.stopReason = output.content.some((block) => block.type === "toolCall") ? "toolUse" : "stop";
-			}
-			if (output.stopReason === "error") {
-				throw new Error(output.errorMessage || "Provider returned an error stop reason");
-			}
-			if ((compat.supportsFinishReason && !processor.hasFinishReason()) || output.stopReason === "pending") {
-				throw new Error("Stream ended without finish_reason");
-			}
-
-			// A reported count is whole; a stream that never reported usage keeps the lower-bound mark the first chunk set,
-			// since the provider bills for what it generated whether or not the count reached us.
-			stream.push({ type: "done", reason: output.stopReason, message: output });
-			stream.end();
-		} catch (error) {
-			for (const block of output.content) {
-				if (block.type === "thinking") {
-					applyStreamedReasoningDetails(block);
-				}
-			}
-			stripStreamScratch(output);
-			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = formatProviderError(normalizeProviderError(error));
-			const retryAfterMs = retryAfterMsFromError(error);
-			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
-			// Some providers via OpenRouter give additional information in this field.
-			// normalizeProviderError already stringifies the parsed body (error.error)
-			// into errorMessage, so only append the raw metadata when it is not already
-			// present to avoid double-printing it.
-			const rawMetadata = (error as any)?.error?.metadata?.raw;
-			const metadataText = rawMetadata ? redactProviderText(String(rawMetadata)) : undefined;
-			if (metadataText && !output.errorMessage.includes(metadataText)) {
-				output.errorMessage += `\n${metadataText}`;
-			}
-			stream.push({ type: "error", reason: output.stopReason, error: output });
-			stream.end();
-		}
-	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
-
-	return stream;
+	const normalized = resolveTranscript(context, getCompat(model).supportsMidConvoSystemMessages);
+	const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
+	return streamSdk(
+		model,
+		normalized,
+		{ ...options, apiKey, fetch: completionsFetch(model, normalized, options ?? {}, apiKey) },
+		completionsMapping(model, normalized, options),
+	);
 };
 
 export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOptions> = (
@@ -152,16 +32,13 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
 	getClientApiKey(model.provider, options?.apiKey, options?.headers);
-
 	const base = {
 		...buildBaseOptions(model, context, options, options?.apiKey),
 		toolChoice: options?.toolChoice,
 	} satisfies OpenAICompletionsOptions;
-	const reasoningEffort = requestedReasoningEffort(model, options);
-
 	return stream(model, context, {
 		...base,
-		reasoningEffort,
+		reasoningEffort: requestedReasoningEffort(model, options),
 		thinkingBudgets: options?.thinkingBudgets,
-	} satisfies OpenAICompletionsOptions);
+	});
 };

@@ -18,12 +18,12 @@ Private workspace: SQLite schema, connections, named entity queries, history ret
 
 Octocode has no schema upgrade steps: it is in development, and a file from another schema version is not converted.
 
-| File at open  | What happens                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Empty         | The schema of `src/schema-sql.ts` (or `src/schema-mirror.ts`) is created at the kind's `version` (`src/schema.ts`) |
-| Same version  | Used as it is                                                                                                      |
-| Older version | Renamed to `<file>.v<version>.retired` with its `-wal` and `-shm`, and a new file is created; nothing is deleted   |
-| Newer version | Refused with a message; nothing changes                                                                            |
+| File at open  | What happens                                                                                                                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Empty         | The schema of `src/schema-sql.ts` (or `src/schema-mirror.ts`) is created at the kind's `version` (`src/schema.ts`)                                                                                 |
+| Same version  | Used as it is                                                                                                                                                                                      |
+| Older version | Renamed under the file's lock to `<file>.v<version>.retired` (a taken name gets a timestamp suffix, so none is replaced) with its `-wal` and `-shm`, and a new file is created; nothing is deleted |
+| Newer version | Refused with a message; nothing changes                                                                                                                                                            |
 
 To change the schema, edit `src/schema-sql.ts` and raise `COORDINATION_FILE.version`. Every existing agent database is then set aside at its next open, so backlog items, memories and history start empty; say so in the change.
 

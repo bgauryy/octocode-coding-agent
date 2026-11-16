@@ -313,7 +313,7 @@ describe("the timer tool in a session", () => {
 		});
 		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		const tool = host.tools.get("timer");
+		const tool = host.tools.get("wait");
 		const set = await tool.execute(
 			"call-1",
 			{ op: "set", after: 2, note: "rerun the flaky test" },
@@ -354,7 +354,7 @@ describe("the timer tool in a session", () => {
 		});
 		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		await host.tools.get("timer").execute("c", { op: "set", after: 1, note: "wake me" }, undefined, undefined, ctx);
+		await host.tools.get("wait").execute("c", { op: "set", after: 1, note: "wake me" }, undefined, undefined, ctx);
 		await vi.advanceTimersByTimeAsync(2000);
 		const [{ message, options }] = host.sent;
 		const steer = vi.fn();
@@ -394,7 +394,7 @@ describe("the timer tool in a session", () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(settled).toBe(true);
 
-		const tool = host.tools.get("timer");
+		const tool = host.tools.get("wait");
 		await tool.execute("c1", { op: "set", after: 20, note: "look again" }, undefined, undefined, ctx);
 		settled = false;
 		void timersHost.settle().then(() => (settled = true));
@@ -407,7 +407,7 @@ describe("the timer tool in a session", () => {
 		const set = await tool.execute("c2", { op: "set", after: 600, note: "later" }, undefined, undefined, ctx);
 		settled = false;
 		void timersHost.settle().then(() => (settled = true));
-		await tool.execute("c3", { op: "cancel", id: set.details.timer.id }, undefined, undefined, ctx);
+		await tool.execute("c3", { op: "off", id: set.details.timer.id }, undefined, undefined, ctx);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(settled).toBe(true);
 		await host.fire("session_shutdown", {}, ctx);
@@ -423,42 +423,42 @@ describe("the timer tool in a session", () => {
 		});
 		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		const tool = host.tools.get("timer");
+		const tool = host.tools.get("wait");
 		const run = (params: object) => tool.execute("c", params, undefined, undefined, ctx);
 		const text = (result: { content: { text: string }[] }) => result.content[0].text;
 
 		const once = await run({ op: "set", after: 5, note: "timeout" });
 		const id = once.details.timer.id as number;
-		expect(text(once)).toMatch(
-			new RegExp(`^Set ${id} · once · next wake in 5s · timeout\\nCancel it with id ${id}\\.$`),
-		);
+		expect(text(once)).toMatch(new RegExp(`^Set ${id} · once · next wake in 5s · timeout$`));
 		const every = await run({ op: "set", every: 30, note: "interval" });
 		const everyId = every.details.timer.id as number;
 		await run({ op: "set", after: 600, note: "later" });
 
-		expect(text(await run({ op: "cancel", id }))).toMatch(new RegExp(`^Cancelled ${id} · once · cancelled`));
-		expect(text(await run({ op: "cancel", id }))).toMatch(
-			new RegExp(`^Timer ${id} already ended, nothing to cancel: ${id} · once · cancelled`),
+		expect(text(await run({ op: "off", id }))).toMatch(new RegExp(`^Cancelled ${id} · once · cancelled`));
+		expect(text(await run({ op: "off", id }))).toMatch(
+			new RegExp(`^Wait ${id} already ended, nothing to turn off: ${id} · once · cancelled`),
 		);
 		await vi.advanceTimersByTimeAsync(31_000);
 		// Only the interval woke the session; its wake says how to stop it.
 		expect(host.sent.map(({ message }) => message.content)).toEqual([
-			expect.stringContaining(`It repeats: cancel id ${everyId} to stop it.`),
+			expect.stringContaining(`It repeats: off id ${everyId} to stop it.`),
 		]);
 
 		const foreign = timers.forSession(agent.db, "s2")[0].id;
-		await expect(run({ op: "cancel", id: foreign })).rejects.toThrow(
-			new RegExp(`^No timer ${foreign} in this session\\. Active: \\d+, ${everyId}\\.$`),
+		await expect(run({ op: "off", id: foreign })).rejects.toThrow(
+			new RegExp(`^No wait ${foreign} in this session\\. Active: \\d+, ${everyId}\\.$`),
 		);
-		await expect(run({ op: "cancel" })).rejects.toThrow(/^cancel needs the id set returned, or all: true\. Active: /);
-		await expect(run({ op: "cancel", id: everyId, all: true })).rejects.toThrow("cancel takes id or all, not both.");
+		await expect(run({ op: "off" })).rejects.toThrow(
+			/^off needs the id that set or on returned, or all: true\. Active: /,
+		);
+		await expect(run({ op: "off", id: everyId, all: true })).rejects.toThrow("off takes id or all, not both.");
 
-		const all = await run({ op: "cancel", all: true });
-		expect(text(all)).toMatch(/^Cancelled 2 timers:\n/);
+		const all = await run({ op: "off", all: true });
+		expect(text(all)).toMatch(/^Cancelled 2 waits:\n/);
 		expect(text(all)).toContain("interval");
 		expect(text(all)).toContain("later");
-		expect(text(await run({ op: "list" }))).toBe("No active timers.");
-		expect(text(await run({ op: "cancel", all: true }))).toBe("No active timers to cancel.");
+		expect(text(await run({ op: "list" }))).toBe("No active waits.");
+		expect(text(await run({ op: "off", all: true }))).toBe("No active waits to turn off.");
 		// Another session's timer is untouched.
 		expect(timers.get(agent.db, foreign)?.status).toBe("active");
 		await vi.advanceTimersByTimeAsync(120_000);
@@ -484,8 +484,8 @@ describe("the timer tool in a session", () => {
 		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		await expect(
-			host.tools.get("timer").execute("c", { op: "set", after: 1, note: "x" }, undefined, undefined, ctx),
-		).rejects.toThrow(/10 active timers/);
+			host.tools.get("wait").execute("c", { op: "set", after: 1, note: "x" }, undefined, undefined, ctx),
+		).rejects.toThrow(/10 active waits/);
 		await host.fire("session_shutdown", {}, ctx);
 	});
 });
@@ -508,7 +508,7 @@ describe("the wake notice", () => {
 			output: "src/a.ts is not reserved.",
 		};
 		const text = rendered(renderTimerMessage(details, "", false, colored));
-		expect(text).toContain("<warning>⏰ Timer 7: condition met: src/a.ts unlocked · done</warning>");
+		expect(text).toContain("<warning>⏰ Wait 7: condition met: src/a.ts unlocked · done</warning>");
 		expect(text).toContain("<warning>  edit src/a.ts now</warning>");
 		expect(text).toContain("src/a.ts is not reserved.");
 	});

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildSSEHeaders, buildWebSocketHeaders } from "../src/api/openai-codex-responses/request.ts";
+import { buildSSEHeaders } from "../src/api/openai-codex-responses/request.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 import { createModels } from "../src/models.ts";
@@ -41,10 +41,7 @@ describe("Octocode identity on requests", () => {
 	it("sends Octocode as the Codex originator when the credential names none", () => {
 		setUserAgentVersion("1.3.0");
 		const token = createAccessToken("acct");
-		for (const headers of [
-			buildSSEHeaders(undefined, undefined, "acct", token),
-			buildWebSocketHeaders(undefined, undefined, "acct", token, "request-id"),
-		]) {
+		for (const headers of [buildSSEHeaders(undefined, undefined, "acct", token)]) {
 			expect(headers.get("originator")).toBe("Octocode");
 			expectHonest(headers);
 		}

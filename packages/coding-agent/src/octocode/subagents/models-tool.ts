@@ -9,7 +9,6 @@ import type { ModelRef } from "./model.ts";
 import { THINKING_LEVELS } from "./thinking.ts";
 import { canRunTask, registryBilling } from "./model.ts";
 import {
-	CREDENTIAL_MARKS,
 	describeModels,
 	describeRoutes,
 	describeUnrunnable,
@@ -17,7 +16,7 @@ import {
 	modelAbilities,
 	modelCatalog,
 } from "./models-command.ts";
-import { providerKinds, providerRows, providerSummary } from "./models-summary.ts";
+import { compactModels, providerKinds, providerRows, providerSummary } from "./models-summary.ts";
 import type { AgentProfile } from "./profiles.ts";
 import { checkCandidates, checkProviders, providerHealth } from "./provider-health.ts";
 
@@ -50,8 +49,9 @@ export function registerModelsTool(
 		label: "Models",
 		promptSnippet: renderInstruction("tools/models/snippet.md"),
 		description:
-			"Session model/thinking, providers/credential status, model price/context/abilities and small/medium/profile routes. No filter: one row per provider; provider lists its models. Filters combine.",
+			"Session model and all connected models: price, context, abilities, thinking, cutoff, credential mark. Filters combine and add purpose/profile routes.",
 		parameters: Type.Object({
+			routes: Type.Optional(Type.Boolean({ description: "Include purpose/profile routes without a filter" })),
 			provider: Type.Optional(Type.String({ description: "List this provider's models or external vendor/runner ID" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
 			query: Type.Optional(
@@ -96,10 +96,32 @@ export function registerModelsTool(
 				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
 			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
 
-			const credentials = `${source}\n${CREDENTIAL_MARKS}`;
-			// An unfiltered call, or a query or ability that keeps too many rows, gets one row per provider; a provider
-			// (or a short filter) gets the models themselves.
-			if (!provider && (!filtered || shown.length > LISTING_ROWS)) {
+			if (!filtered)
+				return textResult(
+					[
+						sessionHeader(ctx),
+						compactModels(all, catalog),
+						...(params.routes
+							? [
+									describeRoutes(
+										all,
+										ctx.model,
+										getProfiles(),
+										catalog,
+										undefined,
+										undefined,
+										registryBilling(ctx.modelRegistry),
+									),
+								]
+							: []),
+						...outside,
+						...catalogRows(unconnected),
+						source,
+					].join("\n\n"),
+				);
+			const credentials = source;
+			// Broad query and ability filters get a provider summary; a provider or short filter lists models.
+			if (!provider && shown.length > LISTING_ROWS) {
 				const kept = filtered ? shown : undefined;
 				return textResult(
 					[

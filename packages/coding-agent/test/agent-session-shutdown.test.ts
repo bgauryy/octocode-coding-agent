@@ -63,4 +63,20 @@ describe("session shutdown ownership", () => {
 		expect(calls).toHaveLength(6);
 		expect(sessionMirrorSettled).toHaveBeenCalledOnce();
 	});
+
+	it("continues disposing when abort never settles", async () => {
+		vi.useFakeTimers();
+		try {
+			const { runtime, calls } = fixture();
+			(runtime.session as unknown as { abort: () => Promise<void> }).abort = () => new Promise(() => {});
+			const done = runtime.dispose();
+			await vi.advanceTimersByTimeAsync(4_999);
+			expect(calls).toEqual([]);
+			await vi.advanceTimersByTimeAsync(1);
+			await done;
+			expect(calls).toEqual(["shutdown", "detach", "retire", "session", "services"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

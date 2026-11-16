@@ -27,6 +27,32 @@ export function generatedInstructionChars(text: string): number {
 	return text.includes("declare namespace ") ? instructionChars(text) : 0;
 }
 
+/** The `<project_context>` block of a rendered system prompt: the context files as the model reads them. */
+export function projectContextOf(systemPrompt: string): string | undefined {
+	return /^<project_context>$[\s\S]*?^<\/project_context>$/m.exec(systemPrompt)?.[0];
+}
+
+/**
+ * The startup warning when the project's context files (AGENTS.md and the like) together pass the budget: the shared
+ * message, with each file's size largest first, so the user sees which file to shorten. Undefined when they fit.
+ */
+export function contextFilesBudgetWarning(input: {
+	systemPrompt: string;
+	files: ReadonlyArray<{ path: string; content: string }>;
+	contextWindow?: number | null | undefined;
+}): { text: string; details: string[] } | undefined {
+	const [text] = contextSizeWarnings({
+		servers: [],
+		contextFilesChars: projectContextOf(input.systemPrompt)?.length ?? 0,
+		contextWindow: input.contextWindow,
+	});
+	if (!text) return undefined;
+	const details = [...input.files]
+		.sort((a, b) => b.content.length - a.content.length)
+		.map((file) => `${file.path}: ${file.content.length} chars`);
+	return { text, details };
+}
+
 /** One warning per part over the budget, largest servers first; empty when everything fits. */
 export function contextSizeWarnings(input: {
 	servers: ReadonlyArray<{ server: string; chars: number }>;
@@ -35,19 +61,17 @@ export function contextSizeWarnings(input: {
 	contextWindow?: number | null | undefined;
 }): string[] {
 	const budget = skillListingBudgetChars(input.contextWindow ?? undefined);
-	const over = (chars: number) => `${chars} chars > ${budget} budget (1% of the context window). Nothing is cut.`;
+	const over = (chars: number) => `${chars} chars, budget ${budget}`;
 	return [
 		...input.servers
 			.filter((server) => server.chars > budget)
 			.sort((a, b) => b.chars - a.chars)
 			.map(
 				(server) =>
-					`MCP server ${server.server} instructions over budget: ${over(server.chars)} Shorten them in the server, or override them for this install (\`octocode mcp compact --help\`).`,
+					`MCP server ${server.server} instructions too long: ${over(server.chars)} · fix: octocode mcp compact --help`,
 			),
 		...(input.contextFilesChars > budget
-			? [
-					`Context files over budget: ${over(input.contextFilesChars)} Keep the rules every task needs, and move the rest into files the agent reads when it needs them.`,
-				]
+			? [`Context files too long: ${over(input.contextFilesChars)} · move rarely needed rules into linked files`]
 			: []),
 	];
 }

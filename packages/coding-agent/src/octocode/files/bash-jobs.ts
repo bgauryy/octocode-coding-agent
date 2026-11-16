@@ -21,7 +21,8 @@ import { groupAlive, killTree, processStartTime, stopTree } from "../shared/proc
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { recordShellGroup } from "../shared/shell-groups.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
-import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
+import { sessionBashDirs } from "./bash-jobs/records.ts";
+import { type JobRecord, recordFile } from "../shared/job-records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
 import type { BashJob, JobExit, ReloadedJob, VerificationReceipt } from "./bash-jobs/types.ts";
 import { jobWhyLine } from "./bash-jobs/message.ts";
@@ -67,12 +68,14 @@ export class BashJobs {
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 			verification,
 			reason,
+			item,
 		}: {
 			env?: NodeJS.ProcessEnv;
 			shell?: ShellSettings;
 			maxLogBytes?: number;
 			verification?: VerificationReceipt;
 			reason?: string;
+			item?: string;
 		} = {},
 	): Promise<BashJob> {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
@@ -87,7 +90,7 @@ export class BashJobs {
 				`Could not start a background shell (${shell.shell}): ${errorMessage(cause)}. Nothing is running.`,
 			);
 		}
-		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification, reason });
+		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification, reason, item });
 	}
 
 	/**
@@ -109,6 +112,7 @@ export class BashJobs {
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 			verification,
 			reason,
+			item,
 		}: {
 			output: Buffer;
 			startedAt: number;
@@ -116,10 +120,11 @@ export class BashJobs {
 			maxLogBytes?: number;
 			verification?: VerificationReceipt;
 			reason?: string;
+			item?: string;
 		},
 	): BashJob {
 		if (child.pid === undefined) throw new Error("The command has no process to move");
-		const options = { timeout: clampTimeoutSeconds(left), maxLogBytes, output, startedAt, verification, reason };
+		const options = { timeout: clampTimeoutSeconds(left), maxLogBytes, output, startedAt, verification, reason, item };
 		return this.register(child, child.pid, command, cwd, onExit, options);
 	}
 
@@ -137,6 +142,7 @@ export class BashJobs {
 			startedAt = Date.now(),
 			verification,
 			reason,
+			item,
 		}: {
 			timeout?: number;
 			maxLogBytes: number;
@@ -144,6 +150,7 @@ export class BashJobs {
 			startedAt?: number;
 			verification?: VerificationReceipt;
 			reason?: string;
+			item?: string;
 		},
 	): BashJob {
 		const id = `bash-${++this.next}`;
@@ -171,6 +178,7 @@ export class BashJobs {
 				pid,
 				started: processStartTime(pid),
 				command,
+				...(item ? { item } : {}),
 				log,
 				host: os.hostname(),
 				owner: { pid: process.pid, started: processStartTime(process.pid) },
@@ -233,6 +241,7 @@ export class BashJobs {
 		});
 		const job: BashJob = { id, command, cwd, pid, log, startedAt, verification, done };
 		if (reason) job.reason = reason;
+		if (item) job.item = item;
 		if (timeout) job.timeout = timeout;
 		state.job = job;
 		if (timeout) {

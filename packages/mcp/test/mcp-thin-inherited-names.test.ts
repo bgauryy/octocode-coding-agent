@@ -1,6 +1,6 @@
 import type { Tool } from "@octocodeai/octocode-ai";
-import { convertTools as convertAnthropicTools } from "@octocodeai/octocode-ai/api/anthropic-messages/tools";
-import { convertTools as convertGoogleTools } from "@octocodeai/octocode-ai/api/google-shared/tools";
+import { anthropicToolSchema } from "@octocodeai/octocode-ai/api/ai-sdk/anthropic-map";
+import { googleToolWire as convertGoogleTools } from "../../ai/test/google-fetch-fixture.ts";
 import { sanitizeMoonshotToolParameters } from "@octocodeai/octocode-ai/api/openai-completions/tool-schema-flavor";
 import { afterEach, describe, expect, it } from "vitest";
 import { thinParameters } from "../src/presentation/declaration.ts";
@@ -46,19 +46,17 @@ describe("thin MCP declarations of fields named after Object.prototype members",
 		});
 	}
 
-	it("keeps them through the real provider tool conversions", () => {
+	it("keeps them through the real provider tool conversions", async () => {
 		const tool = {
 			name: "mcp__third__set",
 			description: "Set fields.",
 			parameters: thinParameters(rootAlternatives()),
 		} as Tool;
 		const propertiesOf = (schema: unknown) => (schema as { properties?: unknown } | undefined)?.properties;
-		const [anthropic] = convertAnthropicTools([tool], false, false);
-		expectOwnTypedFields(propertiesOf(anthropic?.input_schema));
-		const [gemini] = convertGoogleTools([tool]) ?? [];
+		const anthropic = anthropicToolSchema(tool, false);
+		expectOwnTypedFields(propertiesOf(anthropic.schema));
+		const [gemini] = (await convertGoogleTools([tool])) ?? [];
 		expectOwnTypedFields(propertiesOf(gemini?.functionDeclarations[0]?.parametersJsonSchema));
-		const [legacy] = convertGoogleTools([tool], true) ?? [];
-		expectOwnTypedFields(propertiesOf(legacy?.functionDeclarations[0]?.parameters));
 		expectOwnTypedFields(sanitizeMoonshotToolParameters(tool.parameters).properties);
 	});
 });

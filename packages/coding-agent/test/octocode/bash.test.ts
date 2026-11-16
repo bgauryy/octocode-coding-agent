@@ -70,6 +70,7 @@ describe("bash tool", () => {
 			"maxOutputTokens",
 			"background",
 			"verify",
+			"item",
 			"reason",
 		]);
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
@@ -115,7 +116,7 @@ describe("bash tool", () => {
 			ctx,
 		);
 		expect(start.structuredContent.verification).toMatchObject({ state: "running", output: { complete: false } });
-		expect(start.content[0].text).toContain("no result yet");
+		expect(start.content[0].text).not.toContain("Verification:");
 		recordMutation("session-test");
 		await until(() => sent.length === 1);
 		expect(jobs.jobs.size).toBe(0);
@@ -134,7 +135,7 @@ describe("bash tool", () => {
 			ctx,
 		);
 		expect(handoff.structuredContent.verification).toMatchObject({ state: "running", output: { complete: false } });
-		expect(handoff.content[0].text).toContain("no result yet");
+		expect(handoff.content[0].text).not.toContain("Verification:");
 		await until(() => sent.length === 1);
 		expect(sent[0].message.details.verification).toMatchObject({ state: "failed", exitCode: 4 });
 		expect(jobs.jobs.size).toBe(0);

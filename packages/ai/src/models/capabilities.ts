@@ -16,7 +16,7 @@ import {
 	azureSupportsInstructionBreakpoints,
 	azureSupportsLongCacheRetention,
 } from "../api/azure-openai-config.ts";
-import { usesGoogleThinkingLevel } from "../api/google-shared/thinking-format.ts";
+import { usesGoogleThinkingLevel } from "../api/ai-sdk/google-thinking-format.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
 import type { Api, Model, ModelThinkingLevel, ProviderEnv } from "../types.ts";

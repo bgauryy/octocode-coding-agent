@@ -11,6 +11,7 @@ export interface RunEnd {
 
 /** Ended runs remembered at most: the newest win. */
 const ENDS_KEPT = 128;
+const OUTPUT_KEPT = 128;
 
 /**
  * What only the process running a subagent knows of it: whether it waits for the user's answer to a dialog this process
@@ -28,7 +29,20 @@ export class WaitingApprovals {
 
 	/** Subagent `id` wrote output at `at`. */
 	noteOutput(id: string, at: number): void {
+		// Oldest-first eviction keeps a long session's map to the most recently active children.
+		this.output.delete(id);
 		this.output.set(id, at);
+		if (this.output.size > OUTPUT_KEPT) this.output.delete(this.output.keys().next().value!);
+	}
+
+	/** When subagent `id` last wrote output, if this host saw any. */
+	lastOutput(id: string): number | undefined {
+		return this.output.get(id);
+	}
+
+	/** Whether subagent `id` waits for the user's answer to a dialog this host shows. */
+	waitsOnUser(id: string): boolean {
+		return this.waiting.has(id);
 	}
 
 	/** The run of subagent `id` ended: its member carries `outcome` and `headline` while its row exists. */

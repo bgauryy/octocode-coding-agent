@@ -38,5 +38,4 @@ export interface RuntimeSettingsApi {
 	/** Turn the rewrite of each submitted prompt on or off, in the global settings. */
 	setOptimizePrompts(enabled: boolean): void;
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number };
-	getWebSocketConnectTimeoutMs(): number | undefined;
 }

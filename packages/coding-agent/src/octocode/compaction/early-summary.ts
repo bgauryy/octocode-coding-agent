@@ -30,6 +30,8 @@ interface EarlySummary {
 	written: Promise<{ result: CompactionResult; lists: string } | undefined>;
 	/** The request has ended (with or without a usable summary). */
 	settled: boolean;
+	/** Stops the request this entry owns; the event's own signal belongs to the caller. */
+	cancel: () => void;
 }
 
 /** Notes, in the session the summary was requested for, that an early summary was not used and why. */
@@ -111,6 +113,10 @@ export function startEarlySummary(
 	const { preparation, signal } = event;
 	const recordUsage = api.createUsageRecorder("compaction_attempt");
 	const requestedAt = Date.now();
+	// The request runs under its own signal, so a newer request for the session can stop it without touching the caller's.
+	const own = new AbortController();
+	const forward = () => own.abort();
+	signal.addEventListener("abort", forward, { once: true });
 	const note = (text: string) => {
 		if (!signal.aborted) recordCompactionNote(api, "early-summary", text);
 	};
@@ -120,7 +126,7 @@ export function startEarlySummary(
 	let unusable: string | undefined;
 	const written = sharedSummary(
 		api,
-		event,
+		{ ...event, signal: own.signal },
 		ctx,
 		model,
 		`${SUMMARY_FOCUS} ${SHARED_IMAGE_FOCUS}`,
@@ -144,10 +150,13 @@ export function startEarlySummary(
 		})
 		.catch(() => undefined);
 	const plan = planOf(model, preparation, api.getThinkingLevel(), event.summaryRequest?.forceSystemPrompt);
-	const entry: EarlySummary = { plan, signal, requestedAt, written, settled: false };
+	const entry: EarlySummary = { plan, signal, requestedAt, written, settled: false, cancel: () => own.abort() };
 	void written.finally(() => {
 		entry.settled = true;
+		signal.removeEventListener("abort", forward);
 	});
+	// A second prewarm replaces the first: its request is stopped instead of running on, billed, with nobody to take it.
+	early.get(ctx.sessionManager)?.cancel();
 	early.set(ctx.sessionManager, entry);
 }
 

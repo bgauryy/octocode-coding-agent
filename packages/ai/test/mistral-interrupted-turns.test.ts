@@ -1,7 +1,10 @@
 import { normalizeContext } from "../src/utils/transcript.ts";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/mistral-conversations.ts";
-import type { MistralChatPayload } from "../src/api/mistral-conversations/types.ts";
+type MistralChatPayload = {
+	messages: { role: string; content?: unknown; tool_calls?: { id: string }[]; tool_call_id?: string }[];
+	tools?: unknown;
+};
 import type { AssistantMessage, Message, Model } from "../src/types.ts";
 
 const model: Model<"mistral-conversations"> = {
@@ -102,10 +105,13 @@ describe("Mistral input after interrupted tool turns", () => {
 		expect(payload.messages.at(-1)?.content).toBe("Now inspect the other file");
 		expect(payload.messages.slice(0, -1)).toEqual(before.messages);
 		expect(payload.tools).toEqual(before.tools);
-		const calls = payload.messages.flatMap((message) => message.toolCalls?.map((call) => call.id) ?? []);
-		const results = payload.messages.filter((message) => message.role === "tool").map((message) => message.toolCallId);
+		const calls = payload.messages.flatMap((message) => message.tool_calls?.map((call) => call.id) ?? []);
+		const results = payload.messages
+			.filter((message) => message.role === "tool")
+			.map((message) => message.tool_call_id);
 		expect(results).toEqual(calls);
 		expect(new Set(calls).size).toBe(2);
+		for (const id of calls) expect(id).toMatch(/^[a-zA-Z0-9]{9}$/);
 		expect(messages).toEqual(original);
 
 		const later = await capture([
@@ -123,7 +129,7 @@ describe("Mistral input after interrupted tool turns", () => {
 			{ role: "user", content: "Continue", timestamp: 6 },
 		]);
 		expect(payload.messages.slice(-2)).toEqual([
-			{ role: "assistant", content: [{ type: "text", text: "Finished reading" }], prefix: false },
+			{ role: "assistant", content: "Finished reading", prefix: false },
 			{ role: "user", content: "Continue" },
 		]);
 	});

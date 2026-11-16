@@ -1,120 +1,24 @@
 import { decodeJwt } from "jose";
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import type { Model, ProviderHeaders, TranscriptContext } from "../../types.ts";
+import type { ProviderHeaders } from "../../types.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
-import { resolveCacheRetention, resolvePromptCacheKey } from "../../utils/cache-policy.ts";
-import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
-import { getSystemMessageText } from "../../utils/text.ts";
-import { getDeclaredTools, getInitialSystemMessage, resolveTranscriptTools } from "../../utils/transcript.ts";
-import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
-import { convertResponsesMessages } from "../openai-responses-shared/messages.ts";
-import { convertResponsesTools, getResponsesToolSupport } from "../openai-responses-shared/tools.ts";
-export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
 import {
-	CODEX_TOOL_CALL_PROVIDERS,
 	DEFAULT_CODEX_BASE_URL,
 	DEFAULT_CODEX_ORIGINATOR,
 	JWT_CLAIM_PATH,
 	type OpenAICodexResponsesOptions,
-	type RequestBody,
 } from "./types.ts";
+export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
 
-export function buildRequestBody(
-	model: Model<"openai-codex-responses">,
-	context: TranscriptContext,
-	options: OpenAICodexResponsesOptions | undefined,
-	cacheSessionId: string | undefined,
-	grammarToolInputProperties: ReadonlyMap<string, string> = createGrammarToolInputProperties(
-		getDeclaredTools(context.messages),
-		model.compat?.supportsOpenAIGrammarTools ?? false,
-	),
-): RequestBody {
-	const supportsStrictMode = model.compat?.supportsStrictMode ?? true;
-	const supportsOpenAIGrammarTools = model.compat?.supportsOpenAIGrammarTools ?? false;
-	const supportsAdditionalTools = model.compat?.supportsAdditionalTools ?? false;
-	const supportsToolSearch = model.compat?.supportsToolSearch ?? false;
-	const transcriptTools = resolveTranscriptTools(
-		context.messages,
-		getResponsesToolSupport({
-			supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
-			supportsAdditionalTools,
-			supportsToolSearch,
-		}),
-	);
-	const messages = convertResponsesMessages(model, context, CODEX_TOOL_CALL_PROVIDERS, {
-		includeSystemPrompt: false,
-		grammarToolInputProperties,
-		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
-		supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
-		supportsAdditionalTools,
-		supportsToolSearch,
-		toolOptions: { strict: null, supportsStrictMode, supportsOpenAIGrammarTools },
-	});
-
-	const initialSystemMessage = getInitialSystemMessage(context.messages);
-	const instructions = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
-	const body: RequestBody = {
-		model: model.id,
-		store: false,
-		stream: true,
-		instructions: instructions || "You are a helpful assistant.",
-		input: messages,
-		text: { verbosity: options?.textVerbosity || "low" },
-		include: ["reasoning.encrypted_content"],
-		prompt_cache_key:
-			resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
-				? undefined
-				: clampOpenAIPromptCacheKey(resolvePromptCacheKey(options) ?? cacheSessionId),
-		tool_choice: options?.toolChoice ?? "auto",
-		parallel_tool_calls: true,
-	};
-
-	if (options?.temperature !== undefined) {
-		body.temperature = options.temperature;
-	}
-
-	if (options?.serviceTier !== undefined) {
-		body.service_tier = options.serviceTier;
-	}
-
-	if (transcriptTools.requestTools.length > 0) {
-		body.tools = convertResponsesTools(transcriptTools.requestTools, {
-			strict: null,
-			supportsStrictMode,
-			supportsOpenAIGrammarTools,
-		});
-	}
-
-	if (options?.reasoningEffort !== undefined) {
-		const effort =
-			options.reasoningEffort === "none"
-				? model.thinkingLevelMap?.off === undefined
-					? "none"
-					: model.thinkingLevelMap.off
-				: (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);
-		if (effort !== null) {
-			body.reasoning = {
-				effort,
-				summary: options.reasoningSummary ?? "auto",
-			};
-		}
-	} else if (model.reasoning && model.thinkingLevelMap?.off !== null) {
-		body.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
-	}
-
-	return body;
-}
-
+type ServiceTier = OpenAICodexResponsesOptions["serviceTier"];
 export function resolveCodexServiceTier(
-	responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): ResponseCreateParamsStreaming["service_tier"] | undefined {
+	responseServiceTier: ServiceTier,
+	requestServiceTier: ServiceTier,
+): ServiceTier {
 	if (
 		responseServiceTier === "default" &&
 		(requestServiceTier === "flex" || requestServiceTier === "priority" || requestServiceTier === "fast")
-	) {
+	)
 		return requestServiceTier;
-	}
 	return responseServiceTier ?? requestServiceTier;
 }
 
@@ -126,18 +30,8 @@ export function resolveCodexUrl(baseUrl?: string): string {
 	return `${normalized}/codex/responses`;
 }
 
-export function resolveCodexWebSocketUrl(baseUrl?: string): string {
-	const url = new URL(resolveCodexUrl(baseUrl));
-	if (url.protocol === "https:") url.protocol = "wss:";
-	if (url.protocol === "http:") url.protocol = "ws:";
-	return url.toString();
-}
-
-const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
-
 export function extractAccountId(token: string): string {
 	try {
-		// Unverified routing metadata only; token verification belongs to the login flow.
 		const auth = decodeJwt(token)[JWT_CLAIM_PATH];
 		const accountId =
 			auth && typeof auth === "object" && "chatgpt_account_id" in auth ? auth.chatgpt_account_id : undefined;
@@ -148,30 +42,6 @@ export function extractAccountId(token: string): string {
 	}
 }
 
-function buildBaseCodexHeaders(
-	initHeaders: Record<string, string> | undefined,
-	additionalHeaders: ProviderHeaders | undefined,
-	accountId: string,
-	token: string,
-): Headers {
-	// Defaults first so model and caller headers can override them, matching the other providers. A signed-in
-	// credential carries the originator its login named (see `openaiCodexOAuth.toAuth`).
-	const headers = new Headers({ originator: DEFAULT_CODEX_ORIGINATOR, "User-Agent": getUserAgent() });
-	for (const [key, value] of Object.entries(initHeaders ?? {})) {
-		headers.set(key, value);
-	}
-	for (const [key, value] of Object.entries(additionalHeaders ?? {})) {
-		if (value === null) {
-			headers.delete(key);
-		} else {
-			headers.set(key, value);
-		}
-	}
-	headers.set("Authorization", `Bearer ${token}`);
-	headers.set("chatgpt-account-id", accountId);
-	return headers;
-}
-
 export function buildSSEHeaders(
 	initHeaders: Record<string, string> | undefined,
 	additionalHeaders: ProviderHeaders | undefined,
@@ -179,33 +49,20 @@ export function buildSSEHeaders(
 	token: string,
 	sessionId?: string,
 ): Headers {
-	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
+	const headers = new Headers({ originator: DEFAULT_CODEX_ORIGINATOR, "User-Agent": getUserAgent() });
+	for (const [key, value] of Object.entries(initHeaders ?? {})) headers.set(key, value);
+	for (const [key, value] of Object.entries(additionalHeaders ?? {})) {
+		if (value === null) headers.delete(key);
+		else headers.set(key, value);
+	}
+	headers.set("Authorization", `Bearer ${token}`);
+	headers.set("chatgpt-account-id", accountId);
 	headers.set("OpenAI-Beta", "responses=experimental");
 	headers.set("accept", "text/event-stream");
 	headers.set("content-type", "application/json");
-
 	if (sessionId) {
 		headers.set("session-id", sessionId);
 		headers.set("x-client-request-id", sessionId);
 	}
-
-	return headers;
-}
-
-export function buildWebSocketHeaders(
-	initHeaders: Record<string, string> | undefined,
-	additionalHeaders: ProviderHeaders | undefined,
-	accountId: string,
-	token: string,
-	requestId: string,
-): Headers {
-	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
-	headers.delete("accept");
-	headers.delete("content-type");
-	headers.delete("OpenAI-Beta");
-	headers.delete("openai-beta");
-	headers.set("OpenAI-Beta", OPENAI_BETA_RESPONSES_WEBSOCKETS);
-	headers.set("x-client-request-id", requestId);
-	headers.set("session-id", requestId);
 	return headers;
 }

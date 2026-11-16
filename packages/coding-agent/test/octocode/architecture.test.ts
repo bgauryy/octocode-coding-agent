@@ -63,12 +63,12 @@ const ALLOWED: Record<string, string[]> = {
 	"claude-code": ["external"],
 	ask: ["shared", "render"],
 	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
-	files: ["shared", "permission", "cli", "ask", "render", "tool-input"],
-	team: ["shared", "render", "tool-input", "worktree-paths"],
+	files: ["shared", "permission", "cli", "ask", "render", "tool-input", "wake"],
+	team: ["shared", "render", "tool-input", "worktree-paths", "wake"],
 	discovery: ["shared"],
 	// `permission`: a Claude hook's `if` is one permission rule, judged by the source-policy parser and matcher.
 	// `guard`: session start withholds a handler the user has not approved (the extension guard).
-	hooks: ["shared", "discovery", "render", "tool-input", "permission", "guard"],
+	hooks: ["shared", "discovery", "render", "tool-input", "permission", "guard", "wake"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
 	// `guard`: every external row shows its review state, and Enter opens its check.
@@ -79,7 +79,7 @@ const ALLOWED: Record<string, string[]> = {
 	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render", "timer"],
 	// The archive tool's profile source reads a stored session through the profiler.
 	archive: ["shared", "permission", "profiler", "history", "render"],
-	ui: ["shared", "permission", "render", "child-sessions", "tool-input"],
+	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake"],
 	subagents: [
 		"shared",
 		"discovery",
@@ -94,6 +94,7 @@ const ALLOWED: Record<string, string[]> = {
 		"history",
 		"child-sessions",
 		"worktree-paths",
+		"wake",
 	],
 	instructions: ["shared", "history", "worktree-paths"],
 	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
@@ -123,8 +124,12 @@ const ALLOWED: Record<string, string[]> = {
 	"native-skills": [],
 	"terminal-launch": [],
 	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths"],
+	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
+	realm: ["shared", "worktrees", "worktree-paths", "sessions"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
-	timer: ["shared", "files", "permission", "plan", "render"],
+	timer: ["shared", "files", "permission", "plan", "render", "wake"],
+	// The wake gate: what each run was woken about, the `woke` row, the hold window; every wake source sends through it.
+	wake: ["shared"],
 	// `/octocode` and the agent-shell shim for the research CLI.
 	cli: ["shared"],
 };

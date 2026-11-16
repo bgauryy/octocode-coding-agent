@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isRetryableError } from "../src/api/openai-codex-responses/retry.ts";
-import { mapCodexEvents } from "../src/api/openai-codex-responses/events.ts";
-import { parseSSE } from "../src/api/openai-codex-responses/sse.ts";
+import { stream } from "../src/api/openai-codex-responses.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
 import { createAbortError } from "../src/utils/abort.ts";
 import { iterateSseMessages, throwOnSseErrorEvent } from "../src/utils/server-sent-events.ts";
 import {
@@ -11,7 +10,7 @@ import {
 	RetryDelayExceededError,
 	validateRetryDelayMs,
 } from "../src/utils/retry.ts";
-import type { AssistantMessage, Model } from "../src/types.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -23,14 +22,21 @@ describe("terminal provider limits", () => {
 		"insufficient_quota",
 		"GoUsageLimitError",
 		"Monthly usage limit reached",
-	])("treats %s as final on the shared classifier and on a Codex 429", (text) => {
+	])("treats %s as final on the shared classifier and on a Codex 429", async (text) => {
 		expect(isTerminalProviderLimitError(text)).toBe(true);
-		expect(isRetryableError(429, text)).toBe(false);
+		const fetch = vi.fn(async () => new Response(text, { status: 429 }));
+		const token = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64url")}.b`;
+		const result = await stream(
+			getBuiltinModel("openai-codex", "gpt-5.5"),
+			normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
+			{ apiKey: token, fetch, maxRetries: 2 },
+		).result();
+		expect(result.stopReason).toBe("error");
+		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 
 	it("still retries an ordinary 429", () => {
 		expect(isTerminalProviderLimitError("slow down")).toBe(false);
-		expect(isRetryableError(429, "slow down")).toBe(true);
 	});
 });
 
@@ -119,12 +125,16 @@ describe("SSE error frames", () => {
 
 	it("parses a Codex frame named error as a payload that keeps its code", async () => {
 		const body = 'event: error\ndata: {"type":"error","code":"usage_limit_reached","message":"limit"}\n\n';
-		const events = mapCodexEvents(
-			parseSSE(new Response(body)),
-			{ content: [] } as unknown as AssistantMessage,
-			{} as Model<"openai-codex-responses">,
-			undefined,
-		);
-		await expect(events.next()).rejects.toMatchObject({ code: "usage_limit_reached" });
+		const token = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64url")}.b`;
+		const result = await stream(
+			getBuiltinModel("openai-codex", "gpt-5.5"),
+			normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
+			{
+				apiKey: token,
+				fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
+			},
+		).result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("usage_limit_reached");
 	});
 });

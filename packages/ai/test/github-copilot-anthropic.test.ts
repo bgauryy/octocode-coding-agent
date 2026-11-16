@@ -1,15 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
 
-const mockState = vi.hoisted(() => ({
-	constructorOpts: undefined as Record<string, unknown> | undefined,
-	createParams: undefined as Record<string, unknown> | undefined,
-}));
+const mockState = { headers: undefined as Headers | undefined, body: undefined as Record<string, unknown> | undefined };
 
-vi.mock("@anthropic-ai/sdk", () => {
+beforeEach(() => {
 	function createSseResponse(): Response {
 		const body = [
 			`event: message_start\ndata: ${JSON.stringify({
@@ -32,23 +29,11 @@ vi.mock("@anthropic-ai/sdk", () => {
 		});
 	}
 
-	class FakeAnthropic {
-		constructor(opts: Record<string, unknown>) {
-			mockState.constructorOpts = opts;
-		}
-		beta = {
-			messages: {
-				create: (params: Record<string, unknown>) => {
-					mockState.createParams = params;
-					return {
-						asResponse: async () => createSseResponse(),
-					};
-				},
-			},
-		};
-	}
-
-	return { default: FakeAnthropic };
+	vi.stubGlobal("fetch", async (_input: unknown, init?: RequestInit) => {
+		mockState.headers = new Headers(init?.headers);
+		mockState.body = JSON.parse(init?.body as string);
+		return createSseResponse();
+	});
 });
 
 describe("Copilot Claude via Anthropic Messages", () => {
@@ -90,25 +75,24 @@ describe("Copilot Claude via Anthropic Messages", () => {
 			if (event.type === "error") break;
 		}
 
-		const opts = mockState.constructorOpts!;
-		expect(opts).toBeDefined();
-
-		// Auth: apiKey null, authToken for Bearer
-		expect(opts.apiKey).toBeNull();
-		expect(opts.authToken).toBe("tid_copilot_session_test_token");
-		const headers = opts.defaultHeaders as Record<string, string>;
+		const headers = mockState.headers!;
+		expect(headers).toBeDefined();
+		expect(headers.has("x-api-key")).toBe(false);
+		expect(headers.get("authorization")).toBe("Bearer tid_copilot_session_test_token");
 
 		// Copilot static headers from model.headers
-		expect(headers["User-Agent"]).toContain("GitHubCopilotChat");
-		expect(headers["Copilot-Integration-Id"]).toBe("vscode-chat");
+		expect(headers.get("user-agent")).toContain("GitHubCopilotChat");
+		expect(headers.get("copilot-integration-id")).toBe("vscode-chat");
 
 		// Dynamic headers
-		expect(headers["X-Initiator"]).toBe("user");
-		expect(headers["Openai-Intent"]).toBe("conversation-edits");
+		expect(headers.get("x-initiator")).toBe("user");
+		expect(headers.get("openai-intent")).toBe("conversation-edits");
 
 		// Payload is valid Anthropic Messages format
-		const params = mockState.createParams!;
-		expect(params.betas ?? []).not.toContain("fine-grained-tool-streaming-2025-05-14");
+		const params = mockState.body!;
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain(
+			"fine-grained-tool-streaming-2025-05-14",
+		);
 		expect(params.model).toBe("claude-sonnet-4.6");
 		expect(params.stream).toBe(true);
 		expect(params.max_tokens).toBe(model.maxTokens);
@@ -125,6 +109,6 @@ describe("Copilot Claude via Anthropic Messages", () => {
 			if (event.type === "error") break;
 		}
 
-		expect(mockState.createParams?.betas ?? []).not.toContain("interleaved-thinking-2025-05-14");
+		expect(mockState.headers?.get("anthropic-beta")?.split(",") ?? []).not.toContain("interleaved-thinking-2025-05-14");
 	});
 });

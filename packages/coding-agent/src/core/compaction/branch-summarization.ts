@@ -8,7 +8,7 @@
 import { renderInstruction } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
-import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
+import { contentText } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
 import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "../messages.ts";
@@ -16,7 +16,7 @@ import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../
 import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 import { summaryMaxTokens } from "./settings.ts";
-import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
+import { completeBounded, getSummarizationFailure } from "./summarization.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
 import {
@@ -25,7 +25,6 @@ import {
 	extractFileOpsFromMessage,
 	type FileOperations,
 	formatFileOperations,
-	SUMMARIZATION_SYSTEM_PROMPT,
 	serializeMessages,
 } from "./utils.ts";
 
@@ -54,6 +53,8 @@ interface BranchPreparation {
 	fileOps: FileOperations;
 	/** Total estimated tokens in messages */
 	totalTokens: number;
+	/** Older messages left out because they did not fit the budget */
+	dropped: number;
 }
 
 export interface CollectEntriesResult {
@@ -195,6 +196,7 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 	const messages: AgentMessage[] = [];
 	const fileOps = createFileOps();
 	let totalTokens = 0;
+	let dropped = 0;
 
 	// First pass: collect file ops from ALL entries (even if they don't fit in token budget)
 	// This ensures we capture cumulative file tracking from nested branch summaries
@@ -236,13 +238,19 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 		// Check budget before adding
 		if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
 			// Retain a required checkpoint for the caller's fit check rather than silently dropping its older history.
+			let kept = false;
 			if (entry.type === "compaction" || entry.type === "branch_summary") {
 				if (totalTokens < tokenBudget * 0.9) {
 					messages.unshift(message);
 					totalTokens += tokens;
+					kept = true;
 				}
 			}
-			// Stop - we've hit the budget
+			// Stop - we've hit the budget; the older entries are left out, and the summary must say so.
+			for (let older = kept ? i - 1 : i; older >= 0; older--) {
+				const left = getMessageFromEntry(entries[older], edits.get(entries[older].id));
+				if (left && serializeMessages([left])) dropped++;
+			}
 			break;
 		}
 
@@ -250,7 +258,7 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 		totalTokens += tokens;
 	}
 
-	return { messages, fileOps, totalTokens };
+	return { messages, fileOps, totalTokens, dropped };
 }
 
 // Summary Generation
@@ -288,7 +296,7 @@ export async function generateBranchSummary(
 	const contextWindow = model.contextWindow || 128000;
 	const tokenBudget = contextWindow - reserveTokens;
 
-	const { messages, fileOps, totalTokens } = prepareBranchEntries(entries, tokenBudget);
+	const { messages, fileOps, totalTokens, dropped } = prepareBranchEntries(entries, tokenBudget);
 
 	if (messages.length === 0) {
 		return { summary: "No content to summarize" };
@@ -306,9 +314,6 @@ export async function generateBranchSummary(
 		};
 	}
 
-	// Serialize to text so the model does not treat it as a conversation to continue; custom messages keep their type as the label.
-	const conversationText = serializeMessages(messages);
-
 	// Build prompt
 	let instructions: string;
 	if (replaceInstructions && customInstructions) {
@@ -318,24 +323,18 @@ export async function generateBranchSummary(
 	} else {
 		instructions = BRANCH_SUMMARY_PROMPT;
 	}
-	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${instructions}`;
+	// The summary must not claim to cover what it never saw.
+	const note = dropped > 0 ? `\n\n${renderInstruction("workflows/compaction/dropped-messages.md", { dropped })}` : "";
+	// Serialized to text so the model does not treat it as a conversation to continue; custom messages keep their type as the label.
+	const buildPrompt = (remaining: AgentMessage[]): string =>
+		`<conversation>\n${serializeMessages(remaining)}\n</conversation>\n\n${instructions}${note}`;
 
-	const summarizationMessages = [
-		{
-			role: "user" as const,
-			content: [{ type: "text" as const, text: promptText }],
-			timestamp: Date.now(),
-		},
-	];
-
-	// Call LLM for summarization. Prefer the session stream function so SDK
-	// request behavior (timeouts, retries, attribution headers) stays consistent
-	// without running through agent state/events. Retried via completeSummarization
-	// so transient stream drops reuse the configured retry policy.
-	const context = normalizeContext({ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages });
+	// Prefer the session stream function so SDK request behavior (timeouts, retries, attribution headers) stays
+	// consistent without running through agent state/events. An overflow drops the oldest entries and a reply cut off
+	// at the cap is asked again smaller, as for a compaction summary.
 	// The same output cap as a compaction summary; a branch summary sends no thinking.
 	const requestOptions: SimpleStreamOptions = { apiKey, headers, env, signal, maxTokens: summaryMaxTokens(model) };
-	const response = await completeSummarization(model, context, requestOptions, streamFn, retry, callbacks);
+	const response = await completeBounded(messages, buildPrompt, model, requestOptions, streamFn, retry, callbacks);
 
 	// Check if aborted or errored
 	if (response.stopReason === "aborted") {

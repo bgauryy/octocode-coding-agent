@@ -49,7 +49,6 @@ describe("provider and model layout regressions", () => {
 	it("keeps access caveats and the selected row's details readable at narrow widths", () => {
 		const page = new ManagePageComponent({
 			title: "AI providers",
-			responsive: true,
 			sections: [
 				{
 					heading: "Needs attention",
@@ -85,7 +84,6 @@ describe("provider and model layout regressions", () => {
 		const select = vi.fn();
 		const page = new ManagePageComponent({
 			title: "Plan",
-			responsive: true,
 			facts: Array.from({ length: 20 }, (_, i) => ({ label: `Fact ${i}`, value: `Complete information ${i}` })),
 			sections: [{ heading: "Actions", rows: [{ id: "remove", name: "Remove credential" }] }],
 			hints: [["enter", "run"]],
@@ -128,18 +126,18 @@ describe("provider and model layout regressions", () => {
 			undefined,
 			save,
 			{ provider: models[0].provider, id: models[0].id },
-			{ source: "workspace" },
+			{ source: "project" },
 		);
 		await vi.waitFor(() => expect(text(picker)).toContain("Model catalogs refreshed"));
 		for (const width of [40, 80, 120]) {
 			const lines = picker.render(width);
 			expect(lines.length).toBeLessThanOrEqual(24);
 			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-			expect(text(picker, width)).toContain("global default");
+			expect(text(picker, width)).toContain("set default");
 			expect(text(picker, width)).toContain("· default");
 			expect(text(picker, width)).not.toContain("cache read $0.3");
 		}
-		expect(text(picker, 80)).toContain("Startup default (workspace)");
+		expect(text(picker, 80)).toContain("Startup default (project)");
 		picker.handleInput("\x04");
 		const pages: string[] = [];
 		for (let page = 0; page < 8; page++) {

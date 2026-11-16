@@ -94,7 +94,8 @@ const responsesHead = (payload: Payload) => [
 const responsesHistory = (payload: Payload) => payload.input.slice(firstTurn(payload.input));
 const completionsHead = (payload: Payload) => [payload.tools, payload.messages.slice(0, firstTurn(payload.messages))];
 const completionsHistory = (payload: Payload) => payload.messages.slice(firstTurn(payload.messages));
-const googleHead = (payload: Payload) => [payload.config?.tools, payload.config?.systemInstruction];
+const googleHead = (payload: Payload, wire = false) =>
+	wire ? [payload.tools, payload.systemInstruction] : [payload.config?.tools, payload.config?.systemInstruction];
 const googleHistory = (payload: Payload) => payload.contents;
 
 const azureModel = (): Model<"azure-openai-responses"> => ({
@@ -157,7 +158,7 @@ const ROWS: Row[] = [
 		model: () => getBuiltinModel("google", "gemini-2.5-pro"),
 		apiKey: "test-key",
 		noFetch: true,
-		head: googleHead,
+		head: (payload) => googleHead(payload, true),
 		history: googleHistory,
 		prefixFields: ["model"],
 	},
@@ -166,7 +167,7 @@ const ROWS: Row[] = [
 		model: () => getBuiltinModel("google-vertex", "gemini-2.5-pro"),
 		apiKey: "test-key",
 		noFetch: true,
-		head: googleHead,
+		head: (payload) => googleHead(payload, true),
 		history: googleHistory,
 		prefixFields: ["model"],
 	},

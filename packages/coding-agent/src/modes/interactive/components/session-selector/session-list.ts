@@ -12,7 +12,7 @@ import {
 } from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";
 import { canonicalizePath } from "../../../../../../common/src/paths.ts";
-import { checkoutLabel } from "../../../../core/worktree-path.ts";
+import { checkoutLabel, checkoutText } from "../../../../core/worktree-path.ts";
 import type { SessionCounts } from "./header.ts";
 import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";
 import { emptyLine, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
@@ -89,6 +89,7 @@ export class SessionList implements Component, Focusable {
 	private byPath = new Map<string, SessionInfo>();
 	/** `main` / `worktree <name>` per folder, read once per picker: a render must not touch the disk for each row. */
 	private readonly checkoutLabels = new Map<string, string | undefined>();
+	private readonly checkoutTexts = new Map<string, string | undefined>();
 	public onSelect?: (sessionPath: string) => void;
 	public onCancel?: () => void;
 	public onExit: () => void = () => {};
@@ -197,6 +198,11 @@ export class SessionList implements Component, Focusable {
 		return this.checkoutLabels.get(folder);
 	}
 
+	private checkoutText(folder: string): string | undefined {
+		if (!this.checkoutTexts.has(folder)) this.checkoutTexts.set(folder, checkoutText(folder));
+		return this.checkoutTexts.get(folder);
+	}
+
 	private isCurrentSessionPath(path: string): boolean {
 		if (!this.currentSessionCanonicalPath) return false;
 		return canonicalizePath(path) === this.currentSessionCanonicalPath;
@@ -228,7 +234,10 @@ export class SessionList implements Component, Focusable {
 
 		if (this.previewOpen) {
 			const session = this.filteredSessions[this.selectedIndex].session;
-			lines.push(...renderPreview(session, this.extras.get(session.id), width).slice(0, height));
+			const checkout = session.cwd ? this.checkoutText(session.cwd) : undefined;
+			const extras = this.extras.get(session.id);
+			const shown = checkout && checkout !== "main" ? { ...extras, checkout } : extras;
+			lines.push(...renderPreview(session, shown, width).slice(0, height));
 			return lines;
 		}
 
@@ -255,6 +264,7 @@ export class SessionList implements Component, Focusable {
 						? { folder: folderColumn(session.cwd, this.checkoutLabel(session.cwd), 40) }
 						: {}),
 					extras: this.extras.get(session.id),
+					...(session.cwd && this.checkoutText(session.cwd) ? { checkout: this.checkoutText(session.cwd) } : {}),
 					transcriptMatch: isTranscriptOnlyMatch(session, query),
 					parentTitle: this.parentTitle(session),
 				}),

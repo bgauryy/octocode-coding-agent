@@ -1,39 +1,69 @@
-import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ModelConfig } from "../../../core/model-config.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
+import { getModelsPath } from "../../../config.ts";
+import { homeTilde } from "../../../../../common/src/home-tilde.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
-import {
-	isProviderDisabled,
-	providerCredentialState,
-	providerStatus,
-	removeProviderCredential,
-	setProviderEnabled,
-} from "./provider-actions.ts";
+import { providerStatus, removeProviderCredential, setProviderEnabled } from "./provider-actions.ts";
 import { providerDefinitionFile } from "./provider-custom.ts";
 import { unsupportedPiSignIn } from "./provider-pi.ts";
-import { testProviderCredential } from "./provider-test.ts";
+import { providerBadge } from "./provider-rows.ts";
 import { type PageContext, signInActions } from "./provider-signin.ts";
+import { testProviderCredential } from "./provider-test.ts";
 import { successNotice, showPage } from "./provider-ui.ts";
 
 /** `again`: show the list again; `stop`: a dialog or the model picker took over. */
 export type PageResult = "again" | "stop";
 
-/** One provider's page: its facts, then sign in or out, enable or disable and model selection. */
+type Action = { run: () => void | Promise<void>; leaves?: boolean };
+
+function removalLabel(entry: ProviderEntry, sessionOverride: boolean): string {
+	return sessionOverride
+		? "Remove saved and session credentials"
+		: entry.stored?.type === "oauth"
+			? "Sign out"
+			: "Remove saved credential";
+}
+
+/**
+ * One provider's page: its facts from the snapshot, then use, sign in or out, enable or disable. After an action the
+ * caller's list rebuilds the snapshot; Escape returns to that list.
+ */
 export async function showProviderDetail(
 	ctx: PageContext,
 	id: string,
-	saved: readonly CredentialInfo[],
+	refresh: () => Promise<ProviderSnapshot>,
 ): Promise<PageResult> {
 	const { host } = ctx;
 	const runtime = host.session.modelRuntime;
-	const name = runtime.getProvider(id)?.name ?? id;
-	const defined = runtime.getProvider(id) !== undefined;
-	const disabled = isProviderDisabled(host, id);
+	const snapshot = await refresh();
+	const entry = snapshot.entry(id);
+	// A removed orphan leaves nothing to show.
+	if (!entry) return "again";
+	const { name, disabled } = entry;
 	const sessionOverride = runtime.getProviderAuthStatus(id).source === "runtime";
-	const savedEntry = saved.find((entry) => entry.providerId === id);
-	const actions = new Map<string, { run: () => void | Promise<void>; leaves?: boolean }>();
-
+	const actions = new Map<string, Action>();
+	const removal: [string, Action] | undefined = entry.stored
+		? [
+				removalLabel(entry, sessionOverride),
+				{
+					run: async () => {
+						await removeProviderCredential(host, id, name);
+					},
+				},
+			]
+		: undefined;
+	// A credential that configures nothing: the fix comes first.
+	if (removal && entry.state === "orphaned") actions.set(...removal);
+	if (entry.models > 0) {
+		actions.set("Choose a model for this chat", { run: () => host.showModelSelector(`${id}/`), leaves: true });
+	}
+	if (runtime.getProviderAuthStatus(id).configured && entry.models > 0) {
+		actions.set("Test credential — send one small request to this provider", {
+			run: () => testProviderCredential(host, id, name),
+		});
+	}
+	for (const [label, run] of signInActions(ctx, id, name, snapshot.saved)) actions.set(label, { run, leaves: true });
 	if (sessionOverride) {
 		actions.set("Clear session API key override — keep saved credentials", {
 			run: async () => {
@@ -43,25 +73,7 @@ export async function showProviderDetail(
 			},
 		});
 	}
-	const available = runtime.getAvailableSnapshot().filter((model) => model.provider === id).length;
-	if (available > 0) {
-		actions.set("Choose a model for this chat", { run: () => host.showModelSelector(`${id}/`), leaves: true });
-	}
-	for (const [label, run] of signInActions(ctx, id, name, saved)) actions.set(label, { run, leaves: true });
-	if (savedEntry) {
-		actions.set(
-			sessionOverride
-				? "Remove saved and session credentials"
-				: savedEntry.type === "oauth"
-					? "Sign out"
-					: "Remove saved credential",
-			{
-				run: async () => {
-					await removeProviderCredential(host, id, name);
-				},
-			},
-		);
-	}
+	if (removal && entry.state !== "orphaned") actions.set(...removal);
 	let definition: Awaited<ReturnType<typeof providerDefinitionFile>>;
 	try {
 		definition = await providerDefinitionFile(host, id);
@@ -76,13 +88,21 @@ export async function showProviderDetail(
 					`${name} is defined in ${path}. Edit that file, then open /model to refresh models (or restart).`,
 				),
 		});
+	} else if (!entry.defined) {
+		const path = homeTilde(getModelsPath());
+		actions.set(`Show where to define it — ${path}`, {
+			run: () =>
+				host.showStatus(
+					`Define provider "${id}" under "providers" in ${path}, then open /model to refresh models; or remove the credential saved in ${entry.credentialWhere}.`,
+				),
+		});
 	}
-	actions.set(disabled ? "Enable provider" : "Disable provider", {
-		run: () => setProviderEnabled(host, id, name, disabled),
-	});
+	if (entry.defined) {
+		actions.set(disabled ? "Enable provider" : "Disable provider", {
+			run: () => setProviderEnabled(host, id, name, disabled),
+		});
+	}
 
-	const status = await providerStatus(host, id);
-	const state = await providerCredentialState(host, id);
 	const piSignIn = await unsupportedPiSignIn(host, id, name).catch(() => undefined);
 	// Fields its models.json ignores (a misspelled `apikey`) or an `api` no built-in serves explain "not configured".
 	const definitionWarnings = definition
@@ -90,12 +110,6 @@ export async function showProviderDetail(
 				.getWarnings()
 				.filter((warning) => warning.includes(`: providers.${id}.`))
 		: [];
-	if (runtime.getProviderAuthStatus(id).configured && available > 0) {
-		actions.set("Test credential — send one small request to this provider", {
-			run: () => testProviderCredential(host, id, name),
-		});
-	}
-
 	const rows: PageRow[] = [...actions.keys()].map((label) => ({ id: label, name: label }));
 	const catalog = runtime.getModels(id).length;
 	// A plan's terms show before sign-in: who bills it, the vendor's page, and whether the route is retiring or paused.
@@ -110,29 +124,27 @@ export async function showProviderDetail(
 			]
 		: [];
 	const choice = await showPage(host, {
-		title: `${name} — ${disabled ? "disabled" : state}`,
+		title: `${name} — ${entry.statusText}`,
 		facts: [
-			{ label: "Status", value: disabled ? `disabled · ${status}` : status },
+			{ label: "Status", value: `${providerBadge(entry).text} · ${entry.statusText}` },
+			...(entry.nextStep ? [{ label: "Next step", value: entry.nextStep.label }] : []),
 			{ label: "Access", value: "Not verified; Test credential sends a small request." },
-			{ label: "Provider", value: disabled ? "disabled (hidden from /model)" : "enabled" },
-			{ label: "Models", value: `${available} available · ${catalog} in catalog` },
+			{ label: "Provider", value: disabled ? "off (hidden from /model)" : "on" },
+			{ label: "Models", value: `${entry.models} available · ${catalog} in catalog` },
 			...planFacts,
 			{
 				label: "Definition",
 				value: definition
 					? `${definition.origin} models.json · ${definition.path}`
-					: defined
+					: entry.defined
 						? "built-in (no models.json entry)"
-						: "missing; only a saved credential remains",
+						: `missing; only a saved credential remains (define it in ${homeTilde(getModelsPath())})`,
 			},
 			...(piSignIn ? [{ label: "Pi sign-in", value: piSignIn }] : []),
 			...definitionWarnings.map((value) => ({ label: "Warning", value })),
 		],
 		sections: [{ heading: "ACTIONS", rows }],
-		hints: [
-			[keyText("tui.select.confirm"), "run", 0],
-			[keyText("tui.select.cancel"), "back", 1],
-		],
+		nested: true,
 	});
 	const action = choice ? actions.get(choice.id) : undefined;
 	if (!action) return "again";

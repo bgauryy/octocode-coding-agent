@@ -202,16 +202,18 @@ describe("askUser card", () => {
 		options: [{ label: "Small (Recommended)", description: "One file" }, { label: "Large" }],
 	};
 
-	it("renders at 80 columns with the forwarded text collapsed, the recommendation starred and the write-in row", () => {
+	it("renders the child's name and verbatim question above the parent question without collapsing it", () => {
 		const view = questionView(fromAskUser([forwarded])[0]);
 		const collapsed = plain(renderAskCard(view, { cursor: 0, expanded: false }, theme, 80));
 		expect(collapsed).toEqual([
-			" Which scope?",
 			" jolly asks (message #7):",
-			" │ A",
-			" │ B",
-			" │ C",
-			"   … +2 lines · tab show all",
+			" A",
+			" B",
+			" C",
+			" D",
+			" E",
+			"",
+			" Which scope?",
 			"",
 			"› 1. Small (Recommended) ★",
 			"     One file",
@@ -219,7 +221,7 @@ describe("askUser card", () => {
 			"  3. Write an answer ✎",
 		]);
 		const expanded = plain(renderAskCard(view, { cursor: 2, expanded: true }, theme, 80));
-		expect(expanded.slice(2, 7)).toEqual([" │ A", " │ B", " │ C", " │ D", " │ E"]);
+		expect(expanded.slice(0, 8)).toEqual(collapsed.slice(0, 8));
 		expect(expanded).toContain("› 3. Write an answer ✎");
 	});
 

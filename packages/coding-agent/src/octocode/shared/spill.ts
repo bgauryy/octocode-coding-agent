@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { formatSize, truncateHead, truncateTail } from "../../core/tools/index.ts";
+import { truncateHead, truncateTail } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
 import { shortHash } from "../../../../common/src/atomic-file.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -147,7 +148,7 @@ export function spillOutput(
 	const gap =
 		omitted > 0
 			? `[… ${omitted} line${omitted === 1 ? "" : "s"} omitted …] ${read}`
-			: `[… ${formatSize(Math.max(whole.totalBytes - shownBytes, 0))} omitted …]`;
+			: `[… ${formatBytes(Math.max(whole.totalBytes - shownBytes, 0), "compact")} omitted …]`;
 	return {
 		text:
 			`${head.text}\n\n${gap}\n\n${tail.text}\n\n` +
@@ -258,7 +259,7 @@ export async function boundImagePart<T extends { type: "image"; data: string; mi
 	} catch {
 		// Invalid encodings or an unavailable image worker still leave the original file reachable.
 	}
-	const size = formatSize(Math.floor((part.data.length * 3) / 4));
+	const size = formatBytes(Math.floor((part.data.length * 3) / 4), "compact");
 	return [
 		{
 			type: "text",

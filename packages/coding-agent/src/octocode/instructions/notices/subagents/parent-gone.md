@@ -1,0 +1,1 @@
+{{id}} stopped mid-run because the session that started it ended, so it never finished its task: {{summary}}.{{transcript}} To continue it, call `agent` type `task` with `resume` set to {{id}}; otherwise leave it.

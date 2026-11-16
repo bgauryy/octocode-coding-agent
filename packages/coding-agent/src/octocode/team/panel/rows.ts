@@ -22,20 +22,20 @@ type Cell = { text: string; color: Color; right?: boolean; painted?: string };
 
 const GAP = "  ";
 /** In the narrow layout the detail row shows the activity from this width, only the goal from the next, and nothing below it. */
-const DETAIL_ACTIVITY_WIDTH = 64;
-const DETAIL_GOAL_WIDTH = 52;
+const DETAIL_ACTIVITY_WIDTH = 54;
+const DETAIL_GOAL_WIDTH = 50;
 const MODEL_MAX = 28;
-/** The goal keeps at least this many columns before the row falls back to two lines. */
+/** The goal keeps at least this many columns before the role gives way. */
 const GOAL_MIN = 12;
 /** The activity is shown only with at least this many cells; a shorter stub is left out. */
 const ACTIVITY_MIN = 10;
-/** Columns right of the goal, in order. They line up down the list; tokens, model, state and time always stay. */
-const RIGHT = ["flags", "where", "model", "state", "age", "tokens", "cache", "tools", "cost"] as const;
-type Right = (typeof RIGHT)[number];
-/** Shown only when the whole goal still fits beside them. */
-const WIDE_ONLY = ["cost", "tools"] as const;
-/** Give way, in order, only when the goal would be cut below `GOAL_MIN`. */
-const GIVE_WAY = ["cache", "branch", "role"] as const;
+/** Narrower than this, each agent gets a compact head row and a detail row instead of the two aligned lines. */
+const TWO_LINE_MIN = 60;
+/** The second line's columns, in order. They line up down the list; model, state, time and tokens always stay. */
+const STATS = ["model", "state", "age", "tokens", "cache", "tools", "cost", "where"] as const;
+type Stat = (typeof STATS)[number];
+/** Give way, in order, while the second line is wider than the terminal. */
+const STATS_GIVE_WAY = ["branch", "cost", "tools", "where", "cache"] as const;
 /** The branch or folder shown after `worktree`, cut to this many cells. */
 const WHERE_MAX = 28;
 /** Member rows carry the subagent mark from this many columns; narrower rows keep the cells for the goal and state. */
@@ -68,6 +68,17 @@ type Usage = Pick<Member, "input" | "cacheRead" | "output">;
 /** Every token an agent used: new prompt tokens, cache reads and output. */
 export const totalTokens = (usage: Usage) => newPromptTokens(usage) + usage.cacheRead + usage.output;
 const tokensText = (usage: Usage) => (totalTokens(usage) > 0 ? `${formatTokens(totalTokens(usage))} tok` : "");
+/** This session and its agents together: `Σ 4 agents 17.7M tok · 97% cached · ≈$22.36`. */
+export function teamTotalsText(members: readonly Member[]): string {
+	const sum = (key: "input" | "cacheRead" | "output" | "cost") =>
+		members.reduce((total, member) => total + member[key], 0);
+	const usage = { input: sum("input"), cacheRead: sum("cacheRead"), output: sum("output") };
+	const cost = formatCost({ cost: sum("cost"), unpriced: members.some((member) => member.unpriced) });
+	return [`Σ ${plural(members.length, "agent")}`, tokensText(usage), cachedShare(usage), cost]
+		.filter(Boolean)
+		.join(SEPARATOR);
+}
+
 /** The share of prompt tokens read from cache: high means cheap re-reads of the conversation. */
 function cachedShare(usage: Usage): string {
 	const prompt = newPromptTokens(usage) + usage.cacheRead;
@@ -100,7 +111,7 @@ interface Row {
 	role: string;
 	goal: string;
 	activity: string;
-	right: Record<Right, Cell>;
+	right: Record<Stat | "flags", Cell>;
 	/** The `where` cell without the branch, for when the row is short of room. */
 	whereShort: string;
 }
@@ -161,50 +172,51 @@ function splitGoal(goal: string, activity: string, room: number): [string, strin
 const widest = (texts: string[]) => Math.max(0, ...texts.map((text) => visibleWidth(text)));
 
 /**
- * One row per agent, under this session's row: tree, state mark, subagent mark, name, role, goal and what it does now
- * (`›`), then aligned columns: messages waiting for an answer and held locks, model, state, elapsed time, tokens with
- * the cached share, and tool calls and cost when wide. The subagent mark repeats what the tree under the main agent
+ * Two lines per agent, under this session's row. The first says who and what: tree, state mark, subagent mark, name,
+ * role, goal and what it does now (`›`), then messages waiting for an answer and held locks. The second, under the
+ * name, says how: model, state, elapsed time, tokens with the cached share, then tool calls, cost and the worktree while
+ * they fit. Its columns line up down the list, so agents compare at a glance. The subagent mark repeats what the tree
  * already says, so it shows from `ENTITY_MIN_WIDTH` columns only: a rule on the width alone, so rows never shift as an
- * agent's clock, tokens or activity grow. Too narrow even for that: a head row (who, state, time, tokens) and a detail row.
+ * agent's clock, tokens or activity grow. Below `TWO_LINE_MIN` columns: a compact head row and a detail row.
  * Returns each agent's rows together, so a line can follow its own agent.
  */
 export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, width: number): string[][] {
 	const rows = tree.map((entry) => row(entry, now, theme));
 	const prefixes = treePrefixes(tree);
+	if (width < TWO_LINE_MIN) return narrowRows(rows, prefixes, theme, width);
 	const goalText = (r: Row) => (r.activity ? `${r.goal}${r.goal ? " › " : ""}${r.activity}` : r.goal);
 	// Tree, mark, subagent mark and name are one cell: a deeper row indents, and the columns after it still line up.
 	const entity = width >= ENTITY_MIN_WIDTH ? `${ENTITY.subagent} ` : "";
 	const lead = (index: number) => `${prefixes[index]}${GLYPH.done} ${entity}${rows[index].name}`;
 	const nameWidth = widest(rows.map((_, index) => lead(index)));
 	const roleWidth = widest(rows.map((r) => r.role));
-	const goalWidth = widest(rows.map(goalText));
-	const columnWidth = (column: Right) => widest(rows.map((r) => r.right[column].text));
-	let columns = RIGHT.filter((column) => columnWidth(column) > 0);
-	let withRole = roleWidth > 0;
-	const left = () => 1 + nameWidth + GAP.length + (withRole ? roleWidth + GAP.length : 0);
-	const right = () => columns.reduce((sum, column) => sum + GAP.length + columnWidth(column), 0);
-	const fits = () => left() + Math.min(goalWidth, GOAL_MIN) + right() <= width;
-	if (left() + goalWidth + right() > width)
-		columns = columns.filter((column) => !WIDE_ONLY.some((wide) => wide === column));
-	for (const giving of GIVE_WAY) {
-		if (fits()) break;
-		if (giving === "role") withRole = false;
-		else if (giving === "branch") for (const r of rows) r.right.where.text = r.whereShort;
-		else columns = columns.filter((column) => column !== giving);
-	}
-	if (!fits()) return narrowRows(rows, prefixes, theme, width);
-	const goalShown = Math.min(goalWidth, width - left() - right());
+	const flagsWidth = widest(rows.map((r) => r.right.flags.text));
+	const flagsRoom = flagsWidth ? GAP.length + flagsWidth : 0;
+	const left = (role: boolean) => 1 + nameWidth + GAP.length + (role ? roleWidth + GAP.length : 0);
+	// The role gives way before the goal is cut below `GOAL_MIN`.
+	const withRole = roleWidth > 0 && left(true) + GOAL_MIN + flagsRoom <= width;
+	const goalShown = Math.max(0, Math.min(widest(rows.map(goalText)), width - left(withRole) - flagsRoom));
 	const pad = (text: string, painted: string, cells: number, alignRight = false) => {
 		const space = " ".repeat(Math.max(0, cells - visibleWidth(text)));
 		return alignRight ? space + painted : painted + space;
 	};
+	// The stats line starts under the name: the tree line continues beside it, and every agent's stats share a column.
+	const under = prefixes.map((prefix) => `${prefix.replace(/├/g, "│").replace(/└/g, " ")}  ${entity ? "   " : ""}`);
+	const underWidth = widest(under);
+	const columnWidth = (column: Stat) => widest(rows.map((r) => r.right[column].text));
+	let columns = STATS.filter((column) => columnWidth(column) > 0);
+	const statsWidth = () =>
+		1 + underWidth + columns.reduce((sum, column) => sum + GAP.length + columnWidth(column), 0) - GAP.length;
+	for (const giving of STATS_GIVE_WAY) {
+		if (statsWidth() <= width) break;
+		if (giving === "branch") for (const r of rows) r.right.where.text = r.whereShort;
+		else columns = columns.filter((column) => column !== giving);
+	}
 	return rows.map((r, index): string[] => {
 		const nameColor = r.working ? "text" : "muted";
-		// Cut the plain text, then paint the goal and the dim activity parts of what is left.
 		const [goalPart, activityPart] = splitGoal(r.goal, r.activity, goalShown);
 		const cut = goalPart + activityPart;
-		const goalCut = `${theme.fg(r.working ? "text" : "muted", goalPart)}${theme.fg("dim", activityPart)}`;
-		const parts = [
+		const head = [
 			" ",
 			pad(
 				lead(index),
@@ -213,15 +225,19 @@ export function memberRowGroups(tree: PanelEntry[], now: number, theme: Theme, w
 			),
 			GAP,
 			withRole ? pad(r.role, theme.fg("dim", r.role), roleWidth) + GAP : "",
-			pad(cut, goalCut, goalShown),
+			pad(cut, `${theme.fg(r.working ? "text" : "muted", goalPart)}${theme.fg("dim", activityPart)}`, goalShown),
+			r.right.flags.text ? GAP + (r.right.flags.painted ?? r.right.flags.text) : "",
 		];
-		// Trailing empty cells (no cost yet, nothing waiting) leave no trailing gap.
+		const stats = [" ", pad(under[index], theme.fg("dim", under[index]), underWidth)];
+		// Trailing empty cells (no cost yet) leave no trailing gap.
 		const last = columns.reduce((found, column, at) => (r.right[column].text ? at : found), -1);
-		for (const column of columns.slice(0, last + 1)) {
+		columns.slice(0, last + 1).forEach((column, at) => {
 			const cell = r.right[column];
-			parts.push(GAP, pad(cell.text, cell.painted ?? theme.fg(cell.color, cell.text), columnWidth(column), cell.right));
-		}
-		return [truncateToWidth(parts.join("").trimEnd(), Math.max(1, width), "…")];
+			if (at > 0) stats.push(GAP);
+			stats.push(pad(cell.text, cell.painted ?? theme.fg(cell.color, cell.text), columnWidth(column), cell.right));
+		});
+		const fit = (parts: string[]) => truncateToWidth(parts.join("").trimEnd(), Math.max(1, width), "…");
+		return [fit(head), fit(stats)];
 	});
 }
 

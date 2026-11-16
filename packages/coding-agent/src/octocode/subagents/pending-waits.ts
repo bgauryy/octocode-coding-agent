@@ -23,14 +23,14 @@ export function isWaitingLine(text: string): boolean {
 }
 
 /**
- * Whether a call starts something that will wake the child later: a background bash job, a timer set, or a message that
+ * Whether a call starts something that will wake the child later: a background bash job, a wait set, or a message that
  * asks a teammate or the parent for a reply (`agent` type `message` with `replyRequired`).
  */
 function startsWait(event: Record<string, unknown>): boolean {
 	const args = isRecord(event.args) ? event.args : {};
 	return (
 		(event.toolName === "bash" && args.background === true) ||
-		(event.toolName === "timer" && args.op === "set") ||
+		(event.toolName === "wait" && (args.op === "set" || args.op === "on")) ||
 		(event.toolName === "agent" && args.type === "message" && args.replyRequired === true)
 	);
 }
@@ -94,7 +94,7 @@ function answers(wait: ReplyWait, incoming: Record<string, unknown>): boolean {
  */
 export function noteWaits(state: WaitState, inputEvent: Record<string, unknown>): void {
 	let event = inputEvent;
-	if (event.type === "tool_execution_start" && (event.toolName === "timer" || isReplyRequest(event)))
+	if (event.type === "tool_execution_start" && (event.toolName === "wait" || isReplyRequest(event)))
 		state.waitInputs.set(event.toolCallId, event.args);
 	else if (event.type === "tool_execution_end" && state.waitInputs.has(event.toolCallId)) {
 		const args = state.waitInputs.get(event.toolCallId);
@@ -112,9 +112,9 @@ export function noteWaits(state: WaitState, inputEvent: Record<string, unknown>)
 				else state.replies[index] = replyOf(event);
 			}
 		} else finishStart(state, event);
-	} else if (event.type === "tool_execution_end" && event.toolName === "timer" && event.isError !== true) {
+	} else if (event.type === "tool_execution_end" && event.toolName === "wait" && event.isError !== true) {
 		const args = isRecord(event.args) ? event.args : {};
-		if (args.op === "cancel")
+		if (args.op === "off")
 			state.workWaits = state.workWaits.filter(
 				(wait) => wait.kind !== "timer" || (args.all !== true && wait.id !== args.id),
 			);

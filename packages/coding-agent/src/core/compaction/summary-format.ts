@@ -5,6 +5,8 @@ export const TLDR_HEADING = "## TL;DR";
 /** The heading of a summary's first section: what the user is trying to accomplish. */
 export const GOAL_HEADING = "## Goal";
 const TOPICS_LABEL = "Topics:";
+/** The section that says where the work stopped: a cut-off summary that still has it is kept (`checkpoint-format.md`). */
+export const STOPPED_HEADING = "## Where We Stopped";
 
 /** The trimmed, non-empty lines of the section headed `heading`, up to the next heading or file-list tag; none when absent. */
 export function summarySection(summary: string, heading: string): string[] {

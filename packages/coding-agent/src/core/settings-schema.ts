@@ -56,10 +56,7 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		transport: Type.Optional(
-			Type.Union(
-				[Type.Literal("auto"), Type.Literal("sse"), Type.Literal("websocket"), Type.Literal("websocket-cached")],
-				{ default: SETTINGS_DEFAULTS.transport },
-			),
+			Type.Union([Type.Literal("auto"), Type.Literal("sse")], { default: SETTINGS_DEFAULTS.transport }),
 		),
 		steeringMode: Type.Optional(
 			Type.Union([Type.Literal("all"), Type.Literal("one-at-a-time")], {
@@ -360,11 +357,6 @@ export const SettingsSchema = Type.Object(
 		retention: Type.Optional(RetentionSettingsSchema),
 		subagents: Type.Optional(SubagentSettingsSchema),
 		optimizePrompts: Type.Optional(OptimizePromptsSchema),
-		websocketConnectTimeoutMs: Type.Optional(
-			timeoutSetting({
-				description: 'WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it.',
-			}),
-		),
 		tuiMode: Type.Optional(
 			Type.Union([Type.Literal("regular"), Type.Literal("fullscreen")], {
 				default: SETTINGS_DEFAULTS.tuiMode,

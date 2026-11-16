@@ -231,7 +231,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -247,7 +247,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,bash,file,agent,timer,archive,memory,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
 			"mcp__browser__*",
@@ -304,7 +304,7 @@ describe("subagents", () => {
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "timer", "archive", "memory", "skill", "mcp", ...localResearchTools()]
+			["bash", "file", "agent", "wait", "archive", "memory", "skill", "mcp", ...localResearchTools()]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",

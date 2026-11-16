@@ -49,6 +49,23 @@ export const SubagentSettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.subagents.checkInSeconds,
 			}),
 		),
+		silenceMinutes: Type.Optional(
+			Type.Number({
+				minimum: 0,
+				description:
+					"Minutes a working subagent may make no progress (no model reply or tool event) before its parent is told, again at twice and four times the interval; the parent decides what to do, nothing is stopped. 0 turns it off.",
+				default: SETTINGS_DEFAULTS.subagents.silenceMinutes,
+			}),
+		),
+		wakeHoldSeconds: Type.Optional(
+			Type.Number({
+				minimum: 0,
+				maximum: 10,
+				description:
+					"Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
+				default: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds,
+			}),
+		),
 	},
 	{
 		description: "Limits on the subagents a session starts, and how they are checked on.",

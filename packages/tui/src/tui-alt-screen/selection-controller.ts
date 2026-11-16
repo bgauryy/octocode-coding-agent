@@ -18,6 +18,9 @@ import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange,
 /** 100,000 base64 characters: the fallback terminal clipboard's existing transfer limit. */
 const TERMINAL_CLIPBOARD_BYTES = 75_000;
 
+/** The most selected text handed whole to an injected (native) clipboard. */
+export const NATIVE_CLIPBOARD_BYTES = 8 * 1024 * 1024;
+
 /** Alternate-screen state and operations the text selection reads and calls live. */
 export interface AltScreenSelectionHost {
 	getTerminal(): Terminal;
@@ -345,7 +348,12 @@ export class AltScreenSelection {
 			this.host.getCurrentLayout(),
 		)) {
 			bytes += Buffer.byteLength(line) + (lines.length > 0 ? 1 : 0);
-			if (!this.host.copySelection && bytes > TERMINAL_CLIPBOARD_BYTES) {
+			if (this.host.copySelection) {
+				if (bytes > NATIVE_CLIPBOARD_BYTES) {
+					this.host.flash("Copy failed: selection too large to copy", COPY_ERROR_FLASH_DURATION_MS);
+					return false;
+				}
+			} else if (bytes > TERMINAL_CLIPBOARD_BYTES) {
 				this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
 				return false;
 			}

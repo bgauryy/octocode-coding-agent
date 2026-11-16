@@ -15,6 +15,8 @@ export interface SlashCommand {
 	description?: string;
 	argumentHint?: string;
 	argumentKind?: "path";
+	/** Other names that reach this command: typing one lists this command, never a row of its own. */
+	aliases?: readonly string[];
 	/** A skill: a `/` typed at a token start inside the text lists it (named bare or `skill:name`), never a command. */
 	skill?: boolean;
 	// Function to get argument completions for this command

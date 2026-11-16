@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { say, type Subcommand } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -321,10 +320,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 								{ label: "Priority", value: priorityName(item.priority) },
 							],
 							sections: [{ heading: "Actions", rows: labels.map((name) => ({ id: name, name })) }],
-							hints: [
-								[keyText("tui.select.confirm"), "run", 0],
-								[keyText("tui.select.cancel"), "back", 1],
-							],
+							nested: true,
 						})
 					)?.id
 				: await ctx.ui.select(itemLine(item, backlog.session), labels);

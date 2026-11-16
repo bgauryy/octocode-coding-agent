@@ -11,7 +11,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
 
 /** Source values stay complete; only twelve matching rows are painted, regardless of conversation length. */
 export class SearchableSelectorComponent extends Container implements Focusable {
@@ -51,6 +51,7 @@ export class SearchableSelectorComponent extends Container implements Focusable 
 		this.addChild(this.listContainer);
 		this.addChild(
 			new HintBar([
+				moveHint(2),
 				[keyText("tui.select.confirm"), options.confirmLabel ?? "choose", 1],
 				[keyText("tui.select.cancel"), "close", 0],
 			]),

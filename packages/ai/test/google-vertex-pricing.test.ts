@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { processGoogleModels } from "../scripts/generate-models/processors.ts";
 import type { ModelsDevModel } from "../scripts/generate-models/types.ts";
-import { normalizeGoogleUsage } from "../src/api/google-shared/response.ts";
+import { googleUsage as normalizeGoogleUsage } from "./google-fetch-fixture.ts";
 import { flattenChatModelCatalog } from "../src/model-catalog.ts";
 import { calculateCost } from "../src/models/model-helpers.ts";
 import type { Api, Model } from "../src/types.ts";
@@ -23,7 +23,7 @@ const fromCatalog = (model: Model<Api>): Model<Api> =>
 	)[model.id];
 
 describe("Vertex model pricing", () => {
-	it("preserves upstream context tiers and excludes cache storage from token-write prices", () => {
+	it("preserves upstream context tiers and excludes cache storage from token-write prices", async () => {
 		const [model] = processGoogleModels({
 			"google-vertex": {
 				models: {
@@ -46,9 +46,9 @@ describe("Vertex model pricing", () => {
 			cacheWrite: 0,
 			tiers: [{ inputTokensAbove: 200_000, input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 }],
 		});
-		const standard = normalizeGoogleUsage({ promptTokenCount: 200_000, cachedContentTokenCount: 190_000 });
+		const standard = await normalizeGoogleUsage({ promptTokenCount: 200_000, cachedContentTokenCount: 190_000 });
 		expect(calculateCost(model, standard).total).toBeCloseTo(0.03625, 12);
-		const long = normalizeGoogleUsage({
+		const long = await normalizeGoogleUsage({
 			promptTokenCount: 200_001,
 			cachedContentTokenCount: 190_000,
 			candidatesTokenCount: 10,
@@ -60,8 +60,8 @@ describe("Vertex model pricing", () => {
 		expect(cost.output).toBeCloseTo((15 * 15) / 1_000_000, 12);
 	});
 
-	it("counts tool-use prompt tokens as input, so the parts add up to the reported total", () => {
-		const usage = normalizeGoogleUsage({
+	it("counts tool-use prompt tokens as input, so the parts add up to the reported total", async () => {
+		const usage = await normalizeGoogleUsage({
 			promptTokenCount: 1000,
 			cachedContentTokenCount: 400,
 			toolUsePromptTokenCount: 500,

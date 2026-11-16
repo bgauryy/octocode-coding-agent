@@ -216,7 +216,6 @@ export async function createSessionFromServices(
 			// A virtual model's request is resolved for the model it routes to.
 			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,
-			websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs(),
 			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,
 			maxRetryDelayMs: options.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 			transformHeaders: async (requestHeaders) =>

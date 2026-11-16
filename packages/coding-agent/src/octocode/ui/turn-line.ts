@@ -6,11 +6,12 @@ import { formatCost, formatDuration } from "../shared/format.ts";
 import { modelLookup } from "../shared/util.ts";
 import { beginRun, resetRun, settleRun } from "../../utils/run-clock.ts";
 import { TurnRun } from "./turn-run.ts";
+import { wakeGateOf } from "../wake/gate.ts";
 
-/** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line. */
+/** The session entry (`api.appendEntry`, never sent to the model) that carries one turn's summary line (`dropped`: wake nudges skipped after it). */
 export const TURN_LINE_TYPE = "octocode-turn";
 
-/** A turn shorter than this, with no tool, is not worth a line. */
+/** A turn shorter than this, with no tool and no dropped nudge, is not worth a line. */
 const MIN_TURN_MS = 3_000;
 
 const count = (value: unknown): number => (typeof value === "number" && value > 0 ? value : 0);
@@ -25,12 +26,14 @@ export function turnLineText(data: unknown): string | undefined {
 	const agents = count(data.agents);
 	const cost = formatCost({ cost: count(data.cost), unpriced: data.unpriced === true });
 	const cache = Math.round(count(data.cache));
+	const dropped = count(data.dropped);
 	const parts = [
 		`Worked ${formatDuration(data.ms)}`,
 		tools ? `${tools} tool${tools === 1 ? "" : "s"}` : "",
 		agents ? `${agents} agent${agents === 1 ? "" : "s"}` : "",
 		cost === "cost n/a" ? "" : cost,
 		cache ? `cache ${cache}%` : "",
+		dropped ? `${dropped} nudge${dropped === 1 ? "" : "s"} dropped` : "",
 	];
 	return `${GLYPH.turn} ${parts.filter(Boolean).join(" · ")}`;
 }
@@ -89,9 +92,13 @@ export function registerTurnLine(api: ExtensionAPI): void {
 		if (ms === undefined) return;
 		counting = false;
 		const { tools, agents, cost, unpriced, cache } = run.totals();
-		if (!ctx.hasUI || (ms < MIN_TURN_MS && tools === 0)) return;
+		if (!ctx.hasUI) return;
+		// Nudges the wake gate dropped after this run (`subagents/idle-items.ts`): the record is how they are measured.
+		const dropped = wakeGateOf(api).takeDropped();
+		if (ms < MIN_TURN_MS && tools === 0 && dropped === 0) return;
 		api.appendEntry(TURN_LINE_TYPE, {
 			ms,
+			...(dropped ? { dropped } : {}),
 			tools,
 			...(agents ? { agents } : {}),
 			...(cost > 0 ? { cost } : {}),

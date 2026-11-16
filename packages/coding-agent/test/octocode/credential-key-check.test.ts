@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeychainBackend } from "../../src/core/auth-storage/keychain.ts";
 import { writeConfigCredential } from "../../src/octocode/web-daemon/credential-write.ts";
-import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
+import type { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
 
 const KEY = "SENTINEL-CHECK-77c1d2";
 let root: string;

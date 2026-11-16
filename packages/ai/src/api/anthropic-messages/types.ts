@@ -1,4 +1,3 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import type { StreamOptions, ThinkingBudgetReduction } from "../../types.ts";
 
 export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -61,12 +60,6 @@ export interface AnthropicOptions extends StreamOptions {
 	 * Default: omitted (Anthropic default behavior, currently equivalent to auto).
 	 */
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
-	/**
-	 * Pre-built Anthropic client instance. When provided, skips internal client
-	 * construction entirely. Use this to inject alternative SDK clients such as
-	 * `AnthropicVertex` that shares the same messaging API.
-	 */
-	client?: Anthropic;
 }
 
 export function isAnthropicEffort(value: unknown): value is AnthropicEffort {

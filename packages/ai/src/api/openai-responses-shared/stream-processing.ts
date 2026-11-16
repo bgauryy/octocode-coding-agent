@@ -1,8 +1,4 @@
-import type {
-	ResponseOutputItem,
-	ResponseReasoningItem,
-	ResponseStreamEvent,
-} from "openai/resources/responses/responses.js";
+import type { ResponseOutputItem, ResponseReasoningItem, ResponseStreamEvent } from "../ai-sdk/openai-wire-types.ts";
 import { calculateCost } from "../../models/model-helpers.ts";
 import type { Api, AssistantMessage, Model, TextContent, ThinkingContent, ToolCall } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";

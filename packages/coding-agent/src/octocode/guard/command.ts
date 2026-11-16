@@ -1,5 +1,4 @@
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
-import { keyText } from "../../theme/theme-tui-helpers.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, type PageRow, type PageSection, showCommandPage } from "../shared/page.ts";
 import {
@@ -47,23 +46,19 @@ function sections(reviews: readonly Review[]): PageSection[] {
 async function reviewPage(ctx: ExtensionCommandContext, review: Review): Promise<"approve" | "deny" | undefined> {
 	const choice = await showCommandPage(ctx.ui, {
 		title: `Security · ${visible(review.item.label)}`,
-		responsive: true,
 		notes: renderReport(review).split("\n"),
 		sections: [
 			{
 				heading: "Decide",
 				rows: [
-					...(review.item.unreadable ? [] : [{ id: "approve", name: "Approve this exact content" }]),
-					{ id: "deny", name: "Deny" },
+					...(review.item.unreadable
+						? []
+						: [{ id: "approve", name: "Approve this exact content", keys: { a: "approve", d: "deny" } }]),
+					{ id: "deny", name: "Deny", keys: { d: "deny" } },
 				],
 			},
 		],
-		keys: ["a", "d"],
-		hints: [
-			["a", "approve", 1],
-			["d", "deny", 2],
-			[keyText("tui.select.cancel"), "back", 0],
-		],
+		nested: true,
 	});
 	if (!choice) return undefined;
 	const verb = choice.key === "a" ? "approve" : choice.key === "d" ? "deny" : choice.id;
@@ -94,11 +89,7 @@ async function page(ctx: ExtensionCommandContext): Promise<boolean> {
 			notes: [waiting ? "Items that are not approved stay off." : "Nothing is waiting."],
 			sections: sections(reviews),
 			...(current ? { initialId: current } : {}),
-			hints: [
-				["↑↓", "move", 1],
-				[keyText("tui.select.confirm"), "review", 2],
-				[keyText("tui.select.cancel"), "close", 0],
-			],
+			enter: "review",
 		});
 		if (!choice) return changed;
 		current = choice.id;

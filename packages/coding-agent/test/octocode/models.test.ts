@@ -5,7 +5,7 @@ import { indexCatalog, loadCatalog, lookup, readCatalog } from "../../src/octoco
 // The catalog is fresh for a day.
 import { DAY_MS as CATALOG_TTL_MS } from "../../src/octocode/shared/util.ts";
 import { type ModelRef, resolveTier, routeModel } from "../../src/octocode/subagents/model.ts";
-import { describeModels } from "../../src/octocode/subagents/models-command.ts";
+import { describeModels, modelLine } from "../../src/octocode/subagents/models-command.ts";
 import { tmp } from "./helpers.ts";
 
 const api = {
@@ -14,6 +14,7 @@ const api = {
 			"claude-small-1": {
 				tool_call: true,
 				description: "small one",
+				knowledge: "2025-03",
 				modalities: { input: ["text", "image"] },
 				limit: { context: 200_000 },
 				cost: { input: 1, output: 5 },
@@ -26,6 +27,7 @@ const api = {
 			"claude-small-1": {
 				tool_call: true,
 				description: "small one",
+				knowledge: "2025-03",
 				modalities: { input: ["text", "image"] },
 				limit: { context: 200_000 },
 				cost: { input: 2, output: 9 },
@@ -52,6 +54,7 @@ describe("models.dev catalog", () => {
 			cost: { input: 1, output: 5 },
 			toolCall: true,
 			context: 200_000,
+			knowledge: "2025-03",
 			input: ["text", "image"],
 		});
 		expect(catalog.models["reseller/claude-small-1"]).toMatchObject({ cost: { input: 2, output: 9 } });
@@ -74,7 +77,14 @@ describe("models.dev catalog", () => {
 			throw new Error("offline");
 		}) as typeof fetch;
 		const t0 = 10 * CATALOG_TTL_MS;
-		expect(Object.keys((await loadCatalog({ file, now: t0, fetchImpl: ok }))!.models)).toContain("claude-small-1");
+		expect(
+			Object.keys(
+				(await Promise.all([
+					loadCatalog({ file, now: t0, fetchImpl: ok }),
+					loadCatalog({ file, now: t0, fetchImpl: ok }),
+				]).then(([catalog]) => catalog))!.models,
+			),
+		).toContain("claude-small-1");
 		expect((fs.statSync(file).mode & 0o777).toString(8)).toBe("600");
 		await loadCatalog({ file, now: t0 + 1000, fetchImpl: ok });
 		expect(calls).toBe(1);
@@ -85,6 +95,14 @@ describe("models.dev catalog", () => {
 		expect(calls).toBe(2);
 		expect(readCatalog(path.join(tmp(), "missing.json"))).toBeUndefined();
 	});
+});
+
+it("prints a known cutoff and all supported thinking levels, never marketing copy", () => {
+	const model = { ...m("anthropic", "claude-small-1", 1, 5), reasoning: true };
+	const text = modelLine(model, undefined, indexCatalog(api, 1));
+	expect(text).toContain("cutoff 2025-03");
+	expect(text).toContain("thinking off/minimal/low/medium/high");
+	expect(text).not.toContain("small one");
 });
 
 describe("model purposes", () => {

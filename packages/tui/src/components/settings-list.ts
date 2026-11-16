@@ -323,6 +323,9 @@ export class SettingsList implements Component {
 		const changeKeys = kb.getKeys("tui.select.confirm");
 		if (!this.searchInput?.getValue()) changeKeys.push("space");
 		const hints = this.searchEnabled ? ["type to search"] : [];
+		const [up] = kb.getKeys("tui.select.up");
+		const [down] = kb.getKeys("tui.select.down");
+		if (up && down) hints.unshift(`${arrowKey(up)}/${arrowKey(down)} move`);
 		if (changeKeys.length > 0) hints.push(`${[...new Set(changeKeys)].join("/")} change`);
 		const cancelKeys = kb.getKeys("tui.select.cancel");
 		if (cancelKeys.length > 0) hints.push(`${cancelKeys.join("/")} cancel`);
@@ -331,4 +334,8 @@ export class SettingsList implements Component {
 			lines.push(truncateToWidth(this.theme.hint(padding + line), width, ""));
 		}
 	}
+}
+
+function arrowKey(key: string): string {
+	return key === "up" ? "↑" : key === "down" ? "↓" : key;
 }

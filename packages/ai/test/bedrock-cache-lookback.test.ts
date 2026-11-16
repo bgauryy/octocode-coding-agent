@@ -1,7 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream as bedrockStream } from "../src/api/bedrock-converse-stream.ts";
-import { capLayeredCacheRetention } from "../src/api/bedrock-converse-stream/cache-points.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Message, StreamOptions, SystemMessage, Tool } from "../src/types.ts";
 import { createEmptyUsage } from "../src/utils/assistant-message.ts";
@@ -24,16 +23,18 @@ interface Payload {
 	messages: { role: string; content: Block[] }[];
 }
 
-class Captured extends Error {}
+import { bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
 
 async function capture(context: TranscriptContext, options: StreamOptions = {}): Promise<Payload> {
 	let payload: Payload | undefined;
 	await bedrockStream(model, context, {
 		env: {},
+		apiKey: "test",
+		fetch: async () => bedrockResponse(bedrockTextEvents),
 		...options,
 		onPayload: (value) => {
 			payload = structuredClone(value) as Payload;
-			throw new Captured();
+			return value;
 		},
 	}).result();
 	if (!payload) throw new Error("payload not captured");
@@ -84,6 +85,14 @@ const ids = Array.from({ length: 12 }, (_, index) => `c${index}`);
 const parallelTurn: Message[] = [user("task"), assistant(ids.map(call)), ...ids.map(result)];
 
 describe("Bedrock Claude history lookback cache point", () => {
+	it("does not spend a cache slot on historical tools when no tools are active", async () => {
+		const payload = await capture(context(parallelTurn, { sections: true, tools: [] }), {
+			instructionCacheBoundary: "project_context",
+		});
+		expect(payload.toolConfig).toBeUndefined();
+		expect(points(payload)).toHaveLength(4);
+		expect(marked(payload)).toEqual([true, false, true]);
+	});
 	it("marks the previous request's tail as well as the final message", async () => {
 		const payload = await capture(context([...parallelTurn, assistant(ids.map(call)), ...ids.map(result)]));
 		expect(marked(payload)).toEqual([false, false, true, false, true]);
@@ -136,17 +145,30 @@ describe("Bedrock Claude history lookback cache point", () => {
 	});
 });
 
+async function retention(value: { history: "short" | "long"; instructions: "none" | "short" | "long" }) {
+	const payload = await capture(context([user("test")], { tools: [] }), {
+		cacheRetention: value.history,
+		instructionCacheRetention: value.instructions,
+	});
+	const instruction = payload.system?.find((block) => block.cachePoint)?.cachePoint;
+	const history = payload.messages.at(-1)?.content.find((block) => block.cachePoint)?.cachePoint;
+	return {
+		history: history?.ttl === "1h" ? "long" : "short",
+		instructions: !instruction ? "none" : instruction.ttl === "1h" ? "long" : "short",
+	};
+}
+
 describe("Bedrock layered TTL cap", () => {
-	it("caps long history behind short instruction points, since one-hour points must come first", () => {
-		expect(capLayeredCacheRetention(model, { history: "long", instructions: "short" })).toEqual({
+	it("caps long history behind short instruction points, since one-hour points must come first", async () => {
+		expect(await retention({ history: "long", instructions: "short" })).toEqual({
 			history: "short",
 			instructions: "short",
 		});
-		expect(capLayeredCacheRetention(model, { history: "long", instructions: "none" })).toEqual({
+		expect(await retention({ history: "long", instructions: "none" })).toEqual({
 			history: "long",
 			instructions: "none",
 		});
-		expect(capLayeredCacheRetention(model, { history: "short", instructions: "long" })).toEqual({
+		expect(await retention({ history: "short", instructions: "long" })).toEqual({
 			history: "short",
 			instructions: "long",
 		});

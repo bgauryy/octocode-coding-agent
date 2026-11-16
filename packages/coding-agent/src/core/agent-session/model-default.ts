@@ -19,9 +19,10 @@ export async function persistDefaultModel(
 	settings: Pick<ModelSettingsApi, "saveDefaultModelSelection">,
 	model: Selection,
 	enabledModels?: string[],
+	scope: "global" | "project" = "global",
 ): Promise<void> {
 	try {
-		await settings.saveDefaultModelSelection(model.provider, model.id, { enabledModels });
+		await settings.saveDefaultModelSelection(model.provider, model.id, { enabledModels, scope });
 	} catch (error) {
 		throw new DefaultModelSaveError(model, error);
 	}

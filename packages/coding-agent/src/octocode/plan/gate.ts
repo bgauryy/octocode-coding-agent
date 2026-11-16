@@ -37,11 +37,11 @@ export function planningRefusal(
 	if (native && event.toolName === "archive" && archiveRead(event.input)) return undefined;
 	if (native && event.toolName === "memory" && memoryRead(event.input)) return undefined;
 	if (native && reads.has(event.toolName)) return undefined;
-	// A timer changes only this session's own timers; an until-command must be one plan mode would run as bash.
-	if (native && event.toolName === "timer") {
+	// A wait changes only this session's own waits; its command must be one plan mode would run as bash.
+	if (native && event.toolName === "wait") {
 		const command = untilCommand(event.input);
 		if (command === undefined || readOnlyShell({ command }, shell)) return undefined;
-		return "Plan mode blocks this until-command: only read-only shell commands may be checked. Use until unlocked, or a timer without a command.";
+		return "Plan mode blocks this command: only read-only shell commands may be checked. Use path.unlocked, or a wait without a command.";
 	}
 	if (native && event.toolName === "bash") {
 		if (readOnlyShell(event.input, shell)) return undefined;

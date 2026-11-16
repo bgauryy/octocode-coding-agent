@@ -2,7 +2,8 @@ import { displayText, textResultDisplay } from "../render/display.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { formatSize, truncateHead } from "../../core/tools/index.ts";
+import { truncateHead } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -46,9 +47,9 @@ export function webSummary(details: unknown): string | undefined {
 	if (!details || typeof details !== "object") return undefined;
 	const value = details as Partial<WebDetails>;
 	if (value.kind === "fetch" && typeof value.bytes === "number" && typeof value.lines === "number")
-		return `Fetched ${formatSize(value.bytes)} · ${plural(value.lines, "line")}`;
+		return `Fetched ${formatBytes(value.bytes, "compact")} · ${plural(value.lines, "line")}`;
 	if (value.kind === "image" && typeof value.bytes === "number")
-		return `Fetched ${value.mimeType ?? "image"} · ${formatSize(value.bytes)}`;
+		return `Fetched ${value.mimeType ?? "image"} · ${formatBytes(value.bytes, "compact")}`;
 	if (value.kind === "notice")
 		return value.reason === "redirect"
 			? "Not read: redirects to another host (not followed)"
@@ -70,7 +71,7 @@ async function imageResult(image: FetchedImage, model: ExtensionContext["model"]
 		limits: imageLimits(model),
 		...(file ? { savedAs: file } : {}),
 	});
-	const line = `${image.url}: ${image.mimeType} image, ${formatSize(image.bytes.byteLength)}. ${file ? `Original saved to ${file}.` : "The original could not be saved."}`;
+	const line = `${image.url}: ${image.mimeType} image, ${formatBytes(image.bytes.byteLength, "compact")}. ${file ? `Original saved to ${file}.` : "The original could not be saved."}`;
 	const details: WebDetails = {
 		kind: "image",
 		mimeType: image.mimeType,

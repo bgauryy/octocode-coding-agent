@@ -17,7 +17,7 @@ export interface DefaultModelReference {
 }
 
 export interface DefaultModelContext {
-	source: "global" | "workspace" | "run";
+	source: "global" | "project" | "run";
 	global?: DefaultModelReference;
 }
 

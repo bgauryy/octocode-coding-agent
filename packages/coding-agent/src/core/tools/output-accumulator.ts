@@ -1,8 +1,9 @@
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
 import { formatBytes } from "../../utils/bytes.ts";
-import { type CappedOutputFile, createCappedOutputFile } from "../../utils/output-files.ts";
+import { createCappedOutputFile } from "../../utils/output-files.ts";
 import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 import { OutputHead } from "./output-head.ts";
+import { RedactingSpill } from "./redacting-spill.ts";
 import { readSavedOutput } from "./saved-output.ts";
 import {
 	collapseCarriageReturns,
@@ -68,7 +69,7 @@ function byteLength(text: string): number {
  * and byte counts leave out terminal escape sequences (colors, cursor moves, a
  * full-screen program's redraws) and keep only the final state of a line that was
  * rewritten with carriage returns (progress bars), which only cost the model
- * tokens; the temp file and `readFullOutput` keep the raw bytes.
+ * tokens; the temp file and `readFullOutput` keep them, with secrets redacted.
  */
 export class OutputAccumulator {
 	private readonly maxLines: number;
@@ -106,7 +107,7 @@ export class OutputAccumulator {
 
 	private readonly spillMaxBytes: number;
 	private tempFilePath: string | undefined;
-	private tempFile: CappedOutputFile | undefined;
+	private tempFile: RedactingSpill | undefined;
 
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -148,6 +149,7 @@ export class OutputAccumulator {
 		if (this.shouldUseTempFile()) {
 			this.ensureTempFile();
 		}
+		this.tempFile?.flush();
 	}
 
 	snapshot(options: { persistIfTruncated?: boolean } = {}): OutputSnapshot {
@@ -226,6 +228,7 @@ export class OutputAccumulator {
 	}
 
 	async closeTempFile(): Promise<void> {
+		if (this.finished) this.tempFile?.flush();
 		await this.tempFile?.close();
 	}
 
@@ -386,11 +389,11 @@ export class OutputAccumulator {
 			(dropped) =>
 				`\n[... ${formatBytes(dropped, "spaced")} dropped here: this file keeps only the start and the end of output past the bash.spillMaxBytes cap (0 lifts it), so lines below this mark sit earlier than the numbers the result showed ...]\n`,
 		);
+		const spill = new RedactingSpill(file);
 		this.tempFilePath = file.path;
-		this.tempFile = file;
-		for (const chunk of this.rawChunks) {
-			file.write(chunk);
-		}
+		this.tempFile = spill;
+		for (const chunk of this.rawChunks) spill.write(chunk);
 		this.rawChunks = [];
+		if (this.finished) spill.flush();
 	}
 }

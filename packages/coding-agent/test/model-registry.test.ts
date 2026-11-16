@@ -1576,37 +1576,46 @@ describe("ModelRegistry", () => {
 			expect(apiKey).toBe("line1\nline2");
 		});
 
-		test("apiKey with ! prefix returns undefined on command failure", async () => {
+		test("returns undefined for a provider with no configured credential", async () => {
+			const registry = await createModelRegistry(authStorage, modelsJsonPath);
+
+			expect(await registry.getApiKeyForProvider("unconfigured-provider")).toBeUndefined();
+		});
+
+		test("apiKey with ! prefix rejects on command failure", async () => {
 			writeRawModelsJson({
 				"custom-provider": providerWithApiKey("!exit 1"),
 			});
 
 			const registry = await createModelRegistry(authStorage, modelsJsonPath);
-			const apiKey = await registry.getApiKeyForProvider("custom-provider");
-
-			expect(apiKey).toBeUndefined();
+			await expect(registry.getApiKeyForProvider("custom-provider")).rejects.toMatchObject({
+				name: "ModelsError",
+				code: "auth",
+			});
 		});
 
-		test("apiKey with ! prefix returns undefined on nonexistent command", async () => {
+		test("apiKey with ! prefix rejects on nonexistent command", async () => {
 			writeRawModelsJson({
 				"custom-provider": providerWithApiKey("!nonexistent-command-12345"),
 			});
 
 			const registry = await createModelRegistry(authStorage, modelsJsonPath);
-			const apiKey = await registry.getApiKeyForProvider("custom-provider");
-
-			expect(apiKey).toBeUndefined();
+			await expect(registry.getApiKeyForProvider("custom-provider")).rejects.toMatchObject({
+				name: "ModelsError",
+				code: "auth",
+			});
 		});
 
-		test("apiKey with ! prefix returns undefined on empty output", async () => {
+		test("apiKey with ! prefix rejects on empty output", async () => {
 			writeRawModelsJson({
 				"custom-provider": providerWithApiKey("!printf ''"),
 			});
 
 			const registry = await createModelRegistry(authStorage, modelsJsonPath);
-			const apiKey = await registry.getApiKeyForProvider("custom-provider");
-
-			expect(apiKey).toBeUndefined();
+			await expect(registry.getApiKeyForProvider("custom-provider")).rejects.toMatchObject({
+				name: "ModelsError",
+				code: "auth",
+			});
 		});
 
 		test("apiKey with $ prefix resolves to env value", async () => {
@@ -1830,11 +1839,8 @@ describe("ModelRegistry", () => {
 				});
 
 				const registry = await createModelRegistry(authStorage, modelsJsonPath);
-				const key1 = await registry.getApiKeyForProvider("custom-provider");
-				const key2 = await registry.getApiKeyForProvider("custom-provider");
-
-				expect(key1).toBeUndefined();
-				expect(key2).toBeUndefined();
+				await expect(registry.getApiKeyForProvider("custom-provider")).rejects.toMatchObject({ code: "auth" });
+				await expect(registry.getApiKeyForProvider("custom-provider")).rejects.toMatchObject({ code: "auth" });
 
 				const count = parseInt(readFileSync(counterFile, "utf-8").trim(), 10);
 				expect(count).toBe(2);

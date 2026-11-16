@@ -16,5 +16,7 @@ export const NOT_CHECKED_HELD = ({ name, cause }: { name: string; cause: string 
 /** A package-manager script run (`yarn run x`, `npm test`, `pnpm run x`): what it writes is not in the command line. */
 export const PACKAGE_SCRIPT =
 	/(?:^|[;&|(]\s*)(?:(?:npm|pnpm|bun)\s+(?:run(?:-script)?|test|start)\b|yarn\s+(?:workspaces?\s+\S+\s+)?(?:run|test|start)\b)/;
+export const PACKAGE_SCRIPT_REPEAT =
+	"[A reservation is held: this script may have changed a reserved file. Check `coordinate` `changes`.]";
 export const PACKAGE_SCRIPT_NOTE =
 	"[Another agent holds a reservation and this command ran a package script: reservations cannot check what a script writes, so it may have changed a reserved file. Check `coordinate` `changes` before relying on those files.]";

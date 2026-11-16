@@ -95,17 +95,17 @@ describe("models tool listings", () => {
 		else process.env[MODELS_DEV_ENV] = saved;
 	});
 
-	it("without a filter gives one row per provider with credential labels and counts, and no model rows", async () => {
+	it("without a filter lists every connected model once, including small windows, without route or credential prose", async () => {
 		const text = await modelsTool()({});
-		expect(text).toContain("  openai · API key · models.json · 2 runnable of 3 · cheapest openai/gpt-5-mini");
-		expect(text).toContain("highest priced openai/gpt-5");
-		expect(text).not.toContain("most capable");
-		expect(text).toContain("  opencode-go · API key · saved credential · 1 runnable · priced opencode-go/qwen-coder");
-		expect(text).not.toMatch(/per M in\/out · \d+k/);
-		expect(text).not.toContain("Models this session can use");
-		expect(text).toContain("Set `provider` to list one provider's models.");
-		expect(text).toContain("Subagent purposes:");
-		expect(text.length).toBeLessThan(3_000);
+		for (const model of refs)
+			expect(text.split("\n").filter((line) => line.startsWith(`${model.provider}/${model.id} ·`))).toHaveLength(1);
+		expect(text).toContain("openai/gpt-4 · $30/$60 · 8.2k · tools · ?");
+		expect(text).not.toContain("Subagent purposes:");
+		expect(text).not.toContain("Profiles:");
+		expect(text).not.toContain("saved credential");
+		expect(text.match(/This session:/g)).toHaveLength(1);
+		expect(text.length).toBeLessThan(800);
+		expect(await modelsTool()({ routes: true })).toContain("Subagent purposes:");
 	});
 
 	it("lists a provider's runnable models, then those that cannot run a task under their own heading", async () => {
@@ -124,8 +124,8 @@ describe("models tool listings", () => {
 		expect(await tool({ query: "gpt-5" })).toContain("openai/gpt-5-mini · ");
 		const text = await tool({ query: "model-" });
 		expect(text).toContain("45 models match; too many to list.");
-		expect(text).toContain("gateway · API key · saved credential · 45 runnable · 45 match");
-		expect(text).toContain("openai · API key · models.json · 2 runnable of 3 · 0 match");
+		expect(text).toContain("gateway · API key · saved credential · route config · 45 runnable · 45 match");
+		expect(text).toContain("openai · API key · models.json · route config · 2 runnable of 3 · 0 match");
 		expect(text).not.toMatch(/gateway\/model-1 · /);
 	});
 });

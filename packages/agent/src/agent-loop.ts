@@ -204,6 +204,8 @@ async function runLoop(
 	let config = initialConfig;
 	let lastCompletedTurn: PrepareNextTurnContext | undefined;
 	let explicitContinuation = false;
+	// Messages a turn boundary asked to add before the next request.
+	let boundaryMessages: AgentMessage[] = [];
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) ?? [];
 	let pendingKind: "steer" | "followUp" = "steer";
@@ -231,6 +233,10 @@ async function runLoop(
 					pendingMessages = (await config.getSteeringMessages?.()) ?? [];
 				}
 				await emit({ type: "turn_start" });
+			}
+			if (boundaryMessages.length > 0) {
+				preparedMessages = [...preparedMessages, ...boundaryMessages];
+				boundaryMessages = [];
 			}
 
 			if (!selected && pendingMessages.length)
@@ -353,6 +359,10 @@ async function runLoop(
 			}
 
 			explicitContinuation = decision?.action === "continue";
+			if (decision?.action === "continue" && decision.messages?.length) {
+				boundaryMessages = decision.messages;
+				hasMoreToolCalls = true;
+			}
 			pendingMessages = (await config.getSteeringMessages?.()) ?? [];
 			if (hasMoreToolCalls || pendingMessages.length > 0) {
 				explicitContinuation = false;

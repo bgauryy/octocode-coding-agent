@@ -90,11 +90,11 @@ describe("the models tool", () => {
 		return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 	};
 
-	it("lists the levels of a model that supports other than the usual ones, and only that model", async () => {
+	it("lists each model's supported thinking levels", async () => {
 		const text = await run({ provider: "p" });
 		const lines = text.split("\n");
 		expect(lines.find((line) => line.includes("p/beam-free"))).toContain(" · thinking low/medium/high");
-		expect(lines.find((line) => line.includes("● p/big ·"))).not.toContain("thinking");
+		expect(lines.find((line) => line.includes("● p/big ·"))).toContain("thinking off/minimal/low/medium/high");
 	});
 
 	it("offers the suffixes the agent tool accepts", async () => {

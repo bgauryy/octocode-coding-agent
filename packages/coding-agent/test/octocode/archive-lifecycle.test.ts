@@ -213,6 +213,31 @@ describe("durable agent lifecycle", () => {
 		close();
 	});
 
+	it("projects the view in a top-level session but not in a subagent process", async () => {
+		const view = path.join(root, ".octocode", "code", "agents.txt");
+		const commit = async (subagent: boolean) => {
+			vi.stubEnv("OCTOCODE_SUBAGENT", subagent ? "1" : "");
+			const fake = fakeHost();
+			const close = registerArchiveLifecycle(fake.api, {
+				canProject: () => true,
+				agentId: () => undefined,
+				parentId: () => undefined,
+			});
+			const ctx = fakeCtx({ cwd: root });
+			Object.assign(ctx.sessionManager, {
+				getSessionFile: () => path.join(root, "not-created.jsonl"),
+				getSessionId: () => "session",
+			});
+			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			close();
+		};
+		await commit(true);
+		expect(fs.existsSync(view)).toBe(false);
+		await commit(false);
+		expect(fs.existsSync(view)).toBe(true);
+	});
+
 	it("projects after the commits of one turn, once, not inside the committing call", async () => {
 		const fake = fakeHost();
 		let projections = 0;

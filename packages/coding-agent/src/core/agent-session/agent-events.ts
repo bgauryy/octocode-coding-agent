@@ -38,6 +38,10 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	const { session, run } = host;
 	// An abort requested while the run was starting, e.g. during before_agent_start, stops it
 	// here. agent_start is awaited before the first request.
+	if (event.type === "agent_start") {
+		run.lengthContinuations = 0;
+		run.truncatedToolTurns = 0;
+	}
 	if (event.type === "agent_start" && run.agentRunAbortRequested) session.agent.abort();
 	// Record the calls a tool made through ctx.executeTool() and their usage on its result message.
 	host.toolCalls.recordNestedCalls(event);

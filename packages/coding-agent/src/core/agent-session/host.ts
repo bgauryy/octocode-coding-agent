@@ -40,6 +40,10 @@ export interface SessionRunState {
 	windowUnfit: string | undefined;
 	/** Responses cut off at the output limit that the session recovered by compacting and retrying. */
 	lengthRecoveries: number;
+	/** Replies cut off at the output limit this run asked the model to continue; reset when a run starts. */
+	lengthContinuations: number;
+	/** Consecutive turns whose tool calls were cut off at the output limit. */
+	truncatedToolTurns: number;
 	lastAssistantMessage: AssistantMessage | undefined;
 	/** How the current or latest run ended so far; replaced when a run starts, and when it settles. */
 	outcome: RunOutcome;
@@ -66,6 +70,8 @@ export function createRunState(): SessionRunState {
 		overflowRecoveryAttempted: false,
 		windowUnfit: undefined,
 		lengthRecoveries: 0,
+		lengthContinuations: 0,
+		truncatedToolTurns: 0,
 		lastAssistantMessage: undefined,
 		outcome: createRunOutcome(),
 		hasRun: false,

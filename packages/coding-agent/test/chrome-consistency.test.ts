@@ -6,7 +6,8 @@ import { detailHints, errorHints } from "../src/octocode/harness/picker-hints.ts
 import { ruleLine } from "../src/theme/dynamic-border.ts";
 import { ManagePageComponent } from "../src/theme/manage-page.ts";
 import { initTheme } from "../src/theme/theme.ts";
-import { emptyState, noMatchMessage, positionLabel, renderHintLine } from "../src/theme/theme-tui-helpers.ts";
+import { positionLabel } from "../src/theme/page-kit.ts";
+import { emptyState, noMatchMessage, renderHintLine } from "../src/theme/theme-tui-helpers.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 beforeEach(() => {
@@ -51,7 +52,6 @@ describe("manage page with the selection scrolled off", () => {
 		const selected: string[] = [];
 		const page = new ManagePageComponent({
 			title: "Page",
-			responsive: true,
 			viewportRows: () => 14,
 			sections: [{ heading: "Rows", rows }],
 			hints: [["enter", "open"]],

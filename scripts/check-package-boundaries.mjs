@@ -15,6 +15,7 @@ export const PACKAGE_POLICY = {
 	ai: ["contracts", "telemetry"],
 	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],
 	contracts: [],
+	"octocode-agentic-testkit": [],
 	telemetry: [],
 	terminal: ["common"],
 	tui: [],

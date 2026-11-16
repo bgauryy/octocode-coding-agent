@@ -88,7 +88,10 @@ export function CardMeta({
 			)}
 			{it.assignee && (
 				<span className="card-assignee">
-					<Avatar name={it.assignee} label={`Assigned to ${it.assignee}`} />
+					<Avatar
+						name={it.assignee}
+						label={`Assigned to ${it.assignee}${it.workers?.length ? `; subagents ${it.workers.join(", ")}` : ""}`}
+					/>
 				</span>
 			)}
 		</div>

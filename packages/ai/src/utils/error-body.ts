@@ -63,7 +63,7 @@ type SdkErrorShape = Error & {
  * connection errors say only "fetch failed" or "Connection error." and keep `ENETUNREACH` in `cause.code`, which retry
  * classification reads from the text.
  */
-export function withNetworkCauseCode(error: Error): string {
+function withNetworkCauseCode(error: Error): string {
 	let cause: unknown = error;
 	for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
 		const code = (cause as Error & { code?: unknown }).code;

@@ -14,7 +14,8 @@ import { buildPathProjection } from "../session-manager/context.ts";
 import { combineUsage } from "../usage-totals.ts";
 import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
-import { generateSummaryWithUsage, generateTurnPrefixSummary } from "./summarization.ts";
+import { generateTurnPrefixSummary } from "./bounded-summary.ts";
+import { generateSummaryWithUsage } from "./summarization.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
 import type { CompactionResult } from "./types.ts";
 import {

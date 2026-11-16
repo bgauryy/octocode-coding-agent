@@ -24,7 +24,8 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { ConfigWriteError } from "./config-write.ts";
-import { readJsonBody, type Reply, type TokenAccess } from "./http-util.ts";
+import { readJsonBody } from "../shared/json-body.ts";
+import type { Reply, TokenAccess } from "./http-util.ts";
 import type { RepoCatalog } from "./repos.ts";
 import type { LiveTools } from "./session-tools.ts";
 

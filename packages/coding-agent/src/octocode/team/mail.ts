@@ -6,6 +6,16 @@ import { parentProofValid, userProofValid } from "./proof.ts";
 import { deadLetterText, messageText } from "./routing.ts";
 import { spillIntact } from "./spill.ts";
 import type { TeamStore } from "./store.ts";
+import type { AgentEvent } from "../wake/catalog.ts";
+import { wakeGateOf } from "../wake/gate.ts";
+
+const mailEvent = (message: Message): AgentEvent => ({
+	kind: "agent.message",
+	from: message.from,
+	id: message.id,
+	replyRequired: message.replyRequired,
+	interrupt: message.interrupt === true,
+});
 
 /** Puts team mail and team notices in front of this agent's model, one Octocode custom message each (`MailDetails`). */
 export class Mail {
@@ -83,6 +93,11 @@ export class Mail {
 			onRejected,
 			onAccepted,
 		);
+	}
+
+	/** Like `notice`, but starts a turn when `wake` and the agent is idle (the caller paces wakes). */
+	alert(text: string, wake: boolean): boolean {
+		return this.inject(text, { messages: [{ from: "team", text, at: Date.now() }] }, { triggerTurn: wake, deliverAs: "steer" });
 	}
 
 	private peers: PeerNotices | undefined;
@@ -167,6 +182,8 @@ export class Mail {
 			{ messages: batch },
 			{ triggerTurn: batch.some((message) => message.wake), deliverAs: "steer" },
 			onRejected,
+			undefined,
+			batch.filter((message) => message.wake).map(mailEvent),
 		);
 	}
 
@@ -252,10 +269,12 @@ export class Mail {
 		options: { triggerTurn?: boolean; deliverAs: "steer" },
 		onRejected?: () => void,
 		onAccepted?: () => void,
+		wakes: readonly AgentEvent[] = [],
 	): boolean {
 		let sending: void | Promise<void>;
 		try {
-			sending = this.api.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
+			const message = { customType: INTERNAL_MESSAGE_TYPE, content, display: true, details };
+			sending = wakeGateOf(this.api).emit(wakes, message, options);
 		} catch {
 			return false; // The session ended or is not ready.
 		}
@@ -270,7 +289,13 @@ export class Mail {
 				},
 				() => onRejected?.(),
 			);
-		else onAccepted?.();
+		else {
+			try {
+				onAccepted?.();
+			} catch {
+				// The message is delivered; the acknowledgement is retried like the asynchronous one.
+			}
+		}
 		return true;
 	}
 }

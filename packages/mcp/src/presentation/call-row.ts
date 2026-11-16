@@ -1,3 +1,4 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { hostRender } from "../host.ts";
 import type { McpToolRenderers } from "../host/types.ts";
 
@@ -5,9 +6,6 @@ import type { McpToolRenderers } from "../host/types.ts";
 const PURPOSE_KEYS = ["reason", "mainGoal", "reasoning"] as const;
 /** Characters of the title's argument summary. */
 const SUMMARY_CHARS = 60;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 function withoutPurpose(record: Record<string, unknown>): Record<string, unknown> {
 	const copy = { ...record };

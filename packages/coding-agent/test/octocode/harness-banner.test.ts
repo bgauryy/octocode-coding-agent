@@ -88,12 +88,12 @@ describe("startup banner from the context view", () => {
 		if (!skills) throw new Error("no skill group");
 
 		expect(activeEntries(skills)).toHaveLength(2);
-		expect(problemSummary(skills)).toBe("2 shadowed · 1 off");
+		expect(problemSummary(skills)).toBe("2 duplicate · 1 off");
 		expect(skills.entries.find((entry) => entry.name === "claude-only")?.note).toBe("harness off (/harness)");
 		// A switched-off harness is the user's choice: no warning, and not in the Not loaded group.
 		expect(view.groups.some((group) => group.id === "extension")).toBe(false);
 		expect(view.warnings.map((warning) => warning.text)).toEqual([
-			"2 duplicate skills skipped: a skill with the same name loads from ~/.agents/skills (ctrl+o lists them)",
+			"2 duplicate skills skipped, kept ~/.agents/skills (ctrl+o lists)",
 		]);
 	});
 
@@ -230,8 +230,8 @@ describe("startup banner from the context view", () => {
 		);
 
 		expect(warnings.map((warning) => warning.text)).toEqual([
-			"1 duplicate skill skipped: a skill with the same name loads from /w/skills (ctrl+o lists them)",
-			"1 skill file with problems: invalid SKILL.md or folder; fix or remove them (ctrl+o lists them)",
+			"1 duplicate skill skipped, kept /w/skills (ctrl+o lists)",
+			"1 skill file with problems: invalid SKILL.md or folder (ctrl+o lists)",
 			"/k/keybindings.json: 1 entry ignored (unknown action foo): fix or delete them",
 		]);
 		expect(notes).toHaveLength(1);
@@ -253,13 +253,11 @@ describe("harnesses", () => {
 		expect(buildSystemPrompt({ cwd: "/repo" })).not.toContain("Harnesses:");
 	});
 
-	it("draws the banner's Harness line: switchable harnesses with ● or ○ and what they would add, then /harness", () => {
+	it("groups switchable harnesses by on and off, then /harness", () => {
 		const row = harnessRow(STATUSES);
 
 		expect(row.count()).toBe(1);
-		expect(stripAnsi(row.summary())).toBe(
-			".agents ● · Claude Code ○ 1 skill, 1 hook, 2 MCP servers · Cursor ○ 1 MCP server · /harness",
-		);
+		expect(stripAnsi(row.summary())).toBe("on: .agents · off: Claude Code, Cursor · /harness");
 	});
 
 	const LIVE: HarnessStatus[] = [
@@ -276,24 +274,24 @@ describe("harnesses", () => {
 		return new LoadedRow(row, () => loadedColumns([row]), false).render(width).map(stripAnsi);
 	};
 
-	it("fits the Harness line in 200 columns with every harness's counts and /harness at the end", () => {
+	it("fits grouped on/off names in 200 columns with /harness at the end", () => {
 		const lines = drawn(200);
 
 		expect(lines).toEqual([
-			"Harness  3  .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ 15 skills, 2 hooks, 1 MCP server · Codex ○ 1 skill, 3 hooks, 7 MCP servers · Cursor ○ 13 skills · /harness",
+			"Harness  ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness",
 		]);
 	});
 
-	it("drops the off counts first in 80 columns, keeps ● or ○ for every harness and always ends with /harness", () => {
+	it("wraps grouped on/off names in 80 columns and always ends with /harness", () => {
 		const lines = drawn(80);
 
 		for (const line of lines) expect(line.length).toBeLessThanOrEqual(80);
 		const text = lines.join(" ").replace(/\s+/g, " ");
-		expect(text).toBe("Harness 3 .agents ● · root .mcp.json ● · Pi ● · Claude Code ○ · Codex ○ · Cursor ○ · /harness");
+		expect(text).toBe("Harness ✓ 3 on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness");
 		expect(lines.at(-1)?.endsWith("/harness")).toBe(true);
 		expect(text).not.toContain("\u2026");
 		// Wrapped lines start under the first harness, and no harness is split across lines.
-		for (const line of lines.slice(1)) expect(line.startsWith("            ")).toBe(true);
+		for (const line of lines.slice(1)) expect(line.startsWith("              ")).toBe(true);
 	});
 
 	it("shows a switched-off harness's hooks off in /harness, whatever their own switch, and on once the harness is on", async () => {

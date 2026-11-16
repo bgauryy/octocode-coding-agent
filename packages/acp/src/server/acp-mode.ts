@@ -56,20 +56,27 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 				throw new Error("Client MCP servers cannot be used with --no-mcp.");
 			const mcp = await prepareAcpMcpServers(servers, cwd, host);
 			const identityListeners = new Set<(id: string) => void>();
-			const client = host.createWorker({
-				onSessionIdentity: (id) => {
-					for (const listener of identityListeners) listener(id);
-				},
-				cwd,
-				args: [...sessionArgs, ...(sessionPath ? ["--session", sessionPath] : [])],
-				env: {
-					[ACP_WORKER_ENV]: "1",
-					...mcp.env,
-					...(envSessionDir && !cliSessionDir && absoluteSessionDir
-						? { [host.sessionDirEnv]: absoluteSessionDir }
-						: {}),
-				},
-			});
+			let client: ReturnType<AcpServerHost["createWorker"]>;
+			try {
+				client = host.createWorker({
+					onSessionIdentity: (id) => {
+						for (const listener of identityListeners) listener(id);
+					},
+					cwd,
+					args: [...sessionArgs, ...(sessionPath ? ["--session", sessionPath] : [])],
+					env: {
+						[ACP_WORKER_ENV]: "1",
+						...mcp.env,
+						...(envSessionDir && !cliSessionDir && absoluteSessionDir
+							? { [host.sessionDirEnv]: absoluteSessionDir }
+							: {}),
+					},
+				});
+			} catch (error) {
+				// The creation error is the one to report.
+				await mcp.cleanup().catch(() => undefined);
+				throw error;
+			}
 			return {
 				onSessionIdentity: (listener) => {
 					identityListeners.add(listener);

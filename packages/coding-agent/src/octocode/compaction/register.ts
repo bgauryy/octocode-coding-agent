@@ -37,6 +37,7 @@ import {
 	toolDefinitionChars,
 } from "./pacing.ts";
 import { recordCompactionNote } from "./record.ts";
+import { recordContextFiles } from "./restore-context.ts";
 import { TooLargeRecovery } from "./recovery.ts";
 import {
 	deliverRestoredFiles,
@@ -271,7 +272,9 @@ export function registerCompaction(
 		guard.restore(contextReads(ctx));
 		const pending = restoreCandidates;
 		restoreCandidates = [];
-		pendingRestore = deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api));
+		// The system prompt shows the project context files whole: they count as read and are not sent again.
+		const contextHeld = recordContextFiles(guard, ctx.getSystemPromptOptions?.().contextFiles ?? []);
+		pendingRestore = deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api), contextHeld);
 	});
 	api.on("session_compact_failed", async () => {
 		archive.discard();

@@ -1,5 +1,6 @@
 import { HISTORY_BYTES, matchTexts } from "../history/search.ts";
 import { parseMemoryId } from "./query.ts";
+import { compileQuery, searchable } from "./safe-pattern.ts";
 import { describeMemory, type Memory, type MemoryStore, memoryToolLine, noMemory, type ScopeFilter } from "./store.ts";
 
 /** The `memory` tool's reads: `get`, `list` and `search` over one store, with one cursor. */
@@ -48,13 +49,22 @@ function positionOf(cursor: string | undefined): Position | undefined {
 	return at;
 }
 
+/** Counts memories as used; a rejected writer (queue full, closed, busy) loses only the mark, never the read. */
+async function markUsedQuietly(store: MemoryStore, ids: number[]): Promise<void> {
+	try {
+		await store.markUsed(ids);
+	} catch {
+		// Same as the recall hook: a busy or closed writer never blocks a turn.
+	}
+}
+
 /** The whole memory `id` names (`M7`), counted as used. */
 export async function getMemory(store: MemoryStore, id: string): Promise<string> {
 	const parsed = parseMemoryId(id);
 	if (parsed === undefined) throw new Error(`"${id}" is not a memory id (M<n>).`);
 	const memory = store.get(parsed);
 	if (!memory) throw noMemory(parsed);
-	await store.markUsed([memory.id]);
+	await markUsedQuietly(store, [memory.id]);
 	return describeMemory(memory);
 }
 
@@ -72,7 +82,7 @@ export async function readMemories(
 	const start = positionOf(params.cursor);
 	const scope = params.scope ?? "all";
 	const limit = Math.min(50, Math.max(1, Math.floor(params.limit ?? 10)));
-	const filter = params.query?.trim() ? new RegExp(params.query.trim(), "i") : undefined;
+	const filter = params.query?.trim() ? compileQuery(params.query.trim()) : undefined;
 	const words = params.keywords?.trim() ? params.keywords.toLowerCase().split(/\s+/).filter(Boolean) : [];
 	const found: Array<{ memory: Memory; score?: number }> = [];
 	let at = start;
@@ -99,7 +109,8 @@ export async function readMemories(
 			);
 		const page = rows.slice(0, CHUNK);
 		const texts = page.map((row) => describeMemory(row));
-		const matched = filter ? await matchTexts(texts, filter, signal) : undefined;
+		const tested = filter ? texts.map(searchable) : texts;
+		const matched = filter ? await matchTexts(tested, filter, signal) : undefined;
 		done = rows.length <= CHUNK;
 		for (const [i, row] of page.entries()) {
 			const size = Buffer.byteLength(texts[i]);
@@ -131,7 +142,11 @@ export async function readMemories(
 		}
 	}
 	if (words.length > 0) found.sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.memory.id - a.memory.id);
-	if (params.op === "search") await store.markUsed(found.map((hit) => hit.memory.id));
+	if (params.op === "search")
+		await markUsedQuietly(
+			store,
+			found.map((hit) => hit.memory.id),
+		);
 	const lines = found.map((hit) => `M${hit.memory.id}\n${memoryToolLine(hit.memory, PREVIEW_CHARS)}`);
 	const cursor = more && at ? Buffer.from(JSON.stringify(at)).toString("base64url") : undefined;
 	return {

@@ -36,6 +36,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[tell|interrupt|kill|merge|stats|history|external]",
 	},
 	{
+		name: "realm",
+		requiresNative: true,
+		description: "See the checkout, worktrees and sessions",
+		argumentHint: "[<name> [switch|resume]]",
+	},
+	{
 		name: "plan",
 		requiresNative: true,
 		description: "Research under a planning constraint",
@@ -67,7 +73,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{
 		name: "model",
-		description: "Switch this chat's model",
+		description: "Pick a model for this chat or as the default",
 		argumentHint: "[provider/model]",
 	},
 	{ name: "tree", description: "Browse session branches and jump to a message" },
@@ -190,6 +196,7 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"agents",
 	"jobs",
 	"worktree",
+	"realm",
 	"backlog",
 	"processes",
 	"memory",
@@ -219,6 +226,25 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"quit",
 ];
 
+/**
+ * Names Claude Code users type from habit, each run as the Octocode command it maps to. The `/` menu shows only the
+ * target; `/clear` and `/reset` stay separate hidden entries of `/new`.
+ */
+export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
+	["exit", "quit"],
+	["config", "configuration"],
+	["settings", "configuration"],
+	["release-notes", "changelog"],
+	["feedback", "bug"],
+	["login", "providers"],
+	["continue", "resume"],
+	["allowed-tools", "permissions"],
+	["doctor", "debug"],
+	["checkpoint", "rewind"],
+	["todos", "backlog"],
+	["bashes", "processes"],
+]);
+
 /** A command whose name prompt and skill commands must not take. */
 export interface CommandReservation {
 	name: string;
@@ -232,6 +258,7 @@ export function reservedCommandNames(reservedCommands: readonly CommandReservati
 		reserved.add(command.name);
 		if (command.invocationName) reserved.add(command.invocationName);
 	}
+	for (const alias of COMMAND_ALIASES.keys()) reserved.add(alias);
 	return reserved;
 }
 
@@ -257,5 +284,5 @@ export const featureOfCommand = (name: string): string | undefined => FEATURE_CO
 
 export function parseSlashCommand(text: string): { name: string; args: string } | undefined {
 	const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-	return match ? { name: match[1], args: match[2] ?? "" } : undefined;
+	return match ? { name: COMMAND_ALIASES.get(match[1]) ?? match[1], args: match[2] ?? "" } : undefined;
 }

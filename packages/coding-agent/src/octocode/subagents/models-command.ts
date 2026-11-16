@@ -3,8 +3,6 @@ import { builtinDescription } from "../../core/slash-commands.ts";
 import type { ExtensionCommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
-import { sanitizeTerminalText } from "../../../../common/src/sanitize.ts";
-import { clipText } from "../shared/util.ts";
 import {
 	type Catalog,
 	catalogFile,
@@ -51,11 +49,6 @@ import {
 
 const perMillion = (value: number) => `$${value < 1 ? value.toFixed(2) : value.toFixed(value % 1 === 0 ? 0 : 2)}`;
 const contextSize = (tokens: number | undefined) => (tokens ? formatTokens(tokens) : "?");
-/** A remote description, made safe for the terminal and kept to one short line. */
-const describe = (text: string) => {
-	const clean = sanitizeTerminalText(text).replace(/\s+/g, " ").trim();
-	return clipText(clean, 120);
-};
 const name = (model: ModelRef) => `${model.provider}/${model.id}`;
 
 /** The abilities a model row names and the `models` tool filters by. */
@@ -89,27 +82,25 @@ export const priceText = (cost: { input: number; output: number } | undefined): 
 export const priceRank = (cost: { input: number; output: number } | undefined): number =>
 	cost ? 3 * cost.input + cost.output : Infinity;
 
-/** Thinking levels a plain reasoning model supports; only a model that differs lists its own (` · thinking low/medium/high`). */
-const COMMON_LEVELS = "off/minimal/low/medium/high";
-
-/** ` · thinking …` with the levels `clampThinkingLevel` would accept, or "" for a model without reasoning or with the usual ones. */
+/** ` · thinking …` with the levels `clampThinkingLevel` would accept, or "" for a model without reasoning. */
 function thinkingLevelsText(model: ModelRef): string {
 	// The registry's model carries `reasoning` and `thinkingLevelMap`; `ModelRef` names only what routing reads.
 	if (!(model as { reasoning?: boolean }).reasoning) return "";
 	const levels = getSupportedThinkingLevels(model as Parameters<typeof getSupportedThinkingLevels>[0]).join("/");
-	return levels === COMMON_LEVELS ? "" : ` · thinking ${levels}`;
+	return ` · thinking ${levels}`;
 }
 
 /** One model's line: price, context window and abilities, the parent's marked. */
-function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
+export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
 	const known = lookup(catalog, model.provider, model.id);
 	const abilities = modelAbilities(model, catalog);
 	const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
 	const mark = parent && name(model) === name(parent) ? "● " : "  ";
 	const levels = thinkingLevelsText(model);
-	const description = known?.description ? ` — ${describe(known.description)}` : "";
+	const cutoff =
+		known?.knowledge && /^\d{4}-\d{2}(?:-\d{2})?$/.test(known.knowledge) ? ` · cutoff ${known.knowledge}` : "";
 	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
-	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${description}`;
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}`;
 }
 
 /**
@@ -337,7 +328,7 @@ async function modelListing(
 	return `${listing}\n\n${source}\n${CREDENTIAL_MARKS}`;
 }
 
-export const CREDENTIAL_MARKS =
+const CREDENTIAL_MARKS =
 	"Credential marks come from subagent runs and checks; a refused credential stays marked, across sessions, until it is replaced or a check passes. No mark means not yet tried.";
 
 /** The models.dev index unless it is turned off, and a line saying where capabilities and prices come from. */

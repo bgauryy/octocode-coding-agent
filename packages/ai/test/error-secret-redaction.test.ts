@@ -101,6 +101,23 @@ describe("credentials in provider and sign-in error text", () => {
 		expect(message).not.toContain(KEY);
 	});
 
+	it("never writes an SDK error's credential to stderr", async () => {
+		const baseUrl = await serve(401, JSON.stringify({ error: { message: `Incorrect API key provided: ${KEY}` } }));
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const message = await failure(streamOpenAICompletions(completionsModel(baseUrl), context, { apiKey: KEY }));
+			expect(message).toContain("401");
+			expect(message).not.toContain(KEY);
+			expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).not.toContain(KEY);
+			expect(consoleError.mock.calls.flat().map(String).join("")).not.toContain(KEY);
+			expect(consoleError).not.toHaveBeenCalled();
+		} finally {
+			stderr.mockRestore();
+			consoleError.mockRestore();
+		}
+	});
+
 	it("keeps the key out of a setup failure message", async () => {
 		const model = completionsModel("http://127.0.0.1:1");
 		vi.stubGlobal(

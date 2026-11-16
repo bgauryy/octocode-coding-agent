@@ -2,7 +2,8 @@ import { once } from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { convertMessages, stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
+import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
+import { captureCompletionsMessages } from "./capture-completions-payload.ts";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -122,8 +123,8 @@ describe("openai-completions thinking-as-text replay", () => {
 		delete process.env.OPENAI_API_KEY;
 	});
 
-	it("serializes same-model thinking-plus-text replay as assistant text parts", () => {
-		const messages = convertMessages(
+	it("serializes same-model thinking-plus-text replay as assistant text", async () => {
+		const messages = await captureCompletionsMessages(
 			buildModel(),
 			normalizeContext(
 				buildContext(
@@ -138,15 +139,12 @@ describe("openai-completions thinking-as-text replay", () => {
 
 		expect(messages[1]).toEqual({
 			role: "assistant",
-			content: [
-				{ type: "text", text: "internal reasoning" },
-				{ type: "text", text: "visible answer" },
-			],
+			content: "internal reasoningvisible answer",
 		});
 	});
 
-	it("serializes same-model thinking-only replay as assistant text parts", () => {
-		const messages = convertMessages(
+	it("serializes same-model thinking-only replay as assistant text", async () => {
+		const messages = await captureCompletionsMessages(
 			buildModel(),
 			normalizeContext(buildContext(buildAssistant([{ type: "thinking", thinking: "internal reasoning" }]))),
 			compat,
@@ -154,7 +152,7 @@ describe("openai-completions thinking-as-text replay", () => {
 
 		expect(messages[1]).toEqual({
 			role: "assistant",
-			content: [{ type: "text", text: "internal reasoning" }],
+			content: "internal reasoning",
 		});
 	});
 
@@ -223,10 +221,7 @@ describe("openai-completions thinking-as-text replay", () => {
 			expect(requestBodies).toHaveLength(1);
 			expect(requestBodies[0]?.messages[1]).toEqual({
 				role: "assistant",
-				content: [
-					{ type: "text", text: "internal reasoning" },
-					{ type: "text", text: "visible answer" },
-				],
+				content: "internal reasoningvisible answer",
 			});
 
 			const terminalEvent = events.at(-1);

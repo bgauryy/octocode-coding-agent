@@ -7,7 +7,10 @@ export type Mode = "text" | "json" | "rpc" | "acp";
 export interface Args {
 	provider?: string;
 	model?: string;
+	/** The key of `--api-key`, or the value of the variable `--api-key-env` names. */
 	apiKey?: string;
+	/** The variable `--api-key-env` read `apiKey` from. */
+	apiKeyEnv?: string;
 	systemPrompt?: string;
 	appendSystemPrompt?: string[];
 	thinking?: ThinkingLevel;

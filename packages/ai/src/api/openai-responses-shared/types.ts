@@ -1,21 +1,15 @@
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+type ResponseServiceTier = "auto" | "default" | "fast" | "flex" | "priority" | "scale" | "ultrafast" | null;
 import type { StreamOptions, Usage } from "../../types.ts";
-
-/** OpenAI Responses rejects `max_output_tokens` below 16. */
-export const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 export interface OpenAIResponsesStreamOptions {
 	onProviderStreamEvent?: StreamOptions["onProviderStreamEvent"];
-	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+	serviceTier?: ResponseServiceTier;
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
 	resolveServiceTier?: (
-		responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-		requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	) => ResponseCreateParamsStreaming["service_tier"] | undefined;
-	applyServiceTierPricing?: (
-		usage: Usage,
-		serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	) => void;
+		responseServiceTier: ResponseServiceTier | undefined,
+		requestServiceTier: ResponseServiceTier | undefined,
+	) => ResponseServiceTier | undefined;
+	applyServiceTierPricing?: (usage: Usage, serviceTier: ResponseServiceTier | undefined) => void;
 }
 
 export interface ConvertResponsesMessagesOptions {

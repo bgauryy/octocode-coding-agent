@@ -4,9 +4,8 @@
  * https://developers.openai.com/api/docs/guides/prompt-caching and the Chat Completions create reference.
  */
 import { describe, expect, it } from "vitest";
-import { buildParams as buildCompletionsParams } from "../src/api/openai-completions/params.ts";
-import { getCompat as getResponsesCompat } from "../src/api/openai-responses/compat.ts";
-import { buildParams as buildResponsesParams } from "../src/api/openai-responses/request.ts";
+import { captureCompletionsParams } from "./capture-completions-payload.ts";
+import { captureResponsesPayload } from "./capture-responses-payload.ts";
 import { resolveModelCapabilities } from "../src/models/capabilities.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
@@ -23,13 +22,13 @@ interface CachePayload {
 }
 
 /** The cache fields of a Responses request, read without the SDK's deprecated field type. */
-function responsesPayload(model: Model<"openai-responses">): CachePayload {
-	return buildResponsesParams(model, context, options, getResponsesCompat(model), new Map(), undefined);
+function responsesPayload(model: Model<"openai-responses">): Promise<CachePayload> {
+	return captureResponsesPayload(model, context, options);
 }
 
 /** The cache fields of a Chat Completions request, read without the SDK's deprecated field type. */
-function completionsPayload(model: Model<"openai-completions">): CachePayload {
-	return buildCompletionsParams(model, context, options);
+async function completionsPayload(model: Model<"openai-completions">): Promise<CachePayload> {
+	return captureCompletionsParams(model, context, options);
 }
 
 function completionsModel(id: string, compat?: Model<"openai-completions">["compat"]): Model<"openai-completions"> {
@@ -51,9 +50,9 @@ function completionsModel(id: string, compat?: Model<"openai-completions">["comp
 describe("OpenAI Responses 24h extended retention", () => {
 	it.each(["gpt-4o", "gpt-4o-mini", "gpt-5-mini", "o3", "gpt-5.3-codex", "gpt-5.4-mini"] as const)(
 		"%s: outside the documented list, no 24h field and no long lifetime",
-		(id) => {
+		async (id) => {
 			const model = getBuiltinModel("openai", id);
-			const payload = responsesPayload(model);
+			const payload = await responsesPayload(model);
 			expect(payload.prompt_cache_retention).toBeUndefined();
 			expect(payload.prompt_cache_key).toBe("s1");
 			expect(resolveModelCapabilities(model).cache).toEqual({ mechanism: "key", lifetimes: {} });
@@ -62,41 +61,41 @@ describe("OpenAI Responses 24h extended retention", () => {
 
 	it.each(["gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const)(
 		"%s: on the documented list, 24h retention and a 24h lifetime",
-		(id) => {
+		async (id) => {
 			const model = getBuiltinModel("openai", id);
-			expect(responsesPayload(model).prompt_cache_retention).toBe("24h");
+			expect((await responsesPayload(model)).prompt_cache_retention).toBe("24h");
 			expect(resolveModelCapabilities(model).cache).toEqual({ mechanism: "key", lifetimes: { long: 86_400 } });
 		},
 	);
 
-	it("lets compat.supportsLongCacheRetention opt an unlisted model in", () => {
+	it("lets compat.supportsLongCacheRetention opt an unlisted model in", async () => {
 		const base = getBuiltinModel("openai", "gpt-4o");
 		const model = { ...base, compat: { ...base.compat, supportsLongCacheRetention: true } };
-		expect(responsesPayload(model).prompt_cache_retention).toBe("24h");
+		expect((await responsesPayload(model)).prompt_cache_retention).toBe("24h");
 	});
 
-	it("keeps the 12h explicit mode for GPT-5.6 and later", () => {
+	it("keeps the 12h explicit mode for GPT-5.6 and later", async () => {
 		const model = getBuiltinModel("openai", "gpt-5.6-sol");
-		const payload = responsesPayload(model);
+		const payload = await responsesPayload(model);
 		expect(payload.prompt_cache_retention).toBeUndefined();
 		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
 	});
 });
 
 describe("OpenAI Chat Completions 24h extended retention", () => {
-	it.each(["gpt-4o", "o3", "gpt-5-mini"])("%s on api.openai.com: no 24h field", (id) => {
-		const params = completionsPayload(completionsModel(id));
+	it.each(["gpt-4o", "o3", "gpt-5-mini"])("%s on api.openai.com: no 24h field", async (id) => {
+		const params = await completionsPayload(completionsModel(id));
 		expect(params.prompt_cache_retention).toBeUndefined();
 		expect(params.prompt_cache_key).toBe("s1");
 	});
 
-	it("gpt-4.1 on api.openai.com: 24h retention", () => {
-		expect(completionsPayload(completionsModel("gpt-4.1")).prompt_cache_retention).toBe("24h");
+	it("gpt-4.1 on api.openai.com: 24h retention", async () => {
+		expect((await completionsPayload(completionsModel("gpt-4.1"))).prompt_cache_retention).toBe("24h");
 	});
 
-	it.each(["gpt-5.6-sol", "gpt-6-astra"])("%s: no deprecated 24h field, even when compat declares long", (id) => {
+	it.each(["gpt-5.6-sol", "gpt-6-astra"])("%s: no deprecated 24h field, even when compat declares long", async (id) => {
 		for (const compat of [undefined, { supportsLongCacheRetention: true }]) {
-			const params = completionsPayload(completionsModel(id, compat));
+			const params = await completionsPayload(completionsModel(id, compat));
 			expect(params.prompt_cache_retention).toBeUndefined();
 			expect(params.prompt_cache_key).toBe("s1");
 		}

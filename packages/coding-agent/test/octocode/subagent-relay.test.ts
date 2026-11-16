@@ -417,7 +417,7 @@ describe("subagent dialogs relayed to the parent", () => {
 		expect(ok.entries()).toEqual([expect.objectContaining({ via: "relay", agent: "a-relay" })]);
 	});
 
-	it("cancels every dialog when the parent has no UI, so the child is refused at once", async () => {
+	it("refuses at once when the parent has no UI, telling a permission ask why", async () => {
 		const started = Date.now();
 		const none = await relay(
 			[shell("d1"), { id: "c1", method: "confirm", title: "Sure?" }],
@@ -425,9 +425,12 @@ describe("subagent dialogs relayed to the parent", () => {
 			{ identity: { id: "a-nobody" } },
 		);
 		expect(none.relayed).toBe("");
-		expect(none.answers.every((answer) => answer.cancelled === true)).toBe(true);
+		expect(none.answers[0]).toEqual(picked("d1", "deny_note", expect.stringMatching(/nobody can confirm/)));
+		expect(none.answers[1]).toMatchObject({ cancelled: true });
 		expect(Date.now() - started).toBeLessThan(5_000);
-		expect(await relay([shell("d1")], undefined)).toMatchObject({ answers: [{ cancelled: true }] });
+		expect(await relay([shell("d1")], undefined)).toMatchObject({
+			answers: [picked("d1", "deny_note", expect.any(String))],
+		});
 	});
 
 	it("denies the dialogs past ten in a minute, tells the child why, and warns the user once", async () => {

@@ -16,7 +16,7 @@ import {
 import { sanitizeTerminalText } from "../../../../../common/src/sanitize.ts";
 import { ruleLine } from "../../../theme/dynamic-border.ts";
 import { theme } from "../../../theme/theme.ts";
-import { formatKeyText, type RankedHint, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
+import { formatKeyText, moveHint, type RankedHint, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
 
 export interface QueueListRow {
 	mode: "steer" | "followUp";
@@ -155,6 +155,7 @@ export class QueueListComponent implements Component, Focusable {
 		const closeKey = formatKeyText(kb.getKeys("tui.select.cancel")[0] ?? "q");
 		const deleteKey = (["d", "delete", "backspace"] as const).find((key) => !claimed.has(key));
 		const hints: RankedHint[] = [];
+		if (this.rows.length > 1) hints.push(moveHint(5));
 		if (this.rows.length > 0) {
 			if (!claimed.has("shift+up") && !claimed.has("shift+down")) hints.push(["shift+↑↓", "reorder", 4]);
 			if (kb.getKeys("tui.select.confirm").length > 0 || !claimed.has("e")) hints.push([editKey, "edit", 2]);
@@ -163,8 +164,7 @@ export class QueueListComponent implements Component, Focusable {
 		}
 		if (this.rows.length === 0 || kb.getKeys("tui.select.cancel").length > 0 || !claimed.has("q"))
 			hints.push([closeKey, "close", 0]);
-		// A narrow terminal drops the least needed hints first, never the keys that delete and close. The arrows that move
-		// the cursor are not named: every list moves with them.
+		// A narrow terminal drops the least needed hints first, never the keys that delete and close.
 		const hint = renderHintLine(hints, width, 1);
 		lines.push(hint, border);
 		return lines;

@@ -95,14 +95,6 @@
         {
           "type": "string",
           "const": "sse"
-        },
-        {
-          "type": "string",
-          "const": "websocket"
-        },
-        {
-          "type": "string",
-          "const": "websocket-cached"
         }
       ],
       "default": "auto"
@@ -388,7 +380,7 @@
           ]
         }
       },
-      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and timer under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema."
+      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema."
     },
     "research": {
       "type": "object",
@@ -1155,7 +1147,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "description": "Let a timer's until.check wait call a cheaper model to judge a condition after a deterministic trigger fires. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per wait, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
+              "description": "Let a wait's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per wait, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
               "default": false
             }
           },
@@ -1239,6 +1231,13 @@
           "minimum": 0,
           "description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
           "default": 300
+        },
+        "wakeHoldSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
+          "default": 0
         }
       },
       "description": "Limits on the subagents a session starts, and how they are checked on.",
@@ -1248,19 +1247,6 @@
       "type": "boolean",
       "description": "Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it.",
       "default": false
-    },
-    "websocketConnectTimeoutMs": {
-      "anyOf": [
-        {
-          "type": "number",
-          "minimum": 0
-        },
-        {
-          "type": "string",
-          "const": "disabled"
-        }
-      ],
-      "description": "WebSocket connect or open handshake timeout in milliseconds; 0 or \"disabled\" disables it."
     },
     "tuiMode": {
       "anyOf": [

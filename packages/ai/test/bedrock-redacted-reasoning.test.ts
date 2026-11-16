@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * OpenAI models served through Bedrock Converse (e.g. `global.openai.gpt-5.6-terra`)
  * return encrypted reasoning as the opaque `redactedContent` member of
- * `reasoningContent`, not as `reasoningText`. The AWS SDK decodes the wire blob to
- * `Uint8Array`.
+ * `reasoningContent`, not as `reasoningText`. Binary fixtures carry the JSON blob as
+ * base64; split-byte fixtures are encoded at the fetch boundary.
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlockDelta.html
  */
 const bedrockMock = vi.hoisted(() => {
@@ -16,52 +16,23 @@ const bedrockMock = vi.hoisted(() => {
 	};
 });
 
-vi.mock("@aws-sdk/client-bedrock-runtime", () => {
-	class BedrockRuntimeServiceException extends Error {}
+import { stream } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
 
-	class BedrockRuntimeClient {
-		send(): Promise<unknown> {
-			if (bedrockMock.streamEvents) {
-				const events = bedrockMock.streamEvents;
-				return Promise.resolve({
-					$metadata: { httpStatusCode: 200 },
-					stream: (async function* () {
-						yield* events;
-					})(),
-				});
-			}
-			return Promise.reject(new Error("mock send"));
-		}
-	}
-
-	class ConverseStreamCommand {
-		readonly input: unknown;
-
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	}
-
-	return {
-		BedrockRuntimeClient,
-		BedrockRuntimeServiceException,
-		ConverseStreamCommand,
-		StopReason: {
-			END_TURN: "end_turn",
-			STOP_SEQUENCE: "stop_sequence",
-			MAX_TOKENS: "max_tokens",
-			MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
-			TOOL_USE: "tool_use",
-		},
-		CachePointType: { DEFAULT: "default" },
-		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
-		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
-		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
-		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
-	};
-});
-
-import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
+const streamBedrock: typeof stream = (model, context, options) =>
+	stream(model, context, {
+		apiKey: "test",
+		env: {},
+		...options,
+		fetch: async () =>
+			bedrockResponse(
+				JSON.parse(
+					JSON.stringify(bedrockMock.streamEvents ?? bedrockTextEvents, (_key, value: unknown) =>
+						value instanceof Uint8Array ? Buffer.from(value).toString("base64") : value,
+					),
+				),
+			),
+	});
 import type { Context, Message, Model, ThinkingContent } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -94,7 +65,7 @@ function redactedReasoningEvents(): unknown[] {
 		{
 			contentBlockDelta: {
 				contentBlockIndex: 0,
-				delta: { reasoningContent: { redactedContent: bedrockMock.redactedBytes } },
+				delta: { reasoningContent: { redactedContent: bedrockMock.redactedBase64 } },
 			},
 		},
 		{ contentBlockStop: { contentBlockIndex: 0 } },
@@ -114,7 +85,6 @@ async function capturePayload(context: Context): Promise<BedrockRequestPayload> 
 	let capturedPayload: BedrockRequestPayload | undefined;
 	const s = streamBedrock(gptModel, normalizeContext(context), {
 		cacheRetention: "none",
-		signal: AbortSignal.abort(),
 		onPayload: (payload) => {
 			capturedPayload = payload as BedrockRequestPayload;
 			return payload;
@@ -130,6 +100,21 @@ async function capturePayload(context: Context): Promise<BedrockRequestPayload> 
 }
 
 describe("Bedrock redacted reasoning", () => {
+	it("preserves encrypted reasoning through a persisted replay round trip", async () => {
+		bedrockMock.streamEvents = redactedReasoningEvents();
+		const response = await streamBedrock(gptModel, helloContext).result();
+		const persisted = JSON.parse(JSON.stringify(response));
+		const payload = await capturePayload({
+			messages: [
+				{ role: "user", content: "hello", timestamp: 0 },
+				persisted,
+				{ role: "user", content: "continue", timestamp: 1 },
+			],
+		});
+		expect(payload.messages.find((message) => message.role === "assistant")?.content[0]).toEqual({
+			reasoningContent: { redactedContent: bedrockMock.redactedBase64 },
+		});
+	});
 	beforeEach(() => {
 		bedrockMock.streamEvents = undefined;
 	});
@@ -167,7 +152,7 @@ describe("Bedrock redacted reasoning", () => {
 			{
 				contentBlockDelta: {
 					contentBlockIndex: 0,
-					delta: { reasoningContent: { redactedContent: bedrockMock.redactedBytes } },
+					delta: { reasoningContent: { redactedContent: bedrockMock.redactedBase64 } },
 				},
 			},
 			{ messageStop: { stopReason: "end_turn" } },
@@ -221,10 +206,10 @@ describe("Bedrock redacted reasoning", () => {
 
 		const payload = await capturePayload({ messages });
 
-		const assistant = payload.messages.find((m: any) => m.role === "assistant");
+		const assistant = payload.messages.find((m) => m.role === "assistant");
 		expect(assistant).toBeDefined();
 		expect(assistant!.content).toEqual([
-			{ reasoningContent: { redactedContent: bedrockMock.redactedBytes } },
+			{ reasoningContent: { redactedContent: bedrockMock.redactedBase64 } },
 			{ text: "done" },
 		]);
 	});
@@ -259,10 +244,10 @@ describe("Bedrock redacted reasoning", () => {
 
 		const payload = await capturePayload({ messages });
 
-		const assistant = payload.messages.find((m: any) => m.role === "assistant");
+		const assistant = payload.messages.find((m) => m.role === "assistant");
 		expect(assistant).toBeDefined();
 		expect(assistant!.content).toEqual([
-			{ reasoningContent: { redactedContent: bedrockMock.redactedBytes } },
+			{ reasoningContent: { redactedContent: bedrockMock.redactedBase64 } },
 			{ toolUse: { toolUseId: "tool-1", name: "read", input: { path: "/tmp/a.txt" } } },
 		]);
 	});

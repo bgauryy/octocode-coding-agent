@@ -16,6 +16,7 @@ import {
 	serializeMessages,
 } from "./compaction/index.ts";
 import type { CrashRecord } from "./crash-log.ts";
+import type { ProblemRecord } from "./diagnostics-log.ts";
 import type { Extension } from "./features/types.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { ReadonlySessionManager } from "./session-manager.ts";
@@ -173,6 +174,7 @@ export function collectBugReportMetadata(options: CollectBugReportMetadataOption
 export function collectBugReportDiagnostics(
 	sessionManager: ReadonlySessionManager,
 	crashes: readonly CrashRecord[] = [],
+	problems: readonly ProblemRecord[] = [],
 ) {
 	const entries = sessionManager.getEntries();
 	const assistant = [];
@@ -209,6 +211,7 @@ export function collectBugReportDiagnostics(
 		assistantMessageCount,
 		assistant,
 		crashes: crashes.map(({ notified: _notified, ...record }) => record),
+		problems: [...problems],
 	};
 }
 

@@ -7,7 +7,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "../../../../common/src/sanitize.ts";
 import { clip } from "../shared/text.ts";
 import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
-import { descendantRows } from "../shared/process-descendants.ts";
+import { pollDescendants } from "../shared/descendant-poller.ts";
 import { agentEnv } from "./runner-env.ts";
 import type { RunnerBilling } from "./runners.ts";
 import { CLAUDE_ISOLATION_ARGS } from "./runner-isolation.ts";
@@ -229,9 +229,9 @@ const abortError = (signal: AbortSignal): Error =>
 
 /**
  * One task's turn in `claude -p`: started in the task's folder with the cleaned environment (`agentEnv`), as the leader
- * of its own process group. Keep streaming input open until the result's descendants are retained, then send EOF.
- * Cleanup stops the remaining group and retained descendants. Foreign helpers that reparent before the result or
- * detach during shutdown are not guaranteed on POSIX; this protocol is cooperative, not OS containment.
+ * of its own process group. Its descendants are polled from spawn to close (`pollDescendants`); input stays open until
+ * the result's reading, then EOF. Cleanup stops the remaining group and every descendant seen. A helper that detaches
+ * (`setsid`) between two readings is not owned; this is cooperative, not OS containment.
  */
 export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply> {
 	input.signal.throwIfAborted();
@@ -260,7 +260,8 @@ async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply>
 	adoptTree(child.pid);
 	const reader = new StreamReader(input);
 	let stderr = "";
-	let retained: ReturnType<typeof descendantRows> | undefined;
+	const descendants = pollDescendants(child.pid);
+	let closing: Promise<void> | undefined;
 	let onAbort: (() => void) | undefined;
 	try {
 		return await new Promise<HeadlessReply>((resolve, reject) => {
@@ -279,9 +280,9 @@ async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply>
 			const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
 			lines.on("line", (line) => {
 				reader.line(line);
-				if (!reader.result || retained) return;
-				retained = descendantRows(child.pid).catch(() => []);
-				void retained.then(() => child.stdin.end());
+				if (!reader.result || closing) return;
+				// One more reading before the input closes, so the CLI's helpers are known when it exits.
+				closing = descendants.snapshot().then(() => void child.stdin.end());
 			});
 			child.once("close", (code) => {
 				try {
@@ -293,7 +294,7 @@ async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply>
 		});
 	} finally {
 		if (onAbort) input.signal.removeEventListener("abort", onAbort);
-		await stopTree(child.pid, KILL_GRACE_MS, await retained);
+		await stopTree(child.pid, KILL_GRACE_MS, await descendants.stop());
 		child.stdin.destroy();
 	}
 }

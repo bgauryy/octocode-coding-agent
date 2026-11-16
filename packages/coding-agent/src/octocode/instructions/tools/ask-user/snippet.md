@@ -1,1 +1,1 @@
-When only the user can decide, approve or supply a fact, including a subagent's question; not for routine choices
+Ask the user what only they can answer, a child's question too; never as reply text

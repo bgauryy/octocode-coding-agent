@@ -51,7 +51,7 @@ export function registerAskUser(api: ExtensionAPI, storedQuestion?: StoredQuesti
 			roleVariant: true,
 			label: "Ask user",
 			promptSnippet: renderInstruction("tools/ask-user/snippet.md"),
-			description: `Receive user answers this turn; use instead of ending a reply or report with a question. Batch related, self-contained questions; at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options (none for free text); put the recommendation supported by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in.`,
+			description: `Ask the user anything (decision, approval, fact, what they meant); answers arrive this turn. Never write a user question in a reply. Batch related, self-contained questions; at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options (none for free text); put the recommendation supported by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in.`,
 			parameters: Type.Object({
 				forward: Type.Optional(
 					Type.Number({

@@ -121,9 +121,9 @@ export function agentModes() {
 						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
-				// The delegation rules wait with `timer` (never sleep or poll), so the loadout keeps it whenever agent is active.
-				// A lean child gets no such rules and only messages its parent: it has `timer` only when its profile lists it.
-				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["timer"] }),
+				// The delegation rules wait with `wait` (never sleep or poll), so the loadout keeps it whenever agent is active.
+				// A lean child gets no such rules and only messages its parent: it has `wait` only when its profile lists it.
+				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["wait"] }),
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

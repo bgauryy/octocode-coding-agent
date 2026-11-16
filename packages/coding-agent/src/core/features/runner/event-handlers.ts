@@ -34,7 +34,8 @@ export function snapshotEventHandlers(extensions: Extension[], event: ExtensionE
 	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
 }
 
-export function sameMessages(left: AgentMessage[], right: AgentMessage[]): boolean {
+/** The same message objects in the same order. */
+export function sameMessages(left: readonly AgentMessage[], right: readonly AgentMessage[]): boolean {
 	return left.length === right.length && left.every((message, index) => message === right[index]);
 }
 

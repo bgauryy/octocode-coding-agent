@@ -18,6 +18,7 @@ import {
 	CONFIG_PROTOCOL_VERSION,
 	CONFIG_SETTING_KEYS,
 	ProviderIdSchema,
+	deriveAgentRoute,
 	type ConfigSetting,
 	type ConfigSnapshot,
 	type CredentialSourceStatus,
@@ -183,6 +184,11 @@ function providerRows(
 			...(found.length > 0 ? { origins: found } : {}),
 			...(origins.disabled.has(provider) ? { disabled: true } : {}),
 			...(auth ? { auth } : {}),
+			route: deriveAgentRoute({
+				subscription:
+					auth?.plan?.billing === "plan" ||
+					(auth?.oauth?.isSubscription === true && sources.some((source) => source.kind === "oauth")),
+			}),
 		};
 	});
 }

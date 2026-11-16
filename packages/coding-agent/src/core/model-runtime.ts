@@ -149,6 +149,11 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getProviderIds();
 	}
 
+	/** The models.json file defining the provider; undefined for a built-in or extension provider. */
+	getProviderDefinitionFile(providerId: string): string | undefined {
+		return this.layers.config.getProviderFile(providerId);
+	}
+
 	hasContextWindowOverride(providerId: string, modelId: string): boolean {
 		return this.layers.hasContextWindowOverride(providerId, modelId);
 	}

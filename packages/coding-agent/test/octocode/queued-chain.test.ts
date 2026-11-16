@@ -196,8 +196,22 @@ describe("queued dependent children", () => {
 		expect(s.control.queued()[0]).toContain(`${held.details.id} held`);
 		expect(s.sent.map(({ message }) => String(message.content)).join("\n")).toContain("is held");
 		const started = await s.run({ resume: held.details.id as string, task: "x", goal: "x" });
-		expect(textOf(started)).toContain("Starting held");
+		expect(textOf(started)).toContain("Starting queued");
 		await until(() => s.control.queued().length === 0);
+		await s.control.stopAll();
+	});
+
+	it("starts a waiting child on resume before its prerequisite ends", async () => {
+		const s = setup();
+		const first = await s.run({ task: "abortable work", goal: "first", background: true });
+		const a = first.details.id as string;
+		const waiting = await s.run({ task: "echo task early", goal: "second", background: true, after: [`agent:${a}`] });
+		const b = waiting.details.id as string;
+		expect(s.control.queued()[0]).toContain(`${b} queued`);
+		const started = await s.run({ resume: b, task: "x", goal: "x" });
+		expect(textOf(started)).toContain(`Starting queued ${b}`);
+		await until(() => s.control.queued().length === 0);
+		await until(() => s.sent.some(({ message }) => String(message.content).includes(`Background subagent ${b}`)));
 		await s.control.stopAll();
 	});
 

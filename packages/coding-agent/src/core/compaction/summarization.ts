@@ -25,7 +25,13 @@ import { combineUsage } from "../usage-totals.ts";
 import { estimateTokens } from "./tokens.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeMessages } from "./utils.ts";
 import { inlineSummaryTokens, summaryTargetTokens } from "./checkpoint.ts";
-import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "./summary-format.ts";
+import {
+	STOPPED_HEADING,
+	SUMMARY_CHECKPOINT_FORMAT,
+	summarySection,
+	summarySizeTarget,
+	TLDR_HEADING,
+} from "./summary-format.ts";
 import { summaryMaxTokens, summaryThinkingLevel } from "./settings.ts";
 
 const SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize.md", {
@@ -50,7 +56,7 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
 		return `${label} failed: ${response.errorMessage || "Unknown error"}`;
 	}
 	if (response.stopReason === "length") {
-		return `${label} failed: generation hit the token cap and the summary is incomplete`;
+		return `${label} failed: generation hit the token cap and the summary is incomplete (output ${response.usage.output} tokens)`;
 	}
 	if (!response.content.some((block) => block.type === "toolCall") && !contentText(response.content).trim()) {
 		return `${label} failed: the summary was empty`;
@@ -58,7 +64,7 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
 	return undefined;
 }
 
-function createSummarizationOptions(
+export function createSummarizationOptions(
 	model: Model<any>,
 	apiKey: string | undefined,
 	headers: Record<string, string> | undefined,
@@ -212,6 +218,20 @@ async function completeWithOverflowTrim(
 	}
 }
 
+const CUT_OFF_NOTE = renderInstruction("workflows/compaction/cut-off-note.md");
+
+/**
+ * The text of a history summary after every shrinking retry: one still cut off at the cap is kept, marked as cut, when it
+ * already says where the work stopped (the sections after it only condense); otherwise it throws like `summaryText`.
+ */
+function keptSummaryText(response: AssistantMessage): string {
+	if (response.stopReason === "length" && !response.content.some((block) => block.type === "toolCall")) {
+		const text = contentText(response.content).trim();
+		if (summarySection(text, STOPPED_HEADING).length > 0) return `${text}\n\n${CUT_OFF_NOTE.trim()}`;
+	}
+	return summaryText(response);
+}
+
 /** The text of a finished summary response; throws when it failed, was cut off or asked for a tool. */
 function summaryText(response: AssistantMessage): string {
 	const failure = getSummarizationFailure(response, "Summarization");
@@ -222,6 +242,67 @@ function summaryText(response: AssistantMessage): string {
 		throw new Error("Summarization attempted to call a tool");
 	}
 	return contentText(response.content);
+}
+
+/** Retries of a summary cut off at the output cap, each asking for half the size. */
+const MAX_SHRINKS = 3;
+/** The smallest output cap a retry lowers to. */
+const MIN_SUMMARY_CAP = 1024;
+
+/** `prompt` asking for a summary of at most the share of `room` tokens that remains after `shrink` halvings. */
+function sizedPrompt(prompt: string, room: number, shrink: number): string {
+	const target = summarySizeTarget(Math.floor(summaryTargetTokens(room) / shrink));
+	return target ? `${prompt}\n\n${target}` : prompt;
+}
+
+/**
+ * A summary request over `messages` that shrinks and retries: an overflow drops the oldest messages and a reply cut off
+ * at the output cap is asked again, up to {@link MAX_SHRINKS} times, without reasoning and for half the size each
+ * time (from the second retry the output cap halves too). The usage reported is the sum over every request.
+ * `sizing.room`: the tokens the summary is sized against, applied from the first request; without it only retries
+ * carry a size target (against the model's output cap). `sizing.first`: a response the whole request already got.
+ */
+export async function completeBounded(
+	messages: AgentMessage[],
+	buildPrompt: (messages: AgentMessage[]) => string,
+	model: Model<any>,
+	options: SimpleStreamOptions,
+	streamFn?: StreamFn,
+	retry?: RetryPolicy,
+	callbacks?: RetryCallbacks,
+	sizing?: { room?: number; first?: AssistantMessage },
+): Promise<AssistantMessage> {
+	const room = sizing?.room;
+	const firstPrompt =
+		room === undefined ? buildPrompt : (remaining: AgentMessage[]) => sizedPrompt(buildPrompt(remaining), room, 1);
+	let response = await completeWithOverflowTrim(
+		messages,
+		firstPrompt,
+		model,
+		options,
+		streamFn,
+		retry,
+		callbacks,
+		sizing?.first,
+	);
+	// Every retry is billed: the usage reported is the sum over the requests, not the last one's.
+	let usage = response.usage;
+	let shrink = 1;
+	let current = options;
+	for (let tries = 0; response.stopReason === "length" && !options.signal?.aborted && tries < MAX_SHRINKS; tries++) {
+		const { reasoning: _dropped, ...plain } = current;
+		current = plain;
+		if (tries > 0) {
+			const cap = current.maxTokens ?? summaryMaxTokens(model);
+			current = { ...current, maxTokens: Math.max(MIN_SUMMARY_CAP, Math.floor(cap / 2)) };
+		}
+		shrink *= 2;
+		const sized = (remaining: AgentMessage[]) =>
+			sizedPrompt(buildPrompt(remaining), room ?? summaryMaxTokens(model), shrink);
+		response = await completeWithOverflowTrim(messages, sized, model, current, streamFn, retry, callbacks);
+		usage = combineUsage(usage, response.usage);
+	}
+	return response.usage === usage ? response : { ...response, usage };
 }
 
 /** Generate or update a conversation summary and return its provider usage. */
@@ -243,15 +324,8 @@ export async function generateSummaryWithUsage(
 	sessionId?: string,
 	cache?: CachePreferences,
 ): Promise<{ text: string; usage: Usage }> {
-	// Use update prompt if we have a previous summary, otherwise initial prompt
-	const basePrompt = (previous: string | undefined): string => {
-		let prompt = previous ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
-		const sizeTarget =
-			previous && reserveTokens ? summarySizeTarget(summaryTargetTokens(inlineSummaryTokens(reserveTokens))) : "";
-		if (sizeTarget) prompt = `${prompt}\n\n${sizeTarget}`;
-		return customInstructions ? `${prompt}\n\nAdditional focus: ${customInstructions}` : prompt;
-	};
-
+	// Every summary is asked for a size (a first one without it ran past the cap); `completeBounded` halves it per retry.
+	const room = reserveTokens ? inlineSummaryTokens(reserveTokens) : summaryMaxTokens(model);
 	const buildPrompt =
 		(previous: string | undefined) =>
 		(messages: AgentMessage[]): string => {
@@ -261,16 +335,18 @@ export async function generateSummaryWithUsage(
 			if (previous) {
 				promptText += `<previous-summary>\n${previous}\n</previous-summary>\n\n`;
 			}
-			return promptText + basePrompt(previous);
+			// Use the update prompt if we have a previous summary, the initial prompt otherwise.
+			promptText += previous ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
+			return customInstructions ? `${promptText}\n\nAdditional focus: ${customInstructions}` : promptText;
 		};
 
 	const options = createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache);
 	const complete = (messages: AgentMessage[], previous: string | undefined, first?: AssistantMessage) =>
-		completeWithOverflowTrim(messages, buildPrompt(previous), model, options, streamFn, retry, callbacks, first);
+		completeBounded(messages, buildPrompt(previous), model, options, streamFn, retry, callbacks, { room, first });
 
 	const whole = await completeSummarization(
 		model,
-		buildSummarizationContext(buildPrompt(previousSummary)(currentMessages)),
+		buildSummarizationContext(sizedPrompt(buildPrompt(previousSummary)(currentMessages), room, 1)),
 		options,
 		streamFn,
 		retry,
@@ -281,58 +357,13 @@ export async function generateSummaryWithUsage(
 	// overflow goes on by dropping the oldest messages.
 	if (split === undefined) {
 		const response = await complete(currentMessages, previousSummary, whole);
-		return { text: summaryText(response), usage: response.usage };
+		return { text: keptSummaryText(response), usage: response.usage };
 	}
 	// Too large for one request: the older part is summarized on its own, and that summary is the previous summary of
 	// the newer part, so the oldest history is condensed twice instead of left out. A part that still does not fit
 	// drops its own oldest messages and says so.
 	const older = await complete(currentMessages.slice(0, split), previousSummary);
-	const olderSummary = summaryText(older);
+	const olderSummary = keptSummaryText(older);
 	const newer = await complete(currentMessages.slice(split), olderSummary);
-	return { text: summaryText(newer), usage: combineUsage(older.usage, newer.usage) };
-}
-
-const TURN_PREFIX_SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/turn-prefix.md");
-
-/**
- * Generate a summary for a turn prefix (when splitting a turn).
- */
-export async function generateTurnPrefixSummary(
-	messages: AgentMessage[],
-	model: Model<any>,
-	apiKey: string | undefined,
-	headers?: Record<string, string>,
-	env?: Record<string, string>,
-	signal?: AbortSignal,
-	thinkingLevel?: ThinkingLevel,
-	streamFn?: StreamFn,
-	retry?: RetryPolicy,
-	callbacks?: RetryCallbacks,
-	sessionId?: string,
-	customInstructions?: string,
-	cache?: CachePreferences,
-): Promise<{ text: string; usage: Usage }> {
-	const response = await completeWithOverflowTrim(
-		messages,
-		(remaining) =>
-			`# Conversation\n${serializeMessages(remaining)}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
-		model,
-		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache),
-		streamFn,
-		retry,
-		callbacks,
-	);
-
-	const failure = getSummarizationFailure(response, "Turn prefix summarization");
-	if (failure) {
-		throw new Error(failure);
-	}
-	if (response.content.some((block) => block.type === "toolCall")) {
-		throw new Error("Turn prefix summarization attempted to call a tool");
-	}
-
-	return {
-		text: contentText(response.content),
-		usage: response.usage,
-	};
+	return { text: keptSummaryText(newer), usage: combineUsage(older.usage, newer.usage) };
 }

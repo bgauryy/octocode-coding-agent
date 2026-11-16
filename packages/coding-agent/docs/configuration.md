@@ -67,7 +67,7 @@ Global configuration and runtime state live in `~/.octocode/octocodecode/` ("glo
 | `OCTOCODE_CODING_AGENT_DIR` | Only the core configuration directory; native runtime files keep their own home                                                          |
 | `OCTOCODE_AGENT_DB`         | The agent database file (default `<octocode home>/agent/workspaces.db`); its transcript mirror sits beside it as `<name>.transcripts.db` |
 
-An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` also turns off the [Pi fallback](#pi-configuration-fallback). `/mcp config` prints the exact MCP paths, their read order and trust state without connecting servers.
+An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` also turns off the [Pi fallback](#pi-configuration-fallback) and moves the user MCP file to `mcp.json` in that directory. `/mcp config` prints the exact MCP paths, their read order and trust state without connecting servers.
 
 ## Where each configuration belongs
 
@@ -89,7 +89,7 @@ Workspace files are relative to the session's working directory; agent profiles 
 | Project instructions      | `AGENTS.md` in the agent directory                                     | `AGENTS.md` in the project and its ancestors        | [instructions](instructions.md)                                       |
 | Agent profiles            | `agents/*.md`                                                          | `.octocode/agents/*.md` at the repository root      | `/agents`, `/reload`                                                  |
 | Hooks                     | `hooks.json` in the runtime home                                       | `.octocode/hooks.json` at the repository root       | `/harness hooks`; [hooks](hooks.md)                                   |
-| Plugins                   | `plugins` in `settings.json`                                           | `plugins` in `.octocode/settings.json`              | `/plugins`; [plugins](plugins.md)                                     |
+| Plugins                   | `plugins` in `settings.json`                                           | `plugins` in `.octocode/settings.json`              | `/harness`; [plugins](plugins.md)                                     |
 | Plugin marketplaces       | `marketplaces` in `settings.json` (global only)                        | not read                                            | `octocode marketplace add`                                            |
 | Extensions                | `extensions/` (ignored with a warning)                                 | `.octocode/extensions/` (ignored)                   | User code extensions are not supported; use plugins and hooks         |
 | GitHub sign-in (research) | The Octocode CLI's own store                                           | none                                                | `/octocode auth login\|status\|logout`                                |
@@ -112,7 +112,7 @@ Workspace files are relative to the session's working directory; agent profiles 
 
 Provider visibility switches are global. An invalid `disabledProviders` value is reported as a settings-load error; an edit does not replace the currently loaded switches until the file is valid.
 
-`defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action selects the current model and saves the paired global default together, after the write is acknowledged. Trusted workspace defaults take precedence over global ones.
+`defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action (or **D** while the filter is empty) selects the model and saves the paired default together, after the write is acknowledged. In a trusted project it asks whether to save globally or for this project only (the same project settings file as `/configuration set --local`); in an untrusted project it saves globally. The picker header shows the startup default and whether it comes from global settings, the project or a run override. A trusted project default takes precedence over a global one, so a global save in such a project says that the project default wins.
 
 The web Settings page saves or clears the startup provider and model as one pair in the chosen global or trusted workspace file. Its source badges show the effective precedence; changing the pair keeps the current chat's model.
 
@@ -440,7 +440,7 @@ Sessions written before the move live in `<octocode home>/sessions/--<working di
 
 One sweep runs at session start, off the start path, at most every 6 hours, over every registered workspace whose root exists (`.octocode/code` and `.octocode/tmp` only), the global session folder and the legacy folders. An expired transcript goes with its session folders and rows, as with the delete commands. The current session, a running session, an unreadable directory and a live bash job are never removed; symlinks are not followed; a listing failure removes nothing. One summary line is shown as a warning when something was removed or failed.
 
-**History archive.** Rows of the backlog audit, configuration audit and workspace command histories older than 14 days move to owner-only gzip JSONL files per table family and UTC month in `<octocode home>/archive/`; archived rows older than `retention.days` are dropped. Backlog items, notes and comments are never deleted by age. A main session runs this at most once a day per process, after the first backlog access, in short write transactions; each batch is archived before it is deleted. Every process also stores a memory sample every 5 minutes (deleted after 7 days; `OCTOCODE_PROCESS_SAMPLE_MINUTES`, `0` stops it) for `/processes`.
+**History archive.** Rows of the backlog audit, configuration audit and workspace command histories older than 14 days move to owner-only gzip JSONL files per table family and UTC month in `<octocode home>/archive/`; archived rows older than `retention.days` are dropped. Agent runs and agent events older than `retention.days` are dropped without an archive; each workspace keeps its newest event. Backlog items, notes and comments are never deleted by age. A main session runs this at most once a day per process, after the first backlog access, in short write transactions; each batch is archived before it is deleted. Every process also stores a memory sample every 5 minutes (deleted after 7 days; `OCTOCODE_PROCESS_SAMPLE_MINUTES`, `0` stops it) for `/processes`.
 
 Positive process sample intervals are bounded to 1–2,147,483,647 milliseconds; invalid or negative values use the default. A slow process listing skips elapsed intervals rather than queuing further work.
 
@@ -543,6 +543,18 @@ With `cacheRetention: "long"`, Anthropic-compatible models send one-hour cache p
 
 `false` forces the five-minute tier for a model or region that rejects `ttl`; an explicit value always wins over the host list. OpenAI-style models use the same field for 24h retention. Field reference: [models.json](models-configuration.md).
 
+## Agent labels on requests
+
+Set `OCTOCODE_REQUEST_AGENT_HEADERS=1` to label every model request of a custom provider (one from `models.json` or an extension) with the agent that sent it, so a gateway or test server can tell a subagent's requests from its parent's.
+
+| Header              | Value                                                    |
+| ------------------- | -------------------------------------------------------- |
+| `x-octocode-agent`  | The subagent's id, or `main` for the session itself      |
+| `x-octocode-role`   | The subagent's profile (sent only by a subagent)         |
+| `x-octocode-parent` | The id of the agent that started it (only by a subagent) |
+
+Subagents inherit the variable. Built-in providers never receive these headers, and a `headers` entry you set on the provider or model with the same name wins.
+
 ## Long shell commands
 
 A foreground `bash` command moves to the background as a job after `bashBackgroundAfterSeconds` (default 90; `0` turns the move off). A command that is known to run long moves sooner, so the turn is not held. Recognised out of the box: test runners (`vitest`, `jest`, `pytest`, `cargo test`, `go test`), `yarn`/`npm`/`pnpm` `test`, `check`, `build`, `dev`, `serve` and `start`, `tsc -b`, and commands that follow a stream (`tail -f`).
@@ -558,6 +570,18 @@ A foreground `bash` command moves to the background as a job after `bashBackgrou
 ```
 
 A command the shell runs under another name (a wrapper script) is not recognised and keeps the `bashBackgroundAfterSeconds` threshold. Hints for GNU tools missing on macOS (`timeout`, `sed -i`) are shown only on macOS.
+
+## Wake hold window
+
+A child's report, a background job's exit or team mail starts a turn of an idle session at once. Reports and exits that arrive seconds apart each cost a turn that re-reads the whole prompt. `subagents.wakeHoldSeconds` (default `0`, off; at most `10`) makes an idle session hold a wake: the first one opens the window, and everything that arrives before it closes is delivered together and starts one turn.
+
+```json
+{ "subagents": { "wakeHoldSeconds": 2 } }
+```
+
+A wake costs up to that many seconds of latency, so leave it off unless several children or jobs routinely finish within seconds of each other. A session that is already running a turn is not delayed. When the session ends inside the window, what is held is delivered without starting a turn.
+
+Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
 
 ## Other topics
 

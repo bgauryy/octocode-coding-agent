@@ -1,5 +1,5 @@
 import { calculateCost } from "../../models/model-helpers.ts";
-import type { AssistantMessage, Model, StopReason } from "../../types.ts";
+import type { AssistantMessage, Model } from "../../types.ts";
 import { createUsage } from "../../utils/assistant-message.ts";
 
 export function parseChunkUsage(
@@ -41,30 +41,4 @@ export function parseChunkUsage(
 	});
 	calculateCost(model, usage);
 	return usage;
-}
-
-export function mapStopReason(reason: string | null): {
-	stopReason: StopReason;
-	errorMessage?: string;
-} {
-	if (reason === null) return { stopReason: "stop" };
-	switch (reason) {
-		case "stop":
-		case "end":
-			return { stopReason: "stop" };
-		case "length":
-			return { stopReason: "length" };
-		case "function_call":
-		case "tool_calls":
-			return { stopReason: "toolUse" };
-		case "content_filter":
-			return { stopReason: "error", errorMessage: "Provider finish_reason: content_filter" };
-		case "network_error":
-			return { stopReason: "error", errorMessage: "Provider finish_reason: network_error" };
-		default:
-			return {
-				stopReason: "error",
-				errorMessage: `Provider finish_reason: ${reason}`,
-			};
-	}
 }

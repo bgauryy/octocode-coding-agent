@@ -35,6 +35,9 @@ export function summaryTargetTokens(capTokens: number): number {
  */
 const FILE_LIST_INLINE_CHARS = 3_000;
 
+/** The most earlier checkpoint files a summary names; the newest of them names the ones before it. */
+const EARLIER_CHECKPOINTS_LISTED = 5;
+
 const FILE_LIST_BLOCK = /(\n\n<(read-files|modified-files)>\n)([\s\S]*?)(\n<\/\2>)/g;
 
 /** `summary` with each over-long file list moved to a file by `save`; a list that cannot be saved stays whole. */
@@ -141,10 +144,33 @@ export function projectAfterCompaction(
 	};
 }
 
-export function finalizeCompactionResult(
-	candidate: CompactionResult,
-	options: { branchEntries: SessionEntry[]; contextWindow: number; reserveTokens: number; sessionFile?: string },
-): CompactionResult {
+type FinalizeOptions = {
+	branchEntries: SessionEntry[];
+	contextWindow: number;
+	reserveTokens: number;
+	sessionFile?: string;
+};
+
+/**
+ * The candidate as the session will keep it: file lists and an over-long summary moved to checkpoint files. Files
+ * written for a compaction that then cannot fit are removed, so a failed compaction leaves none behind.
+ */
+export function finalizeCompactionResult(candidate: CompactionResult, options: FinalizeOptions): CompactionResult {
+	const created: string[] = [];
+	try {
+		return finalizeWithFiles(candidate, options, created);
+	} catch (error) {
+		for (const file of created) fs.rmSync(file, { force: true });
+		throw error;
+	}
+}
+
+function finalizeWithFiles(candidate: CompactionResult, options: FinalizeOptions, created: string[]): CompactionResult {
+	const persist = (text: string, sessionFile?: string): string => {
+		const file = persistCheckpointText(text, sessionFile);
+		created.push(file);
+		return file;
+	};
 	let result = candidate;
 	const { branchEntries, contextWindow, reserveTokens } = options;
 	if (!branchEntries.some((entry) => entry.id === result.firstKeptEntryId)) {
@@ -157,14 +183,19 @@ export function finalizeCompactionResult(
 		if (typeof archive?.path === "string") earlierArchives.add(archive.path);
 	}
 	if (earlierArchives.size > 0) {
+		// Each listed checkpoint carries its own notice, so older ones stay reachable through the chain.
+		const listed = [...earlierArchives].slice(-EARLIER_CHECKPOINTS_LISTED);
+		const omitted = earlierArchives.size - listed.length;
+		const omittedNote =
+			omitted > 0 ? `${renderInstruction("notices/recovery/earlier-checkpoints-omitted.md", { omitted })}\n` : "";
 		result = {
 			...result,
-			summary: `${result.summary}\n\n${renderInstruction("notices/recovery/earlier-checkpoints.md")}\n${[...earlierArchives].join("\n")}`,
+			summary: `${result.summary}\n\n${renderInstruction("notices/recovery/earlier-checkpoints.md")}\n${omittedNote}${listed.join("\n")}`,
 		};
 	}
 	const { sessionFile } = options;
 	if (sessionFile) {
-		const summary = spillFileLists(result.summary, (text) => persistCheckpointText(text, sessionFile));
+		const summary = spillFileLists(result.summary, (text) => persist(text, sessionFile));
 		if (summary !== result.summary) result = { ...result, summary };
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
@@ -194,7 +225,7 @@ export function finalizeCompactionResult(
 			"Compaction cannot fit the retained context and a shortened checkpoint in the target window.",
 		);
 	}
-	const file = persistCheckpointText(result.summary, sessionFile);
+	const file = persist(result.summary, sessionFile);
 	const fits = (text: string) => charsToTokens(text.length) <= summaryBudget && projectedTokens(text) <= available;
 	const summary = archivedView(result.summary, file, fits);
 	if (!fits(summary)) {

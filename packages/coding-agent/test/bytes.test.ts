@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { formatSize } from "../src/core/tools/truncate.ts";
 import { formatBytes } from "../src/utils/bytes.ts";
 
 describe("formatBytes", () => {
@@ -17,9 +16,5 @@ describe("formatBytes", () => {
 			"4.20 GiB",
 			"3.00 TiB",
 		]);
-	});
-
-	it("is what formatSize returns", () => {
-		for (const n of [0, 1023, 1024, 51_200, 1024 * 1024]) expect(formatSize(n)).toBe(formatBytes(n));
 	});
 });

@@ -400,10 +400,9 @@ describe("Generate E2E Tests", () => {
 		});
 
 		it.skipIf(!isVertexConfigured)("should handle thinking", { retry: 3 }, async () => {
-			const { ThinkingLevel } = await import("@google/genai");
 			await handleThinking(llm, {
 				...vertexOptions,
-				thinking: { enabled: true, budgetTokens: 1024, level: ThinkingLevel.LOW },
+				thinking: { enabled: true, budgetTokens: 1024, level: "LOW" },
 			});
 		});
 
@@ -412,10 +411,9 @@ describe("Generate E2E Tests", () => {
 		});
 
 		it.skipIf(!isVertexConfigured)("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-			const { ThinkingLevel } = await import("@google/genai");
 			await multiTurn(llm, {
 				...vertexOptions,
-				thinking: { enabled: true, budgetTokens: 1024, level: ThinkingLevel.MEDIUM },
+				thinking: { enabled: true, budgetTokens: 1024, level: "MEDIUM" },
 			});
 		});
 
@@ -1478,35 +1476,6 @@ describe("Generate E2E Tests", () => {
 
 		it.skipIf(!openaiCodexToken)("should handle image input", { retry: 3 }, async () => {
 			await handleImage(llm, { apiKey: openaiCodexToken });
-		});
-	});
-
-	describe("OpenAI Codex Provider (gpt-5.5 via WebSocket)", () => {
-		const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-		const wsOptions = { apiKey: openaiCodexToken, transport: "websocket" as const };
-
-		it.skipIf(!openaiCodexToken)("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm, wsOptions);
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle tool calling", { retry: 3 }, async () => {
-			await handleToolCall(llm, wsOptions);
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle streaming", { retry: 3 }, async () => {
-			await handleStreaming(llm, wsOptions);
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle thinking with reasoningEffort xhigh", { retry: 3 }, async () => {
-			await handleThinking(llm, { ...wsOptions, reasoningEffort: "xhigh" });
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-			await multiTurn(llm, { ...wsOptions, reasoningEffort: "xhigh" });
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle image input", { retry: 3 }, async () => {
-			await handleImage(llm, wsOptions);
 		});
 	});
 

@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.t
 import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
+import { recordProblem } from "../../core/diagnostics-log.ts";
 import { reportSweep } from "./sweep-report.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { currentSessionId } from "../shared/home.ts";
@@ -138,7 +139,13 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		// A background git result can arrive after the host invalidates this
 		// context. The optional warning must not turn that failure into a rejection.
 		try {
-			if (warned || !ctx.hasUI) return;
+			// With no UI the warning has no reader: every failure goes to stderr, as other headless features report theirs.
+			if (!ctx.hasUI) {
+				recordProblem("sessions", `Octocode session index unavailable: ${errorMessage(error)}`);
+				process.stderr.write(`Octocode session index unavailable: ${errorMessage(error)}\n`);
+				return;
+			}
+			if (warned) return;
 			warned = true;
 			notify(ctx.ui, `Octocode session index unavailable: ${errorMessage(error)}`, "warning");
 		} catch {

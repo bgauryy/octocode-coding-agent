@@ -118,6 +118,8 @@ const CASES: Record<string, Case> = {
 	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
 	purge: { check: says(/Usage: \/purge workspace\|all/) },
 	worktree: { check: says(/worktree/i) },
+	// An unknown name lists the realms by name; the main checkout is always one.
+	realm: { args: "zz-none", check: says(/No realm named zz-none\. Realms: main/) },
 	// `/remote` grants control, so it asks first; the sweep dismisses the question and nothing is published (the
 	// accepted path, which publishes an ssh link, is covered in remote-command.test.ts).
 	remote: {
@@ -159,7 +161,7 @@ const CASES: Record<string, Case> = {
 			expect(list.text).toMatch(/no\s+trust\s+decision\s+yet[\s\S]*No\s+trust\s+decisions\s+are\s+stored/);
 		},
 	},
-	providers: { check: asks(/Provider credentials are configured, not verified/) },
+	providers: { check: asks(/Ready means configured, not verified/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},

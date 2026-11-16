@@ -1,6 +1,7 @@
 import { bedrockProviderModule } from "@octocodeai/octocode-ai/bedrock-provider";
 import { registerBunOAuthFlows } from "@octocodeai/octocode-ai/bun-oauth";
-import { setBedrockProviderModule } from "@octocodeai/octocode-ai/compat";
+import { setBedrockProviderModule, setVertexNodeModule } from "@octocodeai/octocode-ai/compat";
+import { vertexNodeModule } from "@octocodeai/octocode-ai/vertex-node-provider";
 // Bun loads .wasm imports as files: embedded in compiled executables, evaluating to a readable path.
 import { initialTitle, setProcessTitle } from "../octocode/processes/title.ts";
 
@@ -9,3 +10,4 @@ setProcessTitle(initialTitle(process.env, "main"));
 process.emitWarning = () => {};
 registerBunOAuthFlows();
 setBedrockProviderModule(bedrockProviderModule);
+setVertexNodeModule(vertexNodeModule);

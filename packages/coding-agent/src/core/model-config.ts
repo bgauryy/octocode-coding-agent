@@ -198,15 +198,18 @@ export class ModelConfig {
 	private readonly providers: ReadonlyMap<string, ModelsJsonProvider>;
 	private readonly error: string | undefined;
 	private readonly warnings: readonly string[];
+	private readonly files: ReadonlyMap<string, string>;
 
 	private constructor(
 		providers: ReadonlyMap<string, ModelsJsonProvider>,
 		error?: string,
 		warnings: readonly string[] = [],
+		files: ReadonlyMap<string, string> = new Map(),
 	) {
 		this.providers = providers;
 		this.error = error;
 		this.warnings = warnings;
+		this.files = files;
 	}
 
 	static async load(modelsJsonPath: string | undefined): Promise<ModelConfig> {
@@ -231,6 +234,7 @@ export class ModelConfig {
 			}
 		}
 		const providers = new Map<string, ModelsJsonProvider>();
+		const files = new Map<string, string>();
 		const errors: string[] = [];
 		const warnings: string[] = [];
 		// Files load concurrently; merging walks them in precedence order, so the first definition still wins and
@@ -240,10 +244,13 @@ export class ModelConfig {
 			if (config.error) errors.push(config.error);
 			warnings.push(...config.warnings);
 			for (const [id, provider] of config.providers) {
-				if (!providers.has(id)) providers.set(id, provider);
+				if (providers.has(id)) continue;
+				providers.set(id, provider);
+				const file = config.files.get(id);
+				if (file) files.set(id, file);
 			}
 		}
-		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings);
+		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings, files);
 	}
 
 	/** One file alone: unlike `load`, Octocode's own file is not merged with Pi's, so its providers are its own. */
@@ -285,11 +292,21 @@ export class ModelConfig {
 		for (const [providerId, provider] of Object.entries(parsed.providers)) {
 			providers.set(providerId, deepFreeze(structuredClone(provider)));
 		}
-		return new ModelConfig(providers, undefined, modelsJsonWarnings(parsed, path, FIELD_NAMES));
+		return new ModelConfig(
+			providers,
+			undefined,
+			modelsJsonWarnings(parsed, path, FIELD_NAMES),
+			new Map([...providers.keys()].map((id) => [id, path])),
+		);
 	}
 
 	getProvider(providerId: string): ModelsJsonProvider | undefined {
 		return this.providers.get(providerId);
+	}
+
+	/** The models.json file whose definition of the provider is the one in use. */
+	getProviderFile(providerId: string): string | undefined {
+		return this.files.get(providerId);
 	}
 
 	getProviderIds(): readonly string[] {

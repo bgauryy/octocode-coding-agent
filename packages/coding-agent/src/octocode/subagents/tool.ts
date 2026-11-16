@@ -36,10 +36,11 @@ import type { AgentProfile } from "./profiles.ts";
 import type { RelayHost } from "./relay.ts";
 import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
 import { registerIdleItems } from "./idle-items.ts";
+import { sendGraphNotice } from "../wake/senders.ts";
 import { startNotices } from "./start-notices.ts";
 import { agentToolSpec } from "./agent-tool.ts";
 import type { Runners } from "./runner-port.ts";
-import { FORK_NOTE_TYPE, forkNote, resumeNote } from "./children.ts";
+import { FORK_NOTE_TYPE, forkNote, resumedChildren } from "./children.ts";
 import { type MergeResult, mergeChild } from "./merge-child.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
@@ -84,8 +85,7 @@ export const budgetsThrough = (agents: () => AgentControl | undefined) => ({
 	grant: (id: string, requests: number): BudgetStanding | string =>
 		agents()?.budgets.grant(id, requests) ?? "Agent controls are unavailable.",
 	usage: (id: string): BudgetStanding | undefined => agents()?.budgets.usage(id),
-	/** The queued and held children, one row each, for `coordinate list`. */
-	queued: (): string[] => agents()?.queued() ?? [],
+	queued: (): string[] => agents()?.queued() ?? [], // queued and held children, one row each, for `coordinate list`
 	cost: (id: string): number | undefined => agents()?.budgets.cost(id),
 });
 
@@ -116,6 +116,8 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 	// The current session, for graph wakes and the graph watch (`graph-wake.ts`, `graph-watch.ts`).
 	let current: ExtensionContext | undefined;
 	let backlog: Backlog | undefined;
+	// The backlog item each child works on, by child id (`AgentRuns.items`).
+	const items = new Map<string, string>();
 	const runs: AgentRuns = {
 		api,
 		team,
@@ -123,21 +125,17 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		foreground: new Map(),
 		live: new Map(),
 		// A report goes out at once unless a sibling of its own step is about to join it (`report-groups.ts`).
-		reports: new ReportQueue(api, (queued) => heldReports(runs.groups, queued)),
+		reports: new ReportQueue(api, (q) => heldReports(runs.groups, q), items),
 		groups: new ReportGroups(),
 		read: new ReadReports(),
 		running: new Map(),
-		items: new Map(),
+		items,
 		slots: new Slots(),
 		session: 0,
 		changed: () => panel.setBackground([...runs.background.keys()]),
 		ended: (id, end) => team.approvals.noteEnd(id, end),
 		graph: new GraphWake(
-			(content) =>
-				void api.sendMessage(
-					{ customType: GRAPH_NOTICE_TYPE, content, display: false },
-					{ triggerTurn: true, deliverAs: "followUp" },
-				),
+			(content) => void sendGraphNotice(api, GRAPH_NOTICE_TYPE, content),
 			() => {
 				try {
 					return current?.isIdle() ?? true;
@@ -276,6 +274,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		exposure: (child, exposed) => api.events.emit(CHILD_EXPOSURE_EVENT, { child, exposed } satisfies ChildExposure),
 		vouch: (id, secret) => team.vouch(id, secret),
 		awaitingApproval: (id, waiting) => team.awaitingApproval(id, waiting),
+		tell: (notice) => runs.graph?.tell(notice),
 		output: (id, at) => team.approvals.noteOutput(id, at),
 		budgets,
 		...(ctx.hasUI ? { ui: ctx.ui } : {}),
@@ -342,8 +341,9 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		await late.start(ctx.sessionManager.getSessionId());
 		// After the reports waiting for this session were taken: a child that filed one is not gone without a word.
 		if (event.reason === "resume" || event.reason === "startup") {
-			const gone = resumeNote(ctx.sessionManager.getEntries(), runs.reports.pendingIds(), new Set(runs.running.keys()));
-			if (gone) tell(gone);
+			const gone = resumedChildren(ctx.sessionManager.getEntries(), runs.reports.pendingIds(), runs.running, team);
+			if (gone.note) tell(gone.note);
+			panel.restoreFinished(gone.rows);
 		}
 		// Off the start path: it lists and deletes directories.
 		const root = scratchRoot(ctx.cwd);

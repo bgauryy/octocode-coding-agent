@@ -34,7 +34,14 @@ function quotaError(retryDelay?: string): Error {
 }
 
 async function run() {
-	return streamGoogle(getBuiltinModel("google", "gemini-2.5-flash"), context, { apiKey: "test-key" }).result();
+	return streamGoogle(getBuiltinModel("google", "gemini-2.5-flash"), context, {
+		apiKey: "test-key",
+		fetch: async () =>
+			new Response((googleMock.error as Error).message, {
+				status: 429,
+				headers: { "content-type": "application/json" },
+			}),
+	}).result();
 }
 
 describe("Google retry-after", () => {

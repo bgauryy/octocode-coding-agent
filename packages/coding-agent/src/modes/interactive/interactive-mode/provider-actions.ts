@@ -1,65 +1,27 @@
-import {
-	CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL,
-	carriesClaudeSubscriptionToken,
-} from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
-import { type CredentialState, credentialState } from "../../../core/provider-composer/credential-state.ts";
-import { credentialSourceLabel } from "../../../core/provider-composer/types.ts";
-import { providerAccessLabel } from "../../../core/provider-label.ts";
+import { buildProviderSnapshot, claudeSubscriptionRefusal as refusalOf } from "../../../core/provider-view/snapshot.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { confirmAction, successNotice } from "./provider-ui.ts";
 
-/** Describe configuration without resolving secrets or claiming a successful network login. */
-export async function providerStatus(host: Pick<ProviderManagerHost, "session">, id: string): Promise<string> {
-	const runtime = host.session.modelRuntime;
-	const status = runtime.getProviderAuthStatus(id);
-	const state = await providerCredentialState(host, id);
-	if (state === "signed out") return "Signed out";
-	if (state === "expired") return `Expired · ${credentialSource(host, id)} · sign in again`;
-	if (!status.configured) {
-		const refusal = await claudeSubscriptionRefusal(host, id);
-		return refusal ? `Not set: ${refusal}` : "Not set";
-	}
-	const kind = await runtime.getCredentialKind(id);
-	const label = kind === "key" ? providerAccessLabel(runtime, id) : KIND_LABELS[kind];
-	return `Connected · ${label} · ${credentialSource(host, id)}`;
+type SessionHost = Pick<ProviderManagerHost, "session">;
+
+/** The provider's one status sentence, from the snapshot. */
+export async function providerStatus(host: SessionHost, id: string): Promise<string> {
+	const { modelRuntime, settingsManager } = host.session;
+	const snapshot = await buildProviderSnapshot({
+		runtime: modelRuntime,
+		disabledProviders: settingsManager.getDisabledProviders(),
+		ids: [id],
+	});
+	const entry = snapshot.entry(id);
+	if (!entry) throw new Error(`Provider ${id} is neither defined nor has a saved credential`);
+	return entry.statusText;
 }
 
-/** Connected, expired, signed out or not set; a credential that cannot be read counts as none saved. */
-export async function providerCredentialState(
-	host: Pick<ProviderManagerHost, "session">,
-	id: string,
-): Promise<CredentialState> {
-	const runtime = host.session.modelRuntime;
-	const credential = await runtime.readCredential(id, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
-	return credentialState(runtime.getProviderAuthStatus(id), credential);
-}
-
-/**
- * Why a provider has no usable credential although one is saved or set: it is a Claude subscription token, which
- * configures nothing (no model is offered) and which every request refuses. The key is resolved the way a request
- * resolves it, inspected and not kept; a lookup that fails reports nothing.
- */
-export async function claudeSubscriptionRefusal(
-	host: Pick<ProviderManagerHost, "session">,
-	id: string,
-): Promise<string | undefined> {
-	try {
-		const auth = (await host.session.modelRuntime.getAuth(id))?.auth;
-		return carriesClaudeSubscriptionToken(auth?.apiKey, auth?.headers) ? CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-/** The credential kind in a provider's words, for its page. */
-const KIND_LABELS = { account: "Account", subscription: "Subscription", key: "API key" } as const;
-
-/** Where the credential comes from, for a row: a label or variable name, never a value. */
-function credentialSource(host: Pick<ProviderManagerHost, "session">, id: string): string {
-	return credentialSourceLabel(host.session.modelRuntime.getProviderAuthStatus(id));
-}
+/** Why a saved or set credential configures nothing because it is a Claude subscription token, or undefined. */
+export const claudeSubscriptionRefusal = (host: SessionHost, id: string): Promise<string | undefined> =>
+	refusalOf(host.session.modelRuntime, id);
 
 export const isProviderDisabled = (host: Pick<ProviderManagerHost, "session">, id: string): boolean =>
 	host.session.settingsManager.getDisabledProviders().includes(id);

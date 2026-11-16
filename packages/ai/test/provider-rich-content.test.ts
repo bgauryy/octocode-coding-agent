@@ -1,10 +1,7 @@
-import type { BetaRawMessageStreamEvent } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
-import type { GenerateContentResponse, GoogleGenAI } from "@google/genai";
-import type { ResponseOutputItem, ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponseOutputItem, ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { describe, expect, it } from "vitest";
-import { handleAnthropicStreamEvent } from "../src/api/anthropic-messages/stream-events.ts";
-import { convertMessages as googleMessages } from "../src/api/google-shared/messages.ts";
-import { streamGoogle } from "../src/api/google-shared/stream.ts";
+import { anthropicFrames } from "./anthropic-fetch-fixture.ts";
+import { stream as streamGoogle } from "../src/api/google-generative-ai.ts";
 import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
 import { transformMessages } from "../src/api/transform-messages.ts";
 import type { Api, AssistantMessageEvent, Model } from "../src/types.ts";
@@ -38,13 +35,13 @@ async function responses(items: ResponseOutputItem[], terminalOnly = false) {
 	async function* events(): AsyncIterable<ResponseStreamEvent> {
 		if (!terminalOnly)
 			for (const [output_index, item] of items.entries()) {
-				yield { type: "response.output_item.added", output_index, item } as ResponseStreamEvent;
-				yield { type: "response.output_item.done", output_index, item } as ResponseStreamEvent;
+				yield { type: "response.output_item.added", output_index, item };
+				yield { type: "response.output_item.done", output_index, item };
 			}
 		yield {
 			type: "response.completed",
 			response: { id: "response", status: "completed", output: items },
-		} as ResponseStreamEvent;
+		};
 	}
 	await processResponsesStream(events(), output, stream, selected);
 	stream.end(output);
@@ -78,7 +75,6 @@ describe("provider rich output", () => {
 				],
 			},
 			{ type: "image_generation_call", id: "image1", result: "aW1hZ2U=", output_format: "webp", status: "completed" },
-			// oxlint-disable-next-line typescript/no-deprecated -- the fixture is the wire shape providers still send
 			{ type: "web_search_call", id: "search1", status: "completed", action: { type: "search", query: "source" } },
 		]);
 		expect(output.content).toMatchObject([
@@ -104,51 +100,57 @@ describe("provider rich output", () => {
 
 	it("retains Gemini media, references, citations, and image replay signatures", async () => {
 		const selected = model("google-generative-ai", "google");
-		const client = {
-			models: {
-				generateContentStream: async function* () {
-					yield {
-						candidates: [
-							{
-								content: {
-									parts: [
-										{ text: "Answer" },
-										{ inlineData: { data: "aW1hZ2U=", mimeType: "image/png" }, thoughtSignature: "c2ln" },
-										{ inlineData: { data: "YXVkaW8=", mimeType: "audio/wav" } },
-										{ fileData: { fileUri: "gs://fixture/video", mimeType: "video/mp4" } },
-									],
-								},
-							},
-						],
-					} as GenerateContentResponse;
-					yield {
-						candidates: [
-							{
-								finishReason: "STOP",
-								groundingMetadata: {
-									groundingChunks: [{ web: { uri: "https://example.invalid/source", title: "Source" } }],
-									groundingSupports: [
-										{ groundingChunkIndices: [0], segment: { startIndex: 0, endIndex: 6, text: "Answer" } },
-									],
-								},
-							},
-						],
-					} as GenerateContentResponse;
-				},
+		const chunks = [
+			{
+				candidates: [
+					{
+						content: {
+							parts: [
+								{ text: "Answer" },
+								{ inlineData: { data: "aW1hZ2U=", mimeType: "image/png" }, thoughtSignature: "c2ln" },
+								{ inlineData: { data: "YXVkaW8=", mimeType: "audio/wav" } },
+								{ fileData: { fileUri: "gs://fixture/video", mimeType: "video/mp4" } },
+							],
+						},
+					},
+				],
 			},
-		} as unknown as GoogleGenAI;
+			{
+				candidates: [
+					{
+						finishReason: "STOP",
+						groundingMetadata: {
+							groundingChunks: [{ web: { uri: "https://example.invalid/source", title: "Source" } }],
+							groundingSupports: [
+								{ groundingChunkIndices: [0], segment: { startIndex: 0, endIndex: 6, text: "Answer" } },
+							],
+						},
+					},
+				],
+			},
+		];
 		const stream = streamGoogle(
 			selected,
-			normalizeContext({ messages: [] }),
-			{},
+			normalizeContext({ messages: [{ role: "user", content: "Hi", timestamp: 0 }] }),
 			{
-				name: "fixture",
-				streamName: "fixture",
-				prepare: () => ({ client, params: { model: selected.id, contents: [] } }),
+				apiKey: "test-key",
+				fetch: async () =>
+					new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""), {
+						headers: { "content-type": "text/event-stream" },
+					}),
 			},
 		);
+		const mediaUpdates: number[] = [];
+		for await (const event of stream) {
+			if (
+				event.type === "content_update" &&
+				["image", "media"].includes(event.partial.content[event.contentIndex].type)
+			)
+				mediaUpdates.push(event.contentIndex);
+		}
 		const output = await stream.result();
-		expect(output.stopReason).toBe("stop");
+		expect(mediaUpdates).toEqual([1, 2]);
+		expect(output.stopReason, output.errorMessage).toBe("stop");
 		expect(output.content).toMatchObject([
 			{
 				type: "text",
@@ -159,7 +161,15 @@ describe("provider rich output", () => {
 			{ type: "media", data: "YXVkaW8=", mimeType: "audio/wav" },
 			{ type: "resource", uri: "gs://fixture/video", mimeType: "video/mp4" },
 		]);
-		const replay = googleMessages(selected, normalizeContext({ messages: [output] }));
+		let replay: { parts?: unknown[] }[] = [];
+		const captured = await streamGoogle(selected, normalizeContext({ messages: [output] }), {
+			apiKey: "test-key",
+			onPayload: (payload) => {
+				replay = (payload as { contents: { parts?: unknown[] }[] }).contents;
+				throw new Error("request captured");
+			},
+		}).result();
+		expect(captured.errorMessage).toBe("request captured");
 		expect(replay[0].parts).toContainEqual({
 			inlineData: { data: "aW1hZ2U=", mimeType: "image/png" },
 			thoughtSignature: "c2ln",
@@ -174,16 +184,8 @@ describe("provider rich output", () => {
 		expect(JSON.stringify(foreign)).not.toContain("c2ln");
 	});
 
-	it("preserves Anthropic citation deltas and uploaded file identifiers", () => {
+	it("preserves Anthropic citation deltas and uploaded file identifiers", async () => {
 		const selected = model("anthropic-messages", "anthropic");
-		const output = createPendingAssistantMessage(selected);
-		const state = {
-			model: selected,
-			output,
-			stream: new AssistantMessageEventStream(),
-			usageModel: selected,
-			inputTransformations: undefined,
-		};
 		const events = [
 			{ type: "content_block_start", index: 0, content_block: { type: "text", text: "Document answer" } },
 			{
@@ -205,8 +207,9 @@ describe("provider rich output", () => {
 			{ type: "content_block_stop", index: 0 },
 			{ type: "content_block_start", index: 1, content_block: { type: "container_upload", file_id: "file2" } },
 			{ type: "content_block_stop", index: 1 },
-		] as BetaRawMessageStreamEvent[];
-		for (const event of events) handleAnthropicStreamEvent(event, state);
+		];
+		const output = await anthropicFrames(selected, events).result();
+		expect(output.stopReason, output.errorMessage).toBe("stop");
 		expect(output.content).toEqual([
 			{
 				type: "text",

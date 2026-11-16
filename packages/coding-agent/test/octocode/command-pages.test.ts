@@ -30,7 +30,12 @@ function pages(scripts: string[][]) {
 		select: async (title: string, options: string[]) => (selects.push([title, ...options]), answers.shift()),
 		custom: (factory: (...args: unknown[]) => { render(width: number): string[]; handleInput(data: string): void }) =>
 			new Promise((resolve) => {
-				const page = factory({ requestRender: () => undefined }, theme, new KeybindingsManager(), resolve);
+				const page = factory(
+					{ requestRender: () => undefined, terminal: { rows: 40 } },
+					theme,
+					new KeybindingsManager(),
+					resolve,
+				);
 				screens.push(stripAnsi(page.render(80).join("\n")));
 				for (const key of scripts.shift() ?? [KEY.escape]) page.handleInput(key);
 			}),
@@ -131,7 +136,7 @@ describe("/mcp manager page", () => {
 	it("draws servers with state badges, the shared hints, and opens the highlighted one", async () => {
 		installMcpUiPort();
 		const view = new McpManagerView(
-			{ requestRender: () => undefined } as unknown as TUI,
+			{ requestRender: () => undefined, terminal: { rows: 40 } } as unknown as TUI,
 			theme,
 			new KeybindingsManager(),
 		);

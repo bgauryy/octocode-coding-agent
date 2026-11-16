@@ -31,10 +31,8 @@ export function skillListingBudgetWarning(input: {
 	const budget = skillListingBudgetChars(input.contextWindow);
 	const chars = input.listing.length;
 	if (chars <= budget) return undefined;
-	const count = input.skills.filter((skill) => !skill.disableModelInvocation).length;
-	const noun = count === 1 ? "skill" : "skills";
 	return {
 		type: "warning",
-		message: `Skill listing over budget: ${count} ${noun}, ${chars} chars > ${budget} budget (1% of the context window). Nothing is cut. Rewrite long descriptions with \`octocode context check\` and \`octocode context apply\`, or switch skills or whole harnesses off in /harness.`,
+		message: `Skill list too long: ${chars} chars, budget ${budget} · fix: octocode context check/apply, or /harness`,
 	};
 }

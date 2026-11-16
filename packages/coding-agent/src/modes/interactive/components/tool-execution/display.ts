@@ -12,6 +12,7 @@ import { displayText } from "../../../../octocode/render/display.ts";
 import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
 import { clip, INDENT } from "../../../../octocode/shared/text.ts";
 import type { RenderContext } from "../../../../octocode/render/types.ts";
+import { outputLanguage } from "../../../../theme/output-style.ts";
 import { stateMark } from "../../../../theme/status.ts";
 import { getMarkdownTheme, type Theme } from "../../../../theme/theme.ts";
 import type { ThemeColor } from "../../../../theme/theme-tokens.ts";
@@ -93,13 +94,16 @@ function renderDisplayResult(display: ToolDisplay, theme: Theme, context: Render
 		expanded,
 	};
 	const only = shown.length === 1 ? knownToolDisplayBlock(shown[0]) : undefined;
-	if (only?.type === "output" || (only?.type === "text" && !only.tone))
+	if (only?.type === "output" || (only?.type === "text" && !only.tone)) {
+		const language = only.type === "text" && !outcome?.tone ? outputLanguage(only.text) : undefined;
 		return resultBlock(theme, context, {
 			...common,
 			body: only.text,
+			...(language ? { language } : {}),
 			tail: only.type === "output" || only.preview === "tail",
 			...(only.type === "output" ? { shell: true } : {}),
 		});
+	}
 	const rows = (width: number) => {
 		const lines = shown.flatMap((block) => blockLines(theme, block, width));
 		return resultBlock(theme, context, { ...common, ...(lines.length ? { lines } : { max: 0 }) });

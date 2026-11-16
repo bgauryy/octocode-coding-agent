@@ -13,7 +13,8 @@ import { blockedReason, type SwitchScope } from "../../core/extensibility/switch
 import type { Theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { detailHints, errorHints, listHints } from "./picker-hints.ts";
-import { emptyState, noMatchMessage, positionLabel, renderHintLine } from "../../theme/theme-tui-helpers.ts";
+import { positionLabel, windowList } from "../../theme/page-kit.ts";
+import { emptyState, noMatchMessage, renderHintLine } from "../../theme/theme-tui-helpers.ts";
 import { ruleLine } from "../../theme/dynamic-border.ts";
 import { HARNESS_SECTIONS, type HarnessSection } from "./sections.ts";
 import { overviewLine } from "./overview.ts";
@@ -356,10 +357,7 @@ export class HarnessPicker implements Component, Focusable {
 				const available = height - lines.length - footer.length - 1;
 				const position = this.rows.length > available && available > 1;
 				this.visibleRows = Math.max(1, available - Number(position));
-				const start = Math.max(
-					0,
-					Math.min(this.selected - Math.floor(this.visibleRows / 2), this.rows.length - this.visibleRows),
-				);
+				const { start } = windowList(this.rows.length, this.selected, this.visibleRows);
 				const shown = this.rows.slice(start, start + this.visibleRows);
 				if (!this.rows.length) {
 					const query = this.search.getValue().trim();

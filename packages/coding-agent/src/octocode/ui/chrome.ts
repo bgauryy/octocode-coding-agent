@@ -11,6 +11,7 @@ import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
 import { registerAwaiting } from "./awaiting.ts";
 import { registerTurnLine } from "./turn-line.ts";
+import { registerWakeRow } from "./wake-row.ts";
 
 let version: { value: string | undefined } | undefined;
 
@@ -108,6 +109,7 @@ export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
 	if (isSubagent) return;
 	registerFooter(api);
 	registerTurnLine(api);
+	registerWakeRow(api);
 	registerAwaiting(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;

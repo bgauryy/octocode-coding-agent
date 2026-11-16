@@ -116,20 +116,28 @@ describe("fetch stream option", () => {
 		expect(globalThis.fetch).toBe(fallback);
 	});
 
-	it("rejects custom fetch for Google adapters instead of silently bypassing it", async () => {
+	it("passes custom fetch to Gemini and surfaces its HTTP error", async () => {
 		const { custom, fallback } = mockFetches();
 		const google = await streamGoogleGenerativeAI(createModel("google-generative-ai"), context, {
 			apiKey: "test-key",
 			fetch: custom,
 		}).result();
+		expect(google.stopReason).toBe("error");
+		expect(google.errorMessage).toContain("401");
+		expect(google.errorMessage).toContain("upstream rejected request");
+		expect(custom).toHaveBeenCalledOnce();
+		expect(fallback).not.toHaveBeenCalled();
+	});
+
+	it("uses custom fetch for Vertex and surfaces its HTTP error", async () => {
+		const { custom, fallback } = mockFetches();
 		const vertex = await streamGoogleVertex(createModel("google-vertex"), context, {
 			apiKey: "test-key",
 			fetch: custom,
 		}).result();
-
-		expect(google.errorMessage).toContain("Custom fetch is not supported by the Google Generative AI adapter");
-		expect(vertex.errorMessage).toContain("Custom fetch is not supported by the Google Vertex adapter");
-		expect(custom).not.toHaveBeenCalled();
+		expect(vertex.errorMessage).toContain("401");
+		expect(vertex.errorMessage).toContain("upstream rejected request");
+		expect(custom).toHaveBeenCalledOnce();
 		expect(fallback).not.toHaveBeenCalled();
 		expect(globalThis.fetch).toBe(fallback);
 	});

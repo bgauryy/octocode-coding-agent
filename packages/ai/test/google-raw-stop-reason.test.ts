@@ -1,8 +1,15 @@
 import { arch, platform, release } from "node:os";
+import { createRequire } from "node:module";
+const { GoogleAuth } = createRequire(import.meta.url)("google-auth-library");
+vi.spyOn(GoogleAuth.prototype, "getClient").mockImplementation(async () => ({
+	getAccessToken: async () => ({ token: "mock-adc-token" }),
+}));
+import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const googleGenAiMock = vi.hoisted(() => ({
 	constructorCalls: [] as Array<Record<string, unknown>>,
+	requests: [] as Headers[],
 	finishReason: "MALFORMED_FUNCTION_CALL",
 	includeFunctionCall: false,
 	streamChunks: undefined as Array<Record<string, unknown>> | undefined,
@@ -96,8 +103,28 @@ import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, Model, StreamOptions } from "../src/types.ts";
 
+mockCompletionsFetch((_params, request) => {
+	googleGenAiMock.requests.push(new Headers(request.headers));
+	return completionsResponse(
+		googleGenAiMock.streamChunks ?? [
+			{
+				responseId: "google-response-id",
+				candidates: [
+					{
+						finishReason: googleGenAiMock.finishReason,
+						...(googleGenAiMock.includeFunctionCall
+							? { content: { parts: [{ functionCall: { id: "call-1", name: "echo", args: { value: "truncated" } } }] } }
+							: {}),
+					},
+				],
+				usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 0, totalTokenCount: 1 },
+			},
+		],
+	);
+});
 beforeEach(() => {
 	googleGenAiMock.streamChunks = undefined;
+	googleGenAiMock.requests.length = 0;
 });
 
 const OCTOCODE_USER_AGENT = `octocode (${platform()} ${release()}; ${arch()})`;
@@ -106,7 +133,7 @@ const context = normalizeContext({
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
 });
 
-async function captureGoogleHeaders(headers?: Record<string, string>): Promise<Record<string, string>> {
+async function captureGoogleHeaders(headers?: Record<string, string>): Promise<Headers> {
 	googleGenAiMock.constructorCalls.length = 0;
 	googleGenAiMock.finishReason = "STOP";
 	googleGenAiMock.includeFunctionCall = false;
@@ -115,9 +142,8 @@ async function captureGoogleHeaders(headers?: Record<string, string>): Promise<R
 		headers,
 	}).result();
 
-	expect(googleGenAiMock.constructorCalls).toHaveLength(1);
-	const httpOptions = googleGenAiMock.constructorCalls[0].httpOptions as { headers?: Record<string, string> };
-	return httpOptions.headers ?? {};
+	expect(googleGenAiMock.requests).toHaveLength(1);
+	return googleGenAiMock.requests[0];
 }
 
 describe("Google raw stop reasons", () => {
@@ -131,7 +157,7 @@ describe("Google raw stop reasons", () => {
 
 		const message = await stream.result();
 
-		expect(message.stopReason).toBe("error");
+		expect(message.stopReason, message.errorMessage).toBe("error");
 		expect(message.rawStopReason).toBe("MALFORMED_FUNCTION_CALL");
 		expect(message.errorMessage).toBe("Provider stopped with: MALFORMED_FUNCTION_CALL");
 	});
@@ -147,7 +173,7 @@ describe("Google raw stop reasons", () => {
 
 		const message = await stream.result();
 
-		expect(message.stopReason).toBe("error");
+		expect(message.stopReason, message.errorMessage).toBe("error");
 		expect(message.rawStopReason).toBe("SAFETY");
 		expect(message.errorMessage).toBe("Provider stopped with: SAFETY");
 	});
@@ -176,7 +202,7 @@ describe("Google raw stop reasons", () => {
 
 		const message = await createStream().result();
 
-		expect(message.stopReason).toBe("length");
+		expect(message.stopReason, message.errorMessage).toBe("length");
 		expect(message.rawStopReason).toBe("MAX_TOKENS");
 		expect(message.content.some((block) => block.type === "toolCall")).toBe(true);
 	});
@@ -189,7 +215,7 @@ describe("Google raw stop reasons", () => {
 
 			const message = await createStream().result();
 
-			expect(message.stopReason).toBe("error");
+			expect(message.stopReason, message.errorMessage).toBe("error");
 			expect(message.rawStopReason).toBe("MISSING_THOUGHT_SIGNATURE");
 			expect(message.errorMessage).toBe("Provider stopped with: MISSING_THOUGHT_SIGNATURE");
 		},
@@ -206,7 +232,7 @@ describe("Google raw stop reasons", () => {
 
 		const message = await createStream().result();
 
-		expect(message.stopReason).toBe("error");
+		expect(message.stopReason, message.errorMessage).toBe("error");
 		expect(message.rawStopReason).toBe("PROHIBITED_CONTENT");
 		expect(message.errorMessage).toBe("The provider blocked the prompt: PROHIBITED_CONTENT");
 		expect(message.usage.input).toBe(4);
@@ -231,7 +257,7 @@ describe("Google raw stop reasons", () => {
 
 		const message = await createStream().result();
 
-		expect(message.stopReason).toBe("toolUse");
+		expect(message.stopReason, message.errorMessage).toBe("toolUse");
 		expect(message.rawStopReason).toBe("STOP");
 		expect(message.content.some((block) => block.type === "toolCall")).toBe(true);
 	});
@@ -284,8 +310,8 @@ describe("Google provider stream events", () => {
 			}).result();
 
 			expect(received).toEqual(googleGenAiMock.streamChunks);
-			expect(received[0]).toBe(googleGenAiMock.streamChunks[0]);
-			expect(received[1]).toBe(googleGenAiMock.streamChunks[1]);
+			expect(JSON.stringify(received[0])).toBe(JSON.stringify(googleGenAiMock.streamChunks[0]));
+			expect(JSON.stringify(received[1])).toBe(JSON.stringify(googleGenAiMock.streamChunks[1]));
 			expect(eventModels).toEqual([model, model]);
 			expect(result.stopReason).toBe("stop");
 			expect(result.responseId).toBe("resp_google");
@@ -296,10 +322,10 @@ describe("Google provider stream events", () => {
 
 describe("Google Generative AI user agent", () => {
 	it("uses the default User-Agent", async () => {
-		expect((await captureGoogleHeaders())["User-Agent"]).toBe(OCTOCODE_USER_AGENT);
+		expect((await captureGoogleHeaders()).get("user-agent")).toBe(OCTOCODE_USER_AGENT);
 	});
 
 	it("lets explicit headers override the default User-Agent", async () => {
-		expect((await captureGoogleHeaders({ "User-Agent": "custom-agent" }))["User-Agent"]).toBe("custom-agent");
+		expect((await captureGoogleHeaders({ "User-Agent": "custom-agent" })).get("user-agent")).toBe("custom-agent");
 	});
 });

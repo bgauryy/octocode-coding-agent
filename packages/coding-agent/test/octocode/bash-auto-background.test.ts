@@ -224,20 +224,20 @@ describe("the sleep hint", () => {
 	);
 
 	it("names the timer tool as well, only when the session declares it", () => {
-		expect(sleepHint("sleep 60", true)).toContain("or set a `timer` to be woken when outside state holds");
+		expect(sleepHint("sleep 60", true)).toContain("or set a `wait` to be woken when outside state holds");
 		expect(sleepHint("sleep 60", true)).toContain("background: true");
-		expect(sleepHint("sleep 60")).not.toContain("timer");
+		expect(sleepHint("sleep 60")).not.toContain("`wait`");
 		expect(sleepHint("sleep 1", true)).toBeUndefined();
 	});
 
 	it.runIf(posix)("names the timer in the result of the real tool when timer is an active tool", async () => {
 		const { api, tools } = fakeHost();
-		api.getActiveTools = () => ["bash", "timer"];
+		api.getActiveTools = () => ["bash", "wait"];
 		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({ backgroundAfterSeconds: 0 }));
 		const result = await tools
 			.get("bash")
 			.execute("t", { command: "false && sleep 25; echo ran" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
-		expect(JSON.stringify(result.content)).toContain("or set a `timer` to be woken");
+		expect(JSON.stringify(result.content)).toContain("or set a `wait` to be woken");
 	});
 
 	it.runIf(posix)(

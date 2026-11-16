@@ -90,6 +90,8 @@ import { registerWebTool } from "./web/web.ts";
 import { installOctocodeDiscovery } from "./discovery/index.ts";
 import { registerLeaveConfirmation, registerReaderRole } from "./session-guards.ts";
 import { collaborationPorts, registerExternalApi, registerTeamSessions } from "./team-surfaces.ts";
+import { registerWake } from "./wake/register.ts";
+import { sendPeerNotice } from "./wake/senders.ts";
 /**
  * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
@@ -229,11 +231,7 @@ export default function octocode(host: ExtensionAPI): void {
 		? undefined
 		: new Peers({
 				authorize: (target, text, ctx, signal) => later.get("messaging").authorizePeer(target, text, ctx, signal),
-				notice: (content) =>
-					void api.sendMessage(
-						{ customType: "octocode-peer-notice", content, display: true },
-						{ triggerTurn: true, deliverAs: "steer" },
-					),
+				notice: (content) => void sendPeerNotice(api, "octocode-peer-notice", content),
 			});
 	const collab = registerCollab(api, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
@@ -285,6 +283,7 @@ export default function octocode(host: ExtensionAPI): void {
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);
+	registerWake(api);
 	registerStallRecorder(api);
 	// What the agent does now: Octocode's working line (main session) and the team panel's activity column (every agent).
 	const activity = registerActivity(api, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });

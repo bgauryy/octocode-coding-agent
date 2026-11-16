@@ -5,7 +5,7 @@
 export const STATUS = {
 	/** Live agents of the team (the agents panel's one-line count). */
 	team: "octocode-team",
-	/** Typed counts of everything that runs now (`2 agents · 1 bash · 1 timer`); the agents panel (`team/panel.ts`) sets it from `shared/running-work.ts`. */
+	/** Typed counts of everything that runs now (`2 agents · 1 bash · 1 wait`); the agents panel (`team/panel.ts`) sets it from `shared/running-work.ts`. */
 	running: "octocode-running",
 	/** Messages queued behind the running turn. */
 	queued: "octocode-queued",
@@ -19,4 +19,6 @@ export const STATUS = {
 	wakeRetry: "octocode-wake-retry",
 	/** What this session's timers' judging spent (`timer/register.ts`); the timers themselves are counted in `running`. */
 	timers: "octocode-timers",
+	/** Tokens and cost of this session and every agent under it, while it runs subagents (`team/panel.ts`). */
+	teamTotals: "octocode-team-totals",
 } as const;

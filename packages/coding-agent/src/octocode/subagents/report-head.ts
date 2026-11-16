@@ -1,4 +1,5 @@
-import { formatSize, truncateHead } from "../../core/tools/index.ts";
+import { truncateHead } from "../../core/tools/index.ts";
+import { formatBytes } from "../../utils/bytes.ts";
 import { cutText } from "../../../../common/src/text.ts";
 import { REPORT_MAX_BYTES } from "../instructions/report.ts";
 
@@ -35,7 +36,7 @@ export function headPreview(report: ReportHead): string {
 	if (report.bytes <= REPORT_MAX_BYTES && report.lines <= REPORT_MAX_LINES) return report.head;
 	if (cut.content === "") {
 		const head = cutText(report.head, REPORT_MAX_BYTES);
-		return `${head}\n\n[Output trimmed: the first line alone is ${formatSize(report.firstLineBytes)}; kept its first ${formatSize(Buffer.byteLength(head))} (${formatSize(report.bytes)} in all).]`;
+		return `${head}\n\n[Output trimmed: the first line alone is ${formatBytes(report.firstLineBytes, "compact")}; kept its first ${formatBytes(Buffer.byteLength(head), "compact")} (${formatBytes(report.bytes, "compact")} in all).]`;
 	}
-	return `${cut.content}\n\n[Output trimmed: ${cut.outputLines} of ${report.lines} lines (${formatSize(cut.outputBytes)} of ${formatSize(report.bytes)}).]`;
+	return `${cut.content}\n\n[Output trimmed: ${cut.outputLines} of ${report.lines} lines (${formatBytes(cut.outputBytes, "compact")} of ${formatBytes(report.bytes, "compact")}).]`;
 }

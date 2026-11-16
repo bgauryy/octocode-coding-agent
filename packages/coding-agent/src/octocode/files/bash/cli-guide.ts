@@ -4,6 +4,7 @@ import path from "node:path";
 import { renderInstruction } from "../../../core/prompt-template.ts";
 import { getShellEnv } from "../../../utils/shell.ts";
 import { octocodeCliAvailable } from "../../cli/shim.ts";
+import { ghLoggedIn } from "../../shared/gh-login.ts";
 
 /** The CLI tools the guide (`instructions/tools/bash/cli.md`) names that a host may lack, probed on the shell's PATH. */
 const PROBED = ["git", "rg", "fd", "jq", "ast-grep", "yq", "gh", "python3", "lsof"] as const;
@@ -68,21 +69,4 @@ function isExecutable(file: string, windows: boolean): boolean {
 		// Missing or not executable: the expected answer for most PATH entries, not an error.
 		return false;
 	}
-}
-
-/** A token in the environment, or a host with a user in gh's `hosts.yml`; read locally, never validated over the network. */
-function ghLoggedIn(env: NodeJS.ProcessEnv, windows: boolean, home: string): boolean {
-	if (env.GH_TOKEN || env.GITHUB_TOKEN) return true;
-	const appData = env.AppData ?? env.APPDATA ?? path.join(home, "AppData", "Roaming");
-	const configDir =
-		env.GH_CONFIG_DIR ??
-		(windows ? path.join(appData, "GitHub CLI") : path.join(env.XDG_CONFIG_HOME || path.join(home, ".config"), "gh"));
-	let hosts: string;
-	try {
-		hosts = fs.readFileSync(path.join(configDir, "hosts.yml"), "utf8");
-	} catch {
-		// No hosts file: gh has never logged in on this machine.
-		return false;
-	}
-	return /^\s+(?:user|oauth_token):\s*\S/m.test(hosts);
 }

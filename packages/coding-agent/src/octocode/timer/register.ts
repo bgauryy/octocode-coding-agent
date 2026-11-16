@@ -15,7 +15,8 @@ import { conditionChecker, conditionWatcher } from "./condition.ts";
 import type { ConditionDeps } from "./conditions/types.ts";
 import { CHECK_CAPS, Judge, type SmallModel } from "./judge.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
-import { wakeDetails, wakeText } from "./model.ts";
+import { wakeDetails, wakeEvent, wakeText } from "./model.ts";
+import { wakeGateOf } from "../wake/gate.ts";
 import { renderTimerMessage } from "./render.ts";
 import { timerWorkRows } from "./work.ts";
 import { TimerScheduler } from "./scheduler.ts";
@@ -57,7 +58,7 @@ const itemSeq = (ref: string) => {
 };
 
 /**
- * The `timer` tool and its scheduler: each session loads its own active timers from the agent database at start, fires
+ * The `wait` tool and its scheduler: each session loads its own active timers from the agent database at start, fires
  * them while it runs (a wake is a steer message: a busy session reads it at its next step, an idle one starts a turn; retried by `wake-retry.ts` like a job report),
  * and leaves them active at shutdown for a resumed session. `settle()` lets a headless run's hold wait for the next wake
  * of a timer this run set; timers from an earlier run never hold an exit.
@@ -118,20 +119,18 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		if (!checkAllowed()) {
 			const generation = approvalGeneration;
 			if (!ctx.hasUI)
-				return "until.check spends money on a small model and is off: set timer.check.enabled to true, or use a deterministic condition.";
+				return "check spends money on a small model and is off: set timer.check.enabled to true, or use a deterministic event.";
 			const caps = `at most ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session`;
 			const yes = await ctx.ui.confirm(
-				"Let timers ask a small model?",
-				`A timer wait with until.check calls a cheaper model to judge a condition, ${caps}. Allow for this session?`,
+				"Let waits ask a small model?",
+				`A wait with check calls a cheaper model to judge a condition, ${caps}. Allow for this session?`,
 			);
 			if (generation !== approvalGeneration)
-				return "The session changed while awaiting judging approval. No timer was set.";
+				return "The session changed while awaiting judging approval. Nothing was set.";
 			if (!yes) return "The user declined judging by a small model; use a deterministic condition.";
 			approved = true;
 		}
-		return small.label(ctx)
-			? undefined
-			: "until.check needs a cheaper model than this session's, and none is available.";
+		return small.label(ctx) ? undefined : "check needs a cheaper model than this session's, and none is available.";
 	};
 	const warn = (ctx: ExtensionContext | undefined, text: string) => {
 		try {
@@ -143,9 +142,10 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 	const wake = (row: TimerRow) => {
 		const context = current;
 		const failed = (error: unknown) =>
-			warn(context, `Timer ${row.id} could not wake this session: ${errorMessage(error)}`);
+			warn(context, `Wait ${row.id} could not wake this session: ${errorMessage(error)}`);
 		try {
-			const sending = api.sendMessage(
+			const sending = wakeGateOf(api).emit(
+				wakeEvent(row),
 				{ customType: TIMER_TYPE, content: wakeText(row), display: true, details: wakeDetails(row) },
 				{ triggerTurn: true, deliverAs: "steer" },
 			);
@@ -164,7 +164,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			const spent = timers.sessionSpend(db().db, sessionId);
 			current?.ui.setStatus(
 				STATUS.timers,
-				spent > 0 ? `timer judging ${formatCost({ cost: spent, unpriced: false })}` : undefined,
+				spent > 0 ? `wait judging ${formatCost({ cost: spent, unpriced: false })}` : undefined,
 				"accent",
 			);
 		} catch {
@@ -175,7 +175,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		try {
 			scheduler?.refresh();
 		} catch (error) {
-			warn(ctx ?? current, `Timers are unavailable: ${errorMessage(error)}`);
+			warn(ctx ?? current, `Waits are unavailable: ${errorMessage(error)}`);
 		}
 	};
 
@@ -189,7 +189,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		try {
 			timers.expireOverdue(db().db, now(), sessionId);
 		} catch (error) {
-			warn(ctx, `Overdue timers were not expired: ${errorMessage(error)}`);
+			warn(ctx, `Overdue waits were not expired: ${errorMessage(error)}`);
 		}
 		scheduler = new TimerScheduler({
 			db,
@@ -201,7 +201,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			forget: (id) => judge.forget(id),
 			wake,
 			changed: showTimers,
-			failed: (error) => warn(current, `A timer pass failed: ${errorMessage(error)}`),
+			failed: (error) => warn(current, `A wait pass failed: ${errorMessage(error)}`),
 		});
 		refresh(ctx);
 	});
@@ -222,6 +222,14 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			agent: options.agent,
 			now,
 			deps,
+			implicit: () => {
+				const children = work.background();
+				const jobs = work.all().filter((row) => row.kind === "bash");
+				return [
+					...(children.length ? [`children ${children.join(", ")} (report)`] : []),
+					...(jobs.length ? [`${jobs.map((row) => row.id).join(", ")} (exit)`] : []),
+				].join("; ");
+			},
 			checkRefusal,
 			changed: (ctx, set) => {
 				if (set) scheduler?.hold(set.id);

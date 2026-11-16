@@ -1,8 +1,8 @@
 import type {
-	BetaCacheMissReason,
-	BetaDiagnostics,
-	BetaDiagnosticsParam,
-} from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
+	CacheMissReason as BetaCacheMissReason,
+	Diagnostics as BetaDiagnostics,
+	DiagnosticsParam as BetaDiagnosticsParam,
+} from "./shapes.ts";
 import type { Model, ProviderEnv } from "../../types.ts";
 import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";

@@ -365,7 +365,16 @@ describe("the subagents a session started", () => {
 			/No subagent "general-other" in this session\. Its subagents: review-fg \(review, goal "Review the diff", done/,
 		);
 		expect(resumableChild(entries, "review-fg", new Set()).session.id).toBe(foregroundId);
+		// An isolated child is refused only without its saved ref; with one it resumes in its recreated worktree.
 		expect(() => resumableChild(entries, "general-iso", new Set())).toThrow(/ran in an isolated worktree/);
+		const worktreePath = (id: string) => path.join(tmp(), id);
+		expect(() => resumableChild(entries, "general-iso", new Set(), { refExists: () => false, worktreePath })).toThrow(
+			/no saved refs\/octocode\/general-iso/,
+		);
+		// With its ref the isolated refusal is passed; this one saved no transcript to continue.
+		expect(() => resumableChild(entries, "general-iso", new Set(), { refExists: () => true, worktreePath })).toThrow(
+			/general-iso has no saved transcript/,
+		);
 		expect(() => resumableChild(entries, "general-bg", new Set(["general-bg"]))).toThrow(/general-bg is running/);
 	});
 

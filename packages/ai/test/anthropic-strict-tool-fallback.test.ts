@@ -1,5 +1,22 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type { BetaTool, MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
+import { APICallError } from "@ai-sdk/provider";
+
+interface BetaTool {
+	strict?: boolean;
+	input_schema: { required?: string[]; [key: string]: unknown };
+	cache_control?: { type: "ephemeral"; ttl?: "1h" | "5m" };
+}
+interface MessageCreateParamsStreaming {
+	tools?: BetaTool[];
+	stream?: boolean;
+	messages: {
+		content:
+			| string
+			| (
+					| { type: "tool_addition"; tool: { type: "tool_definition"; definition: BetaTool } }
+					| { type: "text"; text: string }
+			  )[];
+	}[];
+}
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type AnthropicOptions, stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
@@ -148,9 +165,7 @@ describe("Anthropic preferred strict tool fallback", () => {
 			payload.messages.flatMap((message) =>
 				Array.isArray(message.content)
 					? message.content.flatMap((block) =>
-							block.type === "tool_addition" && block.tool.type === "tool_definition"
-								? [block.tool.definition as BetaTool]
-								: [],
+							block.type === "tool_addition" && block.tool.type === "tool_definition" ? [block.tool.definition] : [],
 						)
 					: [],
 			),
@@ -207,12 +222,13 @@ describe("Anthropic preferred strict tool fallback", () => {
 		const result = await streamAnthropic(model, context([tool("lookup", "prefer")]), {
 			...options,
 			onPayload: () => {
-				throw Anthropic.APIError.generate(
-					400,
-					{ error: { type: "invalid_request_error", message: grammarError } },
-					grammarError,
-					new Headers(),
-				);
+				throw new APICallError({
+					message: grammarError,
+					url: model.baseUrl,
+					requestBodyValues: {},
+					statusCode: 400,
+					responseBody: JSON.stringify({ error: { type: "invalid_request_error", message: grammarError } }),
+				});
 			},
 		}).result();
 		expect(result.stopReason).toBe("error");

@@ -1,4 +1,4 @@
-import { APIError } from "openai";
+import { APICallError } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import type { AssistantMessage } from "../src/types.ts";
 import { formatProviderError, normalizeProviderError } from "../src/utils/error-body.ts";
@@ -6,13 +6,17 @@ import { retryProviderRequest } from "../src/utils/provider-retry.ts";
 import { isRateLimitedText, isRetryableErrorText, isUsageLimitError, retryAssistantCall } from "../src/utils/retry.ts";
 
 /** OpenAI's 429 for an account out of quota or credit: final until billing changes, unlike a rate limit. */
-function insufficientQuota(message: string): APIError {
-	return APIError.generate(
-		429,
-		{ error: { message, type: "insufficient_quota", param: null, code: "insufficient_quota" } },
-		undefined,
-		new Headers({ "retry-after-ms": "1" }),
-	);
+function insufficientQuota(message: string): APICallError {
+	return new APICallError({
+		message,
+		url: "https://example.test",
+		requestBodyValues: {},
+		statusCode: 429,
+		responseBody: JSON.stringify({
+			error: { message, type: "insufficient_quota", param: null, code: "insufficient_quota" },
+		}),
+		responseHeaders: { "retry-after-ms": "1" },
+	});
 }
 
 const OPENAI_TEXT = "You exceeded your current quota, please check your plan and billing details.";
@@ -62,12 +66,16 @@ describe("OpenAI 429 insufficient_quota", () => {
 	});
 
 	it("still retries a plain 429 rate limit in the provider request retry", async () => {
-		const error = APIError.generate(
-			429,
-			{ error: { message: "Rate limit reached for requests", type: "requests", code: "rate_limit_exceeded" } },
-			undefined,
-			new Headers({ "retry-after-ms": "1" }),
-		);
+		const error = new APICallError({
+			message: "Rate limit reached for requests",
+			url: "https://example.test",
+			requestBodyValues: {},
+			statusCode: 429,
+			responseBody: JSON.stringify({
+				error: { message: "Rate limit reached for requests", type: "requests", code: "rate_limit_exceeded" },
+			}),
+			responseHeaders: { "retry-after-ms": "1" },
+		});
 		expect(isRateLimitedText(error.message)).toBe(true);
 		const request = vi.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValue("ok");
 

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { convertTools as convertAnthropicTools } from "../src/api/anthropic-messages/tools.ts";
-import { convertToolConfig } from "../src/api/bedrock-converse-stream/convert.ts";
-import { convertTools as convertGoogleTools } from "../src/api/google-shared/tools.ts";
+import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
+import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
+import { bedrockModel, bedrockResponse, bedrockTextEvents } from "./bedrock-fixtures.ts";
+import { googleToolWire as convertGoogleTools } from "./google-fetch-fixture.ts";
 import type { Tool, ToolCall } from "../src/types.ts";
 import { liftRootComposition, parseJsonContainer, resolveLocalRef } from "../src/utils/json-schema-shape.ts";
 import { validateToolArguments } from "../src/utils/validation.ts";
@@ -79,19 +82,40 @@ describe("root composition in tool schemas", () => {
 		expect(liftRootComposition(plain)).toBe(plain);
 	});
 
-	it("shows Anthropic the lifted properties instead of an empty object", () => {
-		const [converted] = convertAnthropicTools([tool], false, false);
-		expect(converted.input_schema).toEqual({ ...lifted, required: [] });
+	it("shows Anthropic the lifted properties instead of an empty object", async () => {
+		let schema: unknown;
+		await streamAnthropic(
+			getBuiltinModel("anthropic", "claude-sonnet-4-5"),
+			normalizeContext({ tools: [tool], messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
+			{
+				apiKey: "test-key",
+				fetch: async (_input, init) => {
+					schema = JSON.parse(init?.body as string).tools[0].input_schema;
+					return new Response(null, { status: 400 });
+				},
+			},
+		).result();
+		expect(schema).toEqual({ ...lifted, required: [] });
 	});
 
-	it("lifts for Bedrock and for Google's legacy parameters, and keeps full JSON Schema for parametersJsonSchema", () => {
-		const bedrock = convertToolConfig([tool], "auto", false);
+	it("lifts for Bedrock and keeps Google's full JSON Schema for parametersJsonSchema", async () => {
+		let bedrock: { tools?: { toolSpec?: { inputSchema?: unknown } }[] } | undefined;
+		await streamBedrock(
+			bedrockModel,
+			normalizeContext({ tools: [tool], messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
+			{
+				apiKey: "test",
+				env: {},
+				cacheRetention: "none",
+				fetch: async (_input, init) => {
+					bedrock = JSON.parse(String(init?.body)).toolConfig;
+					return bedrockResponse(bedrockTextEvents);
+				},
+			},
+		).result();
 		expect(bedrock?.tools?.[0]?.toolSpec?.inputSchema).toEqual({ json: lifted });
-		const [legacy] = convertGoogleTools([tool], true, false) ?? [];
-		expect(legacy.functionDeclarations[0].parameters).toMatchObject({ properties: lifted.properties });
-		expect(legacy.functionDeclarations[0].parameters).not.toHaveProperty("anyOf");
-		const [full] = convertGoogleTools([tool], false, false) ?? [];
-		expect(full.functionDeclarations[0].parametersJsonSchema).toBe(searchSchema);
+		const [full] = (await convertGoogleTools([tool])) ?? [];
+		expect(full.functionDeclarations[0].parametersJsonSchema).toEqual(searchSchema);
 	});
 });
 

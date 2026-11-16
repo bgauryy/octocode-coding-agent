@@ -42,6 +42,36 @@ function itemGraphNotice(
 }
 
 /**
+ * Tracks a worktree child's saved change when the call named no item: a todo item linking the ref, so the unmerged
+ * work has an owner and a merge gate (`backlog/merge-gate.ts`). The parent's footer line; never throws.
+ */
+export function trackSavedRef(
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	agent: string,
+	ref: string,
+	patch?: string,
+): string {
+	try {
+		const backlog = openBacklog(ctx, { isSubagent: false });
+		const item = backlog.store.add(
+			{
+				title: `Land isolated change of ${agent}`,
+				goal: "The change is merged into the tree (coordinate merge) and checked, or discarded and the item closed.",
+				why: "A worktree child's change is not done until it lands.",
+				state: "todo",
+				tags: ["worktree"],
+				createdBy: "agent",
+			},
+			backlog.actor,
+		);
+		noteSavedRef(backlog, item.ref, ref, patch);
+		return `\nTracked ${ref} on ${item.ref}: done only after it is merged or discarded.`;
+	} catch (error) {
+		return `\nCould not track ${ref} on a backlog item: ${errorMessage(error)}`;
+	}
+}
+
+/**
  * The item a call names (`agent` `item`), checked before anything waits or starts: this session holds it, or it is
  * unheld and claimable (`claim` claims it once the call is accepted, so a call refused later leaves it unclaimed), or
  * the call is refused with why. Reading the item and noting the report share one backlog handle.

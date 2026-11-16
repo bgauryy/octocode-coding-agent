@@ -400,8 +400,15 @@ describe("MCP tools", () => {
 				{ type: "text", text: "[audio audio/wav omitted]" },
 			],
 			details: { server: "docs", tool: "t" },
-			// Scripts get the server's blocks as sent, without `_meta`.
-			structuredContent: { content: blocks, structuredContent: { ok: true } },
+			// Scripts get the bounded, sanitized blocks, without `_meta`.
+			structuredContent: {
+				content: [
+					{ type: "text", text: "a text" },
+					{ type: "image", data: "aW1n", mimeType: "image/png" },
+					{ type: "text", text: "[audio audio/wav omitted]" },
+				],
+				structuredContent: { ok: true },
+			},
 		});
 		expect((await convertMcpResult("docs", "t", { content: [], structuredContent: { n: 1 } })).content).toEqual([
 			{ type: "text", text: '{\n  "n": 1\n}' },
@@ -446,7 +453,7 @@ describe("MCP tools", () => {
 		expect(converted.content[1]).toEqual(image);
 		expect(converted.details).toEqual({ server: "docs", tool: "snapshot", fullOutputPath: "/tmp/full.txt" });
 		expect(saved).toEqual([full]);
-		expect(converted.structuredContent).toEqual(result);
+		expect(converted.structuredContent).toEqual({ content: converted.content });
 
 		// Text within the limit is not saved.
 		await convertMcpResult("docs", "small", { content: [{ type: "text", text: "ok" }] }, { saveOutput });

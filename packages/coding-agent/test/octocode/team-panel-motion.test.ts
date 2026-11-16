@@ -49,7 +49,10 @@ describe("panel state", () => {
 		];
 		const rows = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		expect(rows[1]).toMatch(new RegExp(`^ ├ ${frame} 🐙 busy-aaaa`));
-		expect(rows[2]).toMatch(/^ └ ○ 🐙 rest-bbbb/);
+		// Each agent takes two lines: the name line, then its stats.
+		expect(rows[3]).toMatch(/^ └ ○ 🐙 rest-bbbb/);
+		expect(rows[2]).toMatch(/^ │ +working/);
+		expect(rows[4]).toMatch(/^ +idle/);
 		const tree = [
 			{ member: team[1], depth: 0 },
 			{ member: team[2], depth: 0 },

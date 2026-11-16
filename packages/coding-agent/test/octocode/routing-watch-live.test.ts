@@ -88,7 +88,7 @@ describe("a provider another process disables", () => {
 			const result = await models!.execute("c", {}, undefined, undefined, ctx as never);
 			return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 		};
-		expect(await listed()).toMatch(/^ {2}cerebras · /m);
+		expect(await listed()).toMatch(/^cerebras\//m);
 
 		const first = await turn();
 		expect(first.prompt).toMatch(/providers: .*`cerebras` \(\d+\).*`groq` \(\d+\)/);
@@ -108,8 +108,8 @@ describe("a provider another process disables", () => {
 		expect(next.message?.content).toMatch(/Providers \(models that can run a task\): `groq` \(\d+\)/);
 		expect(next.message?.content).not.toMatch(/Providers[^.]*`cerebras` \(/);
 		const after = await listed();
-		expect(after).toMatch(/^ {2}groq · /m);
-		expect(after).not.toMatch(/^ {2}cerebras · /m);
+		expect(after).toMatch(/^groq\//m);
+		expect(after).not.toMatch(/^cerebras\//m);
 	});
 });
 

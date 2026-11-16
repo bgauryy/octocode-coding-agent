@@ -1,22 +1,5 @@
-import type {
-	BetaContentBlockParam as ContentBlockParam,
-	BetaCacheControlEphemeral as CacheControlEphemeral,
-	MessageCreateParamsStreaming,
-} from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
-
-type MessageParam = MessageCreateParamsStreaming["messages"][number];
-type CacheableBlock = ContentBlockParam & { cache_control?: CacheControlEphemeral | null };
-
 /** Anthropic accepts at most four explicit cache breakpoints per request. */
 export const MAX_CACHE_BREAKPOINTS = 4;
-
-const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_result", "tool_addition", "tool_removal"]);
-
-/** A block that may carry `cache_control`; empty text and thinking blocks cannot be cached. */
-export function isCacheableBlock(block: ContentBlockParam | undefined): block is CacheableBlock {
-	if (!block || !CACHEABLE_BLOCK_TYPES.has(block.type)) return false;
-	return block.type !== "text" || block.text.trim().length > 0;
-}
 
 // Caller-defined payloads (tool schemas, tool call arguments, tool definitions inside `tool_addition`) may use
 // `cache_control` as an ordinary key; markers never live inside them.
@@ -32,10 +15,6 @@ export function countCacheBreakpoints(value: unknown): number {
 		else if (!OPAQUE_KEYS.has(key)) count += countCacheBreakpoints(child);
 	}
 	return count;
-}
-
-function lastBlock(message: MessageParam): ContentBlockParam | undefined {
-	return Array.isArray(message.content) ? message.content[message.content.length - 1] : undefined;
 }
 
 /** A message in Anthropic or Anthropic-compatible chat format: only its role and content are read. */
@@ -76,32 +55,4 @@ export function findPreviousTailIndex(messages: readonly HistoryMessage[]): numb
 		return message.role === "assistant" ? -1 : i;
 	}
 	return -1;
-}
-
-/**
- * Adds a second history breakpoint on the previous request's tail, the user or tool-result message that
- * precedes the final assistant turn. Anthropic only looks back 20 blocks from a breakpoint for an earlier
- * cache write, so a long assistant turn between two requests would otherwise push the last write out of reach.
- * Does nothing without a free slot (`usedBreakpoints` counts every marker already in the request), when the
- * history has no breakpoint to anchor on, or when the previous tail cannot carry one.
- */
-export function addHistoryLookbackBreakpoint(
-	messages: MessageParam[],
-	cacheControl: CacheControlEphemeral,
-	usedBreakpoints: number,
-): void {
-	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return;
-	const tailIndex = findPreviousTailIndex(messages);
-	if (tailIndex < 0) return;
-	const message = messages[tailIndex];
-	if (typeof message.content === "string") {
-		if (message.content.trim().length > 0) {
-			message.content = [{ type: "text", text: message.content, cache_control: cacheControl }];
-		}
-		return;
-	}
-	const block = lastBlock(message);
-	if (isCacheableBlock(block) && !block.cache_control) {
-		block.cache_control = cacheControl;
-	}
 }

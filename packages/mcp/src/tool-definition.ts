@@ -36,6 +36,19 @@ interface McpToolPresentation extends McpToolRenderers {
 	convertResult: (result: CallToolResult, ctx: McpContext) => Promise<AgentToolResult<McpToolDetails>>;
 }
 
+/**
+ * The call preparation of a definition built here, for MCP's own other call paths (hooks): the same `prepareCall` and
+ * `review` the model's calls pass through. A symbol keeps it off the public `McpToolDefinition` type and survives the
+ * spread copies the registry and the host make.
+ */
+const PREPARE_CALL = Symbol("octocode.mcp.prepareCall");
+type PrepareCall = (args: Record<string, unknown>, ctx: McpContext) => Promise<PreparedMcpCall>;
+
+/** The preparation of a registered definition, or undefined when it was not built by `createMcpToolDefinition`. */
+export function preparedCallOf(definition: object): PrepareCall | undefined {
+	return (definition as { [PREPARE_CALL]?: PrepareCall })[PREPARE_CALL];
+}
+
 export interface McpToolDefinitionOptions {
 	presentation?: McpToolPresentation;
 	server: string;
@@ -72,7 +85,8 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const description = tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`;
 	const inputSchema = toParameters(tool.inputSchema);
 	const { compact } = options;
-	return {
+	const prepare: PrepareCall = async (args, ctx) => (await options.presentation?.prepareCall?.(args, ctx)) ?? { args };
+	const definition: McpToolDefinition<TSchema, McpToolDetails> = {
 		name: options.name,
 		label,
 		// Providers declare input schemas; include the server's output contract in the same cached tool description.
@@ -132,7 +146,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const client = await options.getClient();
 			const requested = (params ?? {}) as Record<string, unknown>;
-			const call = (await options.presentation?.prepareCall?.(requested, ctx)) ?? { args: requested };
+			const call = await prepare(requested, ctx);
 			const reply = await client.callTool(tool.name, call.args, {
 				signal,
 				timeoutMs: options.timeoutMs,
@@ -156,6 +170,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				: convertMcpResult(server, tool.name, result);
 		},
 	};
+	return Object.assign(definition, { [PREPARE_CALL]: prepare });
 }
 
 /** `key=value` pairs of a call's arguments, for its header: the server owns the input, so no field is singled out. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { convertTools as convertGoogleTools } from "../src/api/google-shared/tools.ts";
+import { googleToolWire as convertGoogleTools } from "./google-fetch-fixture.ts";
 import { sanitizeMoonshotToolParameters } from "../src/api/openai-completions/tool-schema-flavor.ts";
 import type { Tool } from "../src/types.ts";
 import { liftedProperties, liftRootComposition } from "../src/utils/json-schema-shape.ts";
@@ -62,13 +62,13 @@ describe("the declaration lift of fields named after Object.prototype members", 
 describe("provider schema sanitizers with fields named after Object.prototype members", () => {
 	const tool = () => ({ name: "set", description: "Set fields.", parameters: inheritedNames() }) as Tool;
 
-	it("Gemini legacy parameters keep every field", () => {
-		const [legacy] = convertGoogleTools([tool()], true) ?? [];
-		const parameters = legacy?.functionDeclarations[0]?.parameters as { properties?: unknown } | undefined;
+	it("Gemini JSON Schema keeps every field", async () => {
+		const [legacy] = (await convertGoogleTools([tool()])) ?? [];
+		const parameters = legacy?.functionDeclarations[0]?.parametersJsonSchema as { properties?: unknown } | undefined;
 		expectPlainOwnProperties(parameters?.properties);
 	});
 
-	it("Gemini legacy parameters keep fields named like schema metadata, stripping only real metadata", () => {
+	it("Gemini JSON Schema keeps fields named like schema metadata", async () => {
 		const parameters = {
 			type: "object",
 			$schema: "https://json-schema.org/draft/2020-12/schema",
@@ -80,20 +80,11 @@ describe("provider schema sanitizers with fields named after Object.prototype me
 			},
 			required: ["$schema", "$id", "definitions"],
 		};
-		const [legacy] = convertGoogleTools([{ ...tool(), parameters }], true) ?? [];
-		expect(legacy?.functionDeclarations[0]?.parameters).toEqual({
-			type: "object",
-			properties: {
-				$schema: { type: "string" },
-				$id: { type: "number" },
-				definitions: { type: "boolean" },
-				ordinary: { type: "string" },
-			},
-			required: ["$schema", "$id", "definitions"],
-		});
+		const [legacy] = (await convertGoogleTools([{ ...tool(), parameters }])) ?? [];
+		expect(legacy?.functionDeclarations[0]?.parametersJsonSchema).toEqual(parameters);
 	});
 
-	it("Gemini legacy parameters keep literal data and strip metadata inside alternatives", () => {
+	it("Gemini JSON Schema keeps literal data and alternatives without mutation", async () => {
 		const literal = { $id: "kept", definitions: [1], $schema: "data" };
 		const parameters = {
 			type: "object",
@@ -109,15 +100,8 @@ describe("provider schema sanitizers with fields named after Object.prototype me
 			},
 		};
 		const before = JSON.stringify(parameters);
-		const [legacy] = convertGoogleTools([{ ...tool(), parameters }], true) ?? [];
-		expect(legacy?.functionDeclarations[0]?.parameters).toEqual({
-			type: "object",
-			properties: {
-				config: { type: "object", const: literal, default: literal, examples: [literal], enum: [literal] },
-				choice: { anyOf: [{ type: "string" }, { type: "number" }] },
-				list: { type: "array", items: { type: "string" } },
-			},
-		});
+		const [legacy] = (await convertGoogleTools([{ ...tool(), parameters }])) ?? [];
+		expect(legacy?.functionDeclarations[0]?.parametersJsonSchema).toEqual(parameters);
 		expect(JSON.stringify(parameters)).toBe(before);
 	});
 

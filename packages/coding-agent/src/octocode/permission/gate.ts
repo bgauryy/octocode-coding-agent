@@ -80,7 +80,7 @@ interface Call {
 	ctx: ExtensionContext;
 	input: Record<string, unknown>;
 	prior?: GateVerdict;
-	/** The event as the model made it (before `timer` or `agent` were read as the call they stand for). */
+	/** The event as the model made it (before `wait` or `agent` were read as the call they stand for). */
 	originalEvent: ToolCallEvent;
 	/** False once the gate's call ended. */
 	active: () => boolean;

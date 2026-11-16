@@ -26,3 +26,53 @@ describe("OpenCode operational headers", () => {
 		).toMatchObject({ "User-Agent": "custom", "x-opencode-session": "custom-session" });
 	});
 });
+
+describe("request agent headers", () => {
+	const settings = SettingsManager.inMemory({ enableInstallTelemetry: false });
+	const custom = {
+		...getBuiltinModel("openai", "gpt-6.1-sol"),
+		provider: "my-gateway",
+		baseUrl: "http://localhost:9/v1",
+	};
+	const vendor = getBuiltinModel("openai", "gpt-6.1-sol");
+	const child = {
+		OCTOCODE_REQUEST_AGENT_HEADERS: "1",
+		OCTOCODE_AGENT_ID: "zesty-kelp",
+		OCTOCODE_AGENT_ROLE: "implementer",
+		OCTOCODE_PARENT_ID: "salty-kelp",
+	};
+	const withEnv = <T>(env: Record<string, string>, run: () => T): T => {
+		const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+		Object.assign(process.env, env);
+		try {
+			return run();
+		} finally {
+			for (const [key, value] of Object.entries(saved)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	};
+	it("labels a custom provider's request with the child, its role and its parent", () => {
+		expect(withEnv(child, () => mergeProviderAttributionHeaders(custom, settings, "s"))).toEqual({
+			"x-octocode-agent": "zesty-kelp",
+			"x-octocode-role": "implementer",
+			"x-octocode-parent": "salty-kelp",
+		});
+	});
+	it("labels the session itself main", () => {
+		const env = {
+			OCTOCODE_REQUEST_AGENT_HEADERS: "1",
+			OCTOCODE_AGENT_ID: "",
+			OCTOCODE_PARENT_ID: "",
+			OCTOCODE_AGENT_ROLE: "",
+		};
+		expect(withEnv(env, () => mergeProviderAttributionHeaders(custom, settings, "s"))).toEqual({
+			"x-octocode-agent": "main",
+		});
+	});
+	it("sends nothing unless opted in, and never to a built-in vendor", () => {
+		expect(mergeProviderAttributionHeaders(custom, settings, "s")).toBeUndefined();
+		expect(withEnv(child, () => mergeProviderAttributionHeaders(vendor, settings, "s"))).toBeUndefined();
+	});
+});

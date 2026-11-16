@@ -436,7 +436,11 @@ describe("team tools on a fake Octocode", () => {
 	it("/agents and /agents tell report through the UI", async () => {
 		const { a, b } = await pair();
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
+		// With a UI `/agents` opens a picker (agents-detail.test.ts); the text listing is what a session without one gets.
+		vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		a.ctx.hasUI = false;
 		await a.commands.get("agents").handler("", a.ctx);
+		a.ctx.hasUI = true;
 		expect(a.ctx.ui.notes.at(-1)).toMatchObject({ type: "info", message: expect.stringContaining(b.team.id!) });
 
 		const agents = a.commands.get("agents");
@@ -494,6 +498,8 @@ describe("team tools on a fake Octocode", () => {
 			],
 		]);
 		vi.spyOn(a.team.audit, "details").mockReturnValue(details);
+		vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		a.ctx.hasUI = false;
 		await a.commands.get("agents").handler("", a.ctx);
 		const shown = a.ctx.ui.notes.at(-1)!.message;
 		expect(shown).toContain("item B7 Fix parity");
@@ -591,8 +597,8 @@ describe("AgentsView", () => {
 			expect(lines).not.toContain("main-9999");
 			expect(lines).not.toContain("researcher-8888");
 			expect(lines).not.toContain("#4");
-			// The widget counts the agents; the footer names this session, which peers address, and does not repeat them.
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
+			// The widget counts the agents; the root row names this session, so the footer leaves both out while the widget shows.
+			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 			vi.advanceTimersByTime(1_000);
 			expect(requestRender).toHaveBeenCalled();
 
@@ -602,10 +608,10 @@ describe("AgentsView", () => {
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
 			expect(done).toContain("2 left");
-			expect(done).toMatch(/reviewer-1a2b .* left +\d/);
-			expect(done).toMatch(/tester-3c4d .* left +\d/);
+			expect(done).toMatch(/reviewer-1a2b[^\n]*\n[^\n]* left +\d/);
+			expect(done).toMatch(/tester-3c4d[^\n]*\n[^\n]* left +\d/);
 			expect(done).not.toContain("working");
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 			// Finished rows stay FINISHED_MS (30 s) so their outcome can be read.
 			vi.advanceTimersByTime(31_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
@@ -671,7 +677,7 @@ describe("AgentsView", () => {
 			]);
 			view = { members: [peer("me-0001", "working", null), peer("reviewer-1a2b")], traffic: [] };
 			vi.advanceTimersByTime(1_000);
-			expect(ctx.ui.statuses.get("octocode-team")).toBe("🦑 me-0001");
+			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 			expect(ctx.ui.notes.at(-1)).toEqual({ message: "Team database reachable again.", type: "info" });
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			agents.stop(ctx);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { requestsLongCache } from "../src/api/anthropic-messages/stream-events.ts";
+import { anthropicSdkInput } from "../src/api/ai-sdk/anthropic-input.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
 import { streamAnthropic } from "./anthropic-stop-reason-fixtures.ts";
 
 // Sonnet 4.5: input $3/Mtok, 5m write $3.75, 1h write 2x input = $6.
@@ -18,17 +20,19 @@ describe("1h cache write pricing when the vendor omits the TTL breakdown", () =>
 		expect(result.usage.cost.cacheWrite).toBeCloseTo(0.075, 10);
 	});
 
-	it("assumes 1h only when every breakpoint asks for 1h", () => {
-		const block = (ttl?: string) => ({
-			type: "text",
-			text: "x",
-			cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) },
-		});
-		expect(requestsLongCache({ system: [block("1h")], messages: [{ content: [block("1h")] }] })).toBe(true);
-		// Long instructions with a short history: the split is unknown.
-		expect(requestsLongCache({ system: [block("1h")], messages: [{ content: [block("5m")] }] })).toBe(false);
-		expect(requestsLongCache({ system: [block("1h")], messages: [{ content: [block()] }] })).toBe(false);
-		expect(requestsLongCache({ system: [{ type: "text", text: "x" }] })).toBe(false);
+	it("assumes 1h only when every breakpoint asks for 1h", async () => {
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
+		const context = normalizeContext({ systemPrompt: "x", messages: [{ role: "user", content: "hi", timestamp: 0 }] });
+		const { anthropicSdkCache } = await import("../src/api/ai-sdk/anthropic-cache.ts");
+		const long = (cacheRetention?: "long" | "short" | "none", instructionCacheRetention?: "long" | "none") => {
+			const options = { cacheRetention, instructionCacheRetention, env: {} };
+			const mapping = anthropicSdkInput(model, context, options);
+			return anthropicSdkCache(model, context, options, mapping.messages!, mapping.tools!);
+		};
+		expect(long("long", "long")).toBe(true);
+		expect(long("short", "long")).toBe(false);
+		expect(long(undefined, "long")).toBe(false);
+		expect(long("none", "none")).toBe(false);
 	});
 
 	it("prices later writes at the 1h rate when an earlier breakdown no longer covers them", async () => {

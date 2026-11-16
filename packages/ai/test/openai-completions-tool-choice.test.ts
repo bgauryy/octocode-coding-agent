@@ -1,7 +1,7 @@
 import { completionsResponse, mockCompletionsFetch } from "./completions-fetch-fixture.ts";
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { convertMessages } from "../src/api/openai-completions.ts";
+import { captureCompletionsMessages } from "./capture-completions-payload.ts";
 import { getCompat } from "../src/api/openai-completions/compat.ts";
 import { normalizeContext, stream, streamSimple } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -1345,10 +1345,10 @@ describe("openai-completions tool_choice", () => {
 		]);
 	});
 
-	it("replays OpenCode Go reasoning thinking blocks as reasoning_content", () => {
+	it("replays OpenCode Go reasoning thinking blocks as reasoning_content", async () => {
 		const { compat: _compat, ...baseModel } = getBuiltinModel("opencode-go", "kimi-k3");
 		const model = { ...baseModel, api: "openai-completions" } as Model<"openai-completions">;
-		const messages = convertMessages(
+		const messages = await captureCompletionsMessages(
 			model,
 			normalizeContext({
 				messages: [

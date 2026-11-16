@@ -1,4 +1,3 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { stream } from "../src/api/anthropic-messages.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -24,13 +23,12 @@ export async function streamAnthropic(stopReason = "end_turn", options: StreamOp
 	];
 	const body = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n`).join("\n");
 	const response = new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
-	const client = {
-		beta: { messages: { create: () => ({ asResponse: async () => response }) } },
-	} as unknown as Anthropic;
+	const fetch = async () => response;
 	const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 	const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: Date.now() }] });
 	return stream(model, context, {
-		client,
+		apiKey: "test-key",
+		fetch,
 		...(options.longRetention ? { cacheRetention: "long" as const } : {}),
 	}).result();
 }

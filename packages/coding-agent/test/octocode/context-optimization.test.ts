@@ -331,20 +331,16 @@ describe("context optimization", () => {
 			);
 			const quiet = await run("check", "--overrides", file);
 			expect(quiet.code).toBe(0);
-			expect(quiet.out).toContain(
-				"Warning: MCP server long instructions over budget: 8001 chars > 8000 budget (1% of the context window). Nothing is cut.",
-			);
+			expect(quiet.out).toContain("Warning: MCP server long instructions too long: 8001 chars, budget 8000");
 			expect(quiet.out).not.toMatch(/MCP server (short|gone)/);
-			expect(quiet.out).not.toContain("Context files over budget");
+			expect(quiet.out).not.toContain("Context files too long");
 			expect(quiet.out).toContain("0 problems.");
 
 			const agents = "rule\n".repeat(2_000);
 			fs.writeFileSync(path.join(project, "AGENTS.md"), agents);
 			const loud = await run("check", "--overrides", file);
 			expect(loud.code).toBe(0);
-			expect(loud.out).toContain(
-				`Warning: Context files over budget: ${agents.length} chars > 8000 budget (1% of the context window). Nothing is cut.`,
-			);
+			expect(loud.out).toContain(`Warning: Context files too long: ${agents.length} chars, budget 8000`);
 			expect(fs.readFileSync(path.join(project, "AGENTS.md"), "utf8")).toBe(agents);
 		});
 

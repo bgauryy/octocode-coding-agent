@@ -4,7 +4,8 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
 import * as runs from "./agent-runs.ts";
 import { ensureMailbox } from "./agent-mailbox.ts";
-export { ensureMailbox };
+import { ensureSettledStatus } from "./agent-status.ts";
+export { ensureMailbox, ensureSettledStatus };
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export interface ProcessIdentity {
@@ -50,11 +51,12 @@ export function refresh(
 	context?: events.LifecycleContext,
 ): boolean {
 	ensureMailbox(db);
+	ensureSettledStatus(db);
 	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
 			`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, lease_workspace_id = ?, workspace_id = ?, session_id = ?, cwd = COALESCE(?, cwd), branch = COALESCE(?, branch), process_title = COALESCE(?, process_title), seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, cache_write = ?, output = ?, cost = ?, unpriced = ?, mailbox = ?
-         WHERE id = ? AND pid = ? AND started IS ?`,
+         WHERE id = ? AND pid = ? AND started IS ? AND status <> 'settled'`,
 		)
 		.run(
 			member.status,
@@ -111,6 +113,7 @@ export function insert(
 	context?: events.LifecycleContext,
 ): boolean {
 	ensureMailbox(db);
+	ensureSettledStatus(db);
 	const row = db
 		.prepare(
 			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, cache_write, output, cost, unpriced, session_id, cwd, branch, process_title, mailbox)
@@ -198,14 +201,44 @@ export function processOf(db: DatabaseSync, id: string): ProcessIdentity | undef
 	return row ? { pid: num(row.pid), ...(typeof row.started === "string" ? { started: row.started } : {}) } : undefined;
 }
 
+/** The process the row of `id` names and its last heartbeat; undefined when it has no row. */
+export function seatOf(db: DatabaseSync, id: string): MemberProcess | undefined {
+	const row = db.prepare("SELECT id, pid, started, seen_at FROM agents WHERE id = ?").get(id) as Row | undefined;
+	return row ? processRow(row) : undefined;
+}
+
 /** Names `process` on the row of `id`: a child's process takes over the row its parent held for it. */
 export function setProcess(db: DatabaseSync, id: string, process: ProcessIdentity): void {
 	db.prepare("UPDATE agents SET pid = ?, started = ? WHERE id = ?").run(process.pid, process.started ?? null, id);
 }
 
-/** The process of every agent of `team`. */
+/**
+ * Ends the run of `id` while its parent keeps what it holds: the row, which `owner` (the child's process) names, becomes
+ * `settled` and names `parent` instead, so the child's reservations stay as long as the parent runs; `hint` is how the run
+ * ended (kept unless the parent left one). The child's heartbeats no longer match the row. Whether it was settled.
+ */
+export function settle(
+	db: DatabaseSync,
+	id: string,
+	owner: ProcessIdentity,
+	parent: ProcessIdentity,
+	hint?: string,
+): boolean {
+	ensureSettledStatus(db);
+	return (
+		db
+			.prepare(
+				"UPDATE agents SET status = 'settled', activity = NULL, pid = ?, started = ?, end_hint = COALESCE(end_hint, ?) WHERE id = ? AND pid = ? AND started IS ? AND status <> 'settled'",
+			)
+			.run(parent.pid, parent.started ?? null, hint ?? null, id, owner.pid, owner.started ?? null).changes > 0
+	);
+}
+
+/** The process of every agent of `team` that can read mail (a settled one cannot). */
 export function processes(db: DatabaseSync, team: string): MemberProcess[] {
-	return (db.prepare("SELECT id, pid, started, seen_at FROM agents WHERE team = ?").all(team) as Row[]).map(processRow);
+	return (
+		db.prepare("SELECT id, pid, started, seen_at FROM agents WHERE team = ? AND status <> 'settled'").all(team) as Row[]
+	).map(processRow);
 }
 
 /** The process of every agent in the database, whatever its workspace. */

@@ -54,15 +54,20 @@ function externalApproval(
 /**
  * An external ACP agent's permission request, put to the person: only `allow_once` and `reject_once` are offered (a
  * standing grant would outlive this prompt), through the one dialog queue. The answer is read by the option's role,
- * never its name. No UI, an abort, or no answer cancels.
+ * never its name. With nobody to ask (no UI), the request is refused through its `reject_once` option, so the agent is
+ * told it was refused rather than having its turn cancelled. An abort or no answer cancels.
  */
 export const externalPermissionDialog: ExternalPolicy["permission"] =
 	(ctx: ExtensionContext) => async (request, signal) => {
 		const cancelled = { outcome: { outcome: "cancelled" as const } };
-		if (!interactive(ctx, false) || signal.aborted) return cancelled;
+		if (signal.aborted) return cancelled;
 		const options = request.options.filter(
 			(option): option is Offered => option.kind === "allow_once" || option.kind === "reject_once",
 		);
+		if (!interactive(ctx, false)) {
+			const reject = options.find((option) => option.kind === "reject_once");
+			return reject ? { outcome: { outcome: "selected" as const, optionId: reject.optionId } } : cancelled;
+		}
 		if (options.length === 0) return cancelled;
 		const question = externalApproval(request, options);
 		// An external agent may ask while no run is active; a person is still what it waits for.
@@ -84,7 +89,7 @@ interface ExternalPermissionPort {
 /**
  * The policy the session installs: in `full` the external agent's request needs no prompt, so it never waits on a
  * person who may not be there. The `allow_once` option it advertised is selected and the decision is audited through
- * the permission layer like every full-mode call. Any other mode, and a request with no `allow_once` option, goes to
+ * the permission layer like every full-mode call (`bypass` too: it asks less than `full`). Any other mode, and a request with no `allow_once` option, goes to
  * the dialog.
  */
 export const externalPermission =
@@ -93,7 +98,8 @@ export const externalPermission =
 		const dialog = externalPermissionDialog(ctx);
 		return async (request, signal) => {
 			const allow = request.options.find((option) => option.kind === "allow_once");
-			if (!allow || permission.mode !== "full" || signal.aborted) return dialog(request, signal);
+			if (!allow || (permission.mode !== "full" && permission.mode !== "bypass") || signal.aborted)
+				return dialog(request, signal);
 			const verdict = await permission.check(ctx, {
 				action: "agent.spawn",
 				title: "Let this external agent proceed?",

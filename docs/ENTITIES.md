@@ -31,7 +31,7 @@ Schema version 10. There are no upgrade steps: a file at an older version is set
 | `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                   |
 | `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                |
 | `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                    |
-| `timers`                                                                    | The `timer` tool's wakes                                                                                                                          |
+| `timers`                                                                    | The `wait` tool's wakes                                                                                                                          |
 | `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                           |
 | `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                   |
 

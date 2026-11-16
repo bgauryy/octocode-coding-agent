@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { normalizeSessionName, parseArgs } from "../src/cli/args.ts";
 
 describe("parseArgs", () => {
@@ -133,6 +133,51 @@ describe("parseArgs", () => {
 		test("parses --api-key", () => {
 			const result = parseArgs(["--api-key", "sk-test-key"]);
 			expect(result.apiKey).toBe("sk-test-key");
+		});
+
+		describe("--api-key-env", () => {
+			const original = process.env.OCTOCODE_TEST_KEY_VAR;
+			afterEach(() => {
+				if (original === undefined) delete process.env.OCTOCODE_TEST_KEY_VAR;
+				else process.env.OCTOCODE_TEST_KEY_VAR = original;
+			});
+
+			test("reads the key from the named variable", () => {
+				process.env.OCTOCODE_TEST_KEY_VAR = "sk-from-env";
+				const result = parseArgs(["--api-key-env", "OCTOCODE_TEST_KEY_VAR"]);
+				expect(result.apiKey).toBe("sk-from-env");
+				expect(result.diagnostics).toEqual([]);
+			});
+
+			test("errors, without a key, when the variable is unset or empty", () => {
+				delete process.env.OCTOCODE_TEST_KEY_VAR;
+				const result = parseArgs(["--api-key-env", "OCTOCODE_TEST_KEY_VAR"]);
+				expect(result.apiKey).toBeUndefined();
+				expect(result.diagnostics).toEqual([
+					{
+						type: "error",
+						message: "--api-key-env: environment variable OCTOCODE_TEST_KEY_VAR is not set or is empty",
+					},
+				]);
+				process.env.OCTOCODE_TEST_KEY_VAR = "  ";
+				expect(parseArgs(["--api-key-env", "OCTOCODE_TEST_KEY_VAR"]).apiKey).toBeUndefined();
+			});
+
+			test("refuses to be combined with --api-key, in either order", () => {
+				process.env.OCTOCODE_TEST_KEY_VAR = "sk-from-env";
+				for (const argv of [
+					["--api-key", "sk-inline", "--api-key-env", "OCTOCODE_TEST_KEY_VAR"],
+					["--api-key-env", "OCTOCODE_TEST_KEY_VAR", "--api-key", "sk-inline"],
+				]) {
+					const result = parseArgs(argv);
+					expect(result.diagnostics.map((d) => d.type)).toEqual(["error"]);
+					expect(result.diagnostics[0].message).toContain("conflicts with");
+				}
+			});
+
+			test("needs a variable name", () => {
+				expect(parseArgs(["--api-key-env"]).diagnostics).toHaveLength(1);
+			});
 		});
 
 		test("parses --system-prompt", () => {

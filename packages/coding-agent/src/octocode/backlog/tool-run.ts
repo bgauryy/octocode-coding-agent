@@ -5,6 +5,7 @@ import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { itemLine } from "./format.ts";
 import { BacklogError } from "./item.ts";
+import { checkMerged } from "./merge-gate.ts";
 import { endedNotice } from "./graph-notice.ts";
 import { PRIORITIES } from "./store.ts";
 import { epicCompletion, splitIds } from "./tool-arguments.ts";
@@ -156,6 +157,8 @@ export function runBacklog(backlog: Backlog, args: RunParams, options: RunOption
 	if (params.goal !== undefined && !storedText(params.goal))
 		throw new Error(`${word} cannot clear the goal: give the new done criterion, a check someone else can run.`);
 	const before = store.get(params.id);
+	if (before && params.state === "done" && params.close === undefined && before.state !== "done")
+		checkMerged(backlog, before);
 	const reopened = params.state !== undefined && params.state !== "done" && before?.state === "done";
 	const key = params.completion?.operationKey;
 	const replayed = key === undefined ? undefined : before?.completions.find((c) => c.operationKey === key);

@@ -1,9 +1,10 @@
-import { keyText, renderHintLine, type RankedHint } from "../../../../theme/theme-tui-helpers.ts";
+import { keyText, moveHint, renderHintLine, type RankedHint } from "../../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../../theme/theme.ts";
 
 export function shortcutsFooter(count: string, width: number, dirty: boolean, saving: boolean, error?: string): string {
 	const cancel: RankedHint = [keyText("tui.select.cancel"), "close", 0];
 	const primary: RankedHint[] = [
+		moveHint(0),
 		[keyText("tui.select.confirm"), "toggle", 0],
 		[keyText("app.models.save"), "save", 0],
 	];

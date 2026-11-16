@@ -9,7 +9,7 @@
  * the one import path for callers.
  */
 export { type Worktree, recordWorktreePid, worktreesDir } from "./worktree-base.ts";
-export { createWorktree } from "./worktree-create.ts";
+export { createWorktree, reopenWorktree } from "./worktree-create.ts";
 export { finishWorktree, isolationReport } from "./worktree-finish.ts";
 export { discardAgent, mergeAgent, pendingRefs, reservedChanges, savedChanges } from "./worktree-merge.ts";
 export { describePrune, pruneWorktrees } from "./worktree-prune.ts";

@@ -1,203 +1,91 @@
 import { describe, expect, it } from "vitest";
-import {
-	convertTools,
-	resolveGoogleFunctionCallingMode,
-	supportsGoogleStrictToolSampling,
-} from "../src/api/google-shared/tools.ts";
+import { supportsGoogleStrictToolSampling } from "../src/api/ai-sdk/google-capabilities.ts";
+import { googleToolWire, googleContext, googleModel } from "./google-fetch-fixture.ts";
+import { stream } from "../src/api/google-generative-ai.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
 import type { Tool } from "../src/types.ts";
 
 function makeTool(parameters: Record<string, unknown>): Tool {
-	return {
-		name: "test_tool",
-		description: "A test tool",
-		parameters: parameters,
-	};
+	return { name: "test_tool", description: "A test tool", parameters };
 }
-
-describe("google-shared convertTools", () => {
-	it("strips JSON Schema meta keys from parameters when useParameters=true", () => {
-		const tools = [
-			makeTool({
-				$schema: "http://json-schema.org/draft-07/schema#",
-				$id: "urn:bash-tool",
-				$comment: "A bash tool for demonstration",
-				$defs: {
-					commandDef: { type: "string" },
-				},
-				definitions: {
-					legacyDef: { type: "number" },
-				},
-				type: "object",
-				properties: {
-					command: { type: "string" },
-				},
-				required: ["command"],
-			}),
-		];
-
-		const result = convertTools(tools, true);
-		const decl = result?.[0]?.functionDeclarations?.[0];
-
-		expect(decl).toBeDefined();
-		expect(decl?.parameters).toEqual({
-			type: "object",
-			properties: {
-				command: { type: "string" },
-			},
-			required: ["command"],
-		});
-		expect(decl?.parameters).not.toHaveProperty("$schema");
-		expect(decl?.parameters).not.toHaveProperty("$id");
-		expect(decl?.parameters).not.toHaveProperty("$comment");
-		expect(decl?.parameters).not.toHaveProperty("$defs");
-		expect(decl?.parameters).not.toHaveProperty("definitions");
-	});
-
-	it("recursively strips nested JSON Schema meta keys", () => {
-		const tools = [
-			makeTool({
-				$schema: "http://json-schema.org/draft-07/schema#",
-				type: "object",
-				properties: {
-					deep: {
-						$schema: "http://json-schema.org/draft-07/schema#",
-						$id: "urn:nested",
-						type: "string",
-					},
-				},
-			}),
-		];
-
-		const result = convertTools(tools, true);
-		const decl = result?.[0]?.functionDeclarations?.[0];
-
-		expect(decl).toBeDefined();
-		expect(decl?.parameters).toEqual({
-			type: "object",
-			properties: {
-				deep: {
-					type: "string",
-				},
-			},
-		});
-	});
-
-	it("preserves $ref while stripping meta keys", () => {
-		const tools = [
-			makeTool({
-				$schema: "http://json-schema.org/draft-07/schema#",
-				type: "object",
-				properties: {
-					refProp: {
-						$ref: "#/$defs/someDef",
-						type: "string",
-					},
-				},
-			}),
-		];
-
-		const result = convertTools(tools, true);
-		const decl = result?.[0]?.functionDeclarations?.[0];
-
-		expect(decl).toBeDefined();
-		expect(decl?.parameters).toEqual({
-			type: "object",
-			properties: {
-				refProp: {
-					$ref: "#/$defs/someDef",
-					type: "string",
-				},
-			},
-		});
-	});
-
-	it("does not mutate the original Tool.parameters object", () => {
+describe("Google SDK tool declarations", () => {
+	it("does not mutate the original Tool.parameters object", async () => {
 		const originalParameters = {
 			$schema: "http://json-schema.org/draft-07/schema#",
 			type: "object",
-			properties: {
-				command: { type: "string" },
-			},
+			properties: { command: { type: "string" } },
 			required: ["command"],
 		};
-		const tools = [makeTool(originalParameters)];
-
-		convertTools(tools, true);
-
+		await googleToolWire([makeTool(originalParameters)]);
 		expect(originalParameters).toEqual({
 			$schema: "http://json-schema.org/draft-07/schema#",
 			type: "object",
-			properties: {
-				command: { type: "string" },
-			},
+			properties: { command: { type: "string" } },
 			required: ["command"],
 		});
 	});
-
-	it("preserves $schema in parametersJsonSchema when useParameters=false", () => {
-		const tools = [
+	it("preserves $schema in parametersJsonSchema when useParameters=false", async () => {
+		const result = await googleToolWire([
 			makeTool({
 				$schema: "http://json-schema.org/draft-07/schema#",
 				type: "object",
-				properties: {
-					command: { type: "string" },
-				},
+				properties: { command: { type: "string" } },
 				required: ["command"],
 			}),
-		];
-
-		const result = convertTools(tools, false);
+		]);
 		const decl = result?.[0]?.functionDeclarations?.[0];
-
 		expect(decl).toBeDefined();
 		expect(decl?.parametersJsonSchema).toEqual({
 			$schema: "http://json-schema.org/draft-07/schema#",
 			type: "object",
-			properties: {
-				command: { type: "string" },
-			},
+			properties: { command: { type: "string" } },
 			required: ["command"],
 		});
 	});
-
-	it("handles tools without $schema gracefully", () => {
-		const tools = [
-			makeTool({
-				type: "object",
-				properties: {
-					path: { type: "string" },
-				},
-				required: ["path"],
-			}),
-		];
-
-		const result = convertTools(tools, true);
+	it("handles tools without $schema gracefully", async () => {
+		const result = await googleToolWire([
+			makeTool({ type: "object", properties: { path: { type: "string" } }, required: ["path"] }),
+		]);
 		const decl = result?.[0]?.functionDeclarations?.[0];
-
 		expect(decl).toBeDefined();
-		expect(decl?.parameters).toEqual({
+		expect(decl?.parametersJsonSchema).toEqual({
 			type: "object",
-			properties: {
-				path: { type: "string" },
-			},
+			properties: { path: { type: "string" } },
 			required: ["path"],
 		});
 	});
-
-	it("uses validated function calling for strict tools on Gemini 3", () => {
+	it("uses validated function calling for strict tools on Gemini 3", async () => {
 		const tool = makeTool({ type: "object", properties: {} });
 		tool.constrainedSampling = { type: "json_schema", strict: "require" };
-
 		expect(supportsGoogleStrictToolSampling("gemini-3.1-pro-preview")).toBe(true);
 		expect(supportsGoogleStrictToolSampling("gemini-2.5-pro")).toBe(false);
-		expect(resolveGoogleFunctionCallingMode([tool], undefined, true)).toBe("VALIDATED");
-		expect(() => resolveGoogleFunctionCallingMode([tool], undefined, false)).toThrow(
-			'Tool "test_tool" requires JSON-schema constrained sampling',
-		);
+		let mode: unknown;
+		await stream(
+			{ ...googleModel, id: "gemini-3.1-pro-preview" },
+			normalizeContext({
+				messages: [{ role: "system", content: "", toolsAdded: [tool], timestamp: 0 }, ...googleContext.messages],
+			}),
+			{
+				apiKey: "test-key",
+				onPayload: (body) => {
+					mode = (body as { toolConfig: { functionCallingConfig: { mode: unknown } } }).toolConfig.functionCallingConfig
+						.mode;
+					throw new Error("request captured");
+				},
+			},
+		).result();
+		expect(mode).toBe("VALIDATED");
+		expect(() =>
+			stream(
+				googleModel,
+				normalizeContext({
+					messages: [{ role: "system", content: "", toolsAdded: [tool], timestamp: 0 }, ...googleContext.messages],
+				}),
+			),
+		).toThrow('Tool "test_tool" requires JSON-schema constrained sampling');
 	});
-
-	it("returns undefined for empty tool list", () => {
-		expect(convertTools([])).toBeUndefined();
-		expect(convertTools([], true)).toBeUndefined();
+	it("returns undefined for empty tool list", async () => {
+		expect(await googleToolWire([])).toBeUndefined();
+		expect(await googleToolWire([], "gemini-2.5-pro")).toBeUndefined();
 	});
 });

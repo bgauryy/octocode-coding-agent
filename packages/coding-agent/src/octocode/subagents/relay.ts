@@ -36,6 +36,12 @@ const RELAY_MAX_DIALOGS = 10;
 const RELAY_WINDOW_MS = 60_000;
 
 /** What the parent says to a child it stops asking about. The child's own deny-with-a-note path carries it to the model. */
+const RELAY_NO_UI_NOTE =
+	"Not run: nobody can confirm this now (your coordinator has no user dialog). Do not retry; report to your coordinator what is blocked, why, and what you need.";
+const RELAY_TIMEOUT_NOTE = (minutes: number) =>
+	`Not run: the user did not answer within ${minutes} minutes. Do not retry; report to your coordinator what is blocked, why, and what you need.`;
+const RELAY_BUSY_NOTE =
+	"Not run: your previous approval is still waiting on the user. Wait for its answer before asking again.";
 export const RELAY_LIMIT_NOTE = `Not run: this subagent sent more than ${RELAY_MAX_DIALOGS} approval dialogs within a minute, so the rest of that minute is denied without asking the user. Do not retry now; report to your coordinator what is blocked, why, and what you need.`;
 
 /** The part of the parent's permission state a relay uses. */
@@ -62,6 +68,8 @@ export interface RelayHost {
 	awaitingApproval?: ((id: string, waiting: boolean) => void) | undefined;
 	/** Child `id` wrote output at `at`, so listings can say how long it has been quiet. */
 	output?: ((id: string, at: number) => void) | undefined;
+	/** Tells this session's model something about a child (`graph.tell`): a wake when it is idle, read after its turn when busy. */
+	tell?: ((notice: string) => void) | undefined;
 	/** The budgets of running children, so this session can show and raise them (`coordinate`). */
 	budgets?: Pick<RunningBudgets, "add" | "remove"> | undefined;
 }
@@ -81,7 +89,12 @@ interface RelayOptions {
 	/** Called when the child's first dialog opens (`true`) and when its last one closes (`false`). */
 	onWaiting?: (waiting: boolean) => void;
 	now?: () => number;
+	/** How long a relayed permission ask waits for the user before it is refused (`RELAY_ASK_TIMEOUT_MS`). */
+	askTimeoutMs?: number;
 }
+
+/** A permission ask the user leaves unanswered this long is refused, so a background child never waits forever. */
+const RELAY_ASK_TIMEOUT_MS = 10 * 60_000;
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((item, index) => item === b[index]);
@@ -128,14 +141,18 @@ export class ChildRelay {
 		const title = typeof event.title === "string" ? event.title : "";
 		const options = stringList(event.options) ?? [];
 		const ui = this.#host?.ui;
-		if (!ui || method === "editor" || this.#open.size > 0) {
-			this.#cancel(id);
-			return;
-		}
 		// A child's permission `ask` carries its header in its own field (`askShortcut` verifies it).
 		const asked = method === "ask" ? relayedQuestions(event, this.#label(), this.#options.nonce) : undefined;
 		const shortcut = asked && askShortcut(event, asked, this.#options.nonce);
+		// What the user already allowed answers first: it needs no dialog, so no UI either.
 		if (shortcut && this.#fastPath(id, shortcut.header, shortcut.options, shortcut.reply)) return;
+		if (!ui || method === "editor" || this.#open.size > 0) {
+			if (asked) {
+				const why = !ui ? RELAY_NO_UI_NOTE : RELAY_BUSY_NOTE;
+				this.#options.send({ type: "extension_ui_response", id, replies: refusedReplies(asked, why) });
+			} else this.#cancel(id);
+			return;
+		}
 		if (this.#overLimit(ui)) {
 			if (asked) {
 				this.#options.send({ type: "extension_ui_response", id, replies: refusedReplies(asked, RELAY_LIMIT_NOTE) });
@@ -278,10 +295,7 @@ export class ChildRelay {
 			// `relayAsk` queues behind the parent's other dialogs itself (`ask`), so it is not wrapped again.
 			const questions = method === "ask" ? relayedQuestions(event, this.#label(), this.#options.nonce) : undefined;
 			response = questions
-				? await relayAsk(ui, questions, {
-						signal: controller.signal,
-						...(typeof event.timeout === "number" ? { timeout: event.timeout } : {}),
-					})
+				? await this.#askBounded(ui, questions, title, controller, event)
 				: await withDialog(async () => {
 						if (controller.signal.aborted || method === "ask") return { cancelled: true };
 						if (method === "select") {
@@ -307,6 +321,38 @@ export class ChildRelay {
 		if (!this.#open.delete(id)) return;
 		if (this.#open.size === 0) this.#options.onWaiting?.(false);
 		this.#options.send({ type: "extension_ui_response", id, ...response });
+	}
+
+	/** A relayed permission ask with a deadline: unanswered, it is refused with why and the parent's model is told. */
+	async #askBounded(
+		ui: NonNullable<RelayHost["ui"]>,
+		questions: Parameters<typeof relayAsk>[1],
+		title: string,
+		controller: AbortController,
+		event: Record<string, unknown>,
+	): Promise<Record<string, unknown>> {
+		const limit =
+			typeof event.timeout === "number" ? event.timeout : (this.#options.askTimeoutMs ?? RELAY_ASK_TIMEOUT_MS);
+		const EXPIRED = Symbol("expired");
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const deadline = new Promise<typeof EXPIRED>((resolve) => {
+			timer = setTimeout(() => {
+				controller.abort();
+				resolve(EXPIRED);
+			}, limit);
+		});
+		try {
+			// A UI that ignores the abort cannot hold the child: the deadline answers it either way.
+			const answer = await Promise.race([relayAsk(ui, questions, { signal: controller.signal }), deadline]);
+			if (answer !== EXPIRED) return answer;
+		} finally {
+			clearTimeout(timer);
+		}
+		const minutes = Math.max(1, Math.round(limit / 60_000));
+		this.#host?.tell?.(
+			`${this.#who.id} waited ${minutes} min for the user to approve "${sanitizeTerminalText(redactNonce(title, this.#options.nonce)).slice(0, 120)}" and was refused. If it still needs it, ask the user (askUser), then tell ${this.#who.id} the answer.`,
+		);
+		return { replies: refusedReplies(questions, RELAY_TIMEOUT_NOTE(minutes)) };
 	}
 
 	/** The child closed dialog `id` itself (`extension_ui_dismiss`: its run was aborted or its timeout passed): close it in the parent's UI; the child needs no answer. */

@@ -1,4 +1,4 @@
-import type OpenAI from "openai";
+import type { ChatCompletionTool } from "../ai-sdk/openai-wire-types.ts";
 import type { Tool } from "../../types.ts";
 import {
 	getJsonSchemaToolParameters,
@@ -8,10 +8,7 @@ import {
 import { sanitizeMoonshotToolParameters } from "./tool-schema-flavor.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
-export function convertTools(
-	tools: Tool[],
-	compat: ResolvedOpenAICompletionsCompat,
-): OpenAI.Chat.Completions.ChatCompletionTool[] {
+export function convertTools(tools: Tool[], compat: ResolvedOpenAICompletionsCompat): ChatCompletionTool[] {
 	return tools.map((tool) => {
 		const grammar = resolveGrammarConstrainedSampling(tool, compat.supportsOpenAIGrammarTools);
 		if (grammar) {
