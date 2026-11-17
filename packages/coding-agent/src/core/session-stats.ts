@@ -113,7 +113,7 @@ export function computeContextUsage(
 	// If no such assistant exists, context token count is unknown until the next LLM response.
 	// The branch is read from the leaf back, only as far as needed. Its latest compaction leads the projection, which
 	// otherwise holds none; without a leaf entry the branch is empty.
-	const projection = sessionManager.buildSessionProjection();
+	const projection = sessionManager.readSessionProjection();
 	const leaf = sessionManager.getLeafEntry();
 	const head = projection.entries[0]?.sourceEntry;
 	const latestCompaction = leaf && head?.type === "compaction" ? head : undefined;

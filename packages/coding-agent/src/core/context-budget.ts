@@ -27,9 +27,12 @@ export function generatedInstructionChars(text: string): number {
 	return text.includes("declare namespace ") ? instructionChars(text) : 0;
 }
 
-/** The `<project_context>` block of a rendered system prompt: the context files as the model reads them. */
+/** The `<project_context>` blocks of a rendered system prompt (its head and one per file): the context files as the model reads them. */
 export function projectContextOf(systemPrompt: string): string | undefined {
-	return /^<project_context>$[\s\S]*?^<\/project_context>$/m.exec(systemPrompt)?.[0];
+	const pattern = /^<project_context>$[\s\S]*?^<\/project_context>$/gm;
+	const blocks: string[] = [];
+	for (let match = pattern.exec(systemPrompt); match; match = pattern.exec(systemPrompt)) blocks.push(match[0]);
+	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }
 
 /**

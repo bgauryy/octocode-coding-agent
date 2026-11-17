@@ -219,6 +219,20 @@ export interface SessionProjection {
 	model: { provider: string; modelId: string } | null;
 }
 
+/** A projected entry that can only be read: kept projections share these records between readers. */
+export interface ReadonlyProjectedSessionEntry {
+	readonly sourceEntry: SessionEntry;
+	readonly messages: readonly AgentMessage[];
+}
+
+/** A projection that can only be read (`readSessionProjection`, `previewProjection`); `SessionProjection` is one. */
+export interface ReadonlySessionProjection {
+	readonly entries: readonly ReadonlyProjectedSessionEntry[];
+	readonly messages: readonly AgentMessage[];
+	readonly thinkingLevel: string;
+	readonly model: Readonly<{ provider: string; modelId: string }> | null;
+}
+
 export interface SessionContext {
 	messages: AgentMessage[];
 	thinkingLevel: string;

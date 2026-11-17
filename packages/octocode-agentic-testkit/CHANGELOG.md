@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `judge()` / `explainJudgement()`: grade a transcript against a rubric with a model you pass in; per-criterion verdicts and reasons.
+- The Anthropic parser keeps `tool_addition` / `tool_removal` blocks and the block structure of system messages on `ChatMessage.blocks`; the request hash ignores them.
+
 ## 0.1.0
 
 First internal release.

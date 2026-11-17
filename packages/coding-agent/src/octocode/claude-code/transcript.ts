@@ -7,6 +7,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import type { CallToolResult, ServedTool } from "../../../../mcp/src/api.ts";
 import { renderInstruction } from "../../core/prompt-template.ts";
+import { sectionFamilyText } from "../../core/system-prompt-spec.ts";
 import { CLAUDE_CODE_PROVIDER } from "./models.ts";
 
 /** Tool call ids this backend gives the calls Claude Code makes, so their results are known as already answered. */
@@ -89,7 +90,7 @@ export function promptText(messages: readonly Message[]): string {
 
 /** What Octocode appends to Claude Code's own system prompt: one instruction and the project's context files. */
 export function appendedPrompt(messages: readonly Message[]): string {
-	const projectContext = getCurrentSystemMessage(messages)?.sections?.project_context ?? "";
+	const projectContext = sectionFamilyText(getCurrentSystemMessage(messages)?.sections ?? {}, "project_context");
 	return renderInstruction("system/claude-code.md", { projectContext });
 }
 

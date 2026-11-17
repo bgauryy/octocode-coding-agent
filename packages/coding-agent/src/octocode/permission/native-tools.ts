@@ -4,7 +4,12 @@ import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
 import { declareToolEffect, declaresEffect } from "./tool-effects.ts";
-import { redeclareLoadedNatives, settleNativeDeferral, withNativeDeferral } from "./native-deferral.ts";
+import {
+	reconsiderNativeOnDemand,
+	redeclareLoadedNatives,
+	settleNativeDeferral,
+	withNativeDeferral,
+} from "./native-deferral.ts";
 
 export { nativeToolsPort } from "./native-deferral.ts";
 
@@ -90,6 +95,7 @@ function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, 
 export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
 	api.on("session_start", (_event, ctx) => settleNativeDeferral(api, ctx));
 	api.on("tool_execution_end", (_event, ctx) => redeclareLoadedNatives(api, ctx));
+	api.on("model_select", (_event, ctx) => reconsiderNativeOnDemand(api, ctx));
 	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
 		// Declaring an effect is the review: the permission layer reads it, so the tool needs no entry above.
 		if (!isNativeTool(tool.name) && !tool.effect) {

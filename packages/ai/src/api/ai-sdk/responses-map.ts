@@ -130,10 +130,16 @@ export function responsesMapping(
 		}
 		applySdkUsage(output, part.totalUsage, model);
 		const raw = part.totalUsage.raw as
-			| { input_tokens_details?: { cache_write_tokens_details?: { ttl_12h_tokens?: number } } }
+			| {
+					input_tokens_details?: {
+						cache_write_tokens_details?: { ttl_30m_tokens?: number; ttl_12h_tokens?: number };
+					};
+			  }
 			| undefined;
-		if (raw?.input_tokens_details?.cache_write_tokens_details !== undefined) {
-			output.usage.cacheWrite12h = raw.input_tokens_details.cache_write_tokens_details.ttl_12h_tokens ?? 0;
+		const writes = raw?.input_tokens_details?.cache_write_tokens_details;
+		if (writes !== undefined) {
+			output.usage.cacheWrite12h = writes.ttl_12h_tokens ?? 0;
+			output.usage.cacheWrite30m = writes.ttl_30m_tokens ?? 0;
 			calculateCost(model, output.usage);
 		}
 		applyServiceTierPricing(output.usage, serviceTier, model);

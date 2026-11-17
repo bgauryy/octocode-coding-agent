@@ -1,6 +1,8 @@
 /** The session statistics block of `/status`: messages, tokens, cache and cost. Text only; the caller supplies styling. */
 
 import { computeCacheWaste, type ModelPriceSource } from "../../core/cache-stats.ts";
+import { formatTurnCosts } from "../../core/cache-warmer/format.ts";
+import { turnCosts } from "../../core/cache-warmer/turn-costs.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import type { SessionStats } from "../../core/session-stats.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
@@ -91,5 +93,7 @@ export function formatSessionReport(input: SessionReportInput, style: ReportStyl
 					: `\n${dim("Estimated cache re-billing:")} ${detail}`;
 		}
 	}
+	const perTurn = formatTurnCosts(turnCosts(input.entries), dim);
+	if (perTurn) info += `\n\n${bold("Turns")}\n${perTurn.trimEnd()}`;
 	return info;
 }

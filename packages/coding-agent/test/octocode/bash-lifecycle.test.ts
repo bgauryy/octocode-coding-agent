@@ -66,7 +66,7 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		expect(message).toMatch(/a longer timeout, or with background: true/);
 	});
 
-	it("names processes a command left running in its group, with how to stop them, and leaves them running", async () => {
+	it("names processes a command left running in its group, with how to stop them, and leaves them running for now", async () => {
 		const { tool, ctx } = setup();
 		const result = await tool.execute(
 			"t1",
@@ -77,7 +77,9 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		);
 		const text = result.content[0].text as string;
 		const match =
-			/Still running after the command returned \(not stopped\): (\d+) sleep 30\. Stop: kill -- -(\d+)\./.exec(text);
+			/Still running after the command returned \(stopped when this session ends\): (\d+) sleep 30\. Stop: kill -- -(\d+)\./.exec(
+				text,
+			);
 		expect(match).not.toBeNull();
 		const [, stray, group] = match!.map(Number) as [number, number, number];
 		expect(processAlive(stray)).toBe(true);
@@ -86,6 +88,30 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		// A command that leaves nothing behind gets no note.
 		const clean = await tool.execute("t2", { command: "echo only" }, undefined, undefined, ctx);
 		expect(clean.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 1 line · 5 B\]\nonly\n$/);
+	});
+});
+
+describe.runIf(posix)("processes a returned command left running", () => {
+	it("are stopped when the process that ran the command exits", async () => {
+		const dir = tmp();
+		const marker = path.join(dir, "stray.pid");
+		const script = path.join(dir, "run.ts");
+		const module = new URL("../../src/octocode/files/bash-run.ts", import.meta.url).href;
+		fs.writeFileSync(
+			script,
+			`import { foregroundOperations } from ${JSON.stringify(module)};\n` +
+				`await foregroundOperations({}, () => undefined).exec(${JSON.stringify(`sleep 30 >/dev/null 2>&1 & echo $! > ${JSON.stringify(marker)}`)}, ${JSON.stringify(dir)}, { onData() {} });\n` +
+				`process.exit(0);\n`,
+		);
+		const resolver = new URL("../../scripts/source-resolver.ts", import.meta.url).href;
+		const run = spawnSync(process.execPath, ["--no-warnings", "--import", resolver, script], { encoding: "utf8" });
+		expect(run.status, run.stderr).toBe(0);
+		const stray = Number(fs.readFileSync(marker, "utf8").trim());
+		try {
+			await until(() => !processAlive(stray));
+		} finally {
+			if (processAlive(stray)) process.kill(stray, "SIGKILL");
+		}
 	});
 });
 

@@ -12,12 +12,19 @@ type Block = {
 	content?: unknown;
 };
 
+const PLAIN = new Set(["text", "tool_use", "tool_result"]);
+
 /** Anthropic Messages request -> the gateway's chat-message shape (system first, tool results as `tool` messages). */
 export function anthropicMessages(body: Record<string, unknown>): ChatMessage[] {
 	const out: ChatMessage[] = [];
-	if (body.system !== undefined && body.system !== "") out.push({ role: "system", content: textOf(body.system) });
+	if (body.system !== undefined && body.system !== "")
+		out.push({
+			role: "system",
+			content: textOf(body.system),
+			...(Array.isArray(body.system) ? { blocks: body.system as Record<string, unknown>[] } : {}),
+		});
 	for (const m of (Array.isArray(body.messages) ? body.messages : []) as {
-		role: "user" | "assistant";
+		role: ChatMessage["role"];
 		content: unknown;
 	}[]) {
 		if (!Array.isArray(m.content)) {
@@ -25,6 +32,8 @@ export function anthropicMessages(body: Record<string, unknown>): ChatMessage[] 
 			continue;
 		}
 		const blocks = m.content as Block[];
+		const structured = m.role === "system" || blocks.some((b) => !PLAIN.has(b.type ?? ""));
+		const keep = structured ? { blocks: blocks as Record<string, unknown>[] } : {};
 		const text = blocks
 			.filter((b) => b.type === "text")
 			.map((b) => b.text ?? "")
@@ -38,7 +47,8 @@ export function anthropicMessages(body: Record<string, unknown>): ChatMessage[] 
 			}));
 		for (const b of blocks)
 			if (b.type === "tool_result") out.push({ role: "tool", tool_call_id: b.tool_use_id, content: textOf(b.content) });
-		if (text || calls.length) out.push({ role: m.role, content: text, ...(calls.length ? { tool_calls: calls } : {}) });
+		if (text || calls.length || structured)
+			out.push({ role: m.role, content: text, ...(calls.length ? { tool_calls: calls } : {}), ...keep });
 	}
 	return out;
 }

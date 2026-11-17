@@ -487,7 +487,7 @@ describe("Native features through the SDK", () => {
 		});
 	}, 60_000);
 
-	it("tracks backlog items and memories with the tools, refuses secrets, and recalls memories in later prompts", async () => {
+	it("tracks backlog items and memories with the tools, refuses secrets, and does not re-send a memory its save showed", async () => {
 		const t = await run("track work", [
 			calls(
 				nativeCall("backlogPlan", {
@@ -558,10 +558,11 @@ describe("Native features through the SDK", () => {
 		expect(found.text).toContain("The answer constant lives in app.ts");
 		expect(secret).toMatchObject({ isError: true });
 		expect(secret.text).toMatch(/GitHub token/);
-		// The next prompt that mentions the topic gets the memory injected as data.
+		// The save result already showed this version, so a later prompt on the topic does not inject it again
+		// (memory-write-seen.test.ts covers recall after an edit elsewhere).
 		const [next] = await run("where is the answer constant exported?", [say("in app.ts")]);
-		expect(next.context).toContain("[octocode-memory");
 		expect(next.context).toContain("The answer constant lives in app.ts");
+		expect(next.context).not.toContain("[octocode-memory");
 	});
 
 	it("prints /backlog, memory and sessions as text without a UI", async () => {

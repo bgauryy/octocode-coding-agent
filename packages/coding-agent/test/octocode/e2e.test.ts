@@ -103,6 +103,8 @@ async function startSession(
 		settings?: Record<string, unknown>;
 		agentSettings?: Record<string, unknown>;
 		models?: Array<{ id: string; inputCost: number; maxTokens: number }>;
+		/** The model's transport adds tools after the cached prefix (Anthropic-style tool changes). */
+		capable?: boolean;
 	} = {},
 ) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-e2e-"));
@@ -129,6 +131,7 @@ async function startSession(
 	const models = options.models ?? [{ id: "faux-1", inputCost: 0, maxTokens: 4_096 }];
 	const faux = createFauxCore({
 		provider: "faux",
+		...(options.capable ? { api: "anthropic-messages" } : {}),
 		models: models.map(({ id, maxTokens }) => ({ id, contextWindow: 200_000, maxTokens })),
 	});
 	const provider: ExtensionFactory = (api) => {
@@ -141,6 +144,9 @@ async function startSession(
 				...model,
 				promptCache: { short: 300, long: 3600 },
 				cost: { input: models[index].inputCost, output: 0, cacheRead: 0, cacheWrite: 0 },
+				...(options.capable
+					? { compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true } }
+					: {}),
 			})),
 			streamSimple: faux.streamSimple,
 		} as never);
@@ -200,6 +206,31 @@ async function startSession(
 	return { cwd, session, faux, run, dispose };
 }
 
+/**
+ * The first request's prefix in two parts: Octocode's own text (system prompt without the server-provided text inside
+ * each `<mcp>` block, plus the non-MCP tool contracts; the section's wrapper and the `<mcp>` tags stay ours), which is
+ * capped, and the MCP servers' text (block contents plus `mcp__` tool contracts), external: reported, never capped.
+ */
+function prefixChars(turn: Turn): { own: number; mcp: number } {
+	const serverBlock = /(<mcp name="[^"]*" tools="[^"]*">\n)[\s\S]*?(\n<\/mcp>)/g;
+	const blocks = [...turn.systemPrompt.matchAll(serverBlock)];
+	// Every server header must close: an unmatched block would move server text into our count, or the reverse.
+	expect(blocks).toHaveLength(turn.systemPrompt.match(/<mcp name="/g)?.length ?? 0);
+	const serverPromptChars = blocks.reduce((sum, match) => sum + match[0].length - match[1].length - match[2].length, 0);
+	const contractChars = (mcp: boolean) =>
+		JSON.stringify(turn.toolContracts.filter((tool) => tool.name.startsWith("mcp__") === mcp)).length;
+	return {
+		own: turn.systemPrompt.length - serverPromptChars + contractChars(false),
+		mcp: serverPromptChars + contractChars(true),
+	};
+}
+
+/**
+ * Octocode's own first-request text on a transport that adds tools in place, where `web`, `archive` and `models` are on
+ * demand: measured 37,024 (38,676 on a transport that cannot, where they are deferred). Slack about 1%.
+ */
+const ON_DEMAND_OWN_CEILING = 37_400;
+
 /** An mcp.json `octocode` entry that keeps the server off (a file entry wins over Octocode's registration). */
 const OCTOCODE_OFF = { octocode: { command: "false", enabled: false } };
 
@@ -222,21 +253,8 @@ describe("with Octocode MCP (default)", () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
 		// Real Octocode + the local MCP, before provider-specific encoding. Project context and user skills are disabled here.
 		// The separate prompt-size test guards only extension-owned prose/schemas, not this complete fixture prefix.
-		// Two parts: Octocode's own text (system prompt without the server-provided text inside each `<mcp>` block, plus
-		// the non-MCP tool contracts; the section's wrapper and the `<mcp>` tags stay ours) is capped. The MCP servers'
-		// text (block contents plus `mcp__` tool contracts) is external: it is reported and never capped or trimmed.
-		const serverBlock = /(<mcp name="[^"]*" tools="[^"]*">\n)[\s\S]*?(\n<\/mcp>)/g;
-		const blocks = [...turn.systemPrompt.matchAll(serverBlock)];
-		// Every server header must close: an unmatched block would move server text into our count, or the reverse.
-		expect(blocks).toHaveLength(turn.systemPrompt.match(/<mcp name="/g)?.length ?? 0);
-		const serverPromptChars = blocks.reduce(
-			(sum, match) => sum + match[0].length - match[1].length - match[2].length,
-			0,
-		);
-		const contractChars = (mcp: boolean) =>
-			JSON.stringify(turn.toolContracts.filter((tool) => tool.name.startsWith("mcp__") === mcp)).length;
-		const ownChars = turn.systemPrompt.length - serverPromptChars + contractChars(false);
-		const mcpChars = serverPromptChars + contractChars(true);
+		// This faux model's transport cannot add tools in place (tool loading mode `none`): nothing is on demand.
+		const { own: ownChars, mcp: mcpChars } = prefixChars(turn);
 		console.log(
 			`default Octocode prefix: own ${ownChars} chars, MCP server text ${mcpChars} chars (prompt ${turn.systemPrompt.length}, ${turn.tools.length} tools)`,
 		);
@@ -276,7 +294,8 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.tools).toContain("mcp__octocode__localSearch");
 		for (const name of ["edit", "write"]) expect(turn.tools).not.toContain(name);
 		expect(turn.systemPrompt).toContain("<work>");
-		// Every tool the server lists, GitHub and package registry ones included, is declared from the first request.
+		// Where the transport cannot add tools in place, every tool the server lists, GitHub and package registry ones
+		// included, is declared from the first request (on-demand tools fall back to deferred).
 		for (const name of [
 			"ghSearchRepo",
 			"ghSearchCode",
@@ -294,7 +313,10 @@ describe("with Octocode MCP (default)", () => {
 			expect(turn.tools).toContain(`mcp__octocode__${name}`);
 		expect(turn.tools).not.toContain("tool_search");
 		// The server's MCP section and tool declarations are available before the first request.
-		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
+		// The head, then each server as its own part (`mcps:<server>`) under its own tag.
+		expect(turn.systemPrompt).toMatch(
+			/<mcps>\n(?:[^\n]*\n){2}<\/mcps>\n\n<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/,
+		);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
 		// description and its field names and types (nested ones too, without descriptions or bounds), and the full
@@ -319,6 +341,36 @@ describe("with Octocode MCP (default)", () => {
 		expect(next.tools).toContain("mcp__octocode__localSearch");
 		expect(next.systemPrompt).toBe(turn.systemPrompt);
 		expect(next.toolContracts).toEqual(turn.toolContracts);
+	}, 60_000);
+
+	it("leaves rare tools undeclared until first use where the transport adds tools in place", async () => {
+		const capable = await startSession({}, { capable: true });
+		try {
+			const turn = (await capable.run("hello", [say("ready")])).at(-1)!;
+			const { own, mcp } = prefixChars(turn);
+			console.log(
+				`on-demand Octocode prefix: own ${own} chars, MCP server text ${mcp} chars (${turn.tools.length} tools)`,
+			);
+			expect(own, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
+				ON_DEMAND_OWN_CEILING,
+			);
+			// The bundled preset's GitHub and package registry tools and the rare native tools are listed, not declared.
+			for (const name of ["ghSearchRepo", "ghSearchCode", "ghGetFileContent", "artifactSearch", "ghCloneRepo"]) {
+				expect(turn.tools).not.toContain(`mcp__octocode__${name}`);
+				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
+			}
+			for (const name of ["web", "archive", "models"]) {
+				expect(turn.tools).not.toContain(name);
+				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
+			}
+			for (const name of ["localSearch", "localFetch", "lspSearch"])
+				expect(turn.tools).toContain(`mcp__octocode__${name}`);
+			expect(turn.tools).toContain("mcp");
+			expect(turn.tools).toContain("compact");
+			expect(turn.tools).toContain("backlogPlan");
+		} finally {
+			await capable.dispose();
+		}
 	}, 60_000);
 
 	it("records passive team notices during streaming without an extra model request", async () => {

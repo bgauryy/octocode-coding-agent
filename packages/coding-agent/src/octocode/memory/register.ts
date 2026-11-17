@@ -2,6 +2,7 @@ import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../.
 import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "@octocodeai/octocode-common/env";
+import { activeItemGoal } from "./active-goal.ts";
 import { registerMemoryCommand } from "./command.ts";
 import { type Injection, MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
@@ -70,7 +71,7 @@ export function registerMemory(
 	 * What to send before a request: the session notes the model cannot see, then (with recall on) pinned and relevant memories
 	 * for `query`. A broken store never blocks a request; notify once until retrieval recovers.
 	 */
-	const injectionFor = (ctx: ExtensionContext, query: string) => {
+	const injectionFor = (ctx: ExtensionContext, query: string, withActiveGoal = false) => {
 		// Session notes belong to the session, not to the memory store or its automatic recall: a note the model cannot see
 		// is sent whatever those settings say, and a broken store does not hide it.
 		const contextWindow = ctx.model?.contextWindow;
@@ -84,8 +85,11 @@ export function registerMemory(
 			const store = storeFor(ctx);
 			if (!store.autoSetting()) return lone();
 			const earlier = sessionInjections(ctx.sessionManager);
+			// The span's first injection also searches the active item's goal: a bare "continue" prompt names nothing.
+			const first = earlier.injected.size === 0 && !earlier.headerInContext;
+			const itemGoal = withActiveGoal && first && query ? activeItemGoal(ctx, options) : undefined;
 			const injection = selectInjection(store, {
-				query,
+				query: itemGoal ? `${query} ${itemGoal}` : query,
 				scope: "all",
 				seen: unchangedIds(store, earlier.injected),
 				headerInContext: earlier.headerInContext,
@@ -113,7 +117,9 @@ export function registerMemory(
 		}
 	};
 
-	api.on("before_agent_start", async (event, ctx) => injectionFor(ctx, agentStartQuery(event, goal)));
+	api.on("before_agent_start", async (event, ctx) =>
+		injectionFor(ctx, agentStartQuery(event, goal), event.messageType !== "custom"),
+	);
 
 	// An overflow compaction retries the turn with `continue()`, which sends no `before_agent_start`: the notes and pinned
 	// memories the summary replaced would stay out of the retry's request. They are sent again here, before it, only

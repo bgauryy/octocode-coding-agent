@@ -22,6 +22,15 @@ export function resolveCacheAffinityId(
 		? undefined
 		: resolvePromptCacheKey(options);
 }
+/**
+ * Whether a request names and refreshes its cache lifetime: Anthropic-style markers and OpenAI explicit breakpoints carry
+ * a TTL. Key routing and implicit caching leave retention to the provider (Gemini, xAI), so a keep-alive has no
+ * guaranteed effect there and a retention choice is only the longest lifetime the adapter sends.
+ */
+export function isCacheTtlControllable(mechanism: string): boolean {
+	return mechanism === "markers" || mechanism === "explicit-breakpoint";
+}
+
 export type CachePreferences = Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention">;
 export interface CachePreferenceLayer {
 	source: string;

@@ -10,13 +10,13 @@ You are a coding assistant operating inside Octocode, a coding agent harness: yo
 <tools>
 - bash: Run builds, tests, git and platform CLIs; move or unpack files. Edit files with `file`
 - file: Create, edit, delete or patch files
-- web: Look up public web pages: docs, release notes, advisories, anything the repository cannot answer
 - mcp: When an MCP server's tools fail, time out or disappear, or to check its state
 - wait: To wake yourself at a set time or when outside state holds; your own background job or child wakes you when it ends. Use it instead of sleep, polling or `tail -f`
-- archive: Read earlier sessions and compactions; profile context, cache and latency
 - memory: Search or read saved preferences and decisions before recalling them
 - agent: Reserve files others may edit (coordinate), message a teammate (message)
 - skill: To load a skill listed in <available_skills>
+- web: Look up public web pages: docs, release notes, advisories, anything the repository cannot answer
+- archive: Read earlier sessions and compactions; profile context, cache and latency
 </tools>
 
 <rules>
@@ -146,14 +146,6 @@ Apply file changes; this tool does not read. Use queries or a Codex-style patch,
 
 Schema: `{"type":"object","required":["reason"],"properties":{"reason":{"type":"string"},"queries":{"type":"array","items":{"type":"object","required":["type","path"],"properties":{"reason":{"type":"string","description":"Only if it differs from the call's reason"},"type":{"type":"string","enum":["edit","write","delete"],"description":"edit: exact replacements; write: create or replace; delete: irreversible, only when the task requires it"},"path":{"type":"string","description":"Absolute path or relative to cwd"},"edits":{"type":"array","items":{"type":"object","required":["oldText","newText"],"properties":{"oldText":{"type":"string","description":"Exact text, unique in the file unless replaceAll; with line, the whole original line without its terminator"},"newText":{"type":"string","description":"Replacement text"},"line":{"type":"integer","description":"1-based line anchor; needs sourceSha256"},"sourceSha256":{"type":"string","description":"SHA-256 of the whole file as read or from the last OK line; needs line"},"replaceAll":{"type":"boolean","description":"All non-overlapping matches; default false."}}},"description":"edit: replacements matched against the original content; none may overlap"},"content":{"type":"string","description":"write: complete file content"}}}},"patch":{"type":"string","description":"Codex apply_patch text"}}}`
 
-### web
-
-```text
-Supply exactly one: query to search, or url to read an http(s) page. Fetches return static text and metadata or formatted JSON; no JavaScript runs. Image URLs (PNG, JPEG, GIF, WebP) return images, resizing large ones and naming saved originals; SVG returns XML. Cross-host redirects name the next URL without following it.
-```
-
-Schema: `{"type":"object","properties":{"reason":{"type":"string"},"url":{"type":"string"},"query":{"type":"string"},"maxResults":{"type":"integer"},"maxChars":{"type":"integer"}},"additionalProperties":true,"required":["reason"]}`
-
 ### mcp
 
 ```text
@@ -169,14 +161,6 @@ Wake this session with a note: set after/every seconds; on an event (once:false 
 ```
 
 Schema: `{"type":"object","required":["op","reason"],"properties":{"reason":{"type":"string"},"op":{"type":"string","enum":["set","on","off","list"]},"note":{"type":"string","description":"required: what to do on wake"},"after":{"type":"number","description":"set: seconds"},"every":{"type":"number","description":"set: min 30s; on: poll, min 5s"},"event":{"type":"string","enum":["agent.ended","item.state","path.unlocked","check.result"]},"filter":{"type":"object","properties":{"ref":{"type":"string","description":"comma-joined: any"},"state":{"type":"string","description":"todo|ongoing|done|closed|ready (dependsOn all done)"},"path":{"type":"string"},"agent":{"type":"string"},"command":{"type":"string","description":"exit 0"}},"additionalProperties":false},"check":{"type":"string","description":"on: question a small model judges (paid)"},"once":{"type":"boolean","description":"on: false repeats"},"maxRuns":{"type":"integer","description":"default 20"},"deadline":{"type":"number","description":"seconds; on: 3600"},"id":{"type":"integer","description":"off: id"},"all":{"type":"boolean","description":"list: ended too; off: all"}},"additionalProperties":false}`
-
-### archive
-
-```text
-History/compaction summaries; context/cache/latency diagnosis: op list, source profile; agentId lists requests, request selects layers. Events: coordinator-only. Search stops at match/time budget; follow cursor. Narrow: sessionId/file/since; keywords ranks, query filters.
-```
-
-Schema: `{"type":"object","properties":{"reason":{"type":"string"},"query":{"type":"string"},"keywords":{"type":"string"},"file":{"type":"string"},"sessionId":{"type":"string"},"op":{"type":"string"},"id":{"type":"string"},"limit":{"type":"integer"},"cursor":{"type":"string"},"line":{"type":"integer"},"since":{"type":"string"},"source":{"type":"string"},"agentId":{"type":"string"},"request":{"type":"integer"}},"additionalProperties":true,"required":["reason"]}`
 
 ### memory
 

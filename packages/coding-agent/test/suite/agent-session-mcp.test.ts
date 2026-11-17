@@ -1,5 +1,5 @@
 import "../mcp-host.ts";
-import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@octocodeai/octocode-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import type { SystemMessage } from "@octocodeai/octocode-ai/compat";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/client/index.ts";
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
@@ -11,6 +11,7 @@ import type { McpExposure, McpServerEntry } from "../../../mcp/src/config.ts";
 import type { McpPresentationMode } from "../../../mcp/src/presentation/index.ts";
 import { createMcpExtension } from "../../../mcp/src/index.ts";
 import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../mcp/src/section.ts";
+import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
@@ -229,12 +230,9 @@ describe("AgentSession MCP integration", () => {
 			.flatMap((message) => (message.toolsAdded ?? []).map((tool) => tool.name));
 	}
 
-	/** A section as the model currently has it (default: `mcps`, one block per server); undefined when it has none. */
+	/** A section as the model currently has it (default: the `mcps` family, one section per server); undefined when it has none. */
 	function serversSection(harness: Harness, name: string = MCPS_SECTION): string | undefined {
-		let current: string | null | undefined;
-		for (const message of harness.session.messages)
-			if (message.role === "system" && message.sections && name in message.sections) current = message.sections[name];
-		return current || undefined;
+		return sectionFamilyText(getCurrentSystemMessage(harness.session.messages)?.sections ?? {}, name) || undefined;
 	}
 
 	function nestedToolNames(harness: Harness): string[] {
@@ -550,7 +548,8 @@ describe("AgentSession MCP integration", () => {
 		expect(names).toContain(MCPS_SECTION);
 		expect(names.indexOf(MCPS_SECTION)).toBeLessThan(names.indexOf("cwd"));
 		expect(names.filter((name) => name.startsWith("mcp_"))).toEqual([]);
-		expect(first?.sections?.[MCPS_SECTION]).toContain('<mcp name="docs" tools="mcp__docs__*">');
+		expect(names.indexOf("mcps:docs")).toBeLessThan(names.indexOf("cwd"));
+		expect(first?.sections?.["mcps:docs"]).toContain('<mcp name="docs" tools="mcp__docs__*">');
 	});
 
 	it("caches thin declarations, the plain tool blocks and instructions on an unchanged prompt (json)", async () => {
@@ -724,8 +723,9 @@ describe("AgentSession MCP integration", () => {
 
 		await harness.session.prompt("first");
 		const first = updates()[0].sections!;
-		expect(first[MCPS_SECTION]).toBe(
-			`<mcps>\n${MCPS_PREAMBLE}\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
+		expect(first[MCPS_SECTION]).toBe(`<mcps>\n${MCPS_PREAMBLE}\n</mcps>`);
+		expect(first["mcps:slow"]).toBe(
+			`<mcps>\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
 		);
 		expect(first[MCP_STATUS_SECTION]).toContain("- slow: connecting");
 		expect(Object.keys(first).at(-1)).toBe(MCP_STATUS_SECTION);
@@ -734,8 +734,8 @@ describe("AgentSession MCP integration", () => {
 		await vi.waitFor(() => expect(callable()).toContain("mcp__slow__search"));
 		await harness.session.prompt("second");
 		const filled = updates().at(-1)!.sections!;
-		expect(filled).toEqual({ [MCPS_SECTION]: expect.stringContaining("Slow docs. More."), [MCP_STATUS_SECTION]: null });
-		const block = filled[MCPS_SECTION];
+		expect(filled).toEqual({ "mcps:slow": expect.stringContaining("Slow docs. More."), [MCP_STATUS_SECTION]: null });
+		const block = filled["mcps:slow"];
 		expect(block).not.toContain(NOT_CONNECTED);
 		expect(block?.match(/Slow docs\./g)).toHaveLength(1);
 
@@ -760,7 +760,7 @@ describe("AgentSession MCP integration", () => {
 		expect(reconnected.sections).toEqual({ [MCP_STATUS_SECTION]: null });
 		expect(reconnected.toolsAdded ?? []).toEqual([]);
 		expect(reconnected.toolsRemoved ?? []).toEqual([]);
-		expect(serversSection(harness)).toBe(block);
+		expect(serversSection(harness, "mcps:slow")).toBe(block);
 	});
 
 	it("fills a server's block on the next turn of the same run when it connects mid-run, with thin tools", async () => {
@@ -779,9 +779,9 @@ describe("AgentSession MCP integration", () => {
 		const messages = harness.session.messages;
 		const update = messages.find(
 			(message): message is SystemMessage =>
-				message.role === "system" && messages.indexOf(message) > 0 && !!message.sections?.[MCPS_SECTION],
+				message.role === "system" && messages.indexOf(message) > 0 && !!message.sections?.["mcps:slow"],
 		);
-		expect(update?.sections?.[MCPS_SECTION]).toContain("function search(");
+		expect(update?.sections?.["mcps:slow"]).toContain("function search(");
 		expect(update?.sections?.[MCP_STATUS_SECTION]).toBeNull();
 		expect(messages.filter((message) => message.role === "user")).toHaveLength(1);
 		const declared = getCurrentTools(messages).find((tool) => tool.name === "mcp__slow__search");

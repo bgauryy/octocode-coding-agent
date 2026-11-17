@@ -15,6 +15,8 @@ import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
+/** The `memory` tool's name, whose save results count as shown memories (`savedResult`). */
+export const MEMORY_TOOL_NAME = "memory";
 export const MEMORY_HEADER = renderInstruction("notices/memory-header.md", { again: false });
 /** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
 export const MEMORY_HEADER_AGAIN = renderInstruction("notices/memory-header.md", { again: true });
@@ -44,7 +46,8 @@ export interface Injection {
 
 /**
  * Ids injected earlier on this branch, each with the `updatedAt` of the version injected (undefined for an injection
- * that did not record it), from the `octocode-memory` custom messages in `entries`, oldest first. A compaction
+ * that did not record it), from the `octocode-memory` custom messages in `entries`, oldest first, and from the results
+ * of `memory` tool saves, which show the saved version to the model already. A compaction
  * summarizes the messages before its first kept entry away, so only injections from that entry on count (all of them
  * are dropped when the kept entry is unknown). An omitted or changed injection no longer suppresses recall.
  */
@@ -101,21 +104,34 @@ function foldInjection(fold: InjectionFold, entry: unknown): void {
 		}
 		return;
 	}
-	if (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE) return;
-	const details = asRecord(entry.details);
+	const saved = savedResult(entry);
+	if (!saved && (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE)) return;
+	const details = asRecord(saved ? saved.details : entry.details);
 	const list = Array.isArray(details.ids) ? details.ids : [];
 	const updated = Array.isArray(details.updated) ? details.updated : [];
-	const content = contentText(entry.content);
+	const content = contentText(saved ? saved.content : entry.content);
 	fold.injections.push({
 		at,
 		id: typeof entry.id === "string" ? entry.id : undefined,
 		content,
 		intact: true,
-		whole: content.startsWith(MEMORY_HEADER),
+		whole: !saved && content.startsWith(MEMORY_HEADER),
 		ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
 			typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
 		),
 	});
+}
+
+/**
+ * The message of a successful `memory` tool save in `entry`: its details name the saved version (`updated`), which the
+ * result shows. Reads and deletes record no version, so they never count a memory as seen.
+ */
+function savedResult(entry: Record<string, unknown>): Record<string, unknown> | undefined {
+	if (entry.type !== "message") return undefined;
+	const message = asRecord(entry.message);
+	if (message.role !== "toolResult" || message.toolName !== MEMORY_TOOL_NAME || message.isError === true)
+		return undefined;
+	return Array.isArray(asRecord(message.details).updated) ? message : undefined;
 }
 
 /** The injections a compaction has not summarized away, oldest first. */

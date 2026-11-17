@@ -200,7 +200,7 @@ describe("G4: refusals say what to do next", () => {
 			`Unknown items fields: bogus. An entry takes ${fields}, state, note.`,
 		);
 		await expect(call({ op: "edit", items: [{ id: "B1", bogus: 1 }] })).rejects.toThrow(
-			`Unknown items fields: bogus. An entry takes id, ${fields}, state, note.`,
+			`Unknown items fields: bogus. An entry takes id, version, ${fields}, state, note.`,
 		);
 		await expect(call({ op: "add", bogus: 1 })).rejects.toThrow(
 			`Unknown backlogPlan fields: bogus. add takes items, one entry per item: ${fields}, state, note.`,

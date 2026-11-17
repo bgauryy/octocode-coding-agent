@@ -109,7 +109,8 @@ const ALLOWED: Record<string, string[]> = {
 	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser"],
 	remote: ["shared", "web-daemon", "workspace"],
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
-	memory: ["shared", "permission", "render", "history"],
+	// `backlog`: start recall also searches the active item's goal (`memory/active-goal.ts`).
+	memory: ["shared", "permission", "render", "history", "backlog"],
 	plan: ["shared"],
 	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
 	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths"],

@@ -37,8 +37,8 @@ const ENTRY_FIELDS: Record<Write, readonly string[]> = {
 	add: [...ADD_ENTRY_FIELDS, ...WORK],
 	edit: [...EDIT_ENTRY_FIELDS, ...WORK],
 };
-/** The fields a refusal names: the declared ones (`version` and the `backlog` fields are taken or answered, not offered). */
-const SHOWN: Record<Write, readonly string[]> = { add: ADD_ENTRY_FIELDS, edit: ["id", ...ADD_ENTRY_FIELDS] };
+/** The fields a refusal names: the declared ones (the `backlog` fields are answered, not offered). */
+const SHOWN: Record<Write, readonly string[]> = { add: ADD_ENTRY_FIELDS, edit: EDIT_ENTRY_FIELDS };
 const EXAMPLE: Record<Write, string> = { add: "{title, goal, why}", edit: "{id, priority}" };
 
 /**

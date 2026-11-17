@@ -25,6 +25,6 @@ describe("instruction context edges", () => {
 		const order = SYSTEM_PROMPT_SECTIONS.map((spec) => spec.name);
 		expect(order.indexOf("harnesses")).toBe(order.indexOf("role") + 1);
 		expect(order.indexOf("cwd")).toBe(order.indexOf("harnesses") + 1);
-		expect(Object.keys(sections).slice(-4)).toEqual(["role", "harnesses", "cwd", "environment"]);
+		expect(Object.keys(sections).slice(-4)).toEqual(["role", "harnesses", "cwd", "environment:date"]);
 	});
 });

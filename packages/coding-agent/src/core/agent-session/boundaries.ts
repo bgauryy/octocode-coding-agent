@@ -9,7 +9,7 @@ import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-a
 import type { AgentActivityOutcome, BoundaryContextPreview, SessionBoundaryDraft } from "../features/index.ts";
 import { sameMessages } from "../features/runner/event-handlers.ts";
 import { convertToLlm, type CustomMessage } from "../messages.ts";
-import { type SessionEntry, SessionManager, type SessionProjection } from "../session-manager.ts";
+import { type ReadonlySessionProjection, type SessionEntry, SessionManager } from "../session-manager.ts";
 import type { DraftAppender } from "../session-manager/projection-memo.ts";
 import type { SessionInternals } from "./host.ts";
 import {
@@ -27,7 +27,7 @@ export interface BoundariesHost extends Pick<SessionInternals, "session" | "run"
 interface BoundaryProjection {
 	drafts: SessionBoundaryDraft[];
 	leafId: string | null;
-	projection: ReturnType<SessionManager["buildSessionProjection"]>;
+	projection: ReadonlySessionProjection;
 	llmMessages: ReturnType<typeof convertToLlm>;
 	finalRole: string | undefined;
 	contextCanContinue: boolean;
@@ -65,13 +65,14 @@ export class SessionBoundaries {
 	 * turn boundary without drafts ends that way, and announcing it made every view compare the whole context again.
 	 */
 	private _refreshContext(always: boolean): void {
-		const projection = this.host.session.sessionManager.buildSessionProjection();
+		// Read without copying: the agent's state setter copies the array it is given, so it keeps none of the session's.
+		const projection = this.host.session.sessionManager.readSessionProjection();
 		for (const entry of projection.entries) {
 			for (const message of entry.messages) this._entryIdsByMessage.set(message, entry.sourceEntry.id);
 		}
 		const agent = this.host.session.agent;
 		if (!always && sameMessages(agent.state.messages, projection.messages)) return;
-		agent.state.messages = projection.messages;
+		agent.state.messages = projection.messages as AgentMessage[];
 		this.host.emit({ type: "session_context_changed" });
 	}
 
@@ -85,7 +86,7 @@ export class SessionBoundaries {
 
 		const messageIndex = session.agent.state.messages.indexOf(message);
 		if (messageIndex < 0) return undefined;
-		const projection = session.sessionManager.buildSessionProjection();
+		const projection = session.sessionManager.readSessionProjection();
 		let projectedIndex = 0;
 		for (const entry of projection.entries) {
 			for (let i = 0; i < entry.messages.length; i++) {
@@ -237,7 +238,7 @@ export class SessionBoundaries {
 	 * The projection with the drafts appended after the leaf, without saving them: the session's kept projection with the
 	 * drafts added (`previewProjection`), else a copy of the branch with the drafts applied and projected.
 	 */
-	private _previewProjection(drafts: SessionBoundaryDraft[]): SessionProjection {
+	private _previewProjection(drafts: SessionBoundaryDraft[]): ReadonlySessionProjection {
 		const sessionManager = this.host.session.sessionManager;
 		const preview = sessionManager.previewProjection((appender) => this._applyBoundaryDrafts(appender, drafts));
 		if (preview) return preview;

@@ -380,7 +380,7 @@
           ]
         }
       },
-      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema."
+      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned web, archive or models that would be deferred is on demand instead: listed in the prompt, declared after its first call or a read with the `mcp` tool."
     },
     "research": {
       "type": "object",

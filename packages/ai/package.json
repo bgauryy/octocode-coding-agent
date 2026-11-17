@@ -80,6 +80,10 @@
 			"types": "./dist/providers/discovery.d.ts",
 			"import": "./dist/providers/discovery.js"
 		},
+		"./providers/faux": {
+			"types": "./dist/providers/faux.d.ts",
+			"import": "./dist/providers/faux.js"
+		},
 		"./providers/kimi-coding": {
 			"types": "./dist/providers/kimi-coding.d.ts",
 			"import": "./dist/providers/kimi-coding.js"

@@ -19,6 +19,7 @@ const list = (description: string) => ({ type: "array", items: { type: "string" 
  */
 const ITEM = {
 	id: text("edit: the item"),
+	version: { type: "integer", description: "edit: refused if stale" },
 	title: text("one-line summary"),
 	goal: text("Definition of Done, checkable; add needs it"),
 	why: text("why it matters; add needs it"),
@@ -45,8 +46,8 @@ const ITEM = {
 
 /** The item fields by name, for a call that writes one beside `items` or sends one as a list filter. */
 export const ITEM_FIELDS: readonly string[] = Object.keys(ITEM);
-/** The fields an entry may carry by operation: an `add` entry has no `id`; `version` is taken undeclared. */
-export const ADD_ENTRY_FIELDS: readonly string[] = ITEM_FIELDS.filter((key) => key !== "id");
+/** The fields an entry may carry by operation: an `add` entry has no `id` or `version`. */
+export const ADD_ENTRY_FIELDS: readonly string[] = ITEM_FIELDS.filter((key) => key !== "id" && key !== "version");
 export const EDIT_ENTRY_FIELDS: readonly string[] = ["id", "version", ...ADD_ENTRY_FIELDS];
 /** Fields `backlog` owns, with the operation that takes each: an entry that sends one is told where it goes. */
 export const WORK_FIELDS: Record<string, string> = { completion: "done", close: "close" };
@@ -90,7 +91,7 @@ export function planAccepted(parameters: ReturnType<typeof planParameters>) {
 }
 
 /**
- * What one entry may carry: the declared fields, the older link forms and `version` (`legacyEntityFields`), a `state`
+ * What one entry may carry: the declared fields, the older link forms (`legacyEntityFields`), a `state`
  * of done and the fields of finishing and closing, which the tool refuses with the `backlog` operation to use.
  */
 export const entryAccepted = Type.Object(

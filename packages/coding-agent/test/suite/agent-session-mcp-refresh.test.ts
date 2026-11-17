@@ -72,12 +72,21 @@ const appendedChars = (updates: SystemMessage[]) =>
 		0,
 	);
 
-const mcpsPatches = (updates: SystemMessage[]) =>
-	updates.flatMap((update) => (update.sections?.[MCPS_SECTION] ? [update.sections[MCPS_SECTION]] : []));
+/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head), joined. */
+const serverBlocks = (sections: Record<string, string | null> = {}) =>
+	Object.entries(sections)
+		.flatMap(([name, text]) => (text !== null && name.startsWith(`${MCPS_SECTION}:`) ? [text] : []))
+		.join("\n\n");
 
-/** The newest copy of the `mcps` section in the messages. */
+const mcpsPatches = (updates: SystemMessage[]) =>
+	updates.flatMap((update) => {
+		const text = serverBlocks(update.sections);
+		return text ? [text] : [];
+	});
+
+/** The newest copy of every server block in the messages. */
 const newestMcps = (messages: Parameters<typeof getCurrentSystemMessage>[0]) =>
-	getCurrentSystemMessage(messages)?.sections?.[MCPS_SECTION] ?? undefined;
+	serverBlocks(getCurrentSystemMessage(messages)?.sections) || undefined;
 
 describe("AgentSession MCP contract refresh", () => {
 	const harnesses: Harness[] = [];
@@ -194,7 +203,7 @@ describe("AgentSession MCP contract refresh", () => {
 		const patches = mcpsPatches(updates);
 		expect(patches).toHaveLength(1);
 		expect(patches[0]).toContain("Search the docs by title.");
-		const carrier = updates.find((update) => update.sections?.[MCPS_SECTION]);
+		const carrier = updates.find((update) => serverBlocks(update.sections));
 		expect(carrier?.toolsAdded?.map((tool) => tool.name)).toEqual(["mcp__docs__search"]);
 		expect(thin("mcp__docs__search")).toBe(true);
 		expect(appendedChars(updates)).toBe(patches[0].length);
@@ -285,7 +294,7 @@ describe("AgentSession MCP contract refresh", () => {
 		const patches = mcpsPatches(updates);
 		expect(patches).toHaveLength(1);
 		expect(patches[0]).toContain("Late rules.");
-		const carrier = updates.find((update) => update.sections?.[MCPS_SECTION]);
+		const carrier = updates.find((update) => serverBlocks(update.sections));
 		expect(carrier?.toolsAdded?.map((tool) => tool.name)).toContain("mcp__late__search");
 		expect(newestMcps(harness.session.messages)).toContain(OLD_RULE);
 		await annotate(`M6 appended chars: ${appendedChars(updates)}`);

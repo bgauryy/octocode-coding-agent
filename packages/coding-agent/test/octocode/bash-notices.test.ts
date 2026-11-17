@@ -11,7 +11,8 @@ import { tmp } from "./helpers.ts";
 
 vi.mock("../../src/octocode/files/bash-run.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof BashRun>()),
-	strayNote: () => "Still running after the command returned (not stopped): 123 sleep; Stop: kill -- -123",
+	strayNote: () =>
+		"Still running after the command returned (stopped when this session ends): 123 sleep; Stop: kill -- -123",
 }));
 
 describe("native Bash host notices", () => {

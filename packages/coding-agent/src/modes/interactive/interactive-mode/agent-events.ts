@@ -6,6 +6,7 @@
 
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import { disposeTranscript } from "./transcript-dispose.ts";
+import { foldScrolledTranscript } from "./live-window.ts";
 import { ApplicationServiceError, getApplicationPort } from "../../../core/application/index.ts";
 import { onProviderSettingsApplied } from "../../../core/provider-sources/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
@@ -125,6 +126,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			} else {
 				host.clearStatusIndicator();
 			}
+			// The turns before this one are finished: the oldest of them may leave a long transcript (live-window.ts).
+			foldScrolledTranscript(host);
 			host.ui.requestRender();
 			break;
 

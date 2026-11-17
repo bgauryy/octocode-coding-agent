@@ -14,6 +14,7 @@ import { registerBacklogPlanTool } from "./plan-tool.ts";
 import { registerBacklogTool } from "./tool.ts";
 import { sharedWorkspaceWeb } from "./shared-web.ts";
 import { releaseOwn, restoreOwn } from "./lifetime.ts";
+import { registerTaskEvents } from "./task-events.ts";
 
 interface RegisterBacklogOptions extends BacklogOptions {
 	openWeb?: OpenBacklogWeb;
@@ -41,6 +42,11 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 	let currentContext: ExtensionContext | undefined;
 	let lastAudit: number | undefined;
 	let stopFollowing: (() => void) | undefined;
+	let stopRunFollowing: (() => void) | undefined;
+	const stopRun = () => {
+		stopRunFollowing?.();
+		stopRunFollowing = undefined;
+	};
 	const database = () => sharedAgentDb(backlogOptions.env ?? process.env);
 	const follower = new DatabaseFollower(() => {
 		try {
@@ -100,7 +106,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 				web: () => commands.get("web"),
 			}),
 		);
-	if (!options.isSubagent) {
+	if (!options.isSubagent)
 		// Claims follow the session: a resume takes back what its exit returned, before the digest and the counts read the board.
 		api.on("session_start", (event, ctx) => {
 			if (event.reason !== "startup" && event.reason !== "resume") return;
@@ -111,12 +117,15 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 				// An unreadable database restores nothing; the backlog tool reports the cause when asked.
 			}
 		});
-		registerBacklogDigest(api, backlogOptions);
-	}
+	// Foreign changes and the task line, for subagents too; registered before the digest, so the digest stays the turn's last result.
+	const events = registerTaskEvents(api, backlogOptions);
+	if (!options.isSubagent) registerBacklogDigest(api, backlogOptions);
 	api.on("session_start", (_event, ctx) => {
 		stopFollowing?.();
+		stopRun();
 		lastAudit = undefined;
 		refresh(ctx);
+		// The footer repaints while a main session with a UI is open.
 		stopFollowing =
 			ctx.hasUI && !options.isSubagent
 				? follower.subscribe(() => {
@@ -124,9 +133,15 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 					})
 				: undefined;
 	});
+	// Every session, subagents included, hears a foreign change to a held item during a run, not only after a tool result.
+	api.on("agent_start", (_event, ctx) => {
+		stopRun();
+		stopRunFollowing = follower.subscribe(() => events.poke(ctx));
+	});
 	api.on("session_shutdown", (event, ctx) => {
 		stopFollowing?.();
 		stopFollowing = undefined;
+		stopRun();
 		currentContext = undefined;
 		// A reload continues this session; any other end returns its claims (a subagent holds none).
 		if (options.isSubagent || event.reason === "reload") return;
@@ -138,6 +153,9 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 		}
 	});
 	// Another session or agent may have changed the board: repaint at the end of every run.
-	api.on("agent_end", (_event, ctx) => refresh(ctx));
+	api.on("agent_end", (_event, ctx) => {
+		stopRun();
+		refresh(ctx);
+	});
 	return { open: openView, refresh };
 }

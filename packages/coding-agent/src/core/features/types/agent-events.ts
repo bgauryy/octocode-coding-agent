@@ -13,7 +13,7 @@ import type { Question } from "@octocodeai/octocode-contracts";
 import type { ExtensionUIAskView } from "./ui.ts";
 import type { RunOutcome } from "../../agent-session/run-outcome.ts";
 import type { CustomMessage } from "../../messages.ts";
-import type { ContextEditEntry, ProjectedSessionEntry } from "../../session-manager.ts";
+import type { ContextEditEntry, ReadonlyProjectedSessionEntry } from "../../session-manager.ts";
 import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
 
 // Agent Events
@@ -97,8 +97,9 @@ export interface ContextEditEntryDraft {
 export type SessionBoundaryDraft = CustomEntryDraft | CustomMessageEntryDraft | ContextEditEntryDraft;
 
 export interface BoundaryContextPreview {
-	contextEntries: ProjectedSessionEntry[];
-	contextMessages: AgentMessage[];
+	/** Shared with the session's kept projection: read only. */
+	contextEntries: readonly ReadonlyProjectedSessionEntry[];
+	contextMessages: readonly AgentMessage[];
 	llmMessages: Message[];
 	pendingMessages: AgentMessage[];
 	canContinue: boolean;

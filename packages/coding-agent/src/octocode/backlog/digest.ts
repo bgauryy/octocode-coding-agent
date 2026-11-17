@@ -4,6 +4,9 @@ import { clip } from "../shared/text.ts";
 import { type BacklogOptions, openBacklog } from "./context.ts";
 import { priorityName } from "./item.ts";
 import type { BacklogStore } from "./store.ts";
+import { backlog as backlogQueries } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { activeDetail, activeItem, backlogIndex } from "./task-source.ts";
 
 /** The customType of the digest message. */
 export const BACKLOG_DIGEST_TYPE = "backlog-digest";
@@ -19,7 +22,7 @@ const SCAN = 30;
  * ended), how many items are to do and proposed, and the most urgent open titles. Undefined when the board has
  * nothing open.
  */
-function backlogDigest(store: BacklogStore, session: string): string | undefined {
+function backlogDigest(store: BacklogStore, session: string, options: BacklogOptions): string | undefined {
 	store.releaseEnded({ id: session });
 	const { todo, backlog: proposed, ongoing: running } = store.counts().items;
 	if (todo + proposed + running === 0) return undefined;
@@ -42,23 +45,33 @@ function backlogDigest(store: BacklogStore, session: string): string | undefined
 		.items.toSorted((a, b) => a.priority - b.priority)
 		.slice(0, MAX_TOP)
 		.map((item) => `${item.ref} ${priorityName(item.priority)} "${clip(item.title, TITLE_CHARS)}"`);
+	// The item this session works on, with the version a write passes and its next step.
+	const agent = sharedAgentDb(options.env ?? process.env);
+	const active = activeItem(backlogQueries.snapshot(agent.db, store.repo), session);
+	const detail = active ? `. Active: B${active.seq} v${active.version}${activeDetail(agent, store.repo, active)}` : "";
 	return renderInstruction("notices/backlog-digest.md", {
 		todo,
 		proposed,
-		ongoing: shown.join("; "),
+		ongoing: shown.join("; ") + detail,
 		top: top.join("; "),
 	});
 }
 
-/** Hands the digest to the first prompt of a fresh main session (a new start or `/new`); a resume has its own brief. */
+/**
+ * Hands the board's orientation to the first prompt of a span of a main session: the digest on a new start or `/new`,
+ * the versioned index (`backlogIndex`) on a resume, appended after the restored history.
+ */
 export function registerBacklogDigest(api: ExtensionAPI, options: BacklogOptions): void {
 	let pending: string | undefined;
 	api.on("session_start", (event, ctx) => {
 		pending = undefined;
-		if (event.reason !== "startup" && event.reason !== "new") return;
+		if (event.reason !== "startup" && event.reason !== "new" && event.reason !== "resume") return;
 		try {
 			const backlog = openBacklog(ctx, options);
-			pending = backlogDigest(backlog.store, backlog.session);
+			pending =
+				event.reason === "resume"
+					? backlogIndex(sharedAgentDb(options.env ?? process.env), backlog.store.repo, backlog.session)
+					: backlogDigest(backlog.store, backlog.session, options);
 		} catch {
 			// An unreadable database gives no digest; the backlog tool reports the cause when asked.
 		}

@@ -155,11 +155,12 @@ Every tool of a selected server is declared to the model up front, and the serve
 
 Set `exposure` on a server, or `toolExposure` for individual tools (exact names or `*` patterns; exact wins):
 
-| Value              | The agent sees                                                                                                                                                                                 |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `direct` (default) | The tool, declared up front                                                                                                                                                                    |
-| `deferred`         | The tool declared up front with its whole description and its field names and types; its server's block lists only name and trigger, and the agent loads the schema detail with its `mcp` tool |
-| `hidden`           | No callable tool; the server may stay connected                                                                                                                                                |
+| Value              | The agent sees                                                                                                                                                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `direct` (default) | The tool, declared up front                                                                                                                                                                                                 |
+| `deferred`         | The tool declared up front with its whole description and its field names and types; its server's block lists only name and trigger, and the agent loads the schema detail with its `mcp` tool                              |
+| `onDemand`         | Not declared at first: the block lists name and trigger, and the tool's first call or a load with the `mcp` tool (intent `tools`) declares it after the cached prompt; `deferred` where the model cannot add tools that way |
+| `hidden`           | No callable tool; the server may stay connected                                                                                                                                                                             |
 
 ```json
 {

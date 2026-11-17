@@ -12,6 +12,7 @@ import {
 	type CompactionEntry,
 	type ContextEditEntry,
 	type ProjectedSessionEntry,
+	type ReadonlySessionProjection,
 	type SessionEntry,
 	SessionManager,
 	type SessionProjection,
@@ -334,7 +335,7 @@ function applyDrafts(appender: DraftAppender, drafts: Draft[]): void {
 }
 
 /** The projection with the ids of entries the session does not hold (drafts) numbered in order of appearance. */
-function withDraftIds(projection: SessionProjection, live: SessionManager): unknown {
+function withDraftIds(projection: ReadonlySessionProjection, live: SessionManager): unknown {
 	const ids = new Map<string, string>();
 	const rename = (id: string | null) => (id !== null && ids.has(id) ? ids.get(id)! : id);
 	for (const { sourceEntry } of projection.entries) {
@@ -377,6 +378,8 @@ function compare(session: SessionManager, rng: Random, n: number, freeze: boolea
 	const projection = session.buildSessionProjection();
 	if (freeze) deepFreeze(projection);
 	if (!deepEqual(projection, expected)) return "buildSessionProjection";
+	// The view is the kept arrays themselves: never frozen, since the session extends them.
+	if (!deepEqual(session.readSessionProjection(), expected)) return "readSessionProjection";
 	const entries = session.buildContextEntries();
 	const expectedEntries = expected.entries.map((entry) => entry.sourceEntry);
 	if (entries.length !== expectedEntries.length || entries.some((entry, i) => entry !== expectedEntries[i]))
@@ -402,7 +405,12 @@ function compare(session: SessionManager, rng: Random, n: number, freeze: boolea
 	if (!deepEqual(buildPathProjection(branch), oracleProjectionOfPath(branch))) return "buildPathProjection";
 	// The boundary preview: the kept projection with drafts, against a copy of the branch with the drafts applied.
 	const drafts = randomDrafts(rng, session, n);
-	const preview = outcome(() => session.previewProjection((appender) => applyDrafts(appender, drafts)));
+	const preview = outcome(() => {
+		const value = session.previewProjection((appender) => applyDrafts(appender, drafts));
+		// Its entry records are the kept ones: frozen, the session's later reads and appends must still work.
+		if (freeze && value) deepFreeze(value);
+		return value;
+	});
 	const copied = outcome(() => {
 		const copy = SessionManager.inMemory(session.getCwd(), undefined, [session.getHeader()!, ...branch]);
 		applyDrafts(copy, drafts);

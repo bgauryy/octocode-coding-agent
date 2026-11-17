@@ -3,6 +3,7 @@ import path from "node:path";
 import { fauxAssistantMessage, getCurrentSystemMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { baseEnv, type Fixture, fixture, scriptedSession, withEnv } from "./agent-context/capture.ts";
 import { restoreEnv } from "./e2e-headless.ts";
 
@@ -79,6 +80,8 @@ describe("a session resumed from disk", () => {
 		expect(update).toHaveLength(1);
 		expect(tailText(update)).toContain("Keep files under 200 lines.");
 		// The current prompt carries the edit; the opening system message the history follows does not.
-		expect(getCurrentSystemMessage(after.messages)?.sections?.project_context).toContain("Keep files under 200 lines.");
+		expect(sectionFamilyText(getCurrentSystemMessage(after.messages)?.sections ?? {}, "project_context")).toContain(
+			"Keep files under 200 lines.",
+		);
 	}, 120_000);
 });

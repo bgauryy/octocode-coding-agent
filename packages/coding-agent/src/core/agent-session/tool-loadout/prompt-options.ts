@@ -11,6 +11,7 @@ export function buildBaseSystemPromptOptions(
 	snippets: ReadonlyMap<string, string>,
 	guidelines: ReadonlyMap<string, string[]>,
 	hiddenTools: string[],
+	onDemandTools: string[] = [],
 ): NormalizedBuildSystemPromptOptions {
 	const toolSnippets: Record<string, string> = {};
 	for (const name of registry.keys()) {
@@ -31,6 +32,7 @@ export function buildBaseSystemPromptOptions(
 		selectedTools: toolNames.filter((name) => registry.has(name)),
 		hiddenTools,
 		toolSnippets,
+		onDemandTools: onDemandTools.filter((name) => registry.has(name)),
 		toolGuidelines: Object.fromEntries(guidelines),
 	});
 }

@@ -9,7 +9,7 @@ export function parseResponsesUsage(usage: {
 	input_tokens_details?: {
 		cached_tokens?: number;
 		cache_write_tokens?: number;
-		cache_write_tokens_details?: { ttl_12h_tokens?: number };
+		cache_write_tokens_details?: { ttl_30m_tokens?: number; ttl_12h_tokens?: number };
 	};
 	output_tokens_details?: { reasoning_tokens?: number };
 }): Usage {
@@ -27,6 +27,7 @@ export function parseResponsesUsage(usage: {
 	});
 	if (inputDetails?.cache_write_tokens_details !== undefined) {
 		result.cacheWrite12h = inputDetails.cache_write_tokens_details.ttl_12h_tokens ?? 0;
+		result.cacheWrite30m = inputDetails.cache_write_tokens_details.ttl_30m_tokens ?? 0;
 	}
 	return result;
 }

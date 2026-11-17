@@ -18,9 +18,16 @@ import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { trustFolder } from "./helpers.ts";
+
+/** A request's sections, with `mcps` holding its head and every `mcps:<server>` block. */
+function mcpSections(messages: Parameters<typeof getCurrentSystemMessage>[0]): Record<string, string> {
+	const sections = (getCurrentSystemMessage(messages)?.sections ?? {}) as Record<string, string>;
+	return { ...sections, mcps: sectionFamilyText(sections, "mcps") };
+}
 
 /**
  * An external stdio MCP server the user adds to the trusted workspace's `.octocode/mcp.json`, with no `exposure`
@@ -155,7 +162,7 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 
 	// Exposure: a native function declaration with the server's description, plus its instructions in the cached `mcps` section.
 	const first = requests[0];
-	const sections = (getCurrentSystemMessage(first.messages)?.sections ?? {}) as Record<string, string>;
+	const sections = mcpSections(first.messages);
 	const declaration = getCurrentTools(first.messages).find((tool) => tool.name === "mcp__secretecho__echo_secret");
 	expect(declaration?.description).toContain("Return the secret echo service token.");
 	expect(sections.mcps).toContain('<mcp name="secretecho" tools="mcp__secretecho__*">');
@@ -286,7 +293,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 	const toolCall = (name: string, args: Record<string, unknown>) =>
 		step(fauxAssistantMessage([nativeCall(name, args)], { stopReason: "toolUse" }));
 	const mcpBlock = () => {
-		const sections = (getCurrentSystemMessage(requests[0].messages)?.sections ?? {}) as Record<string, string>;
+		const sections = mcpSections(requests[0].messages);
 		const start = sections.mcps.indexOf('<mcp name="inventory"');
 		return sections.mcps.slice(start, sections.mcps.indexOf("</mcp>", start) + "</mcp>".length);
 	};

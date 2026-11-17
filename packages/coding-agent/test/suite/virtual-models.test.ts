@@ -316,12 +316,14 @@ describe("AgentSession virtual models", () => {
 			fauxAssistantMessage(fauxToolCall("echo", { text: "hi" }), { stopReason: "toolUse" }),
 			fauxAssistantMessage("done"),
 		]);
-		const projections = vi.spyOn(harness.sessionManager, "buildSessionProjection");
+		const projections = vi.spyOn(harness.sessionManager, "readSessionProjection");
+		const copies = vi.spyOn(harness.sessionManager, "buildSessionProjection");
 
 		await harness.session.prompt("hello");
 
-		// One per request, one between the turns, and one for the compaction check after the run.
+		// One per request, one between the turns, and one for the compaction check after the run, none of them copied.
 		expect(projections).toHaveBeenCalledTimes(4);
+		expect(copies).not.toHaveBeenCalled();
 	});
 
 	it("stores router state on the branch and passes it to later requests", async () => {

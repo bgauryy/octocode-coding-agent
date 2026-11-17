@@ -81,7 +81,8 @@ export async function checkCompaction(
 	// The branch is read from the leaf back, only as far as needed: its latest compaction leads the projection, which
 	// otherwise holds none; without a leaf entry the branch is empty.
 	const sessionManager = session.sessionManager;
-	const currentProjection = sessionManager.buildSessionProjection();
+	// Read without copying: every use below comes before anything appends to the session.
+	const currentProjection = sessionManager.readSessionProjection();
 	const leaf = sessionManager.getLeafEntry();
 	const head = currentProjection.entries[0]?.sourceEntry;
 	const compactionEntry = leaf && head?.type === "compaction" ? head : null;
@@ -231,7 +232,7 @@ function estimateTrailingTokens(messages: readonly AgentMessage[], assistantMess
 /** Whether the context at a length stop is close enough to the window to explain the cut-off as overflow. */
 function lengthStopNearWindow(
 	message: AssistantMessage,
-	projection: ReturnType<SessionInternals["session"]["sessionManager"]["buildSessionProjection"]>,
+	projection: ReturnType<SessionInternals["session"]["sessionManager"]["readSessionProjection"]>,
 	sessionManager: Parameters<typeof estimateLeafContextTokens>[1],
 	contextWindow: number,
 	desiredMaxOutput: number,

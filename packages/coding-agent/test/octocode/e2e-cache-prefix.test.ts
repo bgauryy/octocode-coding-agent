@@ -149,12 +149,14 @@ describe("deferred tools under the default exposure", () => {
 				return seen;
 			});
 			expect(contexts).toHaveLength(5);
-			// Not vacuous: both tools were declared deferred (no field docs) in the first request.
+			// Not vacuous: the MCP tool was declared deferred (no field docs) in the first request.
 			const declared = getCurrentTools(contexts[0].messages);
 			const lookup = declared.find((tool) => tool.name === "mcp__docs__lookup");
 			expect(lookup).toBeDefined();
 			expect(JSON.stringify(lookup?.parameters)).not.toContain("Title words to search for.");
-			expect(declared.map((tool) => tool.name)).toContain("archive");
+			// `archive` is on demand on this transport: undeclared at first, declared after the head once called.
+			expect(declared.map((tool) => tool.name)).not.toContain("archive");
+			expect(getCurrentTools(contexts[2].messages).map((tool) => tool.name)).toContain("archive");
 			for (let index = 1; index < contexts.length; index++)
 				expect(extendsPrefix(contexts[index - 1], contexts[index]), `request ${index + 1}`).toBe(true);
 		} finally {
@@ -242,7 +244,8 @@ describe("a /reload between prompts", () => {
 		await s.run("second", [say("two")]);
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
 		const change = appended(s.contexts[0], s.contexts[1]);
-		expect(change.sections).toEqual([["project_context"]]);
+		// Only the edited file's part of the section is sent.
+		expect(change.sections).toEqual([[expect.stringMatching(/^project_context:.*\/project\/AGENTS\.md$/)]]);
 		expect(change.text).toContain("CHANGED-RULE");
 		expect(serialized(s.contexts[0])).toContain("ORIGINAL-RULE");
 		expect(serialized(s.contexts[0])).not.toContain("CHANGED-RULE");
@@ -370,10 +373,12 @@ describe("the prefix of one configuration does not depend on the process", () =>
 			expect(instructionBlocks(today).session).toBeTruthy();
 			expect(instructionBlocks(later).session).toBe(instructionBlocks(today).session);
 			expect(instructionBlocks(later).volatile).not.toBe(instructionBlocks(today).volatile);
-			const without = (context: AgentContext) => context.sections.filter((section) => section.name !== "environment");
+			// Only the date field of the environment changes.
+			const without = (context: AgentContext) =>
+				context.sections.filter((section) => section.name !== "environment:date");
 			expect(without(later)).toEqual(without(today));
-			expect(later.sections.find((section) => section.name === "environment")?.text).not.toBe(
-				today.sections.find((section) => section.name === "environment")?.text,
+			expect(later.sections.find((section) => section.name === "environment:date")?.text).not.toBe(
+				today.sections.find((section) => section.name === "environment:date")?.text,
 			);
 		} finally {
 			fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -457,8 +462,8 @@ describe("agents of different roles", () => {
 			}),
 		);
 		// The breakpoint sits on the same tool, the last before the first role-specific one (`backlog` in the main
-		// session, `archive` in a child), in every role.
-		expect(sent.map((request) => request.boundary)).toEqual(["backlog", "archive", "archive", "archive"]);
+		// session, `memory` in a child: `archive` is on demand), in every role.
+		expect(sent.map((request) => request.boundary)).toEqual(["backlog", "memory", "memory", "memory"]);
 		expect(sent.every((request) => request.marked === sent[0].marked && request.marked > 0)).toBe(true);
 		expect(new Set(sent.map((request) => request.prefix)).size).toBe(1);
 		// One instruction marker on the tools, one on the prompt: two stay for the history.

@@ -11,7 +11,7 @@ import {
 	estimateContextTokensWith,
 	estimateMessageTokens,
 } from "@octocodeai/octocode-ai/utils/estimate";
-import type { ReadonlySessionManager, SessionEntry, SessionProjection } from "../session-manager.ts";
+import type { ReadonlySessionManager, ReadonlySessionProjection, SessionEntry } from "../session-manager.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 
 /**
@@ -19,13 +19,13 @@ import { ancestors } from "../session-manager/ancestors.ts";
  * `estimateTokens`. Session structure owns staleness here: `estimateProjectedContextTokens` and the compaction check
  * drop usage captured before a later compaction or context edit, so timestamps are not consulted.
  */
-export function estimateContextTokens(messages: AgentMessage[]): ContextUsageEstimate {
+export function estimateContextTokens(messages: readonly AgentMessage[]): ContextUsageEstimate {
 	return estimateContextTokensWith(messages, estimateTokens, { staleUsage: "none" });
 }
 
 /** Estimate projected context without trusting usage captured before a later edit or compaction. */
 export function estimateProjectedContextTokens(
-	projection: SessionProjection,
+	projection: ReadonlySessionProjection,
 	branchEntries: SessionEntry[],
 ): ContextUsageEstimate {
 	return estimateWithBranch(projection, () => newestFirst(branchEntries));
@@ -37,7 +37,7 @@ export function estimateProjectedContextTokens(
  * longer the session was.
  */
 export function estimateLeafContextTokens(
-	projection: SessionProjection,
+	projection: ReadonlySessionProjection,
 	session: Pick<ReadonlySessionManager, "getLeafEntry" | "getEntry">,
 ): ContextUsageEstimate {
 	return estimateWithBranch(projection, () => ancestors(session.getLeafEntry(), (id) => session.getEntry(id)));
@@ -48,7 +48,7 @@ function* newestFirst(entries: readonly SessionEntry[]): Generator<SessionEntry,
 }
 
 function estimateWithBranch(
-	projection: SessionProjection,
+	projection: ReadonlySessionProjection,
 	branchNewestFirst: () => Iterable<SessionEntry>,
 ): ContextUsageEstimate {
 	const estimate = estimateContextTokens(projection.messages);
@@ -144,7 +144,7 @@ function serializedTool(tool: DeclaredTool): string {
  * declarations of the last response, so the estimate adds these. Declared tools are already part of the system message.
  */
 export function estimateUndeclaredToolTokens(
-	messages: AgentMessage[],
+	messages: readonly AgentMessage[],
 	tools: ReadonlyArray<{
 		name: string;
 		description?: string;

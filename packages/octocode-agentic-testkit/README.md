@@ -126,6 +126,21 @@ All matchers take a `Trace` (`gw.trace`). "Cannot observe" always throws `cannot
 
 Each matcher has a negative case in `test/matchers.negative.test.ts`.
 
+## Grading an answer: `judge()`
+
+Behavior goes through matchers; the wording of an answer needs a grader. `judge({ rubric, transcript, model })` sends the rubric and the transcript to a model you pass in (a resolved tier, or any `{ baseUrl, model, api: "openai" | "anthropic", key }` endpoint) and returns one verdict with a reason per criterion. `pass` is true only when every criterion passes. A criterion the judge skips fails; a reply that is not the requested JSON throws, so a broken judge is never a pass. The judge call is not cached by the run cache and sends no prompt-cache markers.
+
+```ts
+const j = await judge({
+	rubric: [{ id: "cites-file", text: "Names the file that holds the fix" }],
+	transcript: answerText, // or chat messages
+	model: tier, // from resolveTier()
+});
+expect(j.pass, explainJudgement(j)).toBe(true);
+```
+
+Judge verdicts are model output: use a paid or local tier for the grader, and run them as a rate with `live()` when a single verdict is noisy.
+
 ## Tiers
 
 | Tier        | Model                                                                          | Cost                | Flag                                       | Use for                                            |

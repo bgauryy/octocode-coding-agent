@@ -71,6 +71,9 @@ export class SessionCodec {
 			// A base this file does not hold (a damaged file) leaves the delta as written.
 			const whole = this.traces.decode(trace);
 			if (whole) entry = { ...entry, message: { ...message, requestTrace: whole } };
+		} else if (isRecord(trace) && Array.isArray(trace.layers)) {
+			const shared = this.traces.share(trace as unknown as RequestTrace);
+			entry = { ...entry, message: { ...message, requestTrace: shared } };
 		} else if (isBashResult(message)) {
 			const result = restoreBashResult(message);
 			if (result !== message) entry = { ...entry, message: result };

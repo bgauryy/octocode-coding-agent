@@ -141,6 +141,7 @@ describe("layered provider caching", () => {
 			cacheRead: 4000,
 			cacheWrite: 7000,
 			cacheWrite12h: 4000,
+			cacheWrite30m: 3000,
 			totalTokens: 12010,
 		});
 		expect(result.usage.cost.total).toBeCloseTo(0.01517, 10);

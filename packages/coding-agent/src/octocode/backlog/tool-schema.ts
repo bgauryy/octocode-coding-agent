@@ -29,9 +29,10 @@ export interface LinkArgument {
  * tool mode can constrain them. The store still validates each field against the strict `EntityFieldsSchema` (which
  * names the failing path).
  *
- * Accepted beyond the declaration (`legacyEntityFields`): `version` (an optimistic-lock check no recorded call ever
- * needed; `get` shows it), the stored form of `completion`, and the older forms of a link (a reference object as
- * `target`, a null for the unused one of `target` and `resource`).
+ * `version` is declared on `backlog` and on a `backlogPlan` entry: the version the caller read (`get` and the index
+ * show it), refused when the item changed since. Accepted beyond the declaration (`legacyEntityFields`): the stored
+ * form of `completion`, and the older forms of a link (a reference object as `target`, a null for the unused one of
+ * `target` and `resource`).
  */
 
 /** The link relations and the resources a link may name besides a path, URL or item. */
@@ -83,7 +84,7 @@ const LegacyLinkField = Type.Unsafe<LinkArgument[]>({
 });
 
 /**
- * What a call may carry beyond the declaration: `links` in either form, `version`, and `completion` in either shape,
+ * What a call may carry beyond the declaration: `links` in either form, `version` as an integer, and `completion` in either shape,
  * which `completionInput` checks so a missing key is named in plain words instead of a schema path.
  */
 export const legacyEntityFields = {

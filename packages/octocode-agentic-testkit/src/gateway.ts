@@ -226,7 +226,10 @@ export async function startGateway(opts: GatewayOptions = {}): Promise<Gateway> 
 			: responses
 				? responsesMessages(body)
 				: ((Array.isArray(body.messages) ? body.messages : []) as ChatMessage[]);
-		const canonical = canonicalize({ model: body.model, messages, tools: body.tools ?? [] }, { roots: opts.roots });
+		const canonical = canonicalize(
+			{ model: body.model, messages: messages.map(({ blocks: _blocks, ...m }) => m), tools: body.tools ?? [] },
+			{ roots: opts.roots },
+		);
 		const captured: CapturedRequest = {
 			index: trace.requests.length,
 			agent,

@@ -66,8 +66,9 @@ export function loadedOnDemand(state: McpExtensionState, server: string): Readon
 
 /**
  * Whether the tool is undeclared now: configured on demand, on a capable transport, with the `mcp` tool, neither in use
- * (`recentTools`) nor declared by the transcript, and not loaded this session. A tool the session activated some other
- * way (an explicit `--tools` entry, a call) counts as loaded.
+ * (`recentTools`) nor declared by the transcript, not loaded this session, and one the session's tool selection can
+ * activate (a role's `--tools` list that leaves it out keeps it unlisted). A tool the session activated some other way
+ * (an explicit `--tools` entry, a call) counts as loaded.
  */
 export function isOnDemand(state: McpExtensionState, entry: McpServerEntry, tool: string, name: string): boolean {
 	if (!configuredOnDemand(entry, tool)) return false;
@@ -76,6 +77,7 @@ export function isOnDemand(state: McpExtensionState, entry: McpServerEntry, tool
 	const active = state.api.getActiveTools();
 	if (!active.includes(MCP_MANAGE_TOOL_NAME) || state.declaredBefore.has(name)) return false;
 	if (state.recentTools()?.has(recentToolKey(entry.name, tool))) return false;
+	if (typeof state.api.selectsTools === "function" && !state.api.selectsTools(name, true)) return false;
 	if (active.includes(name)) {
 		session.loaded.add(keyOf(entry.name, tool));
 		return false;

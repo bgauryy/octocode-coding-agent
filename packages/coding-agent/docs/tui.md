@@ -20,6 +20,8 @@ flowchart TB
 
 In regular mode, rows that scrolled into the terminal's scrollback stay as the terminal holds them: a status that changes there is not rewritten, and `ctrl+o` expands or collapses only the output that starts in view. Clicking an expanded tool result that has scrolled partly off the screen collapses it without clearing scrollback: only the screen is repainted, so the expanded output you scrolled past stays in the terminal's scrollback above the collapsed row until the next resize or theme change repaints everything. A resize or a theme change repaints everything.
 
+A long regular-mode session keeps only its latest transcript rows in memory. Once the transcript passes about 600 rows (messages, tool results and notices), the oldest finished ones that scrolled off the screen leave it at the start of the next turn, behind one row saying how many left. They stay in the terminal's scrollback, so nothing on screen changes; the next resize or theme change redraws only the rows still loaded. Press `alt+pageUp` (`app.session.loadEarlier`) to rebuild the transcript from the session, as a resume draws it.
+
 Fullscreen-only settings (see [settings](settings.md)):
 
 | Setting                        | Values                      | Default      | Effect                                                                                          |

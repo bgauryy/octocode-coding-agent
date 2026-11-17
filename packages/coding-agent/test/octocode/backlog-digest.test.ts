@@ -77,11 +77,11 @@ describe("backlog session-start digest", () => {
 		expect(await t.prompt()).toBeUndefined();
 	});
 
-	it("stays quiet on resume, in a subagent and on an empty board", async () => {
+	it("sends the versioned index on resume, nothing in a subagent or on an empty board", async () => {
 		const t = setup();
 		await t.backlog({ op: "add", items: [{ ...READY, title: "Accepted", state: "todo" }] });
 		await t.start("resume");
-		expect(await t.prompt()).toBeUndefined();
+		expect((await t.prompt())?.message.content).toMatch(/Top open: B1 v1 todo p2 "Accepted"/);
 		const child = setup(true);
 		await child.start("startup");
 		expect(await child.prompt()).toBeUndefined();

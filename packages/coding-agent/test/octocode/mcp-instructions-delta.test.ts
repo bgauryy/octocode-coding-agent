@@ -52,10 +52,12 @@ describe("MCP instructions after the first request (declared presentation)", () 
 		const patches = mcpsPatches(updates);
 		expect(patches).toHaveLength(1);
 		expect(patches[0]).toContain(LATE_RULE);
-		expect(patches[0]).toContain(OLD_RULE);
+		// Only the new server's block travels; the other server's block stays as the model has it.
+		expect(patches[0]).not.toContain(OLD_RULE);
 		expect(patches[0]).not.toContain("Not connected yet");
+		expect(newestMcps(harness.session.messages)).toContain(OLD_RULE);
 		// Exactly one update carries it, and the leading message is untouched.
-		expect(updates.filter((update) => update.sections?.["mcps"])).toHaveLength(1);
+		expect(updates.filter((update) => update.sections?.["mcps:late"])).toHaveLength(1);
 		expect(leading(harness)).toBe(head);
 		// Existing declarations keep their order; the new server's tools are appended.
 		const after = toolNames(harness);
@@ -76,11 +78,12 @@ describe("MCP instructions after the first request (declared presentation)", () 
 
 		await switchMcp("late", false);
 		await turn("after disable");
-		const patches = mcpsPatches(systemMessages(harness, from));
-		expect(patches).toHaveLength(1);
-		expect(patches[0]).not.toContain(LATE_RULE);
-		expect(patches[0]).toContain(OLD_RULE);
+		const updates = systemMessages(harness, from);
+		// The patch removes only the disabled server's block.
+		expect(updates.filter((update) => update.sections?.["mcps:late"] === null)).toHaveLength(1);
+		expect(mcpsPatches(updates)).toEqual([]);
 		expect(newestMcps(harness.session.messages)).not.toContain(LATE_RULE);
+		expect(newestMcps(harness.session.messages)).toContain(OLD_RULE);
 		expect(leading(harness)).toBe(head);
 	});
 

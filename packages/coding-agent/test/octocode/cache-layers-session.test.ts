@@ -156,7 +156,7 @@ it("sends byte-identical tools and first instruction block from different projec
 	expect(a.second).toContain("Rules that only project-a has.");
 	// The directory and the date sit in the third block, which has no breakpoint: neither cached block names them.
 	expect(a.volatileBoundary).toBe("cwd");
-	expect(a.volatileNames.slice(0, 2)).toEqual(["cwd", "environment"]);
+	expect(a.volatileNames.slice(0, 2)).toEqual(["cwd", "environment:platform"]);
 	expect(a.volatile).toMatch(/project-a/);
 	expect(a.volatile).toMatch(/Date: /);
 	expect(a.second).not.toMatch(/<cwd>|Date: /);

@@ -15,7 +15,8 @@ import { nonInteractiveEnv, type ShellSettings } from "./bash-jobs/shell.ts";
  * Octocode's bash as its `operations`), with two changes. Esc and the deadline stop the command's tree with SIGTERM and only
  * then SIGKILL (`killTree`), where Octocode sends SIGKILL at once and nothing gets to clean up (temp files, lock files, child
  * servers). And the caller learns the command's process group, so it can name processes the command left running
- * (`server &`): Octocode stops the group only on a timeout or abort, so they keep running after it returns.
+ * (`server &`). Such a group keeps running after the call returns and is stopped when this process exits; a server meant
+ * to outlive the session is not started here.
  */
 
 /** After the shell exits, how long its pipes may stay quiet before the output counts as complete (Octocode's own value). */
@@ -34,20 +35,40 @@ export const BASH_ABORT_GRACE_MS = STOP_DRAIN_MS + 400;
 
 /** Process groups of foreground commands running now: Octocode kills its own at exit, so these die with Octocode too. */
 const running = new Set<number>();
-const killRunning = (): void => {
+/**
+ * Groups whose command returned while processes it started (`server &`) still run in them. They get SIGTERM at exit, so a
+ * server can clean up. A group id is not reused while a member lives; the ones that emptied are dropped before each new
+ * command, which keeps the window in which a dead group's id could name someone else's group short.
+ */
+const strays = new Set<number>();
+const killAtExit = (): void => {
 	for (const pid of running) signalTree(pid, "SIGKILL");
+	for (const pid of strays) if (groupAlive(pid)) signalTree(pid, "SIGTERM");
 };
 
+let listening = false;
+/** Keeps the exit hook registered exactly while there is a group to stop. */
+function syncExitHook(): void {
+	const wanted = running.size + strays.size > 0;
+	if (wanted === listening) return;
+	listening = wanted;
+	if (wanted) process.on("exit", killAtExit);
+	else process.off("exit", killAtExit);
+}
+
 function track(pid: number): void {
-	if (running.size === 0) process.on("exit", killRunning);
+	for (const stray of strays) if (!groupAlive(stray)) strays.delete(stray);
 	running.add(pid);
+	syncExitHook();
 	// An exit hook never runs after SIGKILL: a subagent's parent then stops the group (`shared/shell-groups.ts`).
 	recordShellGroup(pid);
 }
 
-function untrack(pid: number): void {
+/** The command returned: a group with members left keeps its exit hook as a stray, unless a background job owns it now. */
+function untrack(pid: number, moved: boolean): void {
 	running.delete(pid);
-	if (running.size === 0) process.off("exit", killRunning);
+	if (!moved && process.platform !== "win32" && groupAlive(pid)) strays.add(pid);
+	syncExitHook();
 }
 
 /** The last `KEPT_OUTPUT_BYTES` of what a command printed. */
@@ -208,6 +229,7 @@ export function foregroundOperations(
 			});
 			const pid = child.pid;
 			if (pid) track(pid);
+			let moved = false;
 			let timedOut = false;
 			// Seconds the command ran when a waiting message moved it (a deadline reports its own length).
 			let movedAfter: number | undefined;
@@ -234,6 +256,7 @@ export function foregroundOperations(
 					child.stderr?.on("data", read);
 					return false;
 				}
+				moved = true;
 				waiter.detach();
 				return true;
 			};
@@ -273,7 +296,7 @@ export function foregroundOperations(
 				// A signal-killed shell has no exit code: the shell convention keeps it from reading as success.
 				return { exitCode: code ?? (child.signalCode ? 128 + (osConstants.signals[child.signalCode] ?? 0) : 1) };
 			} finally {
-				if (pid) untrack(pid);
+				if (pid) untrack(pid, moved);
 				if (timer) clearTimeout(timer);
 				if (watcher) clearInterval(watcher);
 				signal?.removeEventListener("abort", stop);
@@ -294,5 +317,5 @@ export async function strayNote(pid: number): Promise<string | undefined> {
 		.slice(0, LISTED_STRAYS)
 		.map((member) => `${member.pid} ${firstLine(member.command).slice(0, 80)}`);
 	const more = members.length > LISTED_STRAYS ? `; +${members.length - LISTED_STRAYS} more` : "";
-	return `Still running after the command returned (not stopped): ${listed.join("; ")}${more}. Stop: kill -- -${pid}. Use background: true to have such a process's exit reported.`;
+	return `Still running after the command returned (stopped when this session ends): ${listed.join("; ")}${more}. Stop: kill -- -${pid}. Use background: true to have such a process's exit reported.`;
 }

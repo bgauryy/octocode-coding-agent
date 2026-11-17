@@ -1,6 +1,6 @@
 import * as appends from "./appends.ts";
 import {
-	copyProjectionParts,
+	extendedProjection,
 	extendProjection,
 	type ProjectionParts,
 	projectionOf,
@@ -8,7 +8,7 @@ import {
 } from "./context.ts";
 import { branchPath, EntryIndex } from "./entry-index.ts";
 import { createSessionState, type SessionState } from "./state.ts";
-import type { FileEntry, SessionEntry, SessionProjection } from "./types.ts";
+import type { FileEntry, ReadonlySessionProjection, SessionEntry, SessionProjection } from "./types.ts";
 
 /**
  * The projection of a session's leaf, kept between reads. A turn reads it many times (each request, the usage samples,
@@ -98,6 +98,14 @@ export function leafProjection(state: SessionState): SessionProjection {
 	return projectionOf(leafParts(state), true);
 }
 
+/**
+ * `buildSessionProjection` at the state's leaf without copying: the kept arrays themselves, which the session's next
+ * change may extend or replace. Read it before then; copy what is kept longer.
+ */
+export function leafProjectionView(state: SessionState): ReadonlySessionProjection {
+	return projectionOf(leafParts(state), false);
+}
+
 /** `buildContextEntries` at the state's leaf, in an array of the caller's own. */
 export function leafContextEntries(state: SessionState): SessionEntry[] {
 	return leafParts(state).contextEntries.slice();
@@ -135,12 +143,13 @@ class OverlayIndex extends Map<string, SessionEntry> {
  * The projection at the state's leaf with what `apply` appends after it, without changing the session: the appends go
  * to an unsaved copy of the leaf that reads the session's entries. Undefined, before `apply` runs, when the leaf id names
  * no entry, and after it when an append changes which entries the context holds (a compaction): the caller then builds
- * the preview from a copy of the branch.
+ * the preview from a copy of the branch. Its entry and message arrays are its own; the entry records are the kept ones,
+ * which the session replaces but never changes.
  */
 export function previewProjection(
 	state: SessionState,
 	apply: (appender: DraftAppender) => void,
-): SessionProjection | undefined {
+): ReadonlySessionProjection | undefined {
 	if (state.leafId !== null && !state.byId.has(state.leafId)) return undefined;
 	const base = leafParts(state);
 	const scratch: SessionState = {
@@ -155,6 +164,5 @@ export function previewProjection(
 		appendContextEdit: (...args) => appends.appendContextEdit(scratch, ...args),
 		getEntry: (id) => scratch.byId.get(id),
 	});
-	const parts = copyProjectionParts(base);
-	return extendProjection(parts, scratch.fileEntries as SessionEntry[]) ? projectionOf(parts, true) : undefined;
+	return extendedProjection(base, scratch.fileEntries as SessionEntry[]);
 }

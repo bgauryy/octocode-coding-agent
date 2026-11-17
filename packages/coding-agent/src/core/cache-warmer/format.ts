@@ -1,5 +1,7 @@
 import type { UsageEntry } from "../session-manager.ts";
 import { CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS } from "./economics.ts";
+import { formatLayerChange } from "./first-change.ts";
+import type { TurnCost } from "./turn-costs.ts";
 import type { CacheWarmingDecision, CacheWarmingStatus } from "./types.ts";
 
 function formatDollars(value: number): string {
@@ -45,6 +47,26 @@ export function formatCacheWarmingStatus(status: CacheWarmingStatus, now = Date.
 	if (status.state === "inactive") return `Stopped (${details})`;
 	if (status.state === "refreshing") return `Warming cache (${details})`;
 	return `${formatCacheWarmingDecisionTime(status.nextWarmAt, now)} (${details})`;
+}
+
+/** Turns listed by `formatTurnCosts`, newest last. */
+const SHOWN_TURNS = 5;
+
+/**
+ * The `$/turn` lines of `/session`: the average over the branch's turns, then the latest turns with their cost, request
+ * count and first changed payload area. Empty without a turn that sent a request.
+ */
+export function formatTurnCosts(turns: readonly TurnCost[], dim: (text: string) => string = (text) => text): string {
+	if (turns.length === 0) return "";
+	const total = turns.reduce((sum, turn) => sum + turn.cost, 0);
+	const floor = turns.some((turn) => turn.lowerBound) ? " (at least)" : "";
+	let text = `${dim("$/turn:")} $${(total / turns.length).toFixed(4)} ${dim(`average over ${turns.length} turns${floor}`)}\n`;
+	for (const turn of turns.slice(-SHOWN_TURNS)) {
+		const change = turn.firstChange ? `, first change: ${formatLayerChange(turn.firstChange)}` : "";
+		const requests = turn.requests === 1 ? "1 request" : `${turn.requests} requests`;
+		text += `  ${dim(`Turn ${turn.turn}:`)} $${turn.cost.toFixed(4)} ${dim(`(${requests}${change})`)}\n`;
+	}
+	return text;
 }
 
 /** One-line transcript text for persisted cache-warming usage. */

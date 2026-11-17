@@ -198,8 +198,8 @@ export class PayloadLayerMemo {
 
 	/**
 	 * Ends the request whose layers are `layers`, in wire order. A layer a describer replaced after building it, equal in
-	 * every field to the previous request's layer at its position, becomes that object. `layers` is remembered as it is,
-	 * so a later in-place replacement by an equal layer (the session file's delta encoding) is what the next request reuses.
+	 * every field to the previous request's layer at its position, becomes that object. `layers` is remembered as it is
+	 * for the next request to reuse.
 	 */
 	finish(layers: object[]): void {
 		const previous = this.#layers;

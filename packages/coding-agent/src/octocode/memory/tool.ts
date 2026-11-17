@@ -9,6 +9,7 @@ import { resultBlock, toolHeader } from "../render/tool.ts";
 import { exclusive } from "../shared/locks.ts";
 import { clip } from "../shared/text.ts";
 import { contentText, textResult } from "../shared/util.ts";
+import { MEMORY_TOOL_NAME } from "./inject.ts";
 import { parseMemoryId } from "./query.ts";
 import { compileQuery } from "./safe-pattern.ts";
 import { noteLabel, parseNoteId } from "./session-notes.ts";
@@ -32,8 +33,9 @@ interface MemoryDetails {
 	mode?: "search" | "get" | "list";
 	hits?: number;
 	nextCursor?: string;
-	/** A write: the memory it saved, updated or deleted. */
+	/** A write: the memory it saved, updated or deleted, and the version a save shows (`MemoryWriteDetails`). */
 	ids?: number[];
+	updated?: number[];
 }
 
 const SCOPES = ["session", "workspace", "project", "global", "all"] as const;
@@ -67,7 +69,7 @@ export function createMemoryTool(
 	const queued = exclusive(async (run: () => unknown) => run());
 	const writeNoteOp = <R>(run: () => R) => queued(run) as Promise<Awaited<R>>;
 	return timedTool({
-		name: "memory",
+		name: MEMORY_TOOL_NAME,
 		roleVariant: true,
 		label: "Memory",
 		promptSnippet: renderInstruction("tools/memory/snippet.md"),
@@ -176,7 +178,10 @@ export function createMemoryTool(
 							deleteNote(ctx, options.appendEntry, note);
 							return textResult<MemoryDetails>(
 								`${durable.content[0]?.text ?? ""}\nPromoted from ${noteLabel(note)}: that session note is removed.`,
-								{ ids: durable.details?.ids ?? [] },
+								{
+									ids: durable.details?.ids ?? [],
+									...(durable.details?.updated ? { updated: durable.details.updated } : {}),
+								},
 							);
 						});
 					}

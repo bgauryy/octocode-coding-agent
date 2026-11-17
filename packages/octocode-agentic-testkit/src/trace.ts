@@ -12,6 +12,12 @@ export interface ChatMessage {
 	tool_calls?: ToolCall[];
 	tool_call_id?: string;
 	name?: string;
+	/**
+	 * Anthropic wire only: the raw content blocks of a system message (the top-level `system` array or a mid-conversation
+	 * `system` turn) and of any message carrying a block type beyond text, tool_use and tool_result, such as
+	 * `tool_addition` / `tool_removal`. Not part of the canonical form, so cassette keys do not depend on it.
+	 */
+	blocks?: Record<string, unknown>[];
 }
 
 export interface Usage {

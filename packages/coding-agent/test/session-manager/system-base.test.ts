@@ -298,8 +298,8 @@ describe("compaction boundary for prompt and tool changes", () => {
 	interface WireMessage {
 		role: string;
 		content?: string | WireBlock[];
-		toolCalls?: Array<{ id: string; function: { name: string } }>;
-		toolCallId?: string;
+		tool_calls?: Array<{ id: string; function: { name: string } }>;
+		tool_call_id?: string;
 		name?: string;
 	}
 	interface Wire {
@@ -352,7 +352,7 @@ describe("compaction boundary for prompt and tool changes", () => {
 				blocks(message).some((block) => block.type === "tool_removal" && block.tool?.name === "mcp__docs__fail"),
 		);
 	/**
-	 * Mistral: the assistant message whose `toolCalls` hold the failing call, and the tool message answering it. The
+	 * Mistral: the assistant message whose `tool_calls` hold the failing call, and the tool message answering it. The
 	 * adapter rewrites call ids to its own 9-character form, so the call is found by name and the result by that id.
 	 */
 	const mistralCall = (wire: Wire) =>
@@ -360,12 +360,12 @@ describe("compaction boundary for prompt and tool changes", () => {
 			wire,
 			(message) =>
 				message.role === "assistant" &&
-				(message.toolCalls ?? []).some((entry) => entry.function.name === "mcp__docs__fail"),
+				(message.tool_calls ?? []).some((entry) => entry.function.name === "mcp__docs__fail"),
 		);
 	const mistralResult = (wire: Wire, id: string | undefined) =>
 		where(
 			wire,
-			(message) => message.role === "tool" && message.name === "mcp__docs__fail" && message.toolCallId === id,
+			(message) => message.role === "tool" && message.name === "mcp__docs__fail" && message.tool_call_id === id,
 		);
 	const assistantSaying = (wire: Wire, words: string) =>
 		where(wire, (message) => message.role === "assistant" && text(message.content).includes(words));
@@ -412,7 +412,7 @@ describe("compaction boundary for prompt and tool changes", () => {
 		expect(declared(mistralWire)).toEqual(["mcp__docs__search"]);
 		expect(mistralWire.messages[0].role).toBe("system");
 		const mistralToolCall = only(mistralCall(mistralWire));
-		const callId = mistralWire.messages[mistralToolCall].toolCalls?.[0]?.id;
+		const callId = mistralWire.messages[mistralToolCall].tool_calls?.[0]?.id;
 		expect(callId).toMatch(/^[a-zA-Z0-9]{9}$/);
 		const mistralToolResult = only(mistralResult(mistralWire, callId));
 		expect(mistralToolCall).toBeLessThan(mistralToolResult);

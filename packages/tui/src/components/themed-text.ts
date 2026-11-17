@@ -1,3 +1,4 @@
+import { trackRenderChanges } from "../tui/render-signal.ts";
 import { Text } from "./text.ts";
 
 /**
@@ -30,3 +31,6 @@ export class ThemedText extends Text {
 		return super.render(width);
 	}
 }
+
+// Its rows change only after `invalidate` (which signals through `Text`) or with the width.
+trackRenderChanges(ThemedText.prototype);

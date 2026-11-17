@@ -30,10 +30,10 @@ const sectionNames = (context: AgentContext): string[] => context.sections.map((
 it("shares complete native and research-tool declarations before role-specific tools", () => {
 	const main = named("main");
 	const child = named("general");
+	// `web` is on demand on the capture's transport (it adds tools after the cached prefix): listed, not declared.
 	const shared = [
 		"bash",
 		"file",
-		"web",
 		"mcp",
 		"wait",
 		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
@@ -42,10 +42,12 @@ it("shares complete native and research-tool declarations before role-specific t
 	expect(main.tools.slice(0, shared.length).map((tool) => tool.name)).toEqual(shared);
 	expect(child.tools.slice(0, shared.length).map((tool) => tool.name)).toEqual(shared);
 	expect(JSON.stringify(child.tools.slice(0, shared.length))).toBe(JSON.stringify(main.tools.slice(0, shared.length)));
-	// Archive differs by role and must follow that prefix.
-	expect(main.tools.find((tool) => tool.name === "archive")?.parameters).not.toEqual(
-		child.tools.find((tool) => tool.name === "archive")?.parameters,
-	);
+	// Archive differs by role, so it must not sit in that prefix: on this transport it is on demand, listed in `<tools>`
+	// and declared only once the session uses it.
+	for (const context of [main, child]) {
+		expect(context.tools.map((tool) => tool.name)).not.toContain("archive");
+		expect(context.sections.find((section) => section.name === "tools")?.text).toMatch(/\n- archive: \S/);
+	}
 });
 
 describe.each(AGENTS)("$name context", (agent) => {
@@ -53,7 +55,8 @@ describe.each(AGENTS)("$name context", (agent) => {
 
 	it("has the sections its kind of agent gets", () => {
 		const names = sectionNames(context());
-		expect(names).toEqual(expect.arrayContaining(BASE));
+		// `environment` is sent only as its `environment:<field>` parts; `project_context` and `mcps` add parts.
+		expect(names.map((name) => name.split(":")[0])).toEqual(expect.arrayContaining(BASE));
 		expect(names, "text outside every section").not.toContain("(system text outside a section)");
 		if (agent.kind === "main") {
 			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "skills", "docs"]));
@@ -177,7 +180,9 @@ describe("the real assembled prefix of a main session", () => {
 	// Shared policy, tool guidance and native skill descriptions now leave less headroom for regrowth.
 	// 48_203 (measured 48,117: system 20,077, native tools 19,785, AGENTS.md 8,255): user-requested delegation, tmux
 	// and backlog-grooming rules, compressed to +547 bytes. Slack stays 86.
-	const OWN_PREFIX_CEILING = 48_203;
+	// 46_367 (measured 46,281: system 20,342, native tools 18,021, AGENTS.md 7,918): `web`, `archive` and `models` are on
+	// demand on the capture's transport, listed in `<tools>` and declared only once used. Slack stays 86.
+	const OWN_PREFIX_CEILING = 46_367;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");
@@ -185,7 +190,10 @@ describe("the real assembled prefix of a main session", () => {
 			Buffer.byteLength(tool.name) +
 			Buffer.byteLength(tool.description) +
 			Buffer.byteLength(JSON.stringify(tool.parameters));
-		const mcpsSection = Buffer.byteLength(main.sections.find((section) => section.name === "mcps")?.text ?? "");
+		// The `mcps` section, with each server's block when they are sections of their own (`mcps:<server>`).
+		const mcpsSection = main.sections
+			.filter((section) => section.name === "mcps" || section.name.startsWith("mcps:"))
+			.reduce((sum, section) => sum + Buffer.byteLength(section.text), 0);
 		// The bundled Octocode skills' names and descriptions come verbatim from the sibling release, like server text.
 		const siblingSkills = Buffer.byteLength(
 			/<octocode_skills>[\s\S]*?<\/octocode_skills>/.exec(systemText(main))?.[0] ?? "",

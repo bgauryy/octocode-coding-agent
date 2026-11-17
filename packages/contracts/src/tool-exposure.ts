@@ -22,6 +22,13 @@ export const NATIVE_PINNABLE_TOOLS = ["web", "archive", "models", "backlogPlan"]
 export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "wait"] as const;
 
 /**
+ * Native tools a session leaves undeclared until first use (`onDemand`) when it would otherwise declare them deferred,
+ * on a transport that adds declarations after the cached prefix. A `nativeToolExposure` pin opts a tool out. Shows as
+ * `deferred` on the Tools panel.
+ */
+export const NATIVE_ON_DEMAND_TOOLS = ["web", "archive", "models"] as const;
+
+/**
  * What decided a tool's state: its own pin, a `toolExposure` pattern, its server's `exposure`, use in the last 24 hours
  * (`mcpExposure: "recent"`), the promotion snapshot (`"usage"`, with the reason in the row's `audit`), another value of
  * that setting, nothing (`default`), or `core` for a native tool that is never deferred.

@@ -76,10 +76,11 @@ export interface Usage {
 	cacheWrite1h?: number;
 	/** Subset of `cacheWrite` written with OpenAI 12h retention. */
 	cacheWrite12h?: number;
+	/** Subset of `cacheWrite` written with OpenAI's default 30m retention; priced as a short write. */
+	cacheWrite30m?: number;
 	/**
-	 * Reasoning/thinking tokens, when the provider reports them. This is a subset of
-	 * `output`: `output` already includes these tokens. Set to a number (possibly 0) by
-	 * providers that expose a reasoning breakdown; left undefined by providers that don't.
+	 * Reasoning/thinking tokens, a subset of `output` (which already includes them): a number (possibly 0) from
+	 * providers that expose a reasoning breakdown, undefined from providers that don't.
 	 */
 	reasoning?: number;
 	/**

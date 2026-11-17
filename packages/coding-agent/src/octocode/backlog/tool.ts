@@ -31,7 +31,7 @@ const OP_FIELDS: Record<Op, readonly string[]> = {
 	close: ["id", "close", "note", "version"],
 	step: ["id", "note", "version"],
 };
-const DECLARED = ["id", "note", "why", "goal", "completion", "close"];
+const DECLARED = ["id", "note", "why", "goal", "completion", "close", "version"];
 
 interface Params {
 	op: Op | (typeof MOVED_OPS)[number];
@@ -85,6 +85,7 @@ export function registerBacklogTool(
 			goal: Type.Optional(Type.String({ description: "claim: checkable goal, if unset" })),
 			completion: completionField("done: the result"),
 			close: Type.Optional(closeField),
+			version: Type.Optional(Type.Integer({ description: "refused if stale" })),
 		},
 		{ additionalProperties: false },
 	);

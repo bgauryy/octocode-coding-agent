@@ -402,10 +402,10 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 	it("names the fields an operation takes when a call sends another tool's", async () => {
 		const { call } = await former();
 		await expect(call({ op: "claim", id: "B1", paths: ["a"] })).rejects.toThrow(
-			"Unknown backlog fields: paths: backlog takes id, note, why, goal, completion, close; other fields change with backlogPlan op edit.",
+			"Unknown backlog fields: paths: backlog takes id, note, why, goal, completion, close, version; other fields change with backlogPlan op edit.",
 		);
 		await expect(call({ op: "note", id: "B1", note: "n", goal: "g" })).rejects.toThrow(
-			"note does not take goal: it takes id, note.",
+			"note does not take goal: it takes id, note, version.",
 		);
 		await expect(call({ op: "note", id: "B1" })).rejects.toThrow("note needs note: the progress or finding to append.");
 		await expect(call({ op: "close", id: "B1" })).rejects.toThrow(/^close needs close: \{kind: obsolete, duplicate/);

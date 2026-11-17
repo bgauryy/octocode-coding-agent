@@ -329,8 +329,8 @@ describe("environment section", () => {
 		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [], skills: [] };
 		expect(Object.keys(buildSystemPromptSections(base))).not.toContain("environment");
 		const sections = buildSystemPromptSections({ ...base, environment: "Date: 2026-10-28" });
-		expect(Object.keys(sections).at(-1)).toBe("environment");
-		expect(sections.environment).toBe("<environment>\nDate: 2026-10-28\n</environment>");
+		expect(Object.keys(sections).at(-1)).toBe("environment:date");
+		expect(sections["environment:date"]).toBe("<environment>\nDate: 2026-10-28\n</environment>");
 	});
 });
 
@@ -356,9 +356,10 @@ describe("base sections", () => {
 			"other_base",
 			"addendum",
 			"project_context",
+			"project_context:/tmp/AGENTS.md",
 			"octocode",
 			"cwd",
-			"environment",
+			"environment:date",
 		]);
 		expect(buildSystemPromptSections(base).mcps).toBe("<mcps>\nservers\n</mcps>");
 	});

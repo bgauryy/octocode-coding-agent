@@ -19,7 +19,6 @@ import {
 	type BriefInput,
 	latestRequest,
 	latestRequestIndex,
-	ongoingBrief,
 	openTasksBrief,
 	RESUME_TAG,
 	resumeBrief,
@@ -44,6 +43,7 @@ import {
 } from "./session-scan.ts";
 import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
 import { compactionRequestBrief, keptAfterCompaction } from "./compaction-brief.ts";
+import { backlogIndex } from "../backlog/task-source.ts";
 
 /** Custom message type of the resume brief. */
 export const RESUME_MESSAGE_TYPE = "octocode-resume";
@@ -65,8 +65,8 @@ interface SessionsOptions {
 }
 
 /**
- * After a compaction, a non-waking reorient brief: this session's ongoing backlog items with their
- * goal, why, paths, links and last notes, its open tasks, its path reservations and the questions waiting for its reply,
+ * After a compaction, a non-waking reorient brief: the backlog index of the new span (`backlogIndex`: counts, the
+ * ongoing items with the active one's goal and next step, the most urgent open ones, each with its version), its open tasks, its path reservations and the questions waiting for its reply,
  * and the latest user request (left out when Octocode's summary keeps that request inline or the compaction kept it in
  * the retained tail).
  * The summary may have dropped them. The running jobs, subagents and timers are not repeated here: the summary's
@@ -81,7 +81,8 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 			const agent = sharedAgentDb();
 			const repo = registeredWorkspace(ctx.cwd, agent).id;
 			const session = ctx.sessionManager.getSessionId();
-			ongoing = [...ongoingBrief(agent, repo, session), ...openTasksBrief(agent, repo, session)];
+			const index = backlogIndex(agent, repo, session);
+			ongoing = [...(index ? [index] : []), ...openTasksBrief(agent, repo, session)];
 		} catch {
 			// The agent database is unavailable: the running work and the request alone still help.
 		}

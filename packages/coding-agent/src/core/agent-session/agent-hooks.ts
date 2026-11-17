@@ -12,7 +12,7 @@ import { estimateLeafContextTokens, estimateUndeclaredToolTokens, shouldCompact 
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { projectForcedSystemPrompt, type RequestSystemOverride } from "../forced-system-prompt.ts";
 import { convertToLlm } from "../messages.ts";
-import type { SessionProjection } from "../session-manager.ts";
+import type { ReadonlySessionProjection } from "../session-manager.ts";
 import { normalizeBuildSystemPromptOptions } from "../system-prompt.ts";
 import {
 	getVirtualModelState,
@@ -39,7 +39,7 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 }
 
 /** Estimated tokens of a request built from `projection`, counting the tools it will declare that it does not yet. */
-function requestTokens(host: AgentHooksHost, projection: SessionProjection): number {
+function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjection): number {
 	const { session } = host;
 	return (
 		estimateLeafContextTokens(projection, session.sessionManager).tokens +
@@ -53,7 +53,7 @@ function requestTokens(host: AgentHooksHost, projection: SessionProjection): num
  */
 function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
 	if (!host.run.windowUnfit || !(model.contextWindow > 0)) return;
-	const tokens = requestTokens(host, host.session.sessionManager.buildSessionProjection());
+	const tokens = requestTokens(host, host.session.sessionManager.readSessionProjection());
 	if (tokens <= model.contextWindow) return;
 	throw new Error(
 		`The context is about ${tokens.toLocaleString("en-US")} tokens, more than ${model.id}'s ` +
@@ -69,7 +69,7 @@ function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
 function exceedsCompactionThreshold(
 	host: AgentHooksHost,
 	model: Model<any>,
-	projection: SessionProjection,
+	projection: ReadonlySessionProjection,
 	thinking?: ThinkingLevel,
 ): boolean {
 	if (model.contextWindow <= 0) return false;
@@ -159,7 +159,10 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 		const failed = run.failedResponse;
 		run.failedResponse = undefined;
 		const prepare = async () => {
-			const projection = session.sessionManager.buildSessionProjection();
+			const view = session.sessionManager.readSessionProjection();
+			// The request owns its messages, and the estimates after the hooks below (which may append) need this read's
+			// entries: both arrays are copied, the entry records the session never changes are not.
+			const projection = { ...view, entries: view.entries.slice(), messages: view.messages.slice() };
 			const canonicalContext = {
 				...request.context,
 				messages: projection.messages,
@@ -263,15 +266,16 @@ function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<Ag
 	const agent = session.agent;
 	const previousPrepareNextTurnWithContext = agent.prepareNextTurnWithContext;
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
-		let projection = session.sessionManager.buildSessionProjection();
+		let projection = session.sessionManager.readSessionProjection();
 		const model = session.model;
 		const compactEarly = model && !isVirtualModel(model) && exceedsCompactionThreshold(host, model, projection);
 		if (compactEarly) {
 			await host.runAutoCompaction("threshold", false);
 			host.inputs.flushDuringRun(host.run.outcome);
-			projection = session.sessionManager.buildSessionProjection();
+			projection = session.sessionManager.readSessionProjection();
 		}
-		const context = { ...turn.context, messages: projection.messages };
+		// The turn's context owns its messages: the kept ones grow with the session.
+		const context = { ...turn.context, messages: projection.messages.slice() };
 		const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
 		const nextContext = previousSnapshot?.context ?? context;
 		const runOptions = tools.runSystemPromptOptions ?? tools.baseSystemPromptOptions;

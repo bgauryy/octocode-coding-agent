@@ -1,4 +1,10 @@
-import { type DraftAppender, leafContextEntries, leafProjection, previewProjection } from "./projection-memo.ts";
+import {
+	type DraftAppender,
+	leafContextEntries,
+	leafProjection,
+	leafProjectionView,
+	previewProjection,
+} from "./projection-memo.ts";
 import * as sessionState from "./state.ts";
 import { getDefaultSessionDirPath } from "./storage.ts";
 import { buildSessionTree } from "./tree.ts";
@@ -7,6 +13,7 @@ import type {
 	SessionEntry,
 	SessionHeader,
 	SessionNameSource,
+	ReadonlySessionProjection,
 	SessionProjection,
 	SessionTreeNode,
 } from "./types.ts";
@@ -86,10 +93,18 @@ export abstract class SessionReader {
 	}
 
 	/**
+	 * `buildSessionProjection` without copying it, for readers that finish before the session changes: the next append may
+	 * extend or replace what it holds, so copy the arrays a caller keeps or hands on.
+	 */
+	readSessionProjection(): ReadonlySessionProjection {
+		return leafProjectionView(this.state);
+	}
+
+	/**
 	 * The projection with what `apply` appends after the leaf, which the session does not keep: a turn boundary's preview
 	 * of its drafts. Undefined when it cannot be built that way; see `previewProjection`.
 	 */
-	previewProjection(apply: (appender: DraftAppender) => void): SessionProjection | undefined {
+	previewProjection(apply: (appender: DraftAppender) => void): ReadonlySessionProjection | undefined {
 		return previewProjection(this.state, apply);
 	}
 

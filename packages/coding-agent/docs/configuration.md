@@ -200,12 +200,13 @@ The startup screen and read-only `/harness config` show each kind with its count
 
 ### Tool exposure
 
-A session declares each tool to the model in one of three states. The state is fixed when the session starts, so the cached prompt does not change while it runs.
+A session declares each tool to the model in one of four states. The state is fixed when the session starts, so the cached prompt does not change while it runs.
 
 | State      | The model gets                                                                                                                                                                     |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `direct`   | The tool's full description and parameter schema                                                                                                                                   |
 | `deferred` | The description and the field names with their types (an MCP tool also names the fields of its objects and lists); the tool stays callable, and a rejected call returns the schema |
+| `onDemand` | Only a line in the prompt's tool index; the tool is callable, and its first call or a read with the `mcp` tool declares it from the next request on, after the cached prompt       |
 | `hidden`   | Nothing: the tool cannot be called (MCP tools only)                                                                                                                                |
 
 What decides the state, first match wins:
@@ -231,6 +232,8 @@ What decides the state, first match wins:
 	"nativeToolExposure": { "web": "direct", "models": "deferred" }
 }
 ```
+
+`onDemand` applies only where the model's provider can add a tool after the cached prompt (Anthropic and OpenAI models that support it); elsewhere such a tool is `deferred`, and a switch to such a model declares the unused ones `deferred`. The bundled Octocode server sets it for its GitHub, package-registry and security tools, and `web`, `archive` and `models` take it whenever they would be `deferred`; a `nativeToolExposure` pin opts one out. A resumed session declares again what it had loaded. The Tools panel shows `onDemand` tools as `deferred`.
 
 See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/harness mcp` → the server → **Default for tools** sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 

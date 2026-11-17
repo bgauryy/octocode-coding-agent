@@ -151,9 +151,13 @@ it("lists an on-demand tool undeclared, loads it with the mcp tool, then calls i
 	expect(requests).toHaveLength(3);
 	expect(declared(requests[0])).not.toContain(TOOL);
 	expect(declared(requests[0])).toContain("mcp");
-	expect(getCurrentSystemMessage(requests[0].messages)?.sections?.mcps ?? head(requests[0])).toMatch(
-		/- echo_secret: \S/,
-	);
+	const sections = Object.entries(getCurrentSystemMessage(requests[0].messages)?.sections ?? {});
+	// The `mcps` section, with each server's block when it is a section of its own (`mcps:<server>`).
+	const mcps = sections
+		.filter(([name]) => name === "mcps" || name.startsWith("mcps:"))
+		.map(([, text]) => String(text))
+		.join("\n");
+	expect(mcps).toMatch(/- echo_secret: \S/);
 	// Loading declares the tool after the head, which stays byte-identical.
 	expect(head(requests[1])).toBe(head(requests[0]));
 	expect(head(requests[2])).toBe(head(requests[0]));

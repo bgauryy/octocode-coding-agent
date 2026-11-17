@@ -14,11 +14,23 @@
  * A deferred tool the model loads in the session (`mcp` tools with `server: "native"`, a refused call, or its first
  * call) is declared in full after the cache, where the model's transport adds a definition in place
  * (`redeclaresInPlace`): the same second layer MCP tools have, once per session. Elsewhere the schema stays a tool result.
+ *
+ * On demand: an unpinned tool of `NATIVE_ON_DEMAND_TOOLS` that a new session would declare deferred is instead left
+ * undeclared (registered inactive with `onDemand`) where the model's transport adds a declaration after the cached
+ * prefix (tool loading mode `changes` or `additions`) and the agent has the `mcp` tool. `<tools>` still lists it; its
+ * first call, or the `mcp` tool reading it (`server: "native"`), activates it and the next request declares it. A
+ * resumed session keeps what its transcript declared; a switch to a model without in-place additions declares every
+ * unloaded one deferred (`reconsiderNativeOnDemand`).
  */
 
 import path from "node:path";
 import { getCurrentTools } from "@octocodeai/octocode-ai";
-import { NATIVE_PINNABLE_TOOLS, NATIVE_USAGE_ONLY_TOOLS } from "@octocodeai/octocode-contracts/config";
+import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
+import {
+	NATIVE_ON_DEMAND_TOOLS,
+	NATIVE_PINNABLE_TOOLS,
+	NATIVE_USAGE_ONLY_TOOLS,
+} from "@octocodeai/octocode-contracts/config";
 import type { TSchema } from "typebox";
 import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { recentlyUsed, RecentUseRecorder } from "@octocodeai/octocode-common/recent-use";
@@ -27,12 +39,14 @@ import { deferredParameters, type McpNativeTools, redeclaresInPlace, thinParamet
 import { getAgentDir } from "../../config.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/features/index.ts";
+import { addsInPlace, type Forms, type OnDemandApi, onDemandForm, undeclared } from "./native-forms.ts";
 
 /** The native tools deferred under `recent` and `usage`: the contracts list a pin can name. */
 export const DEFERRABLE_NATIVE_TOOLS: ReadonlySet<string> = new Set(NATIVE_PINNABLE_TOOLS);
 /** Every native tool a session can declare deferred: those above, and the ones only `usage` or a pin defers. */
 const DEFERRABLE_ANY: ReadonlySet<string> = new Set([...NATIVE_PINNABLE_TOOLS, ...NATIVE_USAGE_ONLY_TOOLS]);
 const USAGE_ONLY: ReadonlySet<string> = new Set(NATIVE_USAGE_ONLY_TOOLS);
+const ON_DEMAND: ReadonlySet<string> = new Set(NATIVE_ON_DEMAND_TOOLS);
 
 const useFile = () => path.join(getAgentDir(), "tool-use.json");
 const uses = new RecentUseRecorder(useFile);
@@ -126,23 +140,19 @@ export const nativeToolsSaved = (): ReadonlyMap<string, number> => saved;
 const declarationBytes = (tool: { description: string; parameters: unknown }): number =>
 	Buffer.byteLength(JSON.stringify({ description: tool.description, parameters: tool.parameters }));
 
-/** Both declarations of a deferrable tool, and which one is registered. */
-interface Forms {
-	direct: ToolDefinition;
-	deferred: ToolDefinition;
-	/** Whether the session declared the tool thin when it started. */
-	isDeferred: boolean;
-	/** Whether the full form was declared since, in place, after a load. */
-	redeclared: boolean;
-}
-
 /** The latest forms of each deferrable tool by name, across extension loads: what the `mcp` tool reads. */
 const formsByName = new Map<string, Forms>();
 /** The deferred tools read in full this session that are not yet declared in full (`redeclareLoadedNatives`). */
 const loadedNatives = new Set<string>();
 
 function markLoaded(name: string): void {
-	if (formsByName.get(name)?.isDeferred) loadedNatives.add(name);
+	const forms = formsByName.get(name);
+	if (forms?.isDeferred) loadedNatives.add(name);
+	// Reading an undeclared on-demand tool declares it from the next request on.
+	if (forms && undeclared(name, forms)) {
+		const active = forms.onDemand!.getActiveTools();
+		forms.onDemand!.setActiveTools([...active, name]);
+	}
 }
 
 /**
@@ -153,12 +163,12 @@ export function nativeToolsPort(): McpNativeTools {
 	return {
 		deferred: () =>
 			[...formsByName]
-				.filter(([, forms]) => forms.isDeferred)
+				.filter(([name, forms]) => forms.isDeferred || undeclared(name, forms))
 				.map(([name]) => name)
 				.sort(),
 		schema: (name) => {
 			const forms = formsByName.get(name);
-			return forms?.isDeferred
+			return forms && (forms.isDeferred || undeclared(name, forms))
 				? { description: forms.direct.description, parameters: forms.direct.parameters }
 				: undefined;
 		},
@@ -217,7 +227,7 @@ export function withNativeDeferral<P extends TSchema, D, S>(
 	};
 	const isDeferred = nativeToolDeferred(tool.name, readSettings(api));
 	declared.set(tool.name, isDeferred);
-	const forms = { direct: recorded, deferred: deferred(recorded), isDeferred, redeclared: false };
+	const forms = { direct: recorded, deferred: deferred(recorded), isDeferred, redeclared: false, byRecord: isDeferred };
 	saved.set(tool.name, Math.max(0, declarationBytes(forms.direct) - declarationBytes(forms.deferred)));
 	let registered = formsByApi.get(api);
 	if (!registered) formsByApi.set(api, (registered = new Map()));
@@ -247,20 +257,35 @@ function transcriptDeclares(
  * place. Anything unreadable leaves the registration as it is.
  */
 export function settleNativeDeferral(
-	api: Pick<ExtensionAPI, "getSettings" | "registerTool">,
-	ctx: Pick<ExtensionContext, "sessionManager">,
+	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
+	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
 ): void {
 	const registered = formsByApi.get(api);
 	usage.reset();
 	loadedNatives.clear();
 	if (!registered || registered.size === 0) return;
 	usage.record("declared", [...registered.keys()].map(keyOf));
+	applyNativeDeclarations(api, ctx);
+}
+
+/** Declare each deferrable tool as `settleNativeDeferral` describes, for the session's model now. */
+function applyNativeDeclarations(
+	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
+	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
+): void {
+	const registered = formsByApi.get(api);
+	if (!registered) return;
 	const settings = readSettings(api);
 	let declaredTools: Map<string, { parameters?: unknown }> | undefined;
+	/** The tools the session's first system message declares: a tool declared only after it was loaded on demand. */
+	let headTools = new Set<string>();
 	const sessionDeclares = (name: string, forms: Forms): boolean | undefined => {
 		if (!declaredTools) {
 			try {
-				const tools = getCurrentTools(ctx.sessionManager.buildSessionProjection().messages);
+				const { messages } = ctx.sessionManager.buildSessionProjection();
+				const tools = getCurrentTools(messages);
+				const head = messages.find((message) => message.role === "system");
+				headTools = new Set(head ? getCurrentTools([head]).map((tool) => tool.name) : []);
 				declaredTools = new Map(tools.map((tool) => [tool.name, tool]));
 			} catch {
 				declaredTools = new Map();
@@ -268,18 +293,76 @@ export function settleNativeDeferral(
 		}
 		return transcriptDeclares(forms, declaredTools, name);
 	};
+	const onDemandApi =
+		typeof api.getActiveTools === "function" && typeof api.setActiveTools === "function"
+			? (api as OnDemandApi)
+			: undefined;
+	const tierApplies =
+		onDemandApi !== undefined && addsInPlace(ctx.model) && onDemandApi.getActiveTools().includes(MCP_MANAGE_TOOL_NAME);
 	for (const [name, forms] of registered) {
 		// The settings were unreadable at registration, so a new session under `usage` reads the snapshot only now.
-		const fresh = exposureSetting(settings) === "usage" ? nativeToolDeferred(name, settings) : forms.isDeferred;
-		const target = chosenExposure(name, settings) ?? sessionDeclares(name, forms) ?? fresh;
-		if (target === forms.isDeferred && !forms.redeclared) continue;
+		const fresh = exposureSetting(settings) === "usage" ? nativeToolDeferred(name, settings) : forms.byRecord;
+		const chosen = chosenExposure(name, settings);
+		const transcript = sessionDeclares(name, forms);
+		const wasOnDemand = forms.onDemand;
+		forms.onDemand = undefined;
+		// On demand: a new session leaves it undeclared; a resumed one that loaded it declares it in full as it did.
+		const loaded = transcript === false && !headTools.has(name);
+		if (tierApplies && ON_DEMAND.has(name) && chosen === undefined && ((fresh && transcript === undefined) || loaded)) {
+			try {
+				api.registerTool(onDemandForm(forms, loaded));
+			} catch {
+				continue;
+			}
+			forms.onDemand = onDemandApi;
+			forms.isDeferred = false;
+			forms.redeclared = false;
+			declared.set(name, !loaded);
+			const active = onDemandApi.getActiveTools();
+			if (!loaded && active.includes(name)) onDemandApi.setActiveTools(active.filter((tool) => tool !== name));
+			continue;
+		}
+		const target = chosen ?? transcript ?? fresh;
+		if (target === forms.isDeferred && !forms.redeclared && !wasOnDemand) continue;
 		try {
 			api.registerTool(target ? forms.deferred : forms.direct);
 		} catch {
 			continue;
 		}
+		const active = wasOnDemand?.getActiveTools();
+		if (active && !active.includes(name)) wasOnDemand!.setActiveTools([...active, name]);
 		forms.isDeferred = target;
 		forms.redeclared = false;
 		declared.set(name, target);
+	}
+}
+
+/**
+ * At `model_select`: a model whose transport cannot add a declaration after the cached prefix gets every unloaded
+ * on-demand tool declared deferred (its first request is uncached anyway). A capable model re-applies the declarations,
+ * which leaves every tool the transcript declares as it is: declared tools are never withdrawn.
+ */
+export function reconsiderNativeOnDemand(
+	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
+	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
+): void {
+	if (addsInPlace(ctx.model)) {
+		applyNativeDeclarations(api, ctx);
+		return;
+	}
+	for (const [name, forms] of formsByApi.get(api) ?? []) {
+		if (!forms.onDemand) continue;
+		const onDemandApi = forms.onDemand;
+		const wasUndeclared = undeclared(name, forms);
+		forms.onDemand = undefined;
+		if (!wasUndeclared) continue;
+		try {
+			api.registerTool(forms.deferred);
+		} catch {
+			continue;
+		}
+		forms.isDeferred = true;
+		declared.set(name, true);
+		onDemandApi.setActiveTools([...onDemandApi.getActiveTools(), name]);
 	}
 }

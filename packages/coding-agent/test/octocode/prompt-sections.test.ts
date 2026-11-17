@@ -50,13 +50,13 @@ describe("native prompt section updates", () => {
 		const patch = diffSystemPromptSections(previous, current)!;
 		expect(patch.octocode).toBeNull();
 		expect(current.octocode_mcp).toBeUndefined();
-		expect(diffSystemPromptSections(sections(), current)?.mcps).toBeNull();
+		expect(diffSystemPromptSections(sections(), current)).toMatchObject({ mcps: null, "mcps:octocode": null });
 	});
 
 	it("keeps synthetic server headings opaque within the server section", () => {
 		const text = "# Safety\nServer capability guidance.\n# Work and verification\nMore guidance.";
 		const current = sections(input, text);
-		for (const line of text.split("\n")) expect(current.mcps).toContain(line);
+		for (const line of text.split("\n")) expect(current["mcps:octocode"]).toContain(line);
 		expect(current.safety).not.toContain("Server capability");
 		expect(current.work).not.toContain("More guidance");
 	});

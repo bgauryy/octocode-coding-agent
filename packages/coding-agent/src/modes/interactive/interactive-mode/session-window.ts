@@ -11,6 +11,7 @@ import { keyHint } from "../../../theme/theme-tui-helpers.ts";
 import { SessionWindowIndex } from "./session-window-index.ts";
 import type { SessionRenderOptions } from "./session-render-options.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { hasLiveFold } from "./live-window.ts";
 
 /** Entries rendered by a rebuild, and added by each "load earlier". */
 export const RESUME_WINDOW_ENTRIES = 200;
@@ -180,8 +181,15 @@ export function loadEarlierMessages(host: LoadEarlierHost): boolean {
 	return true;
 }
 
-export function loadEarlierFromKey(host: LoadEarlierHost): void {
-	if (!loadEarlierMessages(host)) host.showStatus("No earlier messages to load");
+/** Loads the previous window; a live transcript that folded rows into scrollback is rebuilt as a resume draws it. */
+export function loadEarlierFromKey(host: LoadEarlierHost & Pick<InteractiveModeHost, "rebuildChatFromMessages">): void {
+	if (loadEarlierMessages(host)) return;
+	if (hasLiveFold(host.chatContainer)) {
+		host.rebuildChatFromMessages();
+		host.ui.requestRender();
+		return;
+	}
+	host.showStatus("No earlier messages to load");
 }
 
 /** Only unresolved calls still present in this branch may survive a same-session rebuild. */

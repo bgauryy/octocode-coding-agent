@@ -126,9 +126,10 @@ async function promptSize(options: {
  */
 /**
  * Schema characters of the backlog tools' typed entity fields (completion in `backlog`; type, parent, dependencies and
- * links in a `backlogPlan` entry): measured 1_532 main. One tool carried them all at 2_176 before the split.
+ * links in a `backlogPlan` entry, and `version` on both): measured 1_669 main. One tool carried them all at 2_176
+ * before the split.
  */
-const BACKLOG_ENTITIES_CEILING = 1_560;
+const BACKLOG_ENTITIES_CEILING = 1_750;
 /**
  * Main policy and tool surfaces, excluding entity fields; tightened after instruction and description compression.
  * Raised from 36_950 for the user-requested rules: self versus delegate, worktree children beside other sessions, teams,

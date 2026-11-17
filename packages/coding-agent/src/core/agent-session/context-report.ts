@@ -6,6 +6,7 @@ import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts"
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
 import { contextSizeWarnings, mcpInstructionSizes } from "../context-budget.ts";
 import { MCPS_SECTION } from "@octocodeai/octocode-common/mcp-names";
+import { sectionFamilyText } from "../system-prompt-spec.ts";
 import { archivedSummary } from "../compaction/checkpoint.ts";
 import { renderContextLifecycle, type ContextLifecycle } from "./context-lifecycle.ts";
 
@@ -102,8 +103,8 @@ export function contextReport(
 		difference: usage?.tokens === null || usage?.tokens === undefined ? null : usage.tokens - estimatedTotal,
 		contributors,
 		warnings: contextSizeWarnings({
-			servers: mcpInstructionSizes(system?.sections?.[MCPS_SECTION] ?? ""),
-			contextFilesChars: system?.sections?.project_context?.length ?? 0,
+			servers: mcpInstructionSizes(sectionFamilyText(system?.sections ?? {}, MCPS_SECTION)),
+			contextFilesChars: sectionFamilyText(system?.sections ?? {}, "project_context").length,
 			contextWindow: capacity,
 		}),
 		compaction: {

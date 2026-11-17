@@ -181,7 +181,9 @@ export interface SessionShape {
 
 /**
  * A real session on the scripted model `faux/faux-1` (200,000-token window), built as the CLI builds it for `shape`, in
- * `sessionManager` (in memory by default). The caller disposes it.
+ * `sessionManager` (in memory by default). The caller disposes it. The model speaks the Anthropic Messages API with
+ * mid-conversation tool changes (tool loading mode `changes`), as the flagship models do, so `onDemand` tools are left
+ * out of the first request.
  */
 export async function scriptedSession(
 	fx: Fixture,
@@ -190,6 +192,7 @@ export async function scriptedSession(
 ) {
 	const faux = createFauxCore({
 		provider: "faux",
+		api: "anthropic-messages",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
 	const provider: ExtensionFactory = (api) => {
@@ -202,6 +205,7 @@ export async function scriptedSession(
 				...model,
 				promptCache: { short: 300, long: 3600 },
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
 			})),
 			streamSimple: faux.streamSimple,
 		} as never);
@@ -287,7 +291,8 @@ function describeRequest(
 ): AgentContext {
 	const system = getCurrentSystemMessage(context.messages);
 	const sections = Object.entries(system?.sections ?? {}).map(([sectionName, text]) => ({
-		name: sectionName,
+		// A part's name holds its file path (`project_context:<path>`), normalized like the text.
+		name: normalize(sectionName),
 		text: normalize(String(text)),
 	}));
 	const loose = system ? contentText(system.content) : "";

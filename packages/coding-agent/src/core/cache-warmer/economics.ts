@@ -35,6 +35,18 @@ export const CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS = 0.05;
  * better than this constant.
  */
 export const IDLE_CONTINUATION_PROBABILITY = 0.15;
+/**
+ * Idle continuation probability per agent role, where a role's own reply gaps have been measured; a role without an
+ * entry uses {@link IDLE_CONTINUATION_PROBABILITY}, the value measured from coding sessions.
+ */
+const IDLE_CONTINUATION_PROBABILITY_BY_ROLE: Readonly<Record<string, number>> = { main: IDLE_CONTINUATION_PROBABILITY };
+
+/** The idle continuation probability for `role`; see {@link IDLE_CONTINUATION_PROBABILITY_BY_ROLE}. */
+export function idleContinuationProbability(role?: string): number {
+	return role !== undefined && Object.hasOwn(IDLE_CONTINUATION_PROBABILITY_BY_ROLE, role)
+		? IDLE_CONTINUATION_PROBABILITY_BY_ROLE[role]
+		: IDLE_CONTINUATION_PROBABILITY;
+}
 
 /** Refresh at 90% of the TTL while preserving at least ten seconds of margin. */
 export function getCacheWarmingDelayMs(ttlMs: number): number | undefined {

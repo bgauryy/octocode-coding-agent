@@ -35,8 +35,13 @@ afterEach(async (context) => {
 	endpoint.requests.length = 0;
 });
 
-const section = (prompt: string, name: string): string | undefined =>
-	new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(prompt)?.[1];
+/** Every block a tag wraps, joined: a split section (`mcps`, `project_context`) repeats its tag once per part. */
+const section = (prompt: string, name: string): string | undefined => {
+	const blocks = [...prompt.matchAll(new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`, "g"))].map(
+		(match) => match[1],
+	);
+	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+};
 
 function write(file: string, text: string): void {
 	fs.mkdirSync(path.dirname(file), { recursive: true });

@@ -65,9 +65,13 @@ export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: str
 
 const block = (tag: string, body: string): string => `<${tag}>\n${body}\n</${tag}>`;
 
-/** Replaces the whole `<tag>...</tag>` block, keeping the tag lines. A missing block stays missing. */
+/**
+ * Replaces the whole `<tag>...</tag>` block, keeping the tag lines; consecutive blocks of one tag (a section family's
+ * head and members) become one. A missing block stays missing.
+ */
 function swapBlock(text: string, tag: string, placeholder: string): string {
-	const pattern = new RegExp(`^<${tag}>\\n[\\s\\S]*?\\n</${tag}>$`, "m");
+	const one = `^<${tag}>\\n[\\s\\S]*?\\n</${tag}>$`;
+	const pattern = new RegExp(`${one}(?:\\n\\n${one})*`, "m");
 	return text.replace(pattern, block(tag, `{{${placeholder}}}`));
 }
 

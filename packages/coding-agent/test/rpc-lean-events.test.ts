@@ -91,6 +91,14 @@ describe("lean RPC events", () => {
 		expect(parentEffects(lean)).toEqual(parentEffects(full));
 	});
 
+	it("default events carry no request trace, which would repeat the whole context per message", () => {
+		const full = turn()
+			.map((event) => JSON.stringify(toJsonEvent(event)))
+			.join("\n");
+		expect(full).toContain('"stopReason"');
+		expect(full).not.toContain("requestTrace");
+	});
+
 	it("keep user and custom messages and every other event as the default ones", () => {
 		const custom = { role: "custom", customType: "job", content: "Background bash done", details: { quiet: true } };
 		for (const event of [

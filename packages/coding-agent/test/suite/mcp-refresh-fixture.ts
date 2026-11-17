@@ -70,8 +70,17 @@ export const appendedChars = (updates: SystemMessage[]) =>
 		0,
 	);
 
+/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head), joined. */
+const serverBlocks = (sections: Record<string, string | null> = {}) =>
+	Object.entries(sections)
+		.flatMap(([name, text]) => (text !== null && name.startsWith(`${MCPS_SECTION}:`) ? [text] : []))
+		.join("\n\n");
+
 export const mcpsPatches = (updates: SystemMessage[]) =>
-	updates.flatMap((update) => (update.sections?.[MCPS_SECTION] ? [update.sections[MCPS_SECTION]] : []));
+	updates.flatMap((update) => {
+		const text = serverBlocks(update.sections);
+		return text ? [text] : [];
+	});
 
 /** Tool names the updates add or remove. */
 export const toolChanges = (updates: SystemMessage[]) =>
@@ -80,9 +89,9 @@ export const toolChanges = (updates: SystemMessage[]) =>
 		...(update.toolsRemoved ?? []).map((tool) => `-${tool.name}`),
 	]);
 
-/** The newest copy of the `mcps` section in the messages. */
+/** The newest copy of every server block in the messages. */
 export const newestMcps = (messages: Parameters<typeof getCurrentSystemMessage>[0]) =>
-	getCurrentSystemMessage(messages)?.sections?.[MCPS_SECTION] ?? undefined;
+	serverBlocks(getCurrentSystemMessage(messages)?.sections) || undefined;
 
 /** The current `mcp_status` section of the messages, undefined when none applies. */
 export const currentStatus = (messages: Parameters<typeof getCurrentSystemMessage>[0]) =>

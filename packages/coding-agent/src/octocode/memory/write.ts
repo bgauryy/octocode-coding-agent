@@ -35,6 +35,15 @@ export interface MemoryWriteParams {
 	pinned?: boolean;
 }
 
+/**
+ * A write result's details: the memory it saved, updated or deleted. A save also names the `updatedAt` of the version it
+ * shows, so recall counts that version as seen (`inject.ts`) and injects it again only after a later edit.
+ */
+interface MemoryWriteDetails {
+	ids: number[];
+	updated?: number[];
+}
+
 interface WriteCall {
 	toolCallId: string;
 	/** The memory `params.id` names, already parsed; undefined for a new memory. */
@@ -55,7 +64,7 @@ export async function writeMemory({
 	permission,
 	ctx,
 	signal,
-}: WriteCall): Promise<ReturnType<typeof textResult<{ ids: number[] }>>> {
+}: WriteCall): Promise<ReturnType<typeof textResult<MemoryWriteDetails>>> {
 	signal?.throwIfAborted();
 	/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. A save asks in every mode: `full` runs a `file.outside` change, and this text would steer every later session. */
 	const confirmWide = async (wide: boolean, title: string, what: string[], effect: string) => {
@@ -136,8 +145,6 @@ export async function writeMemory({
 	const neighbours = related.length > 0 ? `\nRelated: ${related.join("; ")}` : "";
 	return textResult(
 		`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}`,
-		{
-			ids: [memory.id],
-		},
+		{ ids: [memory.id], updated: [memory.updatedAt] },
 	);
 }

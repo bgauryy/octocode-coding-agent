@@ -43,6 +43,11 @@ export interface BuildSystemPromptOptions {
 	 */
 	toolSnippets?: Record<string, string>;
 	/**
+	 * Registered tools left undeclared until first use (`ToolDefinition.onDemand`), loaded or not. Each is listed in the
+	 * `tools` section after the other tools, in this order, so loading one never moves a line.
+	 */
+	onDemandTools?: string[];
+	/**
 	 * The one-line purpose of each MCP server whose tools are declared, keyed by tool namespace (`mcp__<server>`), from
 	 * the server's own description. Rendered in the `tools` section as `- mcp__<server>__*: purpose` after the native
 	 * tools, in key order, so the first list the model reads names every server. The producer (the MCP extension) sets
@@ -168,6 +173,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		selectedTools: [...(input.selectedTools ?? [BASH_TOOL])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		toolSnippets: { ...input.toolSnippets },
+		...(input.onDemandTools ? { onDemandTools: [...input.onDemandTools] } : {}),
 		mcpServers: { ...input.mcpServers },
 		toolGuidelines: Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
@@ -253,6 +259,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		selectedTools,
 		hiddenTools,
 		toolSnippets,
+		onDemandTools = [],
 		mcpServers,
 		toolGuidelines,
 		promptGuidelines,
@@ -276,7 +283,11 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// instead gets one `mcp__<server>__*` line after them. A tool without a snippet is not listed and the section is
 	// absent when none has one: SDK sessions and extension tools set it optionally, while a test requires it of every
 	// native tool.
-	const listedTools = declaredTools.filter((name) => !isMcpToolName(name) && !!toolSnippets[name]);
+	// On-demand tools follow the rest whether loaded or not, so a load leaves the section as it was.
+	const onDemand = new Set(onDemandTools);
+	const listedTools = [...declaredTools.filter((name) => !onDemand.has(name)), ...onDemandTools].filter(
+		(name) => !isMcpToolName(name) && !!toolSnippets[name],
+	);
 	contents.tools = [
 		...listedTools.map((name) => `- ${name}: ${toolSnippets[name]}`),
 		...Object.entries(mcpServers)

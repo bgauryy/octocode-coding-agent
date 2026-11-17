@@ -88,11 +88,11 @@ describe("system prompt section spec", () => {
 			"preamble",
 			"tools",
 			"rules",
-			MCPS_SECTION,
+			"mcps:docs",
 			"work",
 			"skills",
 			"cwd",
-			"environment",
+			"environment:date",
 			MCP_STATUS_SECTION,
 		]);
 		// An empty custom section still removes a section.
@@ -118,7 +118,7 @@ describe("system prompt section spec", () => {
 			sections: { work: "Work.", extension: "Extension.", [MCP_STATUS_SECTION]: "- docs: connecting" },
 			environment: "Date: 2026-10-31",
 		});
-		expect(Object.keys(sections).slice(-4)).toEqual(["extension", "cwd", "environment", MCP_STATUS_SECTION]);
+		expect(Object.keys(sections).slice(-4)).toEqual(["extension", "cwd", "environment:date", MCP_STATUS_SECTION]);
 		const message = { role: "system", content: "", sections, timestamp: 0 };
 		expect(findInstructionVolatileBoundary([message])).toBe("cwd");
 	});

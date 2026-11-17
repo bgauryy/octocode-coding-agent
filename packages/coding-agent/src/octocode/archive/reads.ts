@@ -101,7 +101,9 @@ export function getRecord(cwd: string, id: string): string {
 			);
 	} else if (id.startsWith("agent:")) {
 		const row = agents.inWorkspace(agent.db, workspace).find((entry) => entry.id === id.slice(6));
-		if (row) return JSON.stringify(row, null, 2);
+		// The agent's transcript is a session record: name its id so the caller can read it next.
+		const session = typeof row?.session_id === "string" && row.session_id ? `session:${row.session_id}` : undefined;
+		if (row) return JSON.stringify({ ...(session ? { session } : {}), ...row }, null, 2);
 	}
 	throw new Error("No visible archive record with that id.");
 }

@@ -5,6 +5,7 @@ import type {
 	CompactionEntry,
 	ContextEditEntry,
 	ProjectedSessionEntry,
+	ReadonlySessionProjection,
 	SessionContext,
 	SessionEntry,
 	SessionProjection,
@@ -249,22 +250,49 @@ export function extendProjection(parts: ProjectionParts, appended: readonly Sess
 	return true;
 }
 
-/** A copy of `parts` that `extendProjection` can change without changing `parts`. */
-export function copyProjectionParts(parts: ProjectionParts): ProjectionParts {
-	return {
-		thinkingLevel: parts.thinkingLevel,
-		model: parts.model,
-		contextEntries: parts.contextEntries.slice(),
-		projected: parts.projected.slice(),
-		positions: new Map(parts.positions),
-		edits: new Map(parts.edits),
-		messages: parts.messages?.slice(),
-	};
+/**
+ * The projection `extendProjection(parts, appended)` would describe, without changing `parts`: new entry and message
+ * arrays, the parts' entry records and messages. The appended ids and edits are looked up before the parts' own, so the
+ * parts' maps are not copied. Undefined, as there, for any compaction.
+ */
+export function extendedProjection(
+	parts: ProjectionParts,
+	appended: readonly SessionEntry[],
+): ReadonlySessionProjection | undefined {
+	if (appended.some((entry) => entry.type === "compaction")) return undefined;
+	const settings: ContextSettings = { thinkingLevel: parts.thinkingLevel, model: parts.model };
+	const base = parts.contextEntries.length;
+	const projected = parts.projected.slice();
+	const positions = new Map<string, number>();
+	const edits = new Map<string, ContextEditEntry>();
+	const editOf = (id: string) => edits.get(id) ?? parts.edits.get(id);
+	let rebuilt = false;
+	for (const [offset, entry] of appended.entries()) {
+		applyContextSettings(settings, entry);
+		const index = base + offset;
+		positions.set(entry.id, index);
+		if (entry.type === "context_edit") {
+			edits.set(entry.targetId, entry);
+			const target = positions.get(entry.targetId) ?? parts.positions.get(entry.targetId);
+			if (target !== undefined && target !== index) {
+				const source = target < base ? parts.contextEntries[target] : appended[target - base];
+				projected[target] = projectAt(source, target, entry);
+				rebuilt = true;
+			}
+		}
+		projected.push(projectAt(entry, index, editOf(entry.id)));
+	}
+	parts.messages ??= parts.projected.flatMap((entry) => entry.messages);
+	const messages = rebuilt
+		? projected.flatMap((entry) => entry.messages)
+		: parts.messages.concat(projected.slice(base).flatMap((entry) => entry.messages));
+	return { entries: projected, messages, thinkingLevel: settings.thinkingLevel, model: settings.model };
 }
 
 /**
  * The projection the parts describe, in arrays and entry records of its own (`shared` parts stay unchanged whatever the
- * caller does with them). The messages themselves are the parts' own.
+ * caller does with them). The messages themselves are the parts' own. Unshared, it holds the parts' arrays: later
+ * appends to the parts change them.
  */
 export function projectionOf(parts: ProjectionParts, shared: boolean): SessionProjection {
 	parts.messages ??= parts.projected.flatMap((entry) => entry.messages);

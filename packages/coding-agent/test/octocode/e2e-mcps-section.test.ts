@@ -14,6 +14,7 @@ import type { ExtensionFactory } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { createTestSession } from "../helpers/session.ts";
@@ -151,8 +152,10 @@ async function firstRequest(
 				]
 			: [],
 	);
+	const sections = (getCurrentSystemMessage(captured.messages)?.sections ?? {}) as Record<string, string>;
 	return {
-		sections: (getCurrentSystemMessage(captured.messages)?.sections ?? {}) as Record<string, string>,
+		// The head and each server's `mcps:<server>` block, joined: the tests read the whole MCP section.
+		sections: { ...sections, mcps: sectionFamilyText(sections, "mcps") },
 		declared: getCurrentTools(captured.messages),
 		results,
 	};

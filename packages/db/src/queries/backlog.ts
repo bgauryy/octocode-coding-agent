@@ -5,6 +5,8 @@ import { allRows, num } from "../rows.ts";
 
 // Item rows and listings (one item, an origin's derived items, filtered pages) live beside this module.
 export * from "./backlog-items.ts";
+// The task source: one-read snapshot with a cursor, and the audit rows after it.
+export * from "./backlog-changes.ts";
 
 /** Only the reference number and title of every workspace item, including done and closed items. */
 export function itemTitles(db: DatabaseSync, repo: string): Array<{ seq: number; title: string }> {

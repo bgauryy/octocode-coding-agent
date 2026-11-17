@@ -56,7 +56,7 @@ Multiples of the model's base input price per token, from the providers' pages a
 - Not confirmed here: the long-write price on Amazon Bedrock, OpenRouter and other resellers (Octocode prices their 1-hour writes at 2× as on Anthropic), and any price not in the catalog.
 - One pass over a child's history costs 60% more to write at Anthropic's long tier than at its short tier (2× against 1.25×), which a short foreground task never earns back.
 - A model whose catalog has no cache-write rate pays no write premium. OpenAI explicit writes have a 1,024-token minimum.
-- Usage keeps aggregate `cacheWrite` with optional `cacheWrite1h` and `cacheWrite12h`; each token is counted once and model pricing tiers are kept.
+- Usage keeps aggregate `cacheWrite` with optional `cacheWrite1h`, `cacheWrite12h` and `cacheWrite30m` (OpenAI's default tier, priced as a short write); each token is counted once and model pricing tiers are kept.
 - These are catalog estimates: subscription allowances, credits, regional premiums, time-based storage charges and served OpenAI service tiers are not fully represented ([model selection](models.md#select-a-model)). Measure savings with your own workload.
 
 ## Configure retention

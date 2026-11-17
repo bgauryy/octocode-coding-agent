@@ -278,6 +278,7 @@ export class SessionToolLoadout {
 			this._toolPromptSnippets,
 			this._toolPromptGuidelines,
 			[...this._hiddenDeclarations],
+			[...this._toolDefinitions].filter(([, entry]) => entry.definition.onDemand === true).map(([name]) => name),
 		);
 	}
 

@@ -7,6 +7,7 @@ import type {
 	SessionContext,
 	SessionEntry,
 	SessionHeader,
+	ReadonlySessionProjection,
 	SessionNameSource,
 	SessionProjection,
 	SessionTreeNode,
@@ -160,6 +161,12 @@ export interface SessionManagerApi {
 	 */
 	buildSessionProjection(): SessionProjection;
 
+	/**
+	 * `buildSessionProjection` without copying, for a reader that finishes before the session changes again: the next
+	 * append may extend or replace the arrays it holds.
+	 */
+	readSessionProjection(): ReadonlySessionProjection;
+
 	buildSessionContext(): SessionContext;
 
 	/**
@@ -236,6 +243,7 @@ export type ReadonlySessionManager = Pick<
 	| "getBranch"
 	| "buildContextEntries"
 	| "buildSessionProjection"
+	| "readSessionProjection"
 	| "getHeader"
 	| "getEntries"
 	| "getEntryCount"

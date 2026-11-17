@@ -165,7 +165,7 @@ export function addUsage(total: Usage, usage: unknown): void {
 	total.output += finiteOrZero(usage.output);
 	total.cacheRead += finiteOrZero(usage.cacheRead);
 	total.cacheWrite += finiteOrZero(usage.cacheWrite);
-	for (const key of ["cacheWrite1h", "cacheWrite12h", "reasoning"] as const) {
+	for (const key of ["cacheWrite1h", "cacheWrite12h", "cacheWrite30m", "reasoning"] as const) {
 		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) total[key] = (total[key] ?? 0) + usage[key];
 	}
 	if (usage.lowerBound === true) total.lowerBound = true;

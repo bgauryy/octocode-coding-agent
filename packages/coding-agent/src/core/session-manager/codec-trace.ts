@@ -1,10 +1,12 @@
 import type { RequestLayer, RequestTrace } from "@octocodeai/octocode-ai";
+import { chainTrace, extendTrace, isChained } from "./trace-chain.ts";
 
 /**
  * A request trace lists every layer of the request it describes, so storing each whole grows with the square of the
  * turn count. On disk a trace is stored against an earlier one in the same file: `base` names the assistant entry whose
  * trace shares the longest prefix, `keep` how many of its layers this one starts with, and `layers` only the layers
- * after them. A trace with no shared prefix is stored whole. Reading rebuilds the whole trace.
+ * after them. A trace with no shared prefix is stored whole. Reading gives a chained trace (`trace-chain.ts`): the base's
+ * layers are shared, not copied, so a session read back holds each layer about once, as the live session does.
  */
 interface StoredTraceDelta {
 	base: string;
@@ -29,7 +31,7 @@ function sameLayer(left: RequestLayer, right: RequestLayer): boolean {
 	);
 }
 
-/** Whether `layers` starts with the first `keep` layers of `base` themselves (shared objects, as `encode` leaves them). */
+/** Whether `layers` starts with the first `keep` layers of `base` themselves (shared objects, as a chained trace has them). */
 function sharesPrefix(layers: readonly RequestLayer[], base: readonly RequestLayer[], keep: number): boolean {
 	for (let i = 0; i < keep; i++) if (layers[i] !== base[i]) return false;
 	return true;
@@ -55,52 +57,66 @@ export function isTraceDelta(value: unknown): value is StoredTraceDelta {
 
 /** The traces of one file in file order, by the id of the assistant entry that holds each. */
 export class TraceIndex {
-	private readonly byEntry = new Map<string, RequestLayer[]>();
+	/** Each trace itself, not a copy of its layers: a chained trace costs only its own links. */
+	private readonly byEntry = new Map<string, RequestTrace>();
 	private readonly recent: string[] = [];
 
 	/** Remember the whole trace of an entry the file now holds. */
 	add(entryId: string, trace: RequestTrace): void {
 		if (!Array.isArray(trace.layers)) return;
-		this.byEntry.set(entryId, trace.layers);
+		this.byEntry.set(entryId, trace);
 		this.recent.push(entryId);
 		if (this.recent.length > BASE_CANDIDATES) this.recent.shift();
 	}
 
-	/**
-	 * The stored form of `trace`: a delta against the earlier trace sharing the longest prefix, else the trace itself.
-	 * When a delta is chosen, the first `keep` layers of `trace` become the base's own objects, which are equal to them
-	 * (the read-back check below proves it): the live message then holds each unchanged layer once, as a resumed one
-	 * does, instead of a fresh copy per request. A trace is not changed after its message ends, so sharing is safe.
-	 */
-	encode(trace: RequestTrace): RequestTrace | StoredTraceDelta {
-		if (!Array.isArray(trace.layers) || isTraceDelta(trace)) return trace;
-		let best: { id: string; keep: number } | undefined;
+	/** The newest of the recent traces sharing the longest prefix with `layers`, its layers and that prefix's length. */
+	private bestBase(layers: readonly RequestLayer[]): { id: string; layers: RequestLayer[]; keep: number } | undefined {
+		let best: { id: string; layers: RequestLayer[]; keep: number } | undefined;
 		for (let i = this.recent.length - 1; i >= 0; i--) {
 			const id = this.recent[i];
-			const keep = sharedPrefix(this.byEntry.get(id) ?? [], trace.layers);
-			if (keep > (best?.keep ?? 0)) best = { id, keep };
+			const base = this.byEntry.get(id)?.layers ?? [];
+			const keep = sharedPrefix(base, layers);
+			if (keep > (best?.keep ?? 0)) best = { id, layers: base, keep };
 		}
+		return best;
+	}
+
+	/**
+	 * The stored form of `trace`: a delta against the earlier trace sharing the longest prefix, else the trace itself.
+	 * When a delta is chosen for a trace that holds its own array, its first `keep` layers become the base's own objects,
+	 * which are equal to them (the read-back check below proves it), so the live message holds each unchanged layer once.
+	 * A chained trace already shares them. A trace is not changed after its message ends, so sharing is safe.
+	 */
+	encode(trace: RequestTrace): RequestTrace | StoredTraceDelta {
+		const layers = trace.layers;
+		if (!Array.isArray(layers) || isTraceDelta(trace)) return trace;
+		const best = this.bestBase(layers);
 		if (!best) return trace;
-		const { layers, ...rest } = trace;
+		const { layers: _layers, ...rest } = trace;
 		const delta: StoredTraceDelta = { base: best.id, keep: best.keep, ...rest, layers: layers.slice(best.keep) };
-		const base = this.byEntry.get(best.id) ?? [];
 		// A trace of the fields this format knows, in their order, whose prefix is the base's own layers reads back as
-		// itself (a resumed or already stored one); any other is stored only when it reads back byte for byte, so fields
-		// this format does not expect keep a trace whole.
+		// itself (a live, resumed or already stored one); any other is stored only when it reads back byte for byte, so
+		// fields this format does not expect keep a trace whole.
 		const known = Object.keys(trace).every((key, i) => key === (i === 0 ? "layers" : "cacheMode"));
-		if (!(known && sharesPrefix(layers, base, best.keep))) {
-			const decoded = this.decode(delta);
-			if (!decoded || JSON.stringify(decoded) !== JSON.stringify(trace)) return trace;
-			for (let i = 0; i < best.keep; i++) layers[i] = base[i];
-		}
+		if (known && sharesPrefix(layers, best.layers, best.keep)) return delta;
+		const decoded = this.decode(delta);
+		if (!decoded || JSON.stringify(decoded) !== JSON.stringify(trace)) return trace;
+		if (!isChained(trace)) for (let i = 0; i < best.keep; i++) layers[i] = best.layers[i];
 		return delta;
 	}
 
 	/** The whole trace of a stored delta, or undefined when its base is not an earlier trace of this file. */
 	decode(stored: StoredTraceDelta): RequestTrace | undefined {
 		const base = this.byEntry.get(stored.base);
-		if (!base || stored.keep > base.length) return undefined;
+		if (!base) return undefined;
 		const { base: _base, keep, layers, ...rest } = stored;
-		return { layers: [...base.slice(0, keep), ...layers], ...rest };
+		return extendTrace(base, keep, layers, rest);
+	}
+
+	/** A whole trace read from the file, as a chained trace sharing its prefix with the recent trace it shares most with. */
+	share(trace: RequestTrace): RequestTrace {
+		if (!Array.isArray(trace.layers)) return trace;
+		const best = this.bestBase(trace.layers);
+		return chainTrace(trace, best && this.byEntry.get(best.id));
 	}
 }

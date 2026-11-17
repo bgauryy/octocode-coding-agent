@@ -19,3 +19,4 @@ export { matchers, type CalledOptions, type TestkitMatchers } from "./matchers.t
 export type { AdapterContext, AgentAdapter, AgentSession } from "./adapter.ts";
 export { runInproc, type InprocOptions, type InprocResult, type Skill } from "./agents/inproc.ts";
 export { referenceAdapter, type ReferenceOptions } from "./adapters/reference/index.ts";
+export * from "./judge.ts";
