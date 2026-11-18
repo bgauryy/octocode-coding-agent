@@ -13,7 +13,7 @@ import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
-import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { SUMMARY_METHOD_DETAILS, summaryMethodOf } from "../shared/summary-method.ts";
 import { archivePointer } from "./archive.ts";
 import { cacheCold } from "./cache.ts";
@@ -38,6 +38,7 @@ import {
 	withoutModelSavedResults,
 } from "./saved-results.ts";
 import { sessionCachePreferences, sharedSummary, type SummaryApi } from "./shared-summary.ts";
+import { previousFileLists } from "./previous-file-lists.ts";
 import { noGainReason } from "./summary-gain.ts";
 import { paidSummaryKey } from "./summary-cache.ts";
 import { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText } from "./summary-text.ts";
@@ -87,12 +88,10 @@ export function carryFileLists(
 	preparation: Pick<SessionBeforeCompactEvent["preparation"], "fileOps">,
 	branch: readonly SessionEntry[],
 ): void {
-	const previous = [...branch].reverse().find((entry) => entry.type === "compaction");
-	if (previous?.type !== "compaction" || !previous.fromHook || !isRecord(previous.details)) return;
-	const strings = (value: unknown) =>
-		Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-	for (const file of strings(previous.details.readFiles)) preparation.fileOps.read.add(file);
-	for (const file of strings(previous.details.modifiedFiles)) preparation.fileOps.edited.add(file);
+	const previous = previousFileLists(branch);
+	if (!previous?.fromHook) return;
+	for (const file of previous.readFiles) preparation.fileOps.read.add(file);
+	for (const file of previous.modifiedFiles) preparation.fileOps.edited.add(file);
 }
 
 /** The cache-sharing request was unusable: the summary is a standalone request over the serialized conversation, which the prompt cache does not hold. */

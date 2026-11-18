@@ -354,6 +354,7 @@
 			"registerConfinedNote@octocode/team/node-confine.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
 			"registerPostToolUseHook@octocode/hooks/register/post-tool-use.ts",
+			"registerSkillFirstUse@octocode/skill/first-use.ts",
 			"registerReadDedupe@octocode/files/dedupe.ts",
 			"registerLoopGuard@octocode/loop-guard.ts"
 		],

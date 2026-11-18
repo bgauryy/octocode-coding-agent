@@ -353,8 +353,11 @@ describe("cache trace: steps that wait on other work", () => {
 	});
 
 	it.skip("idle gap: warm requests bridge a tool that outlasts the cache lifetime and change no layer", () => {
-		// Probe 2026-11-17: with a declared 20 s lifetime, prices and cacheWarming "streaming", a 14 s bash call sent no
-		// one-token warm request through the scripted wire (2 requests in total). Find what gates the warmer in a
-		// --mode json run before turning this on; then count requests with max_tokens 1 and assert their layers are equal.
+		// Not observable in a --mode json run. With a declared 20 s lifetime and prices, cacheWarming "streaming" and a
+		// 14 s foreground bash call sent no one-token warm request (2 requests in total); with cacheWarming "idle" and a
+		// background `sleep 25` job, the process exited about 2 s after start, as soon as the prompt settled, so the idle
+		// wait that warming bridges (background work pending) never happens there. Needs a long-lived mode (RPC or the
+		// interactive session) that stays up while background work runs; then count requests with max_tokens 1 and
+		// assert their layers are equal.
 	});
 });

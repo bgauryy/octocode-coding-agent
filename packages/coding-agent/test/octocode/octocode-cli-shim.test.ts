@@ -164,7 +164,8 @@ describe("the agent shell shims", () => {
 			const run = (command: string) => spawnSync("/bin/sh", ["-c", command], { env: getShellEnv(), encoding: "utf8" });
 			const research = run("octocode-cli --version");
 			expect(research.status).toBe(0);
-			expect(research.stdout.trim()).toBe(`octocode ${real.version}`);
+			// The CLI may append its build id (`+c6361757`) to the package version.
+			expect(research.stdout.trim()).toMatch(new RegExp(`^octocode ${real.version.replaceAll(".", "\\.")}(\\+[0-9A-Za-z.-]+)?$`));
 			const agentHelp = run("octocode context --help");
 			expect(agentHelp.status).toBe(0);
 			expect(agentHelp.stdout).toMatch(/context/i);

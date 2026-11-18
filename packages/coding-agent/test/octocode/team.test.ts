@@ -324,9 +324,9 @@ describe("agents view", () => {
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		// The root row carries no tally; the marks say who works. A grandchild sits under its parent.
 		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ○ · main +· +1m39s$/);
-		expect(lines[1]).toMatch(/^ └ ○ a-0001 +· a-0001 +· +10s$/);
-		expect(lines[2]).toMatch(/^ {3}└ ⠋ b-0002 +· b-0002 +· +1m · › → localSearch foo$/);
+		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ○ · main +1m39s$/);
+		expect(lines[1]).toMatch(/^ └ ○ a-0001 +· a-0001 +10s$/);
+		expect(lines[2]).toMatch(/^ {3}└ ⠋ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
 		expect(
 			widgetLines(
 				[
@@ -398,7 +398,7 @@ describe("collaboration schema", () => {
 	it("does not expose the removed collaborate field", () => {
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
-			asSetup({
+			asSetup({ getSettings: () => ({}),
 				registerTool: (tool: never) => tools.push(tool),
 				registerCommand: () => undefined,
 				registerMessageRenderer: () => undefined,
@@ -431,7 +431,7 @@ describe("Team", () => {
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
 		const fakeHost = (log: ReturnType<typeof inbox>) =>
-			asSetup({
+			asSetup({ getSettings: () => ({}),
 				sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }),
 				appendEntry: () => undefined,
 				getThinkingLevel: () => "off",
@@ -585,7 +585,12 @@ describe("team database schema", () => {
 		const file = path.join(tmp(), "other.sqlite");
 		exec(file, "CREATE TABLE notes (id INTEGER);");
 		const team = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			{
 				OCTOCODE_AGENT_DB: file,
 			},
@@ -623,7 +628,7 @@ describe("Team safety", () => {
 		} as never;
 		const log: Array<{ message: { content: string }; options: unknown }> = [];
 		let failing = false;
-		const api = asSetup({
+		const api = asSetup({ getSettings: () => ({}),
 			sendMessage: (message: { content: string }, options: unknown) => {
 				if (failing) throw new Error("not ready");
 				log.push({ message, options });
@@ -657,7 +662,12 @@ describe("Team safety", () => {
 		try {
 			const { Team, cwd, file, env, ctx, main, me } = await setup();
 			const child = new Team(
-				asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+				asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: "researcher-1234",
@@ -703,7 +713,12 @@ describe("Team safety", () => {
 		const { Team, cwd, env, main, me } = await setup();
 		const started = (id: string, extra: Record<string, string>) => {
 			const team = new Team(
-				asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+				asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: id,
@@ -737,7 +752,12 @@ describe("Team safety", () => {
 		const { Team } = await Promise.resolve(importedModule2);
 		const cwd = repo();
 		const lonely = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			{
 				OCTOCODE_AGENT_DB: path.join(tmp(), "none.sqlite"),
 			},
@@ -765,7 +785,7 @@ describe("Team safety", () => {
 			guard.reservedBy = (target) => main.reservation(target, target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				asSetup({
+				asSetup({ getSettings: () => ({}),
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
@@ -807,7 +827,7 @@ describe("Team safety", () => {
 			guard.record(target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				asSetup({
+				asSetup({ getSettings: () => ({}),
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
@@ -831,7 +851,12 @@ describe("Team safety", () => {
 		raw.exec("CREATE TABLE notes (id INTEGER);");
 		raw.close();
 		const solo = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			{
 				OCTOCODE_AGENT_DB: foreign,
 			},
@@ -849,7 +874,12 @@ describe("Team safety", () => {
 		// A healthy database: a solo session still sees a peer's lease, and a busy database does not block it.
 		const { main, env } = await setup();
 		const lone = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			env,
 		);
 		lone.start({
@@ -895,7 +925,7 @@ describe("Team safety", () => {
 		guard.record(target);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			asSetup({
+			asSetup({ getSettings: () => ({}),
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
@@ -925,7 +955,12 @@ describe("Team safety", () => {
 		vi.useFakeTimers();
 		const { Team, cwd, file, env, ctx, log, main, me } = await setup();
 		const peer = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			{
 				...env,
 				OCTOCODE_AGENT_ID: "peer-0001",
@@ -1011,7 +1046,12 @@ describe("Team safety", () => {
 		vi.useFakeTimers();
 		const { Team, env, ctx, log, main, fail } = await setup();
 		const child = new Team(
-			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
+			asSetup({
+				sendMessage: () => undefined,
+				appendEntry: () => undefined,
+				getThinkingLevel: () => "off",
+				getSettings: () => ({}),
+			}) as never,
 			{
 				...env,
 				OCTOCODE_AGENT_ID: "researcher-1234",

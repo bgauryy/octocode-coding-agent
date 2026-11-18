@@ -62,21 +62,25 @@ describe("agents panel rows", () => {
 
 	it("roots the tree at this session: name, mark, role and clock in the grid's columns, with no cost and no tally", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
-		expect(lines[0]).toBe(" 🦑 tidal-whale ○ · main       · 4m49s");
+		expect(lines[0]).toBe(
+			" 🦑 tidal-whale ○ · main                                                                                                                                                                           4m49s",
+		);
 		expect(lines.join("\n")).not.toMatch(/working|idle|≈\$0\.00/);
 	});
 
 	it("shows who, role, spend, goal and action on the row; model, tokens, cache, tools and locks on the open detail line", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(rowOf(lines, "inky-kraken")).toBe(
-			" ├ ⠋ inky-kraken  · researcher · 4m49s ≈$0.41 · 46.1k tok 74% cached · Checking vision routing refusal                  › localSearch vision_route",
+			" ├ ⠋ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
 		);
 		expect(rowOf(lines, "plucky-otter")).toContain(
 			"Checking timeout handling in serve_client.rs ✉ 1 › localFetch serve_client.rs",
 		);
-		expect(detailOf(lines, "inky-kraken")).toBe(" │   claude-sonnet-4-5 · 46.1k tok · 74% cached · 14 tool calls");
+		expect(detailOf(lines, "inky-kraken")).toBe(
+			" │   claude-sonnet-4-5                                                                                                                                            46.1k tok · 74% cached · 14 tool calls",
+		);
 		expect(detailOf(lines, "brave-squid")).toBe(
-			"     claude-sonnet-4-5 · 46.1k tok · 74% cached · 3 tool calls · 1 lock",
+			"     claude-sonnet-4-5                                                                                                                                    46.1k tok · 74% cached · 3 tool calls · 1 lock",
 		);
 		expect(lines.join("\n")).not.toContain("anthropic/");
 	});
@@ -98,8 +102,9 @@ describe("agents panel rows", () => {
 		}
 		const at = (width: number) => widgetLines(team, "tidal-whale", NOW, theme, width);
 		expect(rowOf(at(120), "inky-kraken")).toContain("› localSearch vision_route");
-		expect(at(80)).toContain(" │   ↳ localSearch vision_route");
-		expect(rowOf(at(80), "inky-kraken")).toContain("4m49s ≈$0.41");
+		// It moves to a ↳ line under the goal column, which keeps room for it.
+		expect(at(80).some((line) => /^ │ +↳ localSearch vision_route$/.test(line))).toBe(true);
+		expect(rowOf(at(80), "inky-kraken")).toContain("≈$0.41 4m49s");
 		expect(rowOf(at(60), "inky-kraken")).not.toMatch(/4m49s|≈\$/);
 		expect(rowOf(at(60), "inky-kraken")).toContain("researc…");
 	});
@@ -140,6 +145,6 @@ describe("token count of a row", () => {
 			200,
 		);
 		// 1M new prompt tokens + 200k output; 9M of the 10M prompt tokens were cache reads.
-		expect(detailOf(lines, "x-0001")).toContain(" · 1.2M tok · 90% cached · ");
+		expect(detailOf(lines, "x-0001")).toContain("1.2M tok · 90% cached · ");
 	});
 });

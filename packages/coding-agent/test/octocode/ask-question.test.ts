@@ -491,7 +491,8 @@ describe("ask", () => {
 		const replies = await ask({ hasUI: true, ui }, [...questions, text("t", "Why?")], { blocking: true, timeout: 50 });
 		// One reply per question, in order: a missing one is a decline, a stray one is dropped.
 		expect(replies).toEqual([picks("c", "2"), { id: "t", cancelled: "declined" }]);
-		expect(seen[1]).toEqual({ blocking: true, timeout: 50 });
+		// The host also gets `hold`, which it calls when the person starts answering to stop a countdown.
+		expect(seen[1]).toEqual({ blocking: true, timeout: 50, hold: expect.any(Function) });
 		expect(ui.selects).toEqual(["never"]);
 	});
 

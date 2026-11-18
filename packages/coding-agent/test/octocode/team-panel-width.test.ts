@@ -52,8 +52,7 @@ const work: WorkRow[] = [
 		startedAt: NOW - 617_000,
 	},
 ];
-const scene = (width: number) =>
-	widgetLines([main, ...children], ME, NOW, theme, width, [], 40, [], work, true, "all");
+const scene = (width: number) => widgetLines([main, ...children], ME, NOW, theme, width, [], 40, [], work, true, "all");
 
 const WIDTHS = [60, 100, 160, 240];
 const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "");
@@ -62,7 +61,12 @@ const headOf = (lines: string[], id: string) => lines.find((line) => plain(line)
 const shownGoal = (lines: string[], id: string) => {
 	const text = plain(headOf(lines, id));
 	const start = text.indexOf("B79");
-	return start < 0 ? "" : text.slice(start).split(/ › | {2,}/)[0].trim();
+	return start < 0
+		? ""
+		: text
+				.slice(start)
+				.split(/ › | {2,}/)[0]
+				.trim();
 };
 /** The lines that carry cells right-aligned to the edge: head lines with spend, detail lines and the work row. */
 const edgeLines = (lines: string[]) =>
@@ -83,13 +87,20 @@ describe("agents panel width", () => {
 		}
 	});
 
-	it("puts every head line's spend at the edge from 100 columns, so the columns line up down the panel", () => {
+	it("puts every head line's spend at the edge from 100 columns, its clock in the work rows' clock column", () => {
 		for (const width of WIDTHS.filter((each) => each >= 100)) {
 			const lines = scene(width);
-			const heads = [ME, ...children.map((child) => child.id)].map((id) => plain(headOf(lines, id)));
+			const heads = children.map((child) => plain(headOf(lines, child.id)));
 			for (const head of heads) expect(visibleWidth(head)).toBe(width);
-			// The cost column starts at one cell on every child row.
-			expect(new Set(heads.slice(1).map((head) => visibleWidth(head.slice(0, head.indexOf("≈$")))))).toHaveProperty("size", 1);
+			const end = (head: string, cell: string) => visibleWidth(head.slice(0, head.lastIndexOf(cell) + cell.length));
+			// The elapsed time ends every row, this session's and the bash job's too, in one column at the edge.
+			const job = plain(lines.find((line) => plain(line).includes("bash-28"))!);
+			const clocks = [
+				end(plain(headOf(lines, ME)), "1h"),
+				...heads.map((head) => end(head, "8m26s")),
+				end(job, "10m17s"),
+			];
+			expect(new Set(clocks)).toEqual(new Set([width]));
 		}
 	});
 

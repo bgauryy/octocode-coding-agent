@@ -1,10 +1,12 @@
 import path from "node:path";
 import { createFileOps } from "../../core/compaction/utils.ts";
 import type { SessionBeforeCompactEvent } from "../../core/features/index.ts";
+import type { SessionEntry } from "../../core/session-manager.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
 import { addLedgerEdits } from "./edit-ledger.ts";
 import { addFileToolOps } from "./file-tool-ops.ts";
+import { previousFileLists } from "./previous-file-lists.ts";
 import { recentFiles, type RestoreCandidate } from "./restore.ts";
 
 type Preparation = Pick<SessionBeforeCompactEvent["preparation"], "messagesToSummarize" | "turnPrefixMessages">;
@@ -27,17 +29,25 @@ function scratchFile(file: string): boolean {
 
 /**
  * The files to read back after this compaction, newest work first (`recentFiles`), without scratch files. A file the
- * summarized span did not change (by the `file` tool or this session's own `bash` writes, the edit ledger's parse) is
- * marked `onlyRead`: `restoreFiles` shows it as an outline or not at all, since most read-only files are not touched
+ * summarized span did not change (by the `file` tool or this session's own `bash` writes, the edit ledger's parse) and
+ * the previous compaction on `branch` does not list as modified is marked `onlyRead` (a file changed before the previous
+ * compaction reaches this span only as that compaction's read-back, no change of its own): `restoreFiles` shows an
+ * `onlyRead` file as an outline or not at all, since most read-only files are not touched
  * again soon after a compaction and a read brings one back when it is; one under `node_modules` is dropped.
  */
-export async function restoreCandidates(preparation: Preparation, cwd: string): Promise<RestoreCandidate[]> {
+export async function restoreCandidates(
+	preparation: Preparation,
+	cwd: string,
+	branch: readonly SessionEntry[],
+): Promise<RestoreCandidate[]> {
 	const span = { ...preparation, fileOps: createFileOps() };
 	addFileToolOps(span, cwd);
 	// Subagents' changes stay out: this agent did not work on those files.
 	await addLedgerEdits(span, cwd, () => []);
 	const changed = new Set(
-		[...span.fileOps.edited, ...span.fileOps.written].map((file) => canonicalPath(resolveToolPath(cwd, file))),
+		[...span.fileOps.edited, ...span.fileOps.written, ...(previousFileLists(branch)?.modifiedFiles ?? [])].map((file) =>
+			canonicalPath(resolveToolPath(cwd, file)),
+		),
 	);
 	return (
 		recentFiles(preparation, cwd)

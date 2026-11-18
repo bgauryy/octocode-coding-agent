@@ -82,7 +82,9 @@ export function measureGrid(rows: readonly GridRow[], width: number): Grid {
 	};
 	const prior = () => {
 		grid.role = widest(rows.map((r) => roleText(r, grid.roleMax)));
-		const block = [pairWidth(grid.elapsed, grid.cost), pairWidth(grid.tokens, grid.cached)].filter((cells) => cells > 0);
+		const block = [pairWidth(grid.tokens, grid.cached), pairWidth(grid.cost, grid.elapsed)].filter(
+			(cells) => cells > 0,
+		);
 		const cells = block.reduce((sum, each) => sum + each, 0) + separatorWidth * Math.max(0, block.length - 1);
 		grid.right = cells ? cells + GAP : 0;
 		const columns = [grid.who, grid.role].filter((each) => each > 0);
@@ -114,16 +116,21 @@ function pair(a: string, aWidth: number, b: string, bWidth: number): string {
 	return cells.filter((_, index) => (index === 0 ? aWidth : bWidth) > 0).join(" ");
 }
 
-/** `elapsed cost · tokens cached`, each cell padded to its column: the block that ends at the terminal's edge. */
-function spendBlock(theme: Theme, r: Row, grid: Grid): string {
+type Paint = (color: "dim" | "muted", text: string) => string;
+
+/**
+ * `tokens cached · cost elapsed`, each cell padded to its column: the block that ends at the terminal's edge, the
+ * elapsed time last, in the column where the work rows' clocks end.
+ */
+function spendBlock(paint: Paint, r: Row, grid: Grid): string {
 	const block: string[] = [];
-	if (grid.elapsed || grid.cost)
-		block.push(pair(theme.fg("dim", r.elapsed), grid.elapsed, theme.fg("muted", r.cost), grid.cost));
 	if (grid.tokens || grid.cached)
-		block.push(pair(theme.fg("dim", r.tokens), grid.tokens, theme.fg("dim", r.cached), grid.cached));
+		block.push(pair(paint("dim", r.tokens), grid.tokens, paint("dim", r.cached), grid.cached));
+	if (grid.cost || grid.elapsed)
+		block.push(pair(paint("muted", r.cost), grid.cost, paint("dim", r.elapsed), grid.elapsed));
 	// A row with no spend of its own keeps the separator only when a cell on both sides of it shows.
-	const shown = [r.elapsed || r.cost, r.tokens || r.cached];
-	return block.join(shown.every(Boolean) ? theme.fg("dim", SEPARATOR) : " ".repeat(separatorWidth));
+	const shown = [r.tokens || r.cached, r.cost || r.elapsed];
+	return block.join(shown.every(Boolean) ? paint("dim", SEPARATOR) : " ".repeat(separatorWidth));
 }
 
 /** `├ ○ name` or `🦑 name ○`, painted. */
@@ -149,7 +156,7 @@ function paintGoalCell(theme: Theme, r: Row, cells: number): string {
 /**
  * One agent's grid row: `tree mark name · role:effort · goal`, each column padded to its width so every row's columns
  * start at the same cell, the action after the goal column (`› action`) when it fits whole there, and its spend
- * (`elapsed cost · tokens cached`) right-aligned to the terminal's edge.
+ * (`tokens cached · cost elapsed`) right-aligned to the terminal's edge.
  */
 export function headLine(theme: Theme, r: GridRow, grid: Grid): string {
 	const cells = [padToWidth(paintWho(theme, r), grid.who)];
@@ -163,10 +170,17 @@ export function headLine(theme: Theme, r: GridRow, grid: Grid): string {
 	let line = goal || action ? `${front}${separator}${goal}` : front.trimEnd();
 	// With no goal column (no row has a goal) the action follows the separator directly.
 	if (action) line = grid.goal ? `${padToWidth(line, grid.goalStart + grid.goal)} ${action}` : `${line}${action}`;
-	const spend = spendBlock(theme, r, grid);
-	if (visibleWidth(spend.trim()) === 0) return truncateToWidth(line, Math.max(1, grid.width), "…");
+	// The block is measured unpainted: a row's blank last cells (this session has no cost) are left off, not padded.
+	const plain = spendBlock((_, text) => text, r, grid);
+	const shown = plain.trimEnd();
+	if (shown.trim() === "") return truncateToWidth(line, Math.max(1, grid.width), "…");
+	const spend = truncateToWidth(
+		spendBlock((color, text) => theme.fg(color, text), r, grid),
+		visibleWidth(shown),
+		"",
+	);
 	const end = Math.max(1, grid.width - grid.right);
-	return `${padToWidth(truncateToWidth(line, end, "…"), grid.width - visibleWidth(spend))}${spend}`;
+	return `${padToWidth(truncateToWidth(line, end, "…"), grid.width - visibleWidth(plain))}${spend}`;
 }
 
 /**

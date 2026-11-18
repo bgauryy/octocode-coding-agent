@@ -219,6 +219,7 @@
 			"registerTaskEvents@octocode/backlog/task-events.ts",
 			"registerBreakAttribution@octocode/team/break-attribution.ts",
 			"registerConfinedNote@octocode/team/node-confine.ts",
+			"registerSkillFirstUse@octocode/skill/first-use.ts",
 			"registerReadDedupe@octocode/files/dedupe.ts",
 			"registerLoopGuard@octocode/loop-guard.ts"
 		],

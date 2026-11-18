@@ -49,8 +49,19 @@ export interface PipeStatusCapture {
 	finish(): string | undefined;
 }
 
+/** Why `dir` cannot hold the file: something that is no folder sits there, or the folder is not writable. */
+const UNWRITABLE = new Set(["EEXIST", "ENOTDIR", "EACCES", "EPERM", "EROFS"]);
+
+/** A capture that reports nothing, for a command that runs where the status file cannot be written. */
+const NO_CAPTURE: PipeStatusCapture = { script: (command) => command, finish: () => undefined };
+
 export function capturePipeStatus(dir: string): PipeStatusCapture {
-	mkdirSync(dir, { recursive: true });
+	try {
+		mkdirSync(dir, { recursive: true });
+	} catch (error) {
+		if (UNWRITABLE.has((error as NodeJS.ErrnoException).code ?? "")) return NO_CAPTURE;
+		throw error;
+	}
 	const file = join(dir, `pipestatus-${randomUUID()}`);
 	return {
 		script: (command) => (hasPipe(command) ? withPipeStatus(command, file) : command),

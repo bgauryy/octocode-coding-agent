@@ -4,6 +4,9 @@ import { createOctocodeCommand } from "../../src/octocode/cli/command.ts";
 import { parseCliHelp } from "../../src/octocode/cli/help.ts";
 import { resolveOctocodeCli } from "../../src/octocode/cli/resolve.ts";
 
+/** The CLI's `--version` line: the package version, then an optional `+build` suffix. */
+const versionLine = (version: string) => new RegExp(`^octocode ${version.replaceAll(".", "\\.")}(\\+[0-9A-Za-z.-]+)?$`);
+
 /** `/octocode` without an audit record. */
 const octocodeCommand = createOctocodeCommand();
 
@@ -22,7 +25,8 @@ describe("/octocode without a terminal", () => {
 		const { ctx, notify, custom } = headless();
 		await octocodeCommand.handler("--version", ctx);
 		expect(custom).not.toHaveBeenCalled();
-		expect(notify).toHaveBeenCalledWith(`octocode ${resolveOctocodeCli()!.version}`, "info");
+		// The CLI may append its build id (`+c6361757`) to the package version.
+		expect(notify).toHaveBeenCalledWith(expect.stringMatching(versionLine(resolveOctocodeCli()!.version)), "info");
 	});
 
 	it("has no aliases: `login` is no CLI command, so the line goes to the agent as a regular prompt", async () => {

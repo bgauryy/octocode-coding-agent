@@ -129,11 +129,10 @@ describe("the /agents panel row keeps the effort", () => {
 			150,
 		);
 		// The root row says `role:effort`; its model is the footer's. A child's full route is on its stats line.
-		expect(lines).toEqual([
-			" 🦑 salty-squid ○ · main:high · 1m",
-			" └ ○ inky-kraken  · main:low  · 1m",
-			"     gpt-5.5:low",
-		]);
+		expect(lines).toHaveLength(3);
+		expect(lines[0]).toMatch(/^ 🦑 salty-squid ○ · main:high +1m$/);
+		expect(lines[1]).toMatch(/^ └ ○ inky-kraken  · main:low +1m$/);
+		expect(lines[2]).toBe("     gpt-5.5:low");
 		expect(lines.join("\n")).not.toMatch(/anthropic\/|openai\//);
 	});
 
@@ -158,9 +157,9 @@ describe("the /agents panel row keeps the effort", () => {
 			150,
 		);
 		const head = (id: string) => text.find((line) => line.includes(id))!.replace(/ +/g, " ");
-		expect(head("inky-kraken")).toContain("inky-kraken · implementer:low ·");
+		expect(head("inky-kraken")).toContain("inky-kraken · implementer:low ");
 		expect(head("held-otter")).toMatch(/held-otter · implementer(?!:)/);
-		expect(head("codex-heron")).toContain("codex-heron · implementer:? ·");
+		expect(head("codex-heron")).toContain("codex-heron · implementer:? ");
 	});
 
 	it("cuts a long model id, never its level", () => {

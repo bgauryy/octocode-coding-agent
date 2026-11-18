@@ -50,10 +50,28 @@ describe("usage counts", () => {
 			recorder.record("called", ["t"], NOW);
 		}
 		recorder.record("loaded", ["t"], NOW);
-		expect(usageCounts(at, "main", NOW).t).toEqual({ declared: 1, called: 1, loaded: 1, refused: 0, used: 1 });
+		expect(usageCounts(at, "main", NOW).t).toEqual({
+			declared: 1,
+			called: 1,
+			loaded: 1,
+			calledUndeclared: 0,
+			refused: 0,
+			used: 1,
+		});
 		recorder.reset();
 		recorder.record("declared", ["t"], NOW);
 		expect(usageCounts(at, "main", NOW).t?.declared).toBe(2);
+	});
+
+	it("counts a call before declaration as loaded and used too, once per session", () => {
+		const at = file();
+		const recorder = new UsageRecorder(
+			() => at,
+			() => "main",
+		);
+		recorder.record("calledUndeclared", ["rare"], NOW);
+		recorder.record("calledUndeclared", ["rare"], NOW);
+		expect(usageCounts(at, "main", NOW).rare).toMatchObject({ calledUndeclared: 1, loaded: 1, used: 1, called: 0 });
 	});
 
 	it("promotes a tool whose calls are refused more than once per using session", () => {

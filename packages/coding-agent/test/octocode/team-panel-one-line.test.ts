@@ -38,7 +38,7 @@ describe("team panel: one grid row per agent", () => {
 	it("shows name, role:effort, elapsed, cost, goal and action on one row, without the stats or a state word", () => {
 		const { lines } = widgetRows(team, "main-0001", NOW, theme, 140);
 		const row = strip(lines.find((line) => line.includes("sneaky-dolphin"))!);
-		expect(row).toMatch(/implementer:medium · 8m57s ≈\$1\.00 · B607: Sonnet LLM-judge eval +› shell: yarn vitest run$/);
+		expect(row).toMatch(/implementer:medium · B607: Sonnet LLM-judge eval +› shell: yarn vitest run +≈\$1\.00 8m57s$/);
 		for (const hidden of ["claude-sonnet", "tok", "cached", "tool calls", "locks", "working"])
 			expect(row).not.toContain(hidden);
 		expect(lines).toHaveLength(3);
@@ -63,7 +63,7 @@ describe("team panel: one grid row per agent", () => {
 		);
 		const text = open.lines.map(strip);
 		expect(text).toHaveLength(4);
-		expect(text[2]).toMatch(/^ │ {3}claude-sonnet-5-5:medium · 209k tok · \d+% cached · 42 tool calls · 2 locks$/);
+		expect(text[2]).toMatch(/^ │ {3}claude-sonnet-5-5:medium +209k tok · \d+% cached · 42 tool calls · 2 locks$/);
 		expect(open.owners).toEqual([undefined, "sneaky-dolphin", "sneaky-dolphin", "wily-kelp"]);
 	});
 

@@ -184,7 +184,7 @@ export function registerCompaction(
 			return { cancel: true };
 		}
 		archive.capture(event);
-		restoreCandidates = await pickRestoreCandidates(event.preparation, ctx.cwd);
+		restoreCandidates = await pickRestoreCandidates(event.preparation, ctx.cwd, event.branchEntries);
 		// Sized for the window the context lands in (after a downshift, the smaller model's), with Octocode's reserve for it.
 		restoreBudget = windowBudget(
 			ctx.model?.contextWindow,

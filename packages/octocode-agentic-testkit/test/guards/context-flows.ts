@@ -4,7 +4,7 @@ import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
 import type { Responder } from "../../src/gateway.ts";
 import type { Step } from "../../src/script.ts";
 import { type CapturedRequest, type ChatMessage, textOf } from "../../src/trace.ts";
-import { gateway } from "../helpers.ts";
+import type { gateway } from "../helpers.ts";
 import { anthropicHome, traceRows } from "./cache-trace.ts";
 
 /**
@@ -97,15 +97,86 @@ export function position(request: CapturedRequest): { turn: string; replies: num
 }
 
 /**
- * A responder scripted per turn: `steps[turn][k]` answers the k-th main request of that turn (a turn's script ends in
- * text), and a request without tools (the summary request) gets `summary`.
+ * A responder scripted per turn: `steps[turn][k]` answers the k-th main request of that turn, and an unscripted turn
+ * gets one text reply. Past the end of a turn's script, a request answering a tool result, or one whose user side
+ * carries the scripted summary (the turn continuing after a compaction), gets the turn's closing text; any other
+ * request past the script, and every request without tools, asks for a summary: it gets `summary` and is recorded.
  */
-export function byTurn(steps: Record<string, Step[]>, summary: string): Responder {
-	return ({ request }) => {
-		if (request.tools.length === 0) return { text: summary };
+export function byTurn(
+	steps: Record<string, Step[]>,
+	summary: string,
+): { responder: Responder; summaryRequests: CapturedRequest[] } {
+	const summaryRequests: CapturedRequest[] = [];
+	const responder: Responder = ({ request }) => {
 		const { turn, replies } = position(request);
-		return steps[turn]?.[replies] ?? { text: `${turn} done` };
+		const script = steps[turn] ?? [{ text: `${turn} done` }];
+		const step = request.tools.length === 0 ? undefined : script[replies];
+		if (step) return step;
+		const lastReply = request.messages.findLastIndex((m) => m.role === "assistant");
+		const afterTool = request.messages.slice(lastReply + 1).some((m) => m.role === "tool");
+		const compacted = request.messages.some((m) => m.role === "user" && textOf(m.content).includes(summary));
+		if (request.tools.length > 0 && (afterTool || compacted)) return { text: `${turn} done` };
+		summaryRequests.push(request);
+		return { text: summary };
 	};
+	return { responder, summaryRequests };
+}
+
+/** The messages of `request` from the first one that differs from `before`'s (all of them when none came before). */
+export function addedMessages(request: CapturedRequest, before?: CapturedRequest): ChatMessage[] {
+	if (!before) return request.messages;
+	// Role and text only: cache markers move between requests without changing what the model reads.
+	const shape = (m: ChatMessage | undefined): string => (m ? `${m.role}\n${textOf(m.content)}` : "");
+	const at = request.messages.findIndex((m, i) => shape(m) !== shape(before.messages[i]));
+	return at < 0 ? [] : request.messages.slice(at);
+}
+
+export interface RestoreExpectation {
+	/** Texts that must come back whole (a file the agent changed). */
+	whole: Record<string, string>;
+	/** Texts that must not come back whole (a file only read). */
+	notWhole: Record<string, string>;
+	/** Markers that must not appear at all (a scratch file's text). */
+	absent: Record<string, string>;
+}
+
+/** The first main request after the summary request, and what it carries that the summary request did not. */
+export function afterCompaction(run: FlowRun, summaryRequest: CapturedRequest): CapturedRequest | undefined {
+	const at = run.requests.findIndex((r) => r.index === summaryRequest.index);
+	return at < 0 ? undefined : mainRequests(run.requests.slice(at + 1))[0];
+}
+
+/** Post-compaction restore as the wire shows it: in the first request after the compaction. */
+export function restoreViolations(after: CapturedRequest | undefined, expect: RestoreExpectation): string[] {
+	if (!after) return ["no request after the compaction"];
+	const text = after.messages.map((m) => textOf(m.content)).join("\n");
+	const out: string[] = [];
+	for (const [name, body] of Object.entries(expect.whole)) if (!text.includes(body)) out.push(`${name} not whole`);
+	for (const [name, body] of Object.entries(expect.notWhole))
+		if (text.includes(body)) out.push(`${name} came back whole`);
+	for (const [name, marker] of Object.entries(expect.absent)) if (text.includes(marker)) out.push(`${name} came back`);
+	return out;
+}
+
+/**
+ * Bash output budget as the wire shows it: the result of a command whose output far exceeds `budget` bytes fits the
+ * budget (with `slack` bytes for the status line and the saved-log notice), keeps a marker of the output, and names a
+ * saved log that holds the whole output (`lastMarker`).
+ */
+export function budgetViolations(
+	result: string | undefined,
+	saved: Map<string, string>,
+	budget: number,
+	markers: { first: string; last: string },
+	slack = 600,
+): string[] {
+	if (result === undefined) return ["no bash result"];
+	const out: string[] = [];
+	if (bytes(result) > budget + slack) out.push(`result is ${bytes(result)} bytes, over ${budget} + ${slack}`);
+	if (!result.includes(markers.first) && !result.includes(markers.last)) out.push("result shows none of the output");
+	const log = namedPaths(result).find((p) => saved.get(p)?.includes(markers.last));
+	if (!log) out.push("result names no saved log holding the whole output");
+	return out;
 }
 
 /** The main conversation's requests: the summary request is the one without tools. */
@@ -157,7 +228,8 @@ export function clearingViolations(run: FlowRun, expect: ClearingExpectation, or
 		if (!copy) out.push(`result ${at} names no saved copy that exists`);
 		else if (!run.saved.get(copy)?.includes(expect.markers[i])) out.push(`saved copy of result ${at} lacks its text`);
 	});
-	for (const [at, marker] of expect.kept) if (!results[at]?.includes(marker)) out.push(`result ${at} was not kept whole`);
+	for (const [at, marker] of expect.kept)
+		if (!results[at]?.includes(marker)) out.push(`result ${at} was not kept whole`);
 	const waves = editWaves(main);
 	if (waves.length !== 1) out.push(`expected one edit wave, saw ${waves.length} (${waves.join(",")})`);
 	else if (waves[0] === main.length - 1) out.push("the clear was the last request: nothing appended after it");

@@ -1,4 +1,4 @@
-import { animationClock, GLYPH, MOTION, SPINNER } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, MOTION, SPINNER, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
@@ -51,10 +51,13 @@ describe("panel state", () => {
 		];
 		const rows = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		// The mark alone says the state: no state word, and no stats line for an agent without stats.
+		// The elapsed time ends each row at the terminal's edge.
+		const edge = (left: string, right: string) =>
+			`${left}${" ".repeat(120 - visibleWidth(left) - visibleWidth(right))}${right}`;
 		expect(rows).toEqual([
-			" 🦑 main-aaaaaa ○ · general · 1m",
-			` ├ ${frame} busy-aaaa    · general · 1m`,
-			" └ ○ rest-bbbb    · general · 1m",
+			edge(" 🦑 main-aaaaaa ○ · general", "1m"),
+			edge(` ├ ${frame} busy-aaaa    · general`, "1m"),
+			edge(" └ ○ rest-bbbb    · general", "1m"),
 		]);
 		const tree = [
 			{ member: team[1], depth: 0 },
@@ -80,10 +83,10 @@ describe("panel state", () => {
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
 		expect(lines).toEqual([
-			" 🦑 main-aaaaaa ○ · general ·  1m",
-			" ├ ⠋ a-1111       · general ·  1m",
-			" ├ ⠋ b-2222       · general ·  1m",
-			" └ ○ c-3333       · general · 59s",
+			" 🦑 main-aaaaaa ○ · general                                                                                           1m",
+			" ├ ⠋ a-1111       · general                                                                                           1m",
+			" ├ ⠋ b-2222       · general                                                                                           1m",
+			" └ ○ c-3333       · general                                                                                          59s",
 			"     ↳ left",
 		]);
 	});

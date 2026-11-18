@@ -69,7 +69,10 @@ const srcDir = join(pkgDir, "src");
 const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")) as {
 	main: string;
 	types: string;
-	private: boolean;
+	private?: boolean;
+	publishConfig?: { access: string };
+	scripts: Record<string, string>;
+	peerDependencies: Record<string, string>;
 	files: string[];
 	sideEffects: string[];
 	exports: Record<string, Record<"source" | "types" | "import" | "default", string>>;

@@ -597,8 +597,8 @@ describe("AgentsView", () => {
 			const lines = widget.render(120).join("\n");
 			// No summary line: each agent's mark says its state (⠼ working, ○ idle).
 			// The elapsed time counts from `now`, taken when the suite started; the spinner frame follows the clock.
-			expect(lines).toMatch(/\n ├ [\u2800-\u28ff] reviewer-1a2b · \d+s · review the parser › localSearch foo\n/);
-			expect(lines).toMatch(/\n └ ○ tester-3c4d   · \d+s · review the parser$/);
+			expect(lines).toMatch(/\n ├ [\u2800-\u28ff] reviewer-1a2b · review the parser › localSearch foo +\d+s\n/);
+			expect(lines).toMatch(/\n └ ○ tester-3c4d   · review the parser +\d+s$/);
 			expect(lines).not.toContain("1 working · 1 idle");
 			// Only traffic between subagents: this session's own messages are already in its transcript.
 			expect(lines).toContain("#3");
@@ -617,8 +617,8 @@ describe("AgentsView", () => {
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
 			// No summary line: each row turns idle (○) and says `left` on its own ↳ line.
-			expect(done).toMatch(/\n ├ ○ reviewer-1a2b · \d+s · review the parser\n │   ↳ left\n/);
-			expect(done).toMatch(/\n └ ○ tester-3c4d   · \d+s · review the parser\n     ↳ left$/);
+			expect(done).toMatch(/\n ├ ○ reviewer-1a2b · review the parser +\d+s\n │   ↳ left\n/);
+			expect(done).toMatch(/\n └ ○ tester-3c4d   · review the parser +\d+s\n     ↳ left$/);
 			expect(done).not.toContain("2 left");
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();

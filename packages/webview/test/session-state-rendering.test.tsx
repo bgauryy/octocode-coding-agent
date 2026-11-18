@@ -321,6 +321,8 @@ it("does not drop focus to the page after sending with the Send button", async (
 	await userEvent.click(screen.getByRole("button", { name: "Send" }));
 	await act(async () => finish());
 	await waitFor(() => expect(box).not.toHaveAttribute("readonly"));
+	// The message box gets focus back in an effect after the commit that clears `readonly`.
+	await waitFor(() => expect(box).toHaveFocus());
 	expect(document.body).not.toHaveFocus();
 });
 

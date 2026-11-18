@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { RESTORED_FILES_TYPE } from "../../src/octocode/files/reads.ts";
 import { restoreFiles } from "../../src/octocode/compaction/restore.ts";
 import { restoreCandidates } from "../../src/octocode/compaction/restore-picks.ts";
 import { tmp } from "./helpers.ts";
@@ -29,8 +30,12 @@ const code = (name: string) =>
 		(_, i) => `export function ${name}${i}(value: number): number {\n\treturn value + ${i};\n}\n`,
 	).join("\n");
 
-async function restoredIn(dir: string, messages: unknown[]) {
-	const candidates = await restoreCandidates({ messagesToSummarize: messages as never, turnPrefixMessages: [] }, dir);
+async function restoredIn(dir: string, messages: unknown[], branch: unknown[] = []) {
+	const candidates = await restoreCandidates(
+		{ messagesToSummarize: messages as never, turnPrefixMessages: [] },
+		dir,
+		branch as never,
+	);
 	const restored = restoreFiles(candidates, new Set(), dir, 200_000);
 	return { candidates, restored, byFile: new Map(restored?.files.map((entry) => [path.basename(entry.file), entry])) };
 }
@@ -82,6 +87,42 @@ describe("what comes back after a compaction", () => {
 			...edit("3", ".octocode/roast/kept.ts", 300),
 		]);
 		expect(candidates.map((candidate) => path.relative(dir, candidate.file))).toEqual([".octocode/roast/kept.ts"]);
+	});
+
+	it("after a second compaction, reads a file edited before the first back whole, as the first did", async () => {
+		const dir = tmp();
+		const edited = path.join(dir, "edited.ts");
+		fs.writeFileSync(edited, code("edited"));
+		fs.writeFileSync(path.join(dir, "looked.ts"), code("looked"));
+		// The span after the first compaction holds the edited file only as that compaction's read-back.
+		const span = [
+			{
+				role: "custom",
+				customType: RESTORED_FILES_TYPE,
+				content: "",
+				display: false,
+				timestamp: 100,
+				details: { files: [edited], worked: [{ file: edited, workedAt: 50 }] },
+			},
+			...read("1", "looked.ts", 200),
+		];
+		const compaction = (fromHook: boolean) => ({
+			type: "compaction",
+			id: "c1",
+			summary: "",
+			fromHook,
+			details: { readFiles: [], modifiedFiles: ["edited.ts"] },
+		});
+		for (const fromHook of [true, false]) {
+			const { byFile, restored } = await restoredIn(dir, span, [compaction(fromHook)]);
+			expect(byFile.get("edited.ts")?.whole).toBe(true);
+			expect(restored?.content).toContain("return value + 0;");
+			// A file only read stays an outline.
+			expect(byFile.get("looked.ts")?.whole).toBe(false);
+		}
+		// Without the earlier summary's modified list, the read-back alone is no change.
+		const { byFile } = await restoredIn(dir, span);
+		expect(byFile.get("edited.ts")?.whole).toBe(false);
 	});
 
 	it("counts a file the session's own bash wrote as edited", async () => {

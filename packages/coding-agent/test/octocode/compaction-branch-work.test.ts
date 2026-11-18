@@ -199,8 +199,11 @@ function oracleGaps(branch: readonly any[]): number[] {
 	for (const entry of branch) {
 		const message = entry.message;
 		if (entry.type !== "message" || typeof message?.timestamp !== "number") continue;
-		if (message.role === "assistant") finished = message.stopReason === "stop" ? message.timestamp : undefined;
-		else if (message.role === "user" && finished !== undefined) {
+		if (message.role === "assistant") {
+			// A reply that follows a finished run ends its gap too: anything may resume a session, not only a prompt.
+			if (finished !== undefined) gaps.push(message.timestamp - finished);
+			finished = message.stopReason === "stop" ? message.timestamp : undefined;
+		} else if (message.role === "user" && finished !== undefined) {
 			gaps.push(message.timestamp - finished);
 			finished = undefined;
 		}

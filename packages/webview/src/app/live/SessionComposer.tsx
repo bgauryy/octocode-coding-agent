@@ -75,12 +75,15 @@ function SessionComposerForSession() {
 	const [uploading, setUploading] = useState(false);
 	const sending = useRef(false);
 	const messageRef = useRef<HTMLTextAreaElement>(null);
-	const refocus = useRef(false);
-	// The Send button is inert while a request is in flight; give focus back to the message box once it settles.
+	const refocus = useRef<HTMLFormElement | null>(null);
+	// Controls are inert while a request is in flight. Focus that sat in the form when it was submitted (jsdom, unlike
+	// browsers, keeps a disabled button focused) or fell to the page returns to the message box once it settles.
 	useEffect(() => {
-		if (pending || !refocus.current) return;
-		refocus.current = false;
-		if (!document.activeElement || document.activeElement === document.body)
+		const form = refocus.current;
+		if (pending || !form) return;
+		refocus.current = null;
+		const active = document.activeElement;
+		if (!active || active === document.body || form.contains(active))
 			messageRef.current?.focus({ preventScroll: true });
 	}, [pending]);
 	const tone = useStore(sessionStore, (state) => state.status.tone);
@@ -114,7 +117,8 @@ function SessionComposerForSession() {
 
 	async function submit(event: SubmitEvent<HTMLFormElement>) {
 		event.preventDefault();
-		refocus.current = event.currentTarget.contains(document.activeElement);
+		const form = event.currentTarget;
+		refocus.current = form.contains(document.activeElement) ? form : null;
 		if (attachments.length && !acceptsImages) return;
 		if (
 			sending.current ||
